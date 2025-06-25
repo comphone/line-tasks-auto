@@ -485,6 +485,34 @@ def handle_message(event):
         "\n🌐 เยี่ยมชมเพจของเรา: https://www.facebook.com/comphone101"
     )
 
+    # --- New: Handle "comphone" or "วิธีใช้" command for help ---
+    if text_message.lower() == "comphone" or text_message.lower() == "วิธีใช้":
+        help_message = (
+            "📋 คู่มือคำสั่งสำหรับ Comphone Service Bot:\n\n"
+            "➡️ สร้างงานใหม่:\n"
+            "  `task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่`\n"
+            "  หรือ `งานใหม่:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่`\n"
+            "  ตัวอย่าง: `task:ซ่อมจอแตก|คุณสมชาย|0812345678|2025-07-30 14:00|บ้านลูกค้า`\n\n"
+            "➡️ สรุปและปิดงาน:\n"
+            "  `complete <Google_Task_ID>:สรุปผล|อุปกรณ์ที่ใช้|ระยะเวลา`\n"
+            "  หรือ `เสร็จสิ้น <Google_Task_ID>:สรุปผล|อุปกรณ์ที่ใช้|ระยะเวลา`\n"
+            "  ตัวอย่าง: `complete Abc123Xyz:เปลี่ยนแบตเตอรี่|แบตเตอรี่ใหม่,ไขควง|30นาที`\n\n"
+            "➡️ ดึงรายการงานค้าง:\n"
+            "  `งานค้าง`\n\n"
+            "➡️ ดูสรุปงานประจำวัน (สร้าง/เสร็จสิ้นวันนี้):\n"
+            "  `สรุปงาน`\n\n"
+            "💡 หากต้องการอัปเดตงานเพิ่มเติม เช่น เพิ่มรูปภาพ หรือกำหนดวันนัดหมายใหม่\n"
+            "   โปรดใช้ลิงก์ที่ได้รับเมื่อสร้างงานหรือลิงก์อัปเดตงานบนหน้าเว็บ."
+        )
+        line_messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=help_message)]
+            )
+        )
+        app.logger.info(f"Replied with help message to {event.source.type}.")
+        return # Exit the function after handling the help command
+
     # --- Logic for Group Chats ---
     if is_from_group:
         # Service commands for groups
