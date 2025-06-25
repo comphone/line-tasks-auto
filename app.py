@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv() # <--- เพิ่มบรรทัดนี้
+
 import os
 import sys
 import datetime
@@ -37,11 +40,11 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 
 # LINE Recipient IDs - Get from Environment Variables
-# IMPORTANT: Replace 'YOUR_...' with actual IDs obtained from LINE logs
-YOUR_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID', 'YOUR_LINE_ADMIN_GROUP_ID_HERE')
-LINE_MANAGER_USER_ID = os.environ.get('LINE_MANAGER_USER_ID', None)
-LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID', None)
-LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID', None)
+# IMPORTANT: Ensure these are set correctly on Render and/or in your local .env file
+LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID') # <--- แก้ไขตรงนี้
+LINE_MANAGER_USER_ID = os.environ.get('LINE_MANAGER_USER_ID')
+LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID')
+LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -115,22 +118,21 @@ def get_google_tasks_service():
                 flow = InstalledAppFlow.from_client_secrets_file(
                     GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
                 # For local development, run_local_server opens browser for auth
-                # This part will not directly work on Render without a browser/UI.
                 # Render deployment relies on GOOGLE_TOKEN_JSON env var being manually updated.
                 creds = flow.run_local_server(port=0) 
                 app.logger.info("Google OAuth flow completed locally.")
             except Exception as e:
                 app.logger.error(f"Error during Google OAuth flow: {e}. Ensure {GOOGLE_CREDENTIALS_FILE_NAME} is valid.")
                 return None
-        
-        # Save the new token locally for future use (if on local dev)
-        if creds and not os.environ.get('GOOGLE_TOKEN_JSON'): # Only save if not using env var for token
-            try:
-                with open('token.json', 'w') as token:
-                    token.write(creds.to_json())
-                app.logger.info("Local token.json saved.")
-            except Exception as e:
-                app.logger.error(f"Error saving local token.json: {e}")
+            
+            # Save the new token locally for future use (if on local dev)
+            if creds and not os.environ.get('GOOGLE_TOKEN_JSON'): # Only save if not using env var for token
+                try:
+                    with open('token.json', 'w') as token:
+                        token.write(creds.to_json())
+                    app.logger.info("Local token.json saved.")
+                except Exception as e:
+                    app.logger.error(f"Error saving local token.json: {e}")
 
     if creds:
         return build('tasks', 'v1', credentials=creds)
@@ -255,14 +257,15 @@ def send_message_to_recipients(message_object, recipient_ids):
     :param recipient_ids: A list of User IDs or Group IDs (strings).
     """
     for recipient_id in recipient_ids:
-        if recipient_id and recipient_id != 'YOUR_LINE_ADMIN_GROUP_ID_HERE': # Avoid sending to placeholder ID
+        # แก้ไขตรงนี้ให้ตรวจสอบแค่ว่า recipient_id มีค่า (ไม่เป็น None หรือสตริงว่าง)
+        if recipient_id:
             try:
                 line_bot_api.push_message(recipient_id, message_object)
                 app.logger.info(f"Message sent to LINE recipient: {recipient_id}")
             except Exception as e:
                 app.logger.error(f"Failed to send message to LINE recipient {recipient_id}: {e}")
         else:
-            app.logger.warning(f"Skipping message send to empty or placeholder recipient ID: {recipient_id}")
+            app.logger.warning(f"Skipping message send to empty recipient ID: {recipient_id}") # <--- อัปเดตข้อความแจ้งเตือน
 
 def send_daily_reports():
     """
@@ -300,7 +303,7 @@ def send_daily_reports():
             report_message_text += "ไม่มีงานค้างในวันนี้\n"
         
         app.logger.info(f"Preparing daily outstanding tasks report.")
-        recipients = [YOUR_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] # Send to Admin Group and Manager
+        recipients = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] # Send to Admin Group and Manager
         send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
 
     # Summarize daily tasks at 8:00 PM Thai time
@@ -316,7 +319,7 @@ def send_daily_reports():
             report_message_text += "ไม่มีงานที่ถูกสร้างหรือเสร็จสิ้นในวันนี้\n"
         
         app.logger.info(f"Preparing daily summary tasks report.")
-        recipients = [YOUR_ADMIN_GROUP_ID, LINE_HR_GROUP_ID] # Send to Admin Group and HR Group
+        recipients = [LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID] # Send to Admin Group and HR Group
         send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
     else:
         app.logger.info(f"No report scheduled for Thai hour {current_hour_thai}.")
@@ -370,7 +373,8 @@ def form():
             if appointment:
                 google_task_notes += f"\nนัดหมาย: {appointment}"
             if coord and coord != ',':
-                google_task_notes += f"\nพิกัด: http://maps.google.com/maps?q={latitude},{longitude}"
+                # แก้ไข URL Google Maps
+                google_task_notes += f"\nพิกัด: https://www.google.com/maps/search/?api=1&query={latitude},{longitude}" # <--- แก้ไขตรงนี้
             if file_urls:
                 full_file_urls = []
                 for f_url in file_urls:
@@ -387,7 +391,26 @@ def form():
                 except ValueError:
                     app.logger.warning(f"Could not parse appointment date for Google Task: {appointment}")
 
-            create_google_task(task_title, google_task_notes, due=due_date_gmt)
+            created_task = create_google_task(task_title, google_task_notes, due=due_date_gmt)
+            
+            # --- เพิ่มส่วนนี้เพื่อส่ง LINE Notification หลังสร้าง Task จาก Web Form ---
+            if created_task:
+                new_task_notification_text = (
+                    f"งานใหม่ถูกสร้างจากเว็บฟอร์ม: {topic}\n"
+                    f"ลูกค้า: {customer}\n"
+                    f"โทร: {phone}\n"
+                    f"ที่อยู่: {address}\n"
+                    f"นัดหมาย: {appointment or '-'}\n"
+                    f"พิกัด: {('https://www.google.com/maps/search/?api=1&query=' + latitude + ',' + longitude) if latitude and longitude else '-'}\n"
+                    f"รายละเอียด: {detail or '-'}\n"
+                    f"ID สำหรับสรุปงาน: {created_task.get('id')}\n"
+                    f"(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
+                )
+                
+                # กำหนดผู้รับ: LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID
+                recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
+                send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_web_task)
+            # --- จบส่วนที่เพิ่ม ---
 
         return redirect(url_for('summary'))
 
@@ -514,7 +537,8 @@ def handle_message(event):
             if appointment:
                 task_notes += f"\nนัดหมาย: {appointment}"
             if final_coord and final_coord != ',':
-                task_notes += f"\nพิกัด: http://maps.google.com/maps?q={latitude},{longitude}"
+                # แก้ไข URL Google Maps
+                task_notes += f"\nพิกัด: https://www.google.com/maps/search/?api=1&query={latitude},{longitude}" # <--- แก้ไขตรงนี้
 
             due_date_gmt = None
             if appointment:
@@ -537,7 +561,7 @@ def handle_message(event):
                 # Notify Admin Group and Technician Group about the new task
                 new_task_notification_text = f"งานใหม่ถูกสร้าง: {topic}\nลูกค้า: {customer}\nID สำหรับสรุปงาน: {created_task.get('id')}\n(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
                 
-                recipients_for_new_task = [YOUR_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
+                recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID] # <--- แก้ไขตรงนี้
                 send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_task)
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เกิดข้อผิดพลาดในการสร้าง Task กรุณาลองใหม่"))
@@ -599,16 +623,15 @@ def handle_message(event):
 
                     # Send summary report to relevant LINE groups/users
                     admin_report_message_text = f"--- รายงานสรุปงานจากช่าง (LINE) ---\n" \
-                                           f"Task ID: {google_task_id}\n" \
-                                           f"หัวข้อ: {updated_task.get('title', 'N/A')}\n" \
-                                           f"สรุปผล: {work_summary or '-'}\n" \
-                                           f"อุปกรณ์ที่ใช้: {equipment_used or '-'}\n" \
-                                           f"ระยะเวลา: {time_taken or '-'}\n" \
-                                           f"เวลาสรุป: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n" \
-                                           f"สถานะ: เสร็จสิ้น\n"
+                                               f"Task ID: {google_task_id}\n" \
+                                               f"หัวข้อ: {updated_task.get('title', 'N/A')}\n" \
+                                               f"สรุปผล: {work_summary or '-'}\n" \
+                                               f"อุปกรณ์ที่ใช้: {equipment_used or '-'}\n" \
+                                               f"ระยะเวลา: {time_taken or '-'}\n" \
+                                               f"เวลาสรุป: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n" \
+                                               f"สถานะ: เสร็จสิ้น\n"
                     
-                    report_summary_message_obj = TextSendMessage(text=admin_report_message_text)
-                    recipients_for_summary_report = [YOUR_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
+                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] # <--- แก้ไขตรงนี้
                     send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
                 else:
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่สามารถอัปเดต Task ใน Google Tasks ได้."))
