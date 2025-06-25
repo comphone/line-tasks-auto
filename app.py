@@ -609,7 +609,7 @@ def handle_message(event):
                     command_parts = command_content.split(':', 1)
                     if len(command_parts) > 1:
                         task_id = command_parts[0].strip()
-                        summary_parts = command_parts[1].strip().split('|')
+                        summary_parts = command_content.split('|')
                         if len(summary_parts) >= 3:
                             summary_result = summary_parts[0].strip()
                             equipment_used = summary_parts[1].strip()
@@ -785,7 +785,7 @@ def handle_message(event):
                     command_parts = command_content.split(':', 1)
                     if len(command_parts) > 1:
                         task_id = command_parts[0].strip()
-                        summary_parts = command_parts[1].strip().split('|')
+                        summary_parts = command_content.split('|')
                         if len(summary_parts) >= 3:
                             summary_result = summary_parts[0].strip()
                             equipment_used = summary_parts[1].strip()
@@ -832,14 +832,14 @@ def handle_message(event):
                                 line_messaging_api.reply_message(
                                     ReplyMessageRequest(
                                         reply_token=event.reply_token,
-                                        messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                                        messages=[TextMessage(text="ในแชทส่วนตัว: ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
                                     )
                                 )
                     else:
                         line_messaging_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
-                                messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดระบุ Task ID และสรุปผล เช่น 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                                messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                         )
                     )
                 except Exception as e:
