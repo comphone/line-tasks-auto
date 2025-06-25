@@ -38,6 +38,7 @@
     <div class="container">
         <h1>สรุปงานทั้งหมด</h1>
 
+        {# เพิ่มปุ่ม "สร้างงานใหม่" ที่นี่ #}
         <div class="button-group">
             <a href="{{ url_for('create_task_page') }}">สร้างงานใหม่</a>
         </div>
@@ -87,7 +88,7 @@
                         {% endif %}
 
                         {# เพิ่มฟอร์มสำหรับอัปเดตสถานะงาน (เสร็จสิ้น/เปิดใหม่) #}
-                        <form method="POST" action="{{ url_for('create_task_page') }}">
+                        <form method="POST" action="{{ url_for('create_task_page') }}"> {# action ยังคงชี้ไปที่ create_task_page เพราะเป็นตัวจัดการ POST request หลัก #}
                             <input type="hidden" name="command_type" value="update_task">
                             <input type="hidden" name="task_id" value="{{ task.id }}">
                             <br>
