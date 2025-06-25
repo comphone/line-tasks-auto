@@ -1,30 +1,55 @@
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>สรุปงาน</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-<div class="container">
-    <h2>รายการงานทั้งหมด</h2>
+{% extends "base.html" %}
+{% block title %}สรุป Task{% endblock %}
+{% block content %}
+<h2 class="mb-4">สรุป Task ทั้งหมด</h2>
+{% if tasks %}
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
     {% for task in tasks %}
-    <div class="card">
-        <h3>{{ task.topic }}</h3>
-        <p><strong>ลูกค้า:</strong> {{ task.customer }} | <strong>โทร:</strong> {{ task.phone }}</p>
-        <p><strong>ที่อยู่:</strong> {{ task.address }}</p>
-        <p><strong>เวลานัด:</strong> {{ task.appointment }}</p>
-        <p><strong>รายละเอียด:</strong> {{ task.detail }}</p>
-        {% if task.coord %}
-        <p><strong>พิกัด:</strong> {{ task.coord }} <a href="https://maps.google.com?q={{ task.coord }}" target="_blank">ดูแผนที่</a></p>
-        {% endif %}
-        {% if task.file_url %}
-        <p><strong>แนบไฟล์:</strong> <a href="{{ url_for('static', filename='uploads/' + task.file_url.split('/')[-1]) }}" target="_blank">เปิดไฟล์</a></p>
-        {% endif %}
+    <div class="col">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">{{ task.topic }}</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text"><strong>ลูกค้า:</strong> {{ task.customer }}</p>
+                <p class="card-text"><strong>โทรศัพท์:</strong> {{ task.phone }}</p>
+                <p class="card-text"><strong>ที่อยู่:</strong> {{ task.address }}</p>
+                <p class="card-text"><strong>นัดหมาย:</strong> {{ task.appointment }}</p>
+                <p class="card-text"><strong>พิกัด:</strong>
+                    {% if task.coord and task.coord != ',' %}
+                        {% set coords = task.coord.split(',') %}
+                        {% if coords|length == 2 %}
+                            <a href="https://www.google.com/maps/search/?api=1&query={{ coords[0] }},{{ coords[1] }}" target="_blank" class="text-decoration-none">
+                                {{ task.coord }} <i class="fas fa-map-marker-alt"></i>
+                            </a>
+                        {% else %}
+                            {{ task.coord }}
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </p>
+                <p class="card-text"><strong>รายละเอียด:</strong> {{ task.detail }}</p>
+                {% if task.file_url and task.file_url != 'None' %}
+                    <p class="card-text">
+                        <strong>ไฟล์แนบ:</strong>
+                        <a href="{{ url_for('static', filename=task.file_url.split('/')[-2] + '/' + task.file_url.split('/')[-1]) }}" target="_blank" class="text-decoration-none">
+                            <i class="fas fa-file-alt"></i> ดูไฟล์
+                        </a>
+                    </p>
+                {% endif %}
+            </div>
+            <div class="card-footer text-muted">
+                <small>บันทึกเมื่อ: {{ task.datetime }}</small>
+            </div>
+        </div>
     </div>
     {% endfor %}
 </div>
-</body>
-</html>
+{% else %}
+    <div class="alert alert-info" role="alert">
+        ยังไม่มี Task ที่ถูกบันทึกไว้
+    </div>
+{% endif %}
+{% endblock %}
