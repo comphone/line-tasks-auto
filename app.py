@@ -41,7 +41,7 @@ LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 
 # LINE Recipient IDs - Get from Environment Variables
 # IMPORTANT: Ensure these are set correctly on Render and/or in your local .env file
-LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
+LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID') # <--- แก้ไขตรงนี้
 LINE_MANAGER_USER_ID = os.environ.get('LINE_MANAGER_USER_ID')
 LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID')
 LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
@@ -324,40 +324,9 @@ def send_daily_reports():
     else:
         app.logger.info(f"No report scheduled for Thai hour {current_hour_thai}.")
 
-def parse_google_task_dates(task_item):
-    """
-    Parses 'created' and 'due' dates from a Google Tasks API item and formats them.
-    Adds 'created_formatted' and 'due_formatted' to the task_item dictionary.
-    """
-    parsed_task = task_item.copy()
-    
-    # Parse and format 'created' date
-    if 'created' in parsed_task:
-        try:
-            created_dt = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
-            parsed_task['created_formatted'] = created_dt.strftime("%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            parsed_task['created_formatted'] = "N/A"
-    else:
-        parsed_task['created_formatted'] = "N/A"
-
-    # Parse and format 'due' date
-    if 'due' in parsed_task:
-        try:
-            # Google Tasks 'due' is a date-time string in RFC3339 format, always UTC (ends with 'Z')
-            due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
-            parsed_task['due_formatted'] = due_dt.strftime("%Y-%m-%d %H:%M")
-        except ValueError:
-            parsed_task['due_formatted'] = "N/A"
-    else:
-        parsed_task['due_formatted'] = "N/A"
-    
-    return parsed_task
 
 # --- Flask Routes ---
-# This route handles the root URL ('/') and renders the form.html template.
-# This setup resolves the 'TemplateNotFound: index.html' issue by ensuring
-# the default route serves a valid template that you have provided.
+
 @app.route('/', methods=['GET', 'POST'])
 def form():
     """Handles the task creation form submission."""
@@ -405,7 +374,7 @@ def form():
                 google_task_notes += f"\nนัดหมาย: {appointment}"
             if coord and coord != ',':
                 # แก้ไข URL Google Maps
-                google_task_notes += f"\nพิกัด: http://maps.google.com/?q={latitude},{longitude}" # Corrected Google Maps URL
+                google_task_notes += f"\nพิกัด: https://www.google.com/maps/search/?api=1&query={latitude},{longitude}" # <--- แก้ไขตรงนี้
             if file_urls:
                 full_file_urls = []
                 for f_url in file_urls:
@@ -432,7 +401,7 @@ def form():
                     f"โทร: {phone}\n"
                     f"ที่อยู่: {address}\n"
                     f"นัดหมาย: {appointment or '-'}\n"
-                    f"พิกัด: {('http://maps.google.com/?q=' + latitude + ',' + longitude) if latitude and longitude else '-'}\n" # Corrected Google Maps URL
+                    f"พิกัด: {('https://www.google.com/maps/search/?api=1&query=' + latitude + ',' + longitude) if latitude and longitude else '-'}\n"
                     f"รายละเอียด: {detail or '-'}\n"
                     f"ID สำหรับสรุปงาน: {created_task.get('id')}\n"
                     f"(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
@@ -445,7 +414,7 @@ def form():
 
         return redirect(url_for('summary'))
 
-    return render_template('form.html')
+    return render_template('tasks_summary.html') # แก้ไขจาก 'index.html' เป็น 'tasks_summary.html'
 
 @app.route('/summary')
 def summary():
@@ -619,7 +588,7 @@ def handle_message(event):
                 task_notes += f"\nนัดหมาย: {appointment}"
             if final_coord and final_coord != ',':
                 # แก้ไข URL Google Maps
-                task_notes += f"\nพิกัด: http://maps.google.com/?q={latitude},{longitude}" # Corrected Google Maps URL
+                task_notes += f"\nพิกัด: https://www.google.com/maps/search/?api=1&query={latitude},{longitude}" # <--- แก้ไขตรงนี้
 
             due_date_gmt = None
             if appointment:
@@ -642,7 +611,7 @@ def handle_message(event):
                 # Notify Admin Group and Technician Group about the new task
                 new_task_notification_text = f"งานใหม่ถูกสร้าง: {topic}\nลูกค้า: {customer}\nID สำหรับสรุปงาน: {created_task.get('id')}\n(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
                 
-                recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
+                recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID] # <--- แก้ไขตรงนี้
                 send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_task)
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เกิดข้อผิดพลาดในการสร้าง Task กรุณาลองใหม่"))
@@ -676,7 +645,7 @@ def handle_message(event):
                                  f"สรุปผลการทำงาน: {work_summary or '-'}\n" \
                                  f"รายการอุปกรณ์ที่ใช้: {equipment_used or '-'}\n" \
                                  f"ระยะเวลาที่ทำเสร็จ: {time_taken or '-'}\n"
-
+            
             service = get_google_tasks_service()
             if service:
                 task_list_id = '@default'
@@ -712,7 +681,7 @@ def handle_message(event):
                                                f"เวลาสรุป: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n" \
                                                f"สถานะ: เสร็จสิ้น\n"
                     
-                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
+                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] # <--- แก้ไขตรงนี้
                     send_message_to_recipients(TextSendMessage(text=admin_report_message_text), recipients_for_summary_report)
                 else:
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่สามารถอัปเดต Task ใน Google Tasks ได้."))
