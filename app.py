@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 
 # LINE Messaging API (Using v3 for best practice and to resolve deprecation warnings)
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
-from linebot.v3.webhooks import WebhookHandler # Corrected: Changed from WebhookParser back to WebhookHandler
+from linebot.v3.webhooks import WebhookParser, MessageEvent # Changed WebhookHandler to WebhookParser and added MessageEvent
 from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
@@ -51,7 +51,7 @@ LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
 # Configuration for LINE API client
 line_configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 line_messaging_api = MessagingApi(ApiClient(line_configuration)) # Use line_messaging_api for push/reply messages
-handler = WebhookHandler(LINE_CHANNEL_SECRET) # Corrected: Adjusted to use WebhookHandler
+handler = WebhookParser(LINE_CHANNEL_SECRET) # Changed WebhookHandler to WebhookParser
 
 # Google Tasks API Configuration
 SCOPES = ['https://www.googleapis.com/auth/tasks']
@@ -64,26 +64,6 @@ def allowed_file(filename):
     """Checks if the file extension is allowed."""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# --- New Helper Function for Parsing Google Task Dates (Moved to top for scope) ---
-def parse_google_task_dates(task):
-    """Helper to parse and format dates from Google Task API response."""
-    parsed_task = task.copy()
-    for key in ['created', 'updated', 'completed', 'due']:
-        if key in parsed_task and parsed_task[key]:
-            try:
-                # Google Tasks dates are ISO 8601, often with 'Z' for UTC
-                dt_obj = datetime.datetime.fromisoformat(parsed_task[key].replace('Z', '+00:00'))
-                # Format to a readable string (e.g., "YYYY-MM-DD HH:MM:SS")
-                parsed_task[f'{key}_formatted'] = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                parsed_task[f'{key}_formatted'] = "N/A"
-        else:
-            parsed_task[f'{key}_formatted'] = "N/A"
-    return parsed_task
-
-# --- End New Helper Function ---
-
 
 def get_google_tasks_service():
     """
@@ -274,6 +254,26 @@ def get_daily_summary_tasks():
             
     return daily_tasks
 
+# --- New Helper Function for Parsing Google Task Dates ---
+def parse_google_task_dates(task):
+    """Helper to parse and format dates from Google Task API response."""
+    parsed_task = task.copy()
+    for key in ['created', 'updated', 'completed', 'due']:
+        if key in parsed_task and parsed_task[key]:
+            try:
+                # Google Tasks dates are ISO 8601, often with 'Z' for UTC
+                dt_obj = datetime.datetime.fromisoformat(parsed_task[key].replace('Z', '+00:00'))
+                # Format to a readable string (e.g., "2025-06-25 16:30:00")
+                parsed_task[f'{key}_formatted'] = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                parsed_task[f'{key}_formatted'] = "N/A"
+        else:
+            parsed_task[f'{key}_formatted'] = "N/A"
+    return parsed_task
+
+# --- End New Helper Function ---
+
+
 def send_message_to_recipients(message_object, recipient_ids):
     """
     Sends a LINE message (TextSendMessage object) to a list of LINE User IDs or Group IDs.
@@ -303,9 +303,13 @@ def send_daily_reports():
     Function to be called by a Render Cron Job at specific times (e.g., 6 AM and 8 PM).
     Determines which report to send based on current hour.
     """
-    current_hour_utc = datetime.datetime.now(datetime.timezone.utc).hour 
+    current_hour_utc = datetime.datetime.now(datetime.timezone.utc).hour # Render uses UTC
     
     # Adjust hour for Thai timezone (UTC+7)
+    # If Render is at UTC, 6:00 AM (Thai) = 23:00 PM (UTC of previous day)
+    # If Render is at UTC, 8:00 PM (Thai) = 13:00 PM (UTC)
+
+    # Convert current_hour_utc to Thai local hour for logic
     current_hour_thai = (current_hour_utc + 7) % 24 
     app.logger.info(f"Cron job triggered. Current UTC hour: {current_hour_utc}, Thai local hour: {current_hour_thai}")
 
@@ -330,8 +334,8 @@ def send_daily_reports():
             report_message_text += "ไม่มีงานค้างในวันนี้\n"
         
         app.logger.info(f"Preparing daily outstanding tasks report.")
-        recipients = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] 
-        send_message_to_recipients(TextMessage(text=report_message_text), recipients)
+        recipients = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] # Send to Admin Group and Manager
+        send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
 
     # Summarize daily tasks at 8:00 PM Thai time
     elif current_hour_thai == 20:
@@ -346,8 +350,8 @@ def send_daily_reports():
             report_message_text += "ไม่มีงานที่ถูกสร้างหรือเสร็จสิ้นในวันนี้\n"
         
         app.logger.info(f"Preparing daily summary tasks report.")
-        recipients = [LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID] 
-        send_message_to_recipients(TextMessage(text=report_message_text), recipients)
+        recipients = [LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID] # Send to Admin Group and HR Group
+        send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
     else:
         app.logger.info(f"No report scheduled for Thai hour {current_hour_thai}.")
 
@@ -436,7 +440,7 @@ def form():
                 
                 # กำหนดผู้รับ: LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID
                 recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
-                send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_web_task)
+                send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_web_task)
             # --- จบส่วนที่เพิ่ม ---
 
         return redirect(url_for('summary'))
@@ -546,19 +550,7 @@ def callback():
     app.logger.info("Request body: " + body)
 
     try:
-        # WebhookParser doesn't use @handler.add decorators in the same direct way WebhookHandler does.
-        # Instead, you typically parse events and then loop through them to call a handler function.
-        # This part of the code needs to be adjusted based on the actual usage pattern of WebhookParser.
-        # The previous attempt to use `handler.handle(body, signature)` would not work with WebhookParser.
-        # I'm reverting to a pattern that's more typical for WebhookParser, but note that 
-        # the @handler.add decorator pattern below will not work directly with WebhookParser.
-        # You'd typically loop through `events = handler.parse(body, signature)`
-        # and then call a function like `handle_message(event)` for each event.
-        
-        # Given the consistent error, it implies that the environment expects WebhookHandler still.
-        # Reverting to WebhookHandler's expected usage.
-        handler.handle(body, signature) 
-
+        handler.handle(body, signature)
     except InvalidSignatureError:
         app.logger.error("Invalid signature. Check channel access token/channel secret.")
         abort(400)
@@ -568,11 +560,7 @@ def callback():
 
     return 'OK'
 
-# The decorators for WebhookHandler
-from linebot.v3.webhooks import MessageEvent, TextMessage as LineTextMessage # Renamed to avoid conflict with Flask's TextMessage
-from linebot.v3.messaging import MessageAction, PostbackAction # Import necessary actions if used elsewhere
-
-@handler.add(MessageEvent, message=LineTextMessage) # Use LineTextMessage to avoid conflict
+@handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     """Processes incoming LINE text messages."""
     text_message = event.message.text
@@ -670,7 +658,7 @@ def handle_message(event):
                 )
                 
                 recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
-                send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_task)
+                send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_task)
             else:
                 # ใช้ line_messaging_api.reply_message (v3)
                 line_messaging_api.reply_message(
@@ -768,7 +756,7 @@ def handle_message(event):
                     )
                     
                     recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
-                    send_message_to_recipients(TextMessage(text=admin_report_message_text), recipients_for_summary_report)
+                    send_message_to_recipients(TextSendMessage(text=admin_report_message_text), recipients_for_summary_report)
                 else:
                     # ใช้ line_messaging_api.reply_message (v3)
                     line_messaging_api.reply_message(
