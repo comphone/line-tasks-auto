@@ -1,29 +1,45 @@
-<!doctype html>
-<html>
-  <head>
-    <title>ฟอร์มแจ้งงาน</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-  </head>
-  <body>
-    <h2>ฟอร์มแจ้งงานใหม่</h2>
-    <form method="POST" enctype="multipart/form-data">
-      <label>หัวข้องาน:</label><br>
-      <input type="text" name="title"><br>
-      <label>ชื่อลูกค้า:</label><br>
-      <input type="text" name="customer"><br>
-      <label>เบอร์โทร:</label><br>
-      <input type="text" name="phone"><br>
-      <label>ที่อยู่:</label><br>
-      <input type="text" name="address"><br>
-      <label>เวลานัดหมาย:</label><br>
-      <input type="datetime-local" name="schedule"><br>
-      <label>พิกัด (Google Maps):</label><br>
-      <input type="text" name="location"><br>
-      <label>รายละเอียดงาน:</label><br>
-      <textarea name="detail"></textarea><br>
-      <label>แนบรูปภาพ:</label><br>
-      <input type="file" name="image"><br><br>
-      <button type="submit">บันทึกงาน</button>
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>📋 ฟอร์มรายงานงาน</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize/modern-normalize.css">
+    <style>
+        body { font-family: 'Prompt', sans-serif; max-width: 700px; margin: 2rem auto; background: #f4f4f4; padding: 2rem; border-radius: 12px; box-shadow: 0 0 10px rgba(0,0,0,0.1);}
+        input, select, textarea { width: 100%; padding: 10px; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc;}
+        button { background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 8px; margin-top: 16px; cursor: pointer;}
+        button:hover { background: #0056b3;}
+        h2 { margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <h2>📋 แบบฟอร์มรายงานงาน</h2>
+    {% if message %}<p style="color:green">{{ message }}</p>{% endif %}
+    <form method="POST">
+        <label>หัวข้องาน:</label>
+        <input type="text" name="title" required>
+        <label>รายละเอียด:</label>
+        <textarea name="description" rows="3" required></textarea>
+        <label>สถานะ:</label>
+        <select name="status">
+            <option value="เริ่มงาน">เริ่มงาน</option>
+            <option value="เสร็จสิ้น">เสร็จสิ้น</option>
+        </select>
+        <label>วันที่:</label>
+        <input type="text" id="date" name="date" required>
+        <label>ชื่อช่าง/ทีม:</label>
+        <input type="text" name="technician" required>
+        <button type="submit">💾 บันทึกงาน</button>
     </form>
-  </body>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        flatpickr("#date", {
+            dateFormat: "Y-m-d",
+            onClose: function() {
+                document.activeElement.blur();
+            }
+        });
+    </script>
+</body>
 </html>
