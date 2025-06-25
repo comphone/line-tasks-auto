@@ -473,9 +473,22 @@ def handle_message(event):
     text_message = event.message.text
     app.logger.info(f"Received message: {text_message}")
 
-    # Command to create a new task: task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่
-    if text_message.lower().startswith("task:"):
-        parts = text_message[len("task:"):].split('|')
+    # ตรวจสอบว่าข้อความมาจากกลุ่มหรือไม่
+    is_from_group = event.source.type == 'group'
+
+    # Initialize a flag to check if any service command was handled
+    handled_service_command = False
+    
+    # --- Check for service commands (both English and Thai) ---
+    if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
+        handled_service_command = True
+        command_content = ""
+        if text_message.lower().startswith("task:"):
+            command_content = text_message[len("task:"):].strip()
+        else: # Assumed to be "งานใหม่:"
+            command_content = text_message[len("งานใหม่:"):].strip()
+        
+        parts = command_content.split('|')
         if len(parts) >= 3:
             title = parts[0].strip()
             customer_name = parts[1].strip()
@@ -486,14 +499,10 @@ def handle_message(event):
             due_date = None
             if len(parts) > 3 and parts[3].strip():
                 try:
-                    # Parse date and time in Thai local time (assuming +07:00 offset from UTC)
                     due_dt_local = datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M")
-                    # Convert to UTC and add 'Z' for Google Tasks
-                    
-                    # Assuming local input is Thai time (+7 UTC)
                     due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
-                    due_date = due_dt_utc.isoformat() + 'Z' # Append Z for UTC
-                    notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}" # Keep local formatted date in notes
+                    due_date = due_dt_utc.isoformat() + 'Z'
+                    notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
                 except ValueError:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
@@ -501,22 +510,15 @@ def handle_message(event):
                             messages=[TextMessage(text="รูปแบบวันที่/เวลาไม่ถูกต้อง. โปรดใช้YYYY-MM-DD HH:MM")]
                         )
                     )
-                    return
-
+                    return # Stop processing
             if len(parts) > 4 and parts[4].strip():
                 location = parts[4].strip()
                 notes_for_task += f"\nสถานที่: {location}"
 
             task = create_google_task(title, notes=notes_for_task, due=due_date)
             if task:
-                # สร้าง URL สำหรับอัปเดตงานสำหรับช่างเทคนิค
                 update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
-                
-                # กำหนดผู้รับสำหรับแจ้งเตือนงานใหม่ (เช่น ช่างเทคนิค)
-                # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
                 recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
-                
-                # ปรับปรุงข้อความแจ้งเตือนให้กระชับและชัดเจนขึ้น
                 task_message = TextMessage(text=(
                     f"งานใหม่ถูกสร้างแล้ว!\n"
                     f"🎯 หัวข้อ: {task.get('title')}\n"
@@ -525,13 +527,13 @@ def handle_message(event):
                 ))
                 send_message_to_recipients(task_message, recipients_for_new_task)
                 
-                # ตอบกลับผู้ใช้ที่สร้างงาน
-                line_messaging_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=f"สร้างงานเรียบร้อยแล้ว: {task.get('title')} (ID: {task.get('id')})\nคุณสามารถดูและอัปเดตงานได้ที่: {update_url}")]
+                if not is_from_group: # Reply only if not from a group to avoid double replies
+                     line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=f"สร้างงานเรียบร้อยแล้ว: {task.get('title')} (ID: {task.get('id')})\nคุณสามารถดูและอัปเดตงานได้ที่: {update_url}")]
+                        )
                     )
-                )
             else:
                 line_messaging_api.reply_message(
                     ReplyMessageRequest(
@@ -543,15 +545,20 @@ def handle_message(event):
             line_messaging_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
+                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่' หรือ 'งานใหม่:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
                 )
             )
 
-    # Command to complete a task (Legacy from LINE, now prefer web form)
-    # complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา
-    elif text_message.lower().startswith("complete "):
+    elif text_message.lower().startswith("complete ") or text_message.lower().startswith("เสร็จสิ้น "):
+        handled_service_command = True
+        command_content = ""
+        if text_message.lower().startswith("complete "):
+            command_content = text_message[len("complete "):].strip()
+        else: # Assumed to be "เสร็จสิ้น "
+            command_content = text_message[len("เสร็จสิ้น "):].strip()
+
         try:
-            command_parts = text_message[len("complete "):].split(':', 1)
+            command_parts = command_content.split(':', 1)
             task_id = command_parts[0].strip()
             
             if len(command_parts) > 1:
@@ -563,27 +570,23 @@ def handle_message(event):
 
                     service = get_google_tasks_service()
                     if service:
-                        # Get current task notes to append structured summary
                         current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
                         current_notes = current_task.get('notes', '')
                         
-                        # แยกข้อมูลเดิม ถ้ามี
                         old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
                         
-                        # เตรียมข้อมูล Tech Report ใหม่
                         tech_report_data = {
                             'summary_date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             'work_summary': summary_result,
                             'equipment_used': equipment_used,
                             'time_taken': time_taken,
-                            'next_appointment': old_tech_report.get('next_appointment'), # คงค่าเดิมไว้ หากมี
-                            'attachment_urls': old_attachment_urls # คง URL เดิมไว้
+                            'next_appointment': old_tech_report.get('next_appointment'),
+                            'attachment_urls': old_attachment_urls
                         }
                         
-                        # สร้าง notes ใหม่โดยรวม remaining_notes และ JSON string
                         new_notes_content = json.dumps(tech_report_data, ensure_ascii=False)
                         new_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
-                        new_notes = new_notes.strip() # ลบช่องว่างที่เกินมา
+                        new_notes = new_notes.strip()
 
                         updated_task = update_google_task(task_id, notes=new_notes, status='completed')
                         if updated_task:
@@ -593,8 +596,6 @@ def handle_message(event):
                                     messages=[TextMessage(text=f"อัปเดตงาน ID {task_id} เป็น 'เสร็จสิ้น' พร้อมสรุปผลเรียบร้อยแล้ว")]
                                 )
                             )
-                            # ส่งรายงานสรุปไปยังกลุ่มที่เกี่ยวข้องหลังจากงานเสร็จสิ้น
-                            # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
                             report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
                             recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
                             send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
@@ -609,42 +610,82 @@ def handle_message(event):
                         line_messaging_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
-                                messages=[TextMessage(text="ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
+                                messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา' หรือ 'เสร็จสิ้น <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                             )
                         )
-
                 else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
-                            messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                            messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา' หรือ 'เสร็จสิ้น <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                         )
                     )
-            else:
+            except Exception as e:
+                app.logger.error(f"Error processing 'complete' command: {e}")
                 line_messaging_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                        messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                     )
                 )
 
-        except Exception as e:
-            app.logger.error(f"Error processing 'complete' command: {e}")
-            line_messaging_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
-                )
-            )
-    
-    # Reply for unrecognized commands
-    else:
+    elif text_message.lower() == "งานค้าง": # New command for outstanding tasks
+        handled_service_command = True
+        outstanding_tasks = get_daily_outstanding_tasks()
+        reply_text = "--- รายงานงานค้าง ---\n"
+        if outstanding_tasks:
+            titles = [task.get('title', 'N/A') for task in outstanding_tasks]
+            reply_text += "หัวข้อ: " + ", ".join(titles)
+        else:
+            reply_text += "ไม่มีงานค้าง"
+        
         line_messaging_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text="กรุณาส่งข้อความในรูปแบบที่ถูกต้อง เช่น 'task:หัวข้อ|ลูกค้า|เบอร์โทร...' หรือ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'\nหรือเยี่ยมชมหน้าเว็บหลักเพื่อสร้างงาน: {url_for('create_task_page', _external=True)}")]
+                messages=[TextMessage(text=reply_text)]
             )
         )
+        app.logger.info(f"Replied with outstanding tasks to {event.source.type}.")
+
+    elif text_message.lower() == "สรุปงาน": # New command for daily summary
+        handled_service_command = True
+        daily_tasks = get_daily_summary_tasks()
+        reply_text = "--- สรุปงานประจำวัน ---\n"
+        if daily_tasks:
+            titles = [task.get('title', 'N/A') for task in daily_tasks]
+            reply_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
+        else:
+            reply_text += "ไม่มีกิจกรรมงานในวันนี้"
+        
+        line_messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=reply_text)]
+            )
+        )
+        app.logger.info(f"Replied with daily summary to {event.source.type}.")
+    
+    # ถ้าไม่มีคำสั่งงานเซอร์วิสใดๆ ถูกจัดการ ให้ดำเนินการตามเงื่อนไขการตอบกลับทั่วไป
+    if not handled_service_command:
+        if not is_from_group:
+            # นี่คือข้อความตอบกลับอัตโนมัติสำหรับลูกค้าทั่วไป (แชทส่วนตัว)
+            reply_text = (
+                "สวัสดีครับ คอมโฟน แอนด์ อิเลคโทรนิคส์ ยินดีให้บริการครับ 🙏\n"
+                "ถ้าคุณลูกค้าต้องการสอบถามเกี่ยวกับสินค้าและบริการ สามารถฝากข้อความไว้ได้เลยนะครับ ทางร้านจะรีบติดต่อกลับโดยเร็วที่สุดครับ"
+                "\n📞 หรือติดต่อที่เบอร์ 043571779"
+                "\n🌐 ดูบริการของเราได้ที่: https://your-app-url.onrender.com (เปลี่ยนเป็น URL จริงของหน้าเว็บคุณ)"
+            )
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=reply_text)]
+                )
+            )
+        else:
+            app.logger.info(f"Ignored message in group: '{text_message}' (not a service command)")
+            # ไม่มีการตอบกลับอัตโนมัติสำหรับข้อความทั่วไปในกลุ่ม
+            pass
+
 
 # --- Flask Routes ---
 
