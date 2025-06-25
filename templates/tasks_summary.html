@@ -1,6 +1,7 @@
-
 {% extends "base.html" %}
+
 {% block title %}สรุป Task{% endblock %}
+
 {% block content %}
 <h2 class="mb-4">สรุป Task ทั้งหมด</h2>
 {% if tasks %}
@@ -16,11 +17,20 @@
                 <p class="card-text"><strong>โทรศัพท์:</strong> {{ task.phone }}</p>
                 <p class="card-text"><strong>ที่อยู่:</strong> {{ task.address }}</p>
                 <p class="card-text"><strong>นัดหมาย:</strong> {{ task.appointment }}</p>
+                <p class="card-text"><strong>สถานะ:</strong>
+                    {% if task.status == 'PENDING' %}
+                        <span class="badge bg-warning text-dark">รอดำเนินการ</span>
+                    {% elif task.status == 'COMPLETED' %}
+                        <span class="badge bg-success">เสร็จสิ้น</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ task.status }}</span>
+                    {% endif %}
+                </p>
                 <p class="card-text"><strong>พิกัด:</strong>
                     {% if task.coord and task.coord != ',' %}
                         {% set coords = task.coord.split(',') %}
                         {% if coords|length == 2 %}
-                            <a href="https://www.google.com/maps/search/?api=1&query={{ coords[0] }},{{ coords[1] }}" target="_blank" class="text-decoration-none">
+                            <a href="http://maps.google.com/?q={{ coords[0] }},{{ coords[1] }}" target="_blank" class="text-decoration-none">
                                 {{ task.coord }} <i class="fas fa-map-marker-alt"></i>
                             </a>
                         {% else %}
@@ -31,12 +41,18 @@
                     {% endif %}
                 </p>
                 <p class="card-text"><strong>รายละเอียด:</strong> {{ task.detail }}</p>
-                {% if task.file_url and task.file_url != 'None' %}
+                {# --- แสดงผลไฟล์แนบหลายภาพ --- #}
+                {% if task.file_urls %}
                     <p class="card-text">
-                        <strong>ไฟล์แนบ:</strong>
-                        <a href="{{ url_for('static', filename=task.file_url.split('/')[-2] + '/' + task.file_url.split('/')[-1]) }}" target="_blank" class="text-decoration-none">
-                            <i class="fas fa-file-alt"></i> ดูไฟล์
-                        </a>
+                        <strong>ไฟล์แนบ:</strong><br>
+                        {% for f_url in task.file_urls %}
+                            {% if f_url %}
+                                {% set display_filename = f_url.split('/')[-1] %}
+                                <a href="{{ url_for('static', filename=f_url.replace('static/', '')) }}" target="_blank" class="text-decoration-none d-block">
+                                    <i class="fas fa-file-alt"></i> {{ display_filename }}
+                                </a>
+                            {% endif %}
+                        {% endfor %}
                     </p>
                 {% endif %}
             </div>
