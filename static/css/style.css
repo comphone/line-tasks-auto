@@ -1,28 +1,14 @@
 
 body {
-    font-family: Arial, sans-serif;
-    background: #f7f7f7;
-    margin: 0;
-    padding: 0;
+    font-family: 'Arial', sans-serif;
+    background-color: #f8f9fa;
 }
-.container {
-    max-width: 600px;
-    margin: auto;
-    padding: 20px;
-    background: white;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+.navbar-brand {
+    font-weight: bold;
 }
-form input, form textarea {
-    width: 100%;
-    margin-bottom: 10px;
-    padding: 8px;
-    font-size: 16px;
+.card-header {
+    font-weight: bold;
 }
-button {
-    padding: 10px 20px;
-    font-size: 16px;
-}
-.card {
-    border-bottom: 1px solid #ccc;
-    padding: 10px 0;
+.card-body p {
+    margin-bottom: 0.5rem;
 }
