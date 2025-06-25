@@ -41,7 +41,7 @@ LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 
 # LINE Recipient IDs - Get from Environment Variables
 # IMPORTANT: Ensure these are set correctly on Render and/or in your local .env file
-LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID') # <--- แก้ไขตรงนี้
+LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 LINE_MANAGER_USER_ID = os.environ.get('LINE_MANAGER_USER_ID')
 LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID')
 LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
@@ -265,7 +265,7 @@ def send_message_to_recipients(message_object, recipient_ids):
             except Exception as e:
                 app.logger.error(f"Failed to send message to LINE recipient {recipient_id}: {e}")
         else:
-            app.logger.warning(f"Skipping message send to empty recipient ID: {recipient_id}") # <--- อัปเดตข้อความแจ้งเตือน
+            app.logger.warning(f"Skipping message send to empty recipient ID: {recipient_id}")
 
 def send_daily_reports():
     """
@@ -324,12 +324,51 @@ def send_daily_reports():
     else:
         app.logger.info(f"No report scheduled for Thai hour {current_hour_thai}.")
 
+def parse_google_task_dates(task_item):
+    """Helper to parse and format dates from Google Task API response."""
+    parsed_task = task_item.copy() # Make a copy to avoid modifying original
+    
+    # Format 'created' date
+    if 'created' in parsed_task:
+        try:
+            created_dt = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
+            parsed_task['created_formatted'] = created_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            parsed_task['created_formatted'] = 'N/A'
+    else:
+        parsed_task['created_formatted'] = 'N/A'
+
+    # Format 'due' date
+    if 'due' in parsed_task:
+        try:
+            due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
+            parsed_task['due_formatted'] = due_dt.strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            parsed_task['due_formatted'] = 'N/A'
+    else:
+        parsed_task['due_formatted'] = 'N/A'
+
+    # Format 'completed' date
+    if 'completed' in parsed_task:
+        try:
+            completed_dt = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
+            parsed_task['completed_formatted'] = completed_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            parsed_task['completed_formatted'] = 'N/A'
+    else:
+        parsed_task['completed_formatted'] = 'N/A'
+        
+    return parsed_task
 
 # --- Flask Routes ---
 
 @app.route('/', methods=['GET', 'POST'])
 def form():
-    """Handles the task creation form submission."""
+    """
+    Handles the task creation form submission and displays the task summary.
+    When accessed via GET, it fetches and displays the task summary.
+    When accessed via POST, it processes the form submission.
+    """
     if request.method == 'POST':
         topic = request.form.get('topic')
         customer = request.form.get('customer')
@@ -374,7 +413,7 @@ def form():
                 google_task_notes += f"\nนัดหมาย: {appointment}"
             if coord and coord != ',':
                 # แก้ไข URL Google Maps
-                google_task_notes += f"\nพิกัด: https://www.google.com/maps/search/?api=1&query={latitude},{longitude}" # <--- แก้ไขตรงนี้
+                google_task_notes += f"\nพิกัด: http://maps.google.com/?q={latitude},{longitude}" 
             if file_urls:
                 full_file_urls = []
                 for f_url in file_urls:
@@ -401,7 +440,7 @@ def form():
                     f"โทร: {phone}\n"
                     f"ที่อยู่: {address}\n"
                     f"นัดหมาย: {appointment or '-'}\n"
-                    f"พิกัด: {('https://www.google.com/maps/search/?api=1&query=' + latitude + ',' + longitude) if latitude and longitude else '-'}\n"
+                    f"พิกัด: {('http://maps.google.com/?q=' + latitude + ',' + longitude) if latitude and longitude else '-'}\n"
                     f"รายละเอียด: {detail or '-'}\n"
                     f"ID สำหรับสรุปงาน: {created_task.get('id')}\n"
                     f"(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
@@ -414,7 +453,81 @@ def form():
 
         return redirect(url_for('summary'))
 
-    return render_template('tasks_summary.html') # แก้ไขจาก 'index.html' เป็น 'tasks_summary.html'
+    # If GET request, fetch tasks and summary data to display the dashboard
+    else: # request.method == 'GET'
+        tasks_raw = get_google_tasks_for_report(show_completed=True) 
+
+        tasks = []
+        task_status_counts = {
+            'needsAction': 0,
+            'completed': 0,
+            'overdue': 0,
+            'total': 0
+        }
+
+        current_time_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        for task_item in tasks_raw:
+            task_status_counts['total'] += 1
+
+            parsed_task = parse_google_task_dates(task_item)
+
+            status = parsed_task.get('status', 'unknown')
+            parsed_task['display_status'] = 'รอดำเนินการ' 
+
+            if status == 'completed':
+                parsed_task['display_status'] = 'เสร็จสิ้น'
+                task_status_counts['completed'] += 1
+            elif status == 'needsAction':
+                task_status_counts['needsAction'] += 1
+                if 'due' in parsed_task and parsed_task['due'] and parsed_task['due_formatted'] != 'N/A':
+                    try:
+                        due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
+                        if due_dt < current_time_utc:
+                            parsed_task['display_status'] = 'ค้างชำระ' 
+                            task_status_counts['overdue'] += 1
+                    except ValueError:
+                        pass
+
+            notes = parsed_task.get('notes', '')
+            summary_match = re.search(
+                r"--- สรุปงานโดยช่าง \((.*?)\) ---\n"
+                r"สรุปผลการทำงาน: (.*?)\n"
+                r"รายการอุปกรณ์ที่ใช้: (.*?)\n"
+                r"ระยะเวลาที่ทำเสร็จ: (.*?)\n",
+                notes, re.DOTALL
+            )
+            if summary_match:
+                parsed_task['tech_summary_date'] = summary_match.group(1)
+                parsed_task['tech_work_summary'] = summary_match.group(2)
+                parsed_task['tech_equipment_used'] = summary_match.group(3)
+                parsed_task['tech_time_taken'] = summary_match.group(4)
+            else:
+                parsed_task['tech_work_summary'] = None
+                parsed_task['tech_equipment_used'] = None
+                parsed_task['tech_time_taken'] = None
+
+            file_urls_match = re.search(r"ไฟล์แนบ: (.*)", notes)
+            if file_urls_match:
+                parsed_task['attachment_urls'] = [url.strip() for url in file_urls_match.group(1).split(',')]
+            else:
+                parsed_task['attachment_urls'] = []
+
+            tasks.append(parsed_task)
+
+        tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
+
+        total_tasks = task_status_counts['total']
+        if total_tasks > 0:
+            task_status_counts['completed_percent'] = round((task_status_counts['completed'] / total_tasks) * 100, 2)
+            task_status_counts['needsAction_percent'] = round((task_status_counts['needsAction'] / total_tasks) * 100, 2)
+            task_status_counts['overdue_percent'] = round((task_status_counts['overdue'] / total_tasks) * 100, 2)
+        else:
+            task_status_counts['completed_percent'] = 0
+            task_status_counts['needsAction_percent'] = 0
+            task_status_counts['overdue_percent'] = 0
+
+        return render_template("tasks_summary.html", tasks=tasks, summary=task_status_counts)
 
 @app.route('/summary')
 def summary():
@@ -588,7 +701,7 @@ def handle_message(event):
                 task_notes += f"\nนัดหมาย: {appointment}"
             if final_coord and final_coord != ',':
                 # แก้ไข URL Google Maps
-                task_notes += f"\nพิกัด: https://www.google.com/maps/search/?api=1&query={latitude},{longitude}" # <--- แก้ไขตรงนี้
+                task_notes += f"\nพิกัด: http://maps.google.com/?q={latitude},{longitude}"
 
             due_date_gmt = None
             if appointment:
@@ -611,7 +724,7 @@ def handle_message(event):
                 # Notify Admin Group and Technician Group about the new task
                 new_task_notification_text = f"งานใหม่ถูกสร้าง: {topic}\nลูกค้า: {customer}\nID สำหรับสรุปงาน: {created_task.get('id')}\n(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
                 
-                recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID] # <--- แก้ไขตรงนี้
+                recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID] 
                 send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_task)
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เกิดข้อผิดพลาดในการสร้าง Task กรุณาลองใหม่"))
@@ -681,7 +794,7 @@ def handle_message(event):
                                                f"เวลาสรุป: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n" \
                                                f"สถานะ: เสร็จสิ้น\n"
                     
-                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] # <--- แก้ไขตรงนี้
+                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
                     send_message_to_recipients(TextSendMessage(text=admin_report_message_text), recipients_for_summary_report)
                 else:
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่สามารถอัปเดต Task ใน Google Tasks ได้."))
