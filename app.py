@@ -30,7 +30,7 @@ app = Flask(__name__)
 # --- การตั้งค่า ---
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'} # ประเภทไฟล์ที่อนุญาตให้อัปโหลด
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'zip', 'rar', 'txt'} # ประเภทไฟล์ที่อนุญาตให้อัปโหลด
 
 # สร้างโฟลเดอร์อัปโหลดหากยังไม่มี
 if not os.path.exists(UPLOAD_FOLDER):
@@ -185,7 +185,7 @@ def update_google_task(task_id, title=None, notes=None, due=None, status=None):
         
         if title:
             current_task['title'] = title
-        if notes is not None:
+        if notes is not None: # ต้องตรวจสอบ None เพราะ notes อาจเป็นค่าว่าง
             current_task['notes'] = notes
         if due:
             current_task['due'] = due
@@ -194,8 +194,8 @@ def update_google_task(task_id, title=None, notes=None, due=None, status=None):
             current_task['status'] = status
             if status == 'completed':
                 current_task['completed'] = datetime.datetime.now().isoformat() + 'Z'
-            elif 'completed' in current_task:
-                del current_task['completed'] # ลบฟิลด์ completed ถ้าเปลี่ยนสถานะจาก completed
+            elif 'completed' in current_task: # ถ้าเปลี่ยนสถานะจาก completed ให้ลบฟิลด์ completed
+                del current_task['completed']
 
         result = service.tasks().update(tasklist=task_list_id, task=task_id, body=current_task).execute()
         app.logger.info(f"Google Task {task_id} updated. New Status: {result.get('status')}")
@@ -362,7 +362,47 @@ def send_daily_reports():
         send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_summary_report)
         app.logger.info("Daily summary report sent.")
 
-# ฟังก์ชันตัวช่วยสำหรับแยกวิเคราะห์และจัดรูปแบบวันที่จาก Google Tasks
+def parse_tech_report_from_notes(notes):
+    """
+    แยกวิเคราะห์ข้อมูลรายงานช่างและ URL ไฟล์แนบจาก notes ที่มีโครงสร้าง JSON.
+    """
+    tech_report_data = {
+        'summary_date': None,
+        'work_summary': None,
+        'equipment_used': None,
+        'time_taken': None,
+        'next_appointment': None,
+        'attachment_urls': []
+    }
+    notes_display = notes # ส่วนของ notes ที่จะแสดงผล ไม่รวม JSON
+
+    # ค้นหาส่วน JSON ที่เราฝังไว้
+    tech_report_match = re.search(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
+    if tech_report_match:
+        json_str = tech_report_match.group(1)
+        try:
+            data = json.loads(json_str)
+            tech_report_data.update(data)
+            # ลบส่วน JSON ออกจาก notes_display
+            notes_display = notes.replace(tech_report_match.group(0), "").strip()
+        except json.JSONDecodeError as e:
+            app.logger.error(f"Error decoding JSON from notes: {e}")
+            # ถ้าถอดรหัส JSON ไม่ได้ ให้ถือว่าไม่มีข้อมูล tech report ที่ถูกต้อง
+            tech_report_data = {
+                'summary_date': None, 'work_summary': None, 'equipment_used': None,
+                'time_taken': None, 'next_appointment': None, 'attachment_urls': []
+            }
+            notes_display = notes # ถ้ามี error ใน JSON ให้แสดง notes เดิมทั้งหมดไปก่อน
+            
+    # แยกวิเคราะห์ URL ไฟล์แนบที่อาจจะอยู่ในรูปแบบเดิม (ถ้าไม่มี JSON) หรือเป็นส่วนเสริม
+    # ตรวจสอบว่าไม่ซ้ำกับที่อยู่ใน tech_report_data['attachment_urls']
+    legacy_attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xls|xlsx|pptx|ppt|zip|rar|txt)', notes_display)
+    
+    # รวม URL ทั้งหมดและกำจัด URL ที่ซ้ำกัน
+    all_attachment_urls = list(set(tech_report_data['attachment_urls'] + legacy_attachment_urls))
+    
+    return tech_report_data, all_attachment_urls, notes_display
+
 def parse_google_task_dates(task_item):
     """
     แยกวิเคราะห์และจัดรูปแบบวันที่ 'created', 'due', 'completed' จากออบเจกต์ Google Tasks API
@@ -407,8 +447,192 @@ def parse_google_task_dates(task_item):
 
 # --- Flask Routes ---
 
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    text_message = event.message.text
+    app.logger.info(f"Received message: {text_message}")
+
+    # Command to create a new task: task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่
+    if text_message.lower().startswith("task:"):
+        parts = text_message[len("task:"):].split('|')
+        if len(parts) >= 3:
+            title = parts[0].strip()
+            customer_name = parts[1].strip()
+            customer_phone = parts[2].strip()
+            
+            notes_for_task = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
+            
+            due_date = None
+            if len(parts) > 3 and parts[3].strip():
+                try:
+                    # Parse date and time in Thai local time (assuming +07:00 offset from UTC)
+                    due_dt_local = datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M")
+                    # Convert to UTC and add 'Z' for Google Tasks
+                    
+                    # Assuming local input is Thai time (+7 UTC)
+                    due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
+                    due_date = due_dt_utc.isoformat() + 'Z' # Append Z for UTC
+                    notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}" # Keep local formatted date in notes
+                except ValueError:
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="รูปแบบวันที่/เวลาไม่ถูกต้อง. โปรดใช้YYYY-MM-DD HH:MM")]
+                        )
+                    )
+                    return
+
+            if len(parts) > 4 and parts[4].strip():
+                location = parts[4].strip()
+                notes_for_task += f"\nสถานที่: {location}"
+
+            task = create_google_task(title, notes=notes_for_task, due=due_date)
+            if task:
+                # สร้าง URL สำหรับอัปเดตงานสำหรับช่างเทคนิค
+                update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+                
+                # กำหนดผู้รับสำหรับแจ้งเตือนงานใหม่ (เช่น ช่างเทคนิค)
+                # เพิ่ม LINE_ADMIN_GROUP_ID ด้วยเพื่อให้ผู้ดูแลระบบเห็นการแจ้งเตือนนี้
+                recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
+                task_message = TextMessage(text=f"งานใหม่ถูกสร้างแล้ว:\nหัวข้อ: {task.get('title')}\nID: {task.get('id')}\nรายละเอียด: {task.get('notes')}\nสถานะ: {task.get('status')}\n\nอัปเดตงานที่นี่: {update_url}")
+                send_message_to_recipients(task_message, recipients_for_new_task)
+                
+                # ตอบกลับผู้ใช้ที่สร้างงาน
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=f"สร้างงานเรียบร้อยแล้ว: {task.get('title')} (ID: {task.get('id')})\nคุณสามารถดูและอัปเดตงานได้ที่: {update_url}")]
+                    )
+                )
+            else:
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="ไม่สามารถสร้าง Task ใน Google Tasks ได้")]
+                    )
+                )
+        else:
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
+                )
+            )
+
+    # Command to complete a task (Legacy from LINE, now prefer web form)
+    # complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา
+    elif text_message.lower().startswith("complete "):
+        try:
+            command_parts = text_message[len("complete "):].split(':', 1)
+            task_id = command_parts[0].strip()
+            
+            if len(command_parts) > 1:
+                summary_parts = command_parts[1].strip().split('|')
+                if len(summary_parts) >= 3:
+                    summary_result = summary_parts[0].strip()
+                    equipment_used = summary_parts[1].strip()
+                    time_taken = summary_parts[2].strip()
+
+                    service = get_google_tasks_service()
+                    if service:
+                        # Get current task notes to append structured summary
+                        current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
+                        current_notes = current_task.get('notes', '')
+                        
+                        # แยกข้อมูลเดิม ถ้ามี
+                        old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
+                        
+                        # เตรียมข้อมูล Tech Report ใหม่
+                        tech_report_data = {
+                            'summary_date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            'work_summary': summary_result,
+                            'equipment_used': equipment_used,
+                            'time_taken': time_taken,
+                            'next_appointment': old_tech_report.get('next_appointment'), # คงค่าเดิมไว้ หากมี
+                            'attachment_urls': old_attachment_urls # คง URL เดิมไว้
+                        }
+                        
+                        # สร้าง notes ใหม่โดยรวม remaining_notes และ JSON string
+                        new_notes_content = json.dumps(tech_report_data, ensure_ascii=False)
+                        new_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
+                        new_notes = new_notes.strip() # ลบช่องว่างที่เกินมา
+
+                        updated_task = update_google_task(task_id, notes=new_notes, status='completed')
+                        if updated_task:
+                            line_messaging_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[TextMessage(text=f"อัปเดตงาน ID {task_id} เป็น 'เสร็จสิ้น' พร้อมสรุปผลเรียบร้อยแล้ว")]
+                                )
+                            )
+                            # ส่งรายงานสรุปไปยังกลุ่มที่เกี่ยวข้องหลังจากงานเสร็จสิ้น
+                            report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
+                            recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
+                            send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                        else:
+                            line_messaging_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[TextMessage(text="ไม่สามารถอัปเดต Task ใน Google Tasks ได้.")]
+                                )
+                            )
+                    else:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
+                            )
+                        )
+
+                else:
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                        )
+                    )
+            else:
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                    )
+                )
+
+        except Exception as e:
+            app.logger.error(f"Error processing 'complete' command: {e}")
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                )
+            )
+    
+    # Reply for unrecognized commands
+    else:
+        line_messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text="กรุณาส่งข้อความในรูปแบบที่ถูกต้อง เช่น 'task:หัวข้อ|ลูกค้า|เบอร์โทร...' หรือ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'\nหรือเยี่ยมชมหน้าเว็บหลักเพื่อสร้างงาน: {url_for('create_task_page', _external=True)}")]
+            )
+        )
+
+# --- Flask Routes ---
+
 @app.route("/", methods=['GET', 'POST'])
-def create_task_page(): # เปลี่ยนชื่อฟังก์ชันจาก form() เป็น create_task_page()
+def create_task_page(): 
     """
     จัดการการส่งฟอร์มการสร้าง Task
     เมื่อเข้าถึงด้วย GET จะแสดงฟอร์มสร้างงานใหม่
@@ -436,7 +660,6 @@ def create_task_page(): # เปลี่ยนชื่อฟังก์ชั
                     notes += f"\nกำหนดส่ง: {due_date_str.replace('T', ' ')}" # เก็บวันที่ที่จัดรูปแบบเดิมไว้ใน notes
                 except ValueError:
                     app.logger.error(f"Invalid due date format from form: {due_date_str}")
-                    # คุณอาจต้องการเปลี่ยนเส้นทางพร้อมข้อความแสดงข้อผิดพลาดหรือเรนเดอร์เทมเพลตพร้อมข้อผิดพลาด
                     pass
             if location:
                 notes += f"\nสถานที่: {location}"
@@ -452,7 +675,8 @@ def create_task_page(): # เปลี่ยนชื่อฟังก์ชั
                     f"กำหนดส่ง: {due_date_str.replace('T', ' ') if due_date_str else '-'}\n"
                     f"สถานที่: {location or '-'}\n"
                     f"ID สำหรับสรุปงาน: {created_task.get('id')}\n"
-                    f"(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
+                    f"อัปเดตงานที่นี่: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}\n"
+                    f"(ใช้คำสั่ง LINE 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
                 )
                 
                 # กำหนดผู้รับ: LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID
@@ -463,57 +687,139 @@ def create_task_page(): # เปลี่ยนชื่อฟังก์ชั
             else:
                 app.logger.error("Failed to create task via web form.")
                 return "Failed to create task", 500
-
-        # สำหรับการจัดการ action 'complete' และ 'reopen'
-        elif command_type == 'update_task':
-            task_id = request.form['task_id']
-            action = request.form['action']
-            
-            if action == 'complete':
-                summary_result = request.form.get('summary_result', '')
-                equipment_used = request.form.get('equipment_used', '')
-                time_taken = request.form.get('time_taken', '')
-
-                service = get_google_tasks_service()
-                if service:
-                    current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
-                    current_notes = current_task.get('notes', '')
-                    
-                    summary_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    new_notes = (f"{current_notes}\n\n--- สรุปงานโดยช่าง ---\n"
-                                 f"วันที่สรุป: {summary_date}\n"
-                                 f"สรุปผลการทำงาน: {summary_result}\n"
-                                 f"อุปกรณ์ที่ใช้: {equipment_used}\n"
-                                 f"ระยะเวลาที่ทำเสร็จ: {time_taken}")
-
-                    updated_task = update_google_task(task_id, notes=new_notes, status='completed')
-                    if updated_task:
-                        app.logger.info(f"Task {task_id} completed via web form.")
-                        # ส่งรายงานสรุปไปยังกลุ่มที่เกี่ยวข้องหลังจากงานเสร็จสิ้น
-                        report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
-                        recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
-                        send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
-
-                        return redirect(url_for('summary')) # เปลี่ยนเส้นทางไปยังหน้าสรุปงาน
-                    else:
-                        app.logger.error(f"Failed to complete task {task_id} via web form.")
-                        return "Failed to complete task", 500
-                else:
-                    return "Google Tasks service not available", 500
-
-            elif action == 'reopen':
-                updated_task = update_google_task(task_id, status='needsAction')
-                if updated_task:
-                    app.logger.info(f"Task {task_id} reopened via web form.")
-                    return redirect(url_for('summary')) # เปลี่ยนเส้นทางไปยังหน้าสรุปงาน
-                else:
-                    app.logger.error(f"Failed to reopen task {task_id} via web form.")
-                    return "Failed to reopen task", 500
         return "Invalid command", 400
 
     else: # request.method == 'GET'
         # สำหรับคำขอ GET ไปยังหน้า '/', แสดงฟอร์มสร้างงาน
         return render_template('create_task_form.html') 
+
+@app.route('/update_task/<task_id>', methods=['GET', 'POST'])
+def update_task_details(task_id):
+    """
+    หน้าสำหรับช่างเทคนิคอัปเดตรายละเอียดงานและสถานะ
+    รองรับการอัปโหลดหลายรูปภาพ
+    """
+    service = get_google_tasks_service()
+    if not service:
+        app.logger.error("Google Tasks service not available for update_task_details.")
+        return "ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้", 500
+
+    try:
+        task_list_id = '@default'
+        google_task_raw = service.tasks().get(tasklist=task_list_id, task=task_id).execute()
+        
+        # จัดรูปแบบวันที่และการแสดงผลสถานะสำหรับเทมเพลต
+        task = parse_google_task_dates(google_task_raw)
+        task['display_status'] = 'รอดำเนินการ' if task['status'] == 'needsAction' else 'เสร็จสิ้น'
+        
+        # แยกข้อมูล Tech Report และ Attachment URLs จาก notes
+        tech_report, attachment_urls, remaining_notes = parse_tech_report_from_notes(task.get('notes', ''))
+        
+        # เพิ่มข้อมูล tech_report และ attachment_urls เข้าไปในออบเจกต์ task ที่จะส่งไปให้ template
+        task['tech_report'] = tech_report
+        task['attachment_urls'] = attachment_urls
+        task['notes_display'] = remaining_notes # notes ส่วนที่เหลือที่ไม่ได้เป็น JSON
+
+        # สำหรับค่าเริ่มต้นใน datetime-local input field
+        if tech_report.get('next_appointment'):
+            try:
+                # แปลง ISO format (UTC) กลับเป็น datetime-local (ไทย) สำหรับการแสดงผล
+                next_app_dt_utc = datetime.datetime.fromisoformat(tech_report['next_appointment'].replace('Z', '+00:00'))
+                next_app_dt_local = next_app_dt_utc + datetime.timedelta(hours=7)
+                task['tech_next_appointment_datetime_local'] = next_app_dt_local.strftime("%Y-%m-%dT%H:%M")
+            except ValueError:
+                task['tech_next_appointment_datetime_local'] = '' # หากมีปัญหาในการแปลง
+        else:
+            task['tech_next_appointment_datetime_local'] = ''
+
+    except HttpError as err:
+        app.logger.error(f"Error getting task {task_id} for update: {err}")
+        return f"ไม่พบงาน ID {task_id} หรือเกิดข้อผิดพลาดในการเข้าถึง", 404
+    except Exception as e:
+        app.logger.error(f"Unexpected error when fetching task {task_id}: {e}")
+        return "เกิดข้อผิดพลาดภายใน", 500
+
+    if request.method == 'POST':
+        work_summary = request.form.get('work_summary', '').strip()
+        equipment_used = request.form.get('equipment_used', '').strip()
+        time_taken = request.form.get('time_taken', '').strip()
+        new_status = request.form.get('status', task.get('status'))
+        next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
+
+        # เก็บ URL ของไฟล์แนบเก่าไว้
+        existing_attachment_urls = tech_report.get('attachment_urls', [])
+        
+        uploaded_file_urls = []
+        if 'files[]' in request.files:
+            files = request.files.getlist('files[]')
+            for file in files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    file.save(file_path)
+                    uploaded_file_urls.append(url_for('uploaded_file', filename=filename, _external=True))
+                else:
+                    app.logger.warning(f"Skipping disallowed file: {file.filename}")
+
+        # รวม URL ไฟล์แนบเก่าและใหม่
+        all_attachment_urls = list(set(existing_attachment_urls + uploaded_file_urls))
+
+        next_appointment_gmt = None
+        if new_status == 'needsAction' and next_appointment_date_str:
+            try:
+                next_app_dt_local = datetime.datetime.fromisoformat(next_appointment_date_str)
+                next_app_dt_utc = next_app_dt_local - datetime.timedelta(hours=7)
+                next_appointment_gmt = next_app_dt_utc.isoformat() + 'Z'
+            except ValueError:
+                app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
+                # สามารถเพิ่ม flash message ให้ผู้ใช้ทราบได้
+        
+        # สร้าง Tech Report Structure ใหม่
+        updated_tech_report_data = {
+            'summary_date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'work_summary': work_summary,
+            'equipment_used': equipment_used,
+            'time_taken': time_taken,
+            'next_appointment': next_appointment_gmt,
+            'attachment_urls': all_attachment_urls
+        }
+        
+        # สร้าง notes ใหม่
+        # รักษา notes เดิมที่ไม่ใช่ Tech Report JSON
+        new_notes_content = json.dumps(updated_tech_report_data, ensure_ascii=False)
+        updated_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
+        updated_notes = updated_notes.strip() # ลบช่องว่างที่เกินมา
+
+        updated_task = update_google_task(task_id, notes=updated_notes, status=new_status)
+
+        if updated_task:
+            app.logger.info(f"Task {task_id} updated via web form by technician.")
+            
+            # ส่งรายงานสรุปไปยัง LINE Group
+            report_lines = [
+                f"งาน ID {task_id} ได้รับการอัปเดตแล้ว:",
+                f"หัวข้อ: {updated_task.get('title', 'N/A')}",
+                f"สถานะ: {'เสร็จสิ้น' if new_status == 'completed' else 'ยังไม่เสร็จ'}",
+                f"สรุปผล: {work_summary or 'ไม่มี'}",
+                f"อุปกรณ์: {equipment_used or 'ไม่มี'}",
+                f"เวลาที่ใช้: {time_taken or 'ไม่มี'}"
+            ]
+            if next_appointment_date_str and new_status == 'needsAction':
+                report_lines.append(f"นัดลูกค้าอีกครั้ง: {next_appointment_date_str.replace('T', ' ')}")
+            if all_attachment_urls:
+                report_lines.append("ไฟล์แนบ: " + ", ".join(all_attachment_urls))
+
+            report_summary_message_obj = TextMessage(text="\n".join(report_lines))
+            recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
+            send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+
+            return redirect(url_for('summary'))
+        else:
+            app.logger.error(f"Failed to update task {task_id} via web form.")
+            return "ไม่สามารถอัปเดตงานได้", 500
+
+    return render_template('update_task_details.html', task=task)
+
 
 @app.route('/summary')
 def summary():
@@ -526,7 +832,7 @@ def summary():
         'needsAction': 0,
         'completed': 0,
         'overdue': 0,
-        'total': 0 # เพิ่ม total ในนี้เพื่อความถูกต้อง
+        'total': 0
     }
 
     current_time_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -556,37 +862,13 @@ def summary():
                     pass # ไม่สนใจวันที่ที่ไม่สามารถแยกวิเคราะห์ได้
 
             # แยกข้อมูลสรุปงานจากช่างจากช่อง 'notes' (ถ้ามี)
-            notes = parsed_task.get('notes', '')
-            # Regex เพื่อค้นหาสรุปงานจากช่างใน notes
-            tech_summary_match = re.search(
-                r"--- สรุปงานโดยช่าง ---\s*\n"
-                r"วันที่สรุป:\s*(?P<date>.*?)\s*\n"
-                r"สรุปผลการทำงาน:\s*(?P<summary>.*?)\s*\n"
-                r"อุปกรณ์ที่ใช้:\s*(?P<equipment>.*?)\s*\n"
-                r"ระยะเวลาที่ทำเสร็จ:\s*(?P<time>.*)",
-                notes, re.DOTALL
-            )
-            
-            if tech_summary_match:
-                parsed_task['tech_summary_date'] = tech_summary_match.group('date').strip()
-                parsed_task['tech_work_summary'] = tech_summary_match.group('summary').strip()
-                parsed_task['tech_equipment_used'] = tech_summary_match.group('equipment').strip()
-                parsed_task['tech_time_taken'] = tech_summary_match.group('time').strip()
-            else:
-                # กำหนดค่าเริ่มต้นเป็น None หากไม่พบข้อมูลสรุปช่าง
-                parsed_task['tech_summary_date'] = None
-                parsed_task['tech_work_summary'] = None
-                parsed_task['tech_equipment_used'] = None
-                parsed_task['tech_time_taken'] = None
-                
-            # แยก URL ของไฟล์แนบจาก notes (หากมี)
-            # ปรับปรุง regex เพื่อดึง URL ทั้งหมดที่คล้าย URL ของไฟล์
-            attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xlsx|xls|pptx|ppt|zip|rar|txt)', notes)
-            parsed_task['attachment_urls'] = attachment_urls if attachment_urls else []
+        tech_report_data, attachment_urls, remaining_notes = parse_tech_report_from_notes(parsed_task.get('notes', ''))
+        parsed_task['tech_report'] = tech_report_data
+        parsed_task['attachment_urls'] = attachment_urls
+        parsed_task['notes_display'] = remaining_notes # notes ส่วนที่เหลือที่ไม่ได้เป็น JSON
 
-
-            tasks.append(parsed_task)
-            task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
+        tasks.append(parsed_task)
+        task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
 
     # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
     tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
