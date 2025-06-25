@@ -128,7 +128,9 @@ def get_google_tasks_service():
                 flow = InstalledAppFlow.from_client_secrets_file(
                     GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
                 # สำหรับการพัฒนาในเครื่อง, run_local_server จะเปิดเบราว์เซอร์เพื่อการรับรองความถูกต้อง
-                # การ Deploy บน Render อาศัยการอัปเดตตัวแปรสภาพแวดล้อม GOOGLE_TOKEN_JSON ด้วยตนเอง
+                # การ Deploy บน Render อาศัยการอัปเดตตัวแปรสภาพแวดล้อม GOOGLE_TOKEN_JSON ด้วยตนเอง.
+                # ถ้าคุณใช้ Render และต้องการให้มีการรับรองอัตโนมัติ (เช่น ผ่าน Service Account)
+                # คุณจะต้องใช้ flow ที่ต่างออกไป
                 creds = flow.run_local_server(port=0) 
                 app.logger.info("Google OAuth flow completed locally.")
             except Exception as e:
@@ -193,7 +195,7 @@ def update_google_task(task_id, title=None, notes=None, due=None, status=None):
             if status == 'completed':
                 current_task['completed'] = datetime.datetime.now().isoformat() + 'Z'
             elif 'completed' in current_task:
-                del current_task['completed']
+                del current_task['completed'] # ลบฟิลด์ completed ถ้าเปลี่ยนสถานะจาก completed
 
         result = service.tasks().update(tasklist=task_list_id, task=task_id, body=current_task).execute()
         app.logger.info(f"Google Task {task_id} updated. New Status: {result.get('status')}")
@@ -406,11 +408,11 @@ def parse_google_task_dates(task_item):
 # --- Flask Routes ---
 
 @app.route("/", methods=['GET', 'POST'])
-def form():
+def create_task_page(): # เปลี่ยนชื่อฟังก์ชันจาก form() เป็น create_task_page()
     """
-    จัดการการส่งฟอร์มการสร้าง Task และแสดงผลสรุป Task
-    เมื่อเข้าถึงด้วย GET จะดึงและแสดงผลสรุป Task
-    เมื่อเข้าถึงด้วย POST จะประมวลผลการส่งฟอร์ม
+    จัดการการส่งฟอร์มการสร้าง Task
+    เมื่อเข้าถึงด้วย GET จะแสดงฟอร์มสร้างงานใหม่
+    เมื่อเข้าถึงด้วย POST จะประมวลผลการสร้างงานและเปลี่ยนเส้นทางไปยังหน้าสรุปงาน
     """
     if request.method == 'POST':
         command_type = request.form.get('command_type')
@@ -457,11 +459,12 @@ def form():
                 recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
                 send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_web_task)
                 
-                return redirect(url_for('form')) # เปลี่ยนเส้นทางไปยังคำขอ GET เพื่อรีเฟรชรายการ
+                return redirect(url_for('summary')) # เปลี่ยนเส้นทางไปยังหน้าสรุปงานหลังจากสร้าง Task สำเร็จ
             else:
                 app.logger.error("Failed to create task via web form.")
                 return "Failed to create task", 500
 
+        # สำหรับการจัดการ action 'complete' และ 'reopen'
         elif command_type == 'update_task':
             task_id = request.form['task_id']
             action = request.form['action']
@@ -491,7 +494,7 @@ def form():
                         recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
                         send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
 
-                        return redirect(url_for('form'))
+                        return redirect(url_for('summary')) # เปลี่ยนเส้นทางไปยังหน้าสรุปงาน
                     else:
                         app.logger.error(f"Failed to complete task {task_id} via web form.")
                         return "Failed to complete task", 500
@@ -502,51 +505,55 @@ def form():
                 updated_task = update_google_task(task_id, status='needsAction')
                 if updated_task:
                     app.logger.info(f"Task {task_id} reopened via web form.")
-                    return redirect(url_for('form'))
+                    return redirect(url_for('summary')) # เปลี่ยนเส้นทางไปยังหน้าสรุปงาน
                 else:
                     app.logger.error(f"Failed to reopen task {task_id} via web form.")
                     return "Failed to reopen task", 500
         return "Invalid command", 400
 
     else: # request.method == 'GET'
-        # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
-        tasks_raw = get_google_tasks_for_report(show_completed=True) 
+        # สำหรับคำขอ GET ไปยังหน้า '/', แสดงฟอร์มสร้างงาน
+        return render_template('create_task_form.html') 
 
-        tasks = []
-        task_status_counts = {
-            'needsAction': 0,
-            'completed': 0,
-            'overdue': 0,
-            'total': 0
-        }
+@app.route('/summary')
+def summary():
+    """แสดงผลสรุป Task ที่ดึงมาจาก Google Tasks พร้อมสถิติที่คำนวณได้"""
+    # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
+    tasks_raw = get_google_tasks_for_report(show_completed=True) 
 
-        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) # เวลา UTC ปัจจุบัน, ไม่มีข้อมูลโซนเวลา
+    tasks = []
+    task_status_counts = {
+        'needsAction': 0,
+        'completed': 0,
+        'overdue': 0,
+        'total': 0 # เพิ่ม total ในนี้เพื่อความถูกต้อง
+    }
 
-        for task_item in tasks_raw:
-            parsed_task = parse_google_task_dates(task_item) # เรียกใช้ฟังก์ชันตัวช่วย
+    current_time_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
-            # กำหนดสถานะการแสดงผลและนับจำนวนงาน
-            status = parsed_task.get('status', 'unknown')
-            parsed_task['display_status'] = 'รอดำเนินการ' # สถานะการแสดงผลเริ่มต้น
-            is_overdue = False
+    for task_item in tasks_raw:
+        parsed_task = parse_google_task_dates(task_item) # เรียกใช้ฟังก์ชันตัวช่วย
 
-            if status == 'completed':
-                parsed_task['display_status'] = 'เสร็จสิ้น'
-                task_status_counts['completed'] += 1
-            elif status == 'needsAction':
-                task_status_counts['needsAction'] += 1
-                # ตรวจสอบงานที่ค้างชำระ (Overdue)
-                if parsed_task['due_formatted'] != 'N/A':
-                    try:
-                        # แปลง due_formatted (ซึ่งเป็นเวลาท้องถิ่นไทย) กลับเป็น datetime object เพื่อเปรียบเทียบ
-                        # หาก due_dt เป็น UTC ก็เปรียบเทียบกับ now ที่เป็น UTC
-                        due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).replace(tzinfo=None)
-                        if due_dt_utc < now:
-                            is_overdue = True
-                            parsed_task['display_status'] = 'ค้างชำระ' # ค้างชำระ
-                            task_status_counts['overdue'] += 1
-                    except ValueError:
-                        pass # ไม่สนใจวันที่ที่ไม่สามารถแยกวิเคราะห์ได้
+        # กำหนดสถานะการแสดงผลและนับจำนวนงาน
+        status = parsed_task.get('status', 'unknown')
+        parsed_task['display_status'] = 'รอดำเนินการ' # สถานะการแสดงผลเริ่มต้น
+        is_overdue = False
+
+        if status == 'completed':
+            parsed_task['display_status'] = 'เสร็จสิ้น'
+            task_status_counts['completed'] += 1
+        elif status == 'needsAction':
+            task_status_counts['needsAction'] += 1
+            # ตรวจสอบงานที่ค้างชำระ (Overdue)
+            if parsed_task['due_formatted'] != 'N/A':
+                try:
+                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).replace(tzinfo=None)
+                    if due_dt_utc < current_time_utc:
+                        is_overdue = True
+                        parsed_task['display_status'] = 'ค้างชำระ' # ค้างชำระ
+                        task_status_counts['overdue'] += 1
+                except ValueError:
+                    pass # ไม่สนใจวันที่ที่ไม่สามารถแยกวิเคราะห์ได้
 
             # แยกข้อมูลสรุปงานจากช่างจากช่อง 'notes' (ถ้ามี)
             notes = parsed_task.get('notes', '')
@@ -581,92 +588,10 @@ def form():
             tasks.append(parsed_task)
             task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
 
-        # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
-        tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
-
-        # คำนวณเปอร์เซ็นต์สำหรับแสดงผล
-        total_tasks = task_status_counts['total']
-        if total_tasks > 0:
-            task_status_counts['completed_percent'] = round((task_status_counts['completed'] / total_tasks) * 100, 2)
-            task_status_counts['needsAction_percent'] = round((task_status_counts['needsAction'] / total_tasks) * 100, 2)
-            task_status_counts['overdue_percent'] = round((task_status_counts['overdue'] / total_tasks) * 100, 2)
-        else:
-            task_status_counts['completed_percent'] = 0
-            task_status_counts['needsAction_percent'] = 0
-            task_status_counts['overdue_percent'] = 0
-
-        return render_template("tasks_summary.html", tasks=tasks, summary=task_status_counts)
-
-@app.route('/summary')
-def summary():
-    """แสดงผลสรุป Task ที่ดึงมาจาก Google Tasks พร้อมสถิติที่คำนวณได้"""
-    # ฟังก์ชันนี้ถูกใช้เป็นหน้าสรุปโดยเฉพาะ และมี logic คล้ายกับ GET request ของ '/'
-    # สามารถเรียกใช้ logic ร่วมกันได้ แต่แยกไว้เพื่อความชัดเจนของ route
-    
-    # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
-    tasks_raw = get_google_tasks_for_report(show_completed=True) 
-
-    tasks = []
-    task_status_counts = {
-        'needsAction': 0,
-        'completed': 0,
-        'overdue': 0,
-        'total': 0
-    }
-
-    current_time_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-
-    for task_item in tasks_raw:
-        parsed_task = parse_google_task_dates(task_item)
-
-        status = parsed_task.get('status', 'unknown')
-        parsed_task['display_status'] = 'รอดำเนินการ' 
-        is_overdue = False
-
-        if status == 'completed':
-            parsed_task['display_status'] = 'เสร็จสิ้น'
-            task_status_counts['completed'] += 1
-        elif status == 'needsAction':
-            task_status_counts['needsAction'] += 1
-            if parsed_task['due_formatted'] != 'N/A':
-                try:
-                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).replace(tzinfo=None)
-                    if due_dt_utc < current_time_utc:
-                        is_overdue = True
-                        parsed_task['display_status'] = 'ค้างชำระ' 
-                        task_status_counts['overdue'] += 1
-                except ValueError:
-                    pass
-
-        notes = parsed_task.get('notes', '')
-        tech_summary_match = re.search(
-            r"--- สรุปงานโดยช่าง ---\s*\n"
-            r"วันที่สรุป:\s*(?P<date>.*?)\s*\n"
-            r"สรุปผลการทำงาน:\s*(?P<summary>.*?)\s*\n"
-            r"อุปกรณ์ที่ใช้:\s*(?P<equipment>.*?)\s*\n"
-            r"ระยะเวลาที่ทำเสร็จ:\s*(?P<time>.*)",
-            notes, re.DOTALL
-        )
-        
-        if tech_summary_match:
-            parsed_task['tech_summary_date'] = tech_summary_match.group('date').strip()
-            parsed_task['tech_work_summary'] = tech_summary_match.group('summary').strip()
-            parsed_task['tech_equipment_used'] = tech_summary_match.group('equipment').strip()
-            parsed_task['tech_time_taken'] = tech_summary_match.group('time').strip()
-        else:
-            parsed_task['tech_summary_date'] = None
-            parsed_task['tech_work_summary'] = None
-            parsed_task['tech_equipment_used'] = None
-            parsed_task['tech_time_taken'] = None
-            
-        attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xlsx|xls|pptx|ppt|zip|rar|txt)', notes)
-        parsed_task['attachment_urls'] = attachment_urls if attachment_urls else []
-
-        tasks.append(parsed_task)
-        task_status_counts['total'] += 1
-
+    # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
     tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
 
+    # คำนวณเปอร์เซ็นต์สำหรับแสดงผล
     total_tasks = task_status_counts['total']
     if total_tasks > 0:
         task_status_counts['completed_percent'] = round((task_status_counts['completed'] / total_tasks) * 100, 2)
