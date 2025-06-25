@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 
 # LINE Messaging API (Using v3 for best practice and to resolve deprecation warnings)
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
-from linebot.v3.webhooks import WebhookParser # Changed from linebot import WebhookHandler
+from linebot.v3.webhooks import WebhookHandler # Corrected: Changed from WebhookParser to WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
@@ -51,7 +51,7 @@ LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
 # Configuration for LINE API client
 line_configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 line_messaging_api = MessagingApi(ApiClient(line_configuration)) # Use line_messaging_api for push/reply messages
-handler = WebhookParser(LINE_CHANNEL_SECRET) # Adjusted to use WebhookParser
+handler = WebhookHandler(LINE_CHANNEL_SECRET) # Corrected: Adjusted to use WebhookHandler
 
 # Google Tasks API Configuration
 SCOPES = ['https://www.googleapis.com/auth/tasks']
@@ -74,7 +74,7 @@ def parse_google_task_dates(task):
             try:
                 # Google Tasks dates are ISO 8601, often with 'Z' for UTC
                 dt_obj = datetime.datetime.fromisoformat(parsed_task[key].replace('Z', '+00:00'))
-                # Format to a readable string (e.g., "2025-06-25 16:30:00")
+                # Format to a readable string (e.g., "YYYY-MM-DD HH:MM:SS")
                 parsed_task[f'{key}_formatted'] = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
             except ValueError:
                 parsed_task[f'{key}_formatted'] = "N/A"
@@ -552,17 +552,10 @@ def callback():
     app.logger.info("Request body: " + body)
 
     try:
-        # handler.handle(body, signature) # In Line v3, WebhookParser does not have a .handle method directly for events.
-        # It's generally used to parse the events first.
-        # You would typically parse the events and then loop through them.
-        events = handler.parse(body, signature)
-        for event in events:
-            # Manually call your message handler for each event
-            if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
-                handle_message(event) # Call your existing handler function
-            # Add other event types if needed (e.g., ImageMessage, FollowEvent)
-            # elif isinstance(event, FollowEvent):
-            #     handle_follow_event(event)
+        # handler.handle(body, signature)
+        # WebhookHandler can use handler.handle(body, signature) if you have the appropriate @handler.add_message_event decorators.
+        # Ensure 'MessageEvent' and 'TextMessage' are imported from linebot.v3.webhooks if you use them directly.
+        handler.handle(body, signature) # Using handle method directly with WebhookHandler
 
     except InvalidSignatureError:
         app.logger.error("Invalid signature. Check channel access token/channel secret.")
@@ -573,18 +566,11 @@ def callback():
 
     return 'OK'
 
-# The decorator needs to be adjusted slightly or you might use a central dispatcher
-# As WebhookParser doesn't use decorators in the same way WebhookHandler did for adding handlers directly.
-# For simplicity, I'll keep your handle_message as a standalone function called from callback().
-# You would define MessageEvent type in your imports if it's not already defined.
-# I'll add it here for completeness:
+# The decorators for WebhookHandler
 from linebot.v3.webhooks import MessageEvent, TextMessage as LineTextMessage # Renamed to avoid conflict with Flask's TextMessage
+from linebot.v3.messaging import MessageAction, PostbackAction # Import necessary actions if used elsewhere
 
-# Original @handler.add decorator might not work directly with WebhookParser in the same way.
-# The 'handle_message' function is now called manually from 'callback' function.
-# If you want to keep the decorator pattern with WebhookParser, you might need to implement your own dispatcher.
-# For now, I'm adapting based on the 'parse' method usage.
-
+@handler.add(MessageEvent, message=LineTextMessage) # Use LineTextMessage to avoid conflict
 def handle_message(event):
     """Processes incoming LINE text messages."""
     text_message = event.message.text
