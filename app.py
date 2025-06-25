@@ -24,7 +24,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from googleapient.errors import HttpError
 
 # เริ่มต้น Flask App
 app = Flask(__name__)
@@ -479,11 +479,12 @@ def callback():
 
     try:
         handler.handle(body, signature)
+        app.logger.info("Handler.handle completed successfully.") # New log
     except InvalidSignatureError:
-        app.logger.error("Invalid LINE signature error in /callback.") # Added log for specific error
+        app.logger.error("Invalid LINE signature error in /callback. Check LINE_CHANNEL_SECRET.") # Added log for specific error
         abort(400)
     except Exception as e:
-        app.logger.error(f"An unexpected error occurred in /callback: {e}", exc_info=True) # Added general error log
+        app.logger.error(f"An unexpected error occurred during handler.handle in /callback: {e}", exc_info=True) # Added general error log
         abort(500) # Abort with 500 for general server errors
     return 'OK'
 
