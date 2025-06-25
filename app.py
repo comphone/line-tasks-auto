@@ -12,9 +12,9 @@ from flask import Flask, request, render_template, redirect, url_for, abort, sen
 from werkzeug.utils import secure_filename
 
 # LINE Messaging API (Using v3 for best practice and to resolve deprecation warnings)
-from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest, TextSendMessage
+from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest # Removed TextSendMessage
 from linebot.v3 import WebhookHandler
-from linebot.v3.webhooks import MessageEvent
+from linebot.v3.webhooks import MessageEvent # Ensure MessageEvent is imported from here
 from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
@@ -253,7 +253,7 @@ def callback():
 
     return 'OK'
 
-@handler.add(MessageEvent, message=TextMessage)
+@handler.add(MessageEvent, message=TextMessage) # This TextMessage is from linebot.v3.webhooks
 def handle_message(event):
     text_message = event.message.text
     app.logger.info(f"Received message: {text_message} from user {event.source.user_id}")
