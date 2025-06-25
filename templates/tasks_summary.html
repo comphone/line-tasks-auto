@@ -32,15 +32,30 @@
         .button-group a:hover {
             background-color: #0056b3;
         }
+        .task-actions {
+            margin-top: 15px;
+            text-align: right;
+        }
+        .task-actions a {
+            background-color: #6c757d;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 0.9em;
+        }
+        .task-actions a:hover {
+            background-color: #5a6268;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>สรุปงานทั้งหมด</h1>
 
-        {# เพิ่มปุ่ม "สร้างงานใหม่" ที่นี่ #}
         <div class="button-group">
             <a href="{{ url_for('create_task_page') }}">สร้างงานใหม่</a>
+            <a href="{{ url_for('summary') }}">ดูสรุปงานทั้งหมด</a> {# เพิ่มเพื่อความชัดเจน แม้จะอยู่หน้านี้แล้ว #}
         </div>
 
         <div class="summary-overview">
@@ -69,44 +84,33 @@
                             <p><strong>เสร็จสิ้นเมื่อ:</strong> {{ task.completed_formatted }}</p>
                         {% endif %}
                         
-                        <p><strong>รายละเอียดงาน:</strong> {{ task.get('notes', 'ไม่มีรายละเอียด') | replace('\n', '<br>') | safe }}</p>
+                        <p><strong>รายละเอียดงาน:</strong> {{ task.get('notes_display', 'ไม่มีรายละเอียด') | replace('\n', '<br>') | safe }}</p>
                         
-                        {% if task.tech_work_summary %}
+                        {# แสดงสรุปงานจากช่าง (ถ้ามี) #}
+                        {% if task.tech_report and (task.tech_report.work_summary or task.tech_report.equipment_used or task.tech_report.time_taken) %}
                             <h4>--- สรุปงานโดยช่าง ---</h4>
-                            <p><strong>วันที่สรุป:</strong> {{ task.tech_summary_date }}</p>
-                            <p><strong>สรุปผลการทำงาน:</strong> {{ task.tech_work_summary }}</p>
-                            <p><strong>รายการอุปกรณ์ที่ใช้:</strong> {{ task.tech_equipment_used }}</p>
-                            <p><strong>ระยะเวลาที่ทำเสร็จ:</strong> {{ task.tech_time_taken }}</p>
+                            <p><strong>วันที่สรุป:</strong> {{ task.tech_report.summary_date or 'N/A' }}</p>
+                            <p><strong>สรุปผลการทำงาน:</strong> {{ task.tech_report.work_summary or 'N/A' }}</p>
+                            <p><strong>รายการอุปกรณ์ที่ใช้:</strong> {{ task.tech_report.equipment_used or 'N/A' }}</p>
+                            <p><strong>ระยะเวลาที่ทำเสร็จ:</strong> {{ task.tech_report.time_taken or 'N/A' }}</p>
+                            {% if task.tech_report.next_appointment %}
+                                <p><strong>นัดหมายครั้งถัดไป:</strong> {{ task.tech_report.next_appointment }}</p>
+                            {% endif %}
                         {% endif %}
 
+                        {# แสดงรูปภาพแนบ #}
                         {% if task.attachment_urls %}
-                            <p><strong>ไฟล์แนบ:</strong>
+                            <div class="current-attachments">
+                                <p><strong>ไฟล์แนบ:</strong></p>
                                 {% for file_url in task.attachment_urls %}
                                     <a href="{{ file_url }}" target="_blank">ไฟล์ {{ loop.index }}</a>{% if not loop.last %}, {% endif %}
                                 {% endfor %}
-                            </p>
+                            </div>
                         {% endif %}
 
-                        {# เพิ่มฟอร์มสำหรับอัปเดตสถานะงาน (เสร็จสิ้น/เปิดใหม่) #}
-                        <form method="POST" action="{{ url_for('create_task_page') }}"> {# action ยังคงชี้ไปที่ create_task_page เพราะเป็นตัวจัดการ POST request หลัก #}
-                            <input type="hidden" name="command_type" value="update_task">
-                            <input type="hidden" name="task_id" value="{{ task.id }}">
-                            <br>
-                            {% if task.status == 'needsAction' %}
-                                <hr>
-                                <h4>อัปเดตงาน (สำหรับช่าง)</h4>
-                                <label for="summary_result_{{ task.id }}">สรุปผลการทำงาน:</label>
-                                <textarea id="summary_result_{{ task.id }}" name="summary_result" rows="2"></textarea>
-                                <label for="equipment_used_{{ task.id }}">รายการอุปกรณ์ที่ใช้:</label>
-                                <input type="text" id="equipment_used_{{ task.id }}" name="equipment_used">
-                                <label for="time_taken_{{ task.id }}">ระยะเวลาที่ทำเสร็จ:</label>
-                                <input type="text" id="time_taken_{{ task.id }}" name="time_taken">
-                                <button type="submit" name="action" value="complete" style="background-color: #28a745; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer;">ทำเครื่องหมายว่าเสร็จสิ้น</button>
-                            {% else %}
-                                <hr>
-                                <button type="submit" name="action" value="reopen" style="background-color: #dc3545; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer;">เปิดงานใหม่</button>
-                            {% endif %}
-                        </form>
+                        <div class="task-actions">
+                            <a href="{{ url_for('update_task_details', task_id=task.id) }}">อัปเดตงาน</a>
+                        </div>
                     </div>
                 {% endfor %}
             </div>
