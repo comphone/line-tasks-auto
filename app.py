@@ -13,7 +13,8 @@ from werkzeug.utils import secure_filename
 
 # LINE Messaging API (ใช้ v3 เพื่อหลีกเลี่ยงการแจ้งเตือน Deprecated)
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
-from linebot.v3.webhooks import WebhookHandler, MessageEvent # เปลี่ยน WebhookHandler และ MessageEvent มาจาก linebot.v3.webhooks
+from linebot.v3 import WebhookHandler # แก้ไข: WebhookHandler มาจาก linebot.v3 โดยตรง
+from linebot.v3.webhooks import MessageEvent # แก้ไข: MessageEvent ยังคงมาจาก linebot.v3.webhooks
 from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
@@ -55,7 +56,7 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 line_api_client = ApiClient(configuration) # เปลี่ยนชื่อตัวแปรเพื่อหลีกเลี่ยงความสับสน
 line_messaging_api = MessagingApi(line_api_client) # ใช้ MessagingApi จาก linebot.v3.messaging
-handler = WebhookHandler(LINE_CHANNEL_SECRET) # ใช้ WebhookHandler จาก linebot.v3.webhooks
+handler = WebhookHandler(LINE_CHANNEL_SECRET) # ใช้ WebhookHandler จาก linebot.v3
 
 # การตั้งค่า Google Tasks API
 SCOPES = ['https://www.googleapis.com/auth/tasks']
@@ -89,7 +90,7 @@ def get_google_tasks_service():
             app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Attempting other methods.")
             creds = None
 
-    # 2. หากไม่โหลดจากตัวแปรสภาพแวดล้อม ลองโหลดจากไฟล์ token.json ในเครื่อง (สำหรับการพัฒนาในเครื่อง)
+    # 2. หากไม่โหลดจาก env var ลองโหลดจากไฟล์ token.json ในเครื่อง (สำหรับการพัฒนาในเครื่อง)
     if not creds and os.path.exists('token.json'):
         try:
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -261,7 +262,7 @@ def get_daily_summary_tasks():
 
 def send_message_to_recipients(message_object, recipient_ids):
     """
-    ส่งข้อความ LINE (ออบเจกต์ TextMessage) ไปยังรายการ ID ผู้ใช้ LINE หรือ ID กลุ่ม LINE โดยใช้ v3 API.
+    ส่งข้อความ LINE (TextMessage object) ไปยังรายการ ID ผู้ใช้ LINE หรือ ID กลุ่ม LINE โดยใช้ v3 API.
     :param message_object: ออบเจกต์ TextMessage.
     :param recipient_ids: รายการ User ID หรือ Group ID (สตริง).
     """
