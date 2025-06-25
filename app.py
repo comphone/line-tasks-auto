@@ -418,41 +418,91 @@ def form():
 
 @app.route('/summary')
 def summary():
-    """Displays a summary of all tasks from tasks_log.txt."""
-    tasks = []
-    if os.path.exists("tasks_log.txt"):
-        try:
-            with open("tasks_log.txt", "r", encoding="utf-8") as f:
-                for line in f:
-                    parts = line.strip().split('|')
-                    # Adjust for older entries (9 parts) vs new entries (10 parts with status)
-                    if len(parts) >= 10: 
-                        dt, topic, customer, phone, address, appointment, coord, detail, file_urls_str, task_status = parts[:10]
-                    elif len(parts) == 9: 
-                        dt, topic, customer, phone, address, appointment, coord, detail, file_urls_str = parts[:9]
-                        task_status = "PENDING" # Default status for old entries
-                    else:
-                        app.logger.warning(f"Skipping malformed line in tasks_log.txt: {line.strip()}")
-                        continue 
+    """Displays a summary of tasks fetched directly from Google Tasks,
+    along with calculated statistics."""
+    # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
+    tasks_raw = get_google_tasks_for_report(show_completed=True) 
 
-                    file_urls_list = file_urls_str.split(',') if file_urls_str and file_urls_str != 'None' else []
-                    
-                    tasks.append({
-                        "datetime": dt,
-                        "topic": topic,
-                        "customer": customer,
-                        "phone": phone,
-                        "address": address,
-                        "appointment": appointment,
-                        "coord": coord,
-                        "detail": detail,
-                        "file_urls": file_urls_list,
-                        "status": task_status
-                    })
-            tasks.sort(key=lambda x: datetime.datetime.strptime(x["datetime"].split('.')[0], "%Y-%m-%d %H:%M:%S"), reverse=True)
-        except IOError as e:
-            app.logger.error(f"Error reading from tasks_log.txt: {e}")
-    return render_template("tasks_summary.html", tasks=tasks)
+    tasks = []
+    task_status_counts = {
+        'needsAction': 0,
+        'completed': 0,
+        'overdue': 0,
+        'total': 0
+    }
+
+    current_time_utc = datetime.datetime.now(datetime.timezone.utc)
+
+    for task_item in tasks_raw:
+        task_status_counts['total'] += 1
+
+        # แปลงและจัดรูปแบบวันที่จาก Google Task API
+        parsed_task = parse_google_task_dates(task_item)
+
+        # กำหนดสถานะการแสดงผลและนับจำนวนงาน
+        status = parsed_task.get('status', 'unknown')
+        parsed_task['display_status'] = 'รอดำเนินการ' # Default display status
+
+        if status == 'completed':
+            parsed_task['display_status'] = 'เสร็จสิ้น'
+            task_status_counts['completed'] += 1
+        elif status == 'needsAction':
+            task_status_counts['needsAction'] += 1
+            # ตรวจสอบงานที่ค้างชำระ (Overdue)
+            if 'due' in parsed_task and parsed_task['due'] and parsed_task['due_formatted'] != 'N/A':
+                try:
+                    due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
+                    if due_dt < current_time_utc:
+                        parsed_task['display_status'] = 'ค้างชำระ' # Overdue
+                        task_status_counts['overdue'] += 1
+                except ValueError:
+                    pass # ไม่สนใจวันที่ที่ไม่สามารถแยกวิเคราะห์ได้
+
+        # แยกข้อมูลสรุปงานจากช่างจากช่อง 'notes' (ถ้ามี)
+        notes = parsed_task.get('notes', '')
+        # Regex เพื่อค้นหาสรุปงานจากช่างใน notes
+        summary_match = re.search(
+            r"--- สรุปงานโดยช่าง \((.*?)\) ---\n"
+            r"สรุปผลการทำงาน: (.*?)\n"
+            r"รายการอุปกรณ์ที่ใช้: (.*?)\n"
+            r"ระยะเวลาที่ทำเสร็จ: (.*?)\n",
+            notes, re.DOTALL
+        )
+        if summary_match:
+            parsed_task['tech_summary_date'] = summary_match.group(1)
+            parsed_task['tech_work_summary'] = summary_match.group(2)
+            parsed_task['tech_equipment_used'] = summary_match.group(3)
+            parsed_task['tech_time_taken'] = summary_match.group(4)
+        else:
+            # กำหนดค่าเริ่มต้นเป็น None หากไม่พบข้อมูลสรุปช่าง
+            parsed_task['tech_work_summary'] = None
+            parsed_task['tech_equipment_used'] = None
+            parsed_task['tech_time_taken'] = None
+
+        # แยก URL ของไฟล์แนบจาก notes (หากมี)
+        file_urls_match = re.search(r"ไฟล์แนบ: (.*)", notes)
+        if file_urls_match:
+            parsed_task['attachment_urls'] = [url.strip() for url in file_urls_match.group(1).split(',')]
+        else:
+            parsed_task['attachment_urls'] = []
+
+        tasks.append(parsed_task)
+
+    # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
+    tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
+
+    # คำนวณเปอร์เซ็นต์สำหรับแสดงผล
+    total_tasks = task_status_counts['total']
+    if total_tasks > 0:
+        task_status_counts['completed_percent'] = round((task_status_counts['completed'] / total_tasks) * 100, 2)
+        task_status_counts['needsAction_percent'] = round((task_status_counts['needsAction'] / total_tasks) * 100, 2)
+        task_status_counts['overdue_percent'] = round((task_status_counts['overdue'] / total_tasks) * 100, 2)
+    else:
+        task_status_counts['completed_percent'] = 0
+        task_status_counts['needsAction_percent'] = 0
+        task_status_counts['overdue_percent'] = 0
+
+    return render_template("tasks_summary.html", tasks=tasks, summary=task_status_counts)
 
 @app.route("/callback", methods=['POST'])
 def callback():
