@@ -1,65 +1,78 @@
-
 import os
-from flask import Flask, request, render_template, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory
 from werkzeug.utils import secure_filename
-import datetime
+from datetime import datetime
+import requests
+import json
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 app = Flask(__name__)
-UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+
+# LINE API
+LINE_ACCESS_TOKEN = os.getenv('LINE_ACCESS_TOKEN')
+LINE_USER_ID = os.getenv('LINE_USER_ID')
+
+# Google Tasks API
+SCOPES = ['https://www.googleapis.com/auth/tasks']
+SERVICE_ACCOUNT_FILE = 'credentials.json'
+
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+service = build('tasks', 'v1', credentials=credentials)
+TASKS_LIST_ID = os.getenv('GOOGLE_TASKS_LIST_ID')
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def form():
-    if request.method == 'POST':
-        topic = request.form.get('topic')
-        customer = request.form.get('customer')
-        phone = request.form.get('phone')
-        address = request.form.get('address')
-        appointment = request.form.get('appointment')
-        latitude = request.form.get('latitude')
-        longitude = request.form.get('longitude')
-        detail = request.form.get('detail')
-        file_url = None
-
-        file = request.files.get('attachment')
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            file_url = filepath
-
-        with open("tasks_log.txt", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.datetime.now()}|{topic}|{customer}|{phone}|{address}|{appointment}|{latitude},{longitude}|{detail}|{file_url}\n")
-
-        return redirect(url_for('summary'))
-
     return render_template('form.html')
 
-@app.route('/summary')
-def summary():
-    tasks = []
-    if os.path.exists("tasks_log.txt"):
-        with open("tasks_log.txt", "r", encoding="utf-8") as f:
-            for line in f:
-                parts = line.strip().split('|')
-                if len(parts) == 9:
-                    dt, topic, customer, phone, address, appointment, coord, detail, file_url = parts
-                    tasks.append({
-                        "datetime": dt,
-                        "topic": topic,
-                        "customer": customer,
-                        "phone": phone,
-                        "address": address,
-                        "appointment": appointment,
-                        "coord": coord,
-                        "detail": detail,
-                        "file_url": file_url
-                    })
-    return render_template("tasks_summary.html", tasks=tasks)
+@app.route('/submit', methods=['POST'])
+def submit():
+    topic = request.form['topic']
+    customer = request.form['customer']
+    phone = request.form['phone']
+    address = request.form['address']
+    datetime_str = request.form['datetime']
+    location = request.form['location']
+    detail = request.form['detail']
+    filename = None
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    file = request.files['file']
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
+    # LINE
+    line_message = f"🛠 งานใหม่: {topic}\nลูกค้า: {customer}\nเบอร์: {phone}\nที่อยู่: {address}\nนัดหมาย: {datetime_str}\nพิกัด: {location}\nรายละเอียด: {detail}"
+    requests.post("https://api.line.me/v2/bot/message/push",
+                  headers={
+                      "Authorization": f"Bearer {LINE_ACCESS_TOKEN}",
+                      "Content-Type": "application/json"
+                  },
+                  json={
+                      "to": LINE_USER_ID,
+                      "messages": [{"type": "text", "text": line_message}]
+                  })
+
+    # Google Tasks
+    task_body = {
+        "title": f"{topic} - {customer}",
+        "notes": f"{detail}\nเบอร์: {phone}\nที่อยู่: {address}\nนัดหมาย: {datetime_str}\nพิกัด: {location}"
+    }
+    service.tasks().insert(tasklist=TASKS_LIST_ID, body=task_body).execute()
+
+    return redirect(url_for('form'))
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
