@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 
 # LINE Messaging API (Using v3 for best practice and to resolve deprecation warnings)
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
-from linebot.v3.webhooks import WebhookHandler # Changed from linebot import WebhookHandler
+from linebot.v3.webhooks import WebhookParser # Changed from linebot import WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
@@ -51,7 +51,7 @@ LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
 # Configuration for LINE API client
 line_configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 line_messaging_api = MessagingApi(ApiClient(line_configuration)) # Use line_messaging_api for push/reply messages
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
+handler = WebhookParser(LINE_CHANNEL_SECRET) # Adjusted to use WebhookParser
 
 # Google Tasks API Configuration
 SCOPES = ['https://www.googleapis.com/auth/tasks']
@@ -64,6 +64,26 @@ def allowed_file(filename):
     """Checks if the file extension is allowed."""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# --- New Helper Function for Parsing Google Task Dates (Moved to top for scope) ---
+def parse_google_task_dates(task):
+    """Helper to parse and format dates from Google Task API response."""
+    parsed_task = task.copy()
+    for key in ['created', 'updated', 'completed', 'due']:
+        if key in parsed_task and parsed_task[key]:
+            try:
+                # Google Tasks dates are ISO 8601, often with 'Z' for UTC
+                dt_obj = datetime.datetime.fromisoformat(parsed_task[key].replace('Z', '+00:00'))
+                # Format to a readable string (e.g., "2025-06-25 16:30:00")
+                parsed_task[f'{key}_formatted'] = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                parsed_task[f'{key}_formatted'] = "N/A"
+        else:
+            parsed_task[f'{key}_formatted'] = "N/A"
+    return parsed_task
+
+# --- End New Helper Function ---
+
 
 def get_google_tasks_service():
     """
@@ -254,26 +274,6 @@ def get_daily_summary_tasks():
             
     return daily_tasks
 
-# --- New Helper Function for Parsing Google Task Dates ---
-def parse_google_task_dates(task):
-    """Helper to parse and format dates from Google Task API response."""
-    parsed_task = task.copy()
-    for key in ['created', 'updated', 'completed', 'due']:
-        if key in parsed_task and parsed_task[key]:
-            try:
-                # Google Tasks dates are ISO 8601, often with 'Z' for UTC
-                dt_obj = datetime.datetime.fromisoformat(parsed_task[key].replace('Z', '+00:00'))
-                # Format to a readable string (e.g., "2025-06-25 16:30:00")
-                parsed_task[f'{key}_formatted'] = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                parsed_task[f'{key}_formatted'] = "N/A"
-        else:
-            parsed_task[f'{key}_formatted'] = "N/A"
-    return parsed_task
-
-# --- End New Helper Function ---
-
-
 def send_message_to_recipients(message_object, recipient_ids):
     """
     Sends a LINE message (TextSendMessage object) to a list of LINE User IDs or Group IDs.
@@ -335,7 +335,8 @@ def send_daily_reports():
         
         app.logger.info(f"Preparing daily outstanding tasks report.")
         recipients = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] # Send to Admin Group and Manager
-        send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
+        send_message_to_recipients(TextMessage(text=report_message_text), recipients)
+        # Note: TextSendMessage is deprecated in v3, use TextMessage directly
 
     # Summarize daily tasks at 8:00 PM Thai time
     elif current_hour_thai == 20:
@@ -351,7 +352,8 @@ def send_daily_reports():
         
         app.logger.info(f"Preparing daily summary tasks report.")
         recipients = [LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID] # Send to Admin Group and HR Group
-        send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
+        send_message_to_recipients(TextMessage(text=report_message_text), recipients)
+        # Note: TextSendMessage is deprecated in v3, use TextMessage directly
     else:
         app.logger.info(f"No report scheduled for Thai hour {current_hour_thai}.")
 
@@ -440,7 +442,7 @@ def form():
                 
                 # กำหนดผู้รับ: LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID
                 recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
-                send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_web_task)
+                send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_web_task)
             # --- จบส่วนที่เพิ่ม ---
 
         return redirect(url_for('summary'))
@@ -550,7 +552,18 @@ def callback():
     app.logger.info("Request body: " + body)
 
     try:
-        handler.handle(body, signature)
+        # handler.handle(body, signature) # In Line v3, WebhookParser does not have a .handle method directly for events.
+        # It's generally used to parse the events first.
+        # You would typically parse the events and then loop through them.
+        events = handler.parse(body, signature)
+        for event in events:
+            # Manually call your message handler for each event
+            if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
+                handle_message(event) # Call your existing handler function
+            # Add other event types if needed (e.g., ImageMessage, FollowEvent)
+            # elif isinstance(event, FollowEvent):
+            #     handle_follow_event(event)
+
     except InvalidSignatureError:
         app.logger.error("Invalid signature. Check channel access token/channel secret.")
         abort(400)
@@ -560,7 +573,18 @@ def callback():
 
     return 'OK'
 
-@handler.add(MessageEvent, message=TextMessage)
+# The decorator needs to be adjusted slightly or you might use a central dispatcher
+# As WebhookParser doesn't use decorators in the same way WebhookHandler did for adding handlers directly.
+# For simplicity, I'll keep your handle_message as a standalone function called from callback().
+# You would define MessageEvent type in your imports if it's not already defined.
+# I'll add it here for completeness:
+from linebot.v3.webhooks import MessageEvent, TextMessage as LineTextMessage # Renamed to avoid conflict with Flask's TextMessage
+
+# Original @handler.add decorator might not work directly with WebhookParser in the same way.
+# The 'handle_message' function is now called manually from 'callback' function.
+# If you want to keep the decorator pattern with WebhookParser, you might need to implement your own dispatcher.
+# For now, I'm adapting based on the 'parse' method usage.
+
 def handle_message(event):
     """Processes incoming LINE text messages."""
     text_message = event.message.text
@@ -658,7 +682,7 @@ def handle_message(event):
                 )
                 
                 recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
-                send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_task)
+                send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_task)
             else:
                 # ใช้ line_messaging_api.reply_message (v3)
                 line_messaging_api.reply_message(
@@ -756,7 +780,7 @@ def handle_message(event):
                     )
                     
                     recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
-                    send_message_to_recipients(TextSendMessage(text=admin_report_message_text), recipients_for_summary_report)
+                    send_message_to_recipients(TextMessage(text=admin_report_message_text), recipients_for_summary_report)
                 else:
                     # ใช้ line_messaging_api.reply_message (v3)
                     line_messaging_api.reply_message(
