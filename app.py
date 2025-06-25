@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 
 # LINE Messaging API (Using v3 for best practice and to resolve deprecation warnings)
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
-from linebot.v3.webhooks import WebhookParser # Corrected: Changed from WebhookHandler back to WebhookParser
+from linebot.v3.webhooks import WebhookHandler # Corrected: Changed from WebhookParser back to WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
@@ -51,7 +51,7 @@ LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
 # Configuration for LINE API client
 line_configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 line_messaging_api = MessagingApi(ApiClient(line_configuration)) # Use line_messaging_api for push/reply messages
-handler = WebhookParser(LINE_CHANNEL_SECRET) # Corrected: Adjusted to use WebhookParser
+handler = WebhookHandler(LINE_CHANNEL_SECRET) # Corrected: Adjusted to use WebhookHandler
 
 # Google Tasks API Configuration
 SCOPES = ['https://www.googleapis.com/auth/tasks']
