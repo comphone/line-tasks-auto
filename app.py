@@ -1,22 +1,26 @@
-from flask import Flask, request, render_template, redirect, url_for, jsonify
+from flask import Flask, render_template, request, redirect, url_for, jsonify
+from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
 import os
 import json
 
 app = Flask(__name__)
 
-# โหลด config.json
-with open('config.json') as f:
-    config = json.load(f)
-
-# ตั้งค่าจาก config.json
-LINE_CHANNEL_ACCESS_TOKEN = config["LINE_CHANNEL_ACCESS_TOKEN"]
-LINE_CHANNEL_SECRET = config["LINE_CHANNEL_SECRET"]
-LINE_USER_ID = config["LINE_USER_ID"]
-GOOGLE_TASKS_LIST_ID = config["GOOGLE_TASKS_LIST_ID"]
-
-# กำหนดโฟลเดอร์สำหรับเก็บไฟล์ที่อัปโหลด
 UPLOAD_FOLDER = 'static/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+def load_tasks():
+    if os.path.exists('tasks.json'):
+        with open('tasks.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+def save_tasks(tasks):
+    with open('tasks.json', 'w', encoding='utf-8') as f:
+        json.dump(tasks, f, ensure_ascii=False, indent=4)
 
 @app.route('/')
 def index():
@@ -24,36 +28,34 @@ def index():
 
 @app.route('/submit_task', methods=['POST'])
 def submit_task():
-    title = request.form.get("title")
-    customer = request.form.get("customer")
-    phone = request.form.get("phone")
-    address = request.form.get("address")
-    appointment = request.form.get("appointment_time")
-    details = request.form.get("details")
-    location = request.form.get("location")
+    title = request.form['title']
+    detail = request.form['detail']
+    date = request.form['date']
 
-    # อัปโหลดภาพ
-    image = request.files.get('image')
-    image_url = ""
-    if image:
-        image_path = os.path.join(UPLOAD_FOLDER, image.filename)
-        image.save(image_path)
-        image_url = request.host_url + image_path
+    tasks = load_tasks()
+    task = {"id": len(tasks), "title": title, "detail": detail, "date": date}
+    tasks.append(task)
+    save_tasks(tasks)
 
-    # ส่งข้อมูลไปยัง LINE Notify หรือ LINE Messaging API ที่นี่
-    # ตัวอย่างการส่งข้อความง่ายๆ (สามารถเพิ่มการแจ้งเตือนจริงได้ภายหลัง)
+    return redirect(url_for('index'))
 
-    print("📌 มีงานใหม่: ", title)
-    print("👤 ลูกค้า: ", customer)
-    print("📞 เบอร์โทร: ", phone)
-    print("📍 ที่อยู่: ", address)
-    print("📅 เวลานัด: ", appointment)
-    print("📝 รายละเอียด: ", details)
-    print("🗺️ พิกัด: ", location)
-    print("🖼️ รูปภาพ: ", image_url)
+@app.route('/tasks_summary')
+def tasks_summary():
+    tasks = load_tasks()
+    return render_template('tasks_summary.html', tasks=tasks)
 
-    return jsonify({"status": "success", "message": "บันทึกข้อมูลสำเร็จ"})
+@app.route('/task_detail/<int:task_id>')
+def task_detail(task_id):
+    tasks = load_tasks()
+    task = next((task for task in tasks if task['id'] == task_id), None)
+    return jsonify(task)
 
-if __name__ == "__main__":
-    # เพิ่ม host และ port ให้ทำงานบน Render ได้
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
+def daily_summary():
+    tasks = load_tasks()
+    summary = [task['title'] for task in tasks]
+    print("สรุปงานประจำวันที่ยังไม่เสร็จ:", summary)
+
+scheduler.add_job(daily_summary, 'cron', hour=20, minute=0)
+
+if __name__ == '__main__':
+    app.run(debug=True)
