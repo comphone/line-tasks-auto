@@ -289,78 +289,87 @@ def send_daily_reports():
     """
     ฟังก์ชันที่จะถูกเรียกโดย Render Cron Job ในเวลาที่กำหนด (เช่น 6 โมงเช้า และ 2 ทุ่ม).
     กำหนดว่าจะส่งรายงานใดตามชั่วโมงปัจจุบัน.
+    เพิ่มการแจ้งเตือนงานนัดหมายลูกค้าและคำแนะนำสำหรับงานค้างสะสม.
     """
-    current_hour_utc = datetime.datetime.now(datetime.timezone.utc).hour # Render ใช้ UTC
-    
+    current_time_utc = datetime.datetime.now(datetime.timezone.utc)
     # ปรับชั่วโมงสำหรับเขตเวลาไทย (UTC+7)
-    current_hour_thai = (current_hour_utc + 7) % 24 
-    app.logger.info(f"Cron job triggered. Current UTC hour: {current_hour_utc}, Thai local hour: {current_hour_thai}")
+    current_hour_thai = (current_time_utc.hour + 7) % 24
+    current_date_thai = (current_time_utc + datetime.timedelta(hours=7)).date()
 
-    report_message_text = ""
+    app.logger.info(f"Cron job triggered. Current UTC hour: {current_time_utc.hour}, Thai local hour: {current_hour_thai}")
 
-    # รายงานงานค้างเวลา 6 โมงเช้าตามเวลาไทย
+    # --- 1. รายงานงานค้างประจำวัน (6:00 น. ตามเวลาไทย) ---
     if current_hour_thai == 6:
         outstanding_tasks = get_daily_outstanding_tasks()
-        report_message_text = "--- รายงานงานค้างประจำวัน ---\n"
+        report_message_text = "--- รายงานงานค้างประจำวัน (6:00 น.) ---\n"
         if outstanding_tasks:
-            for task in outstanding_tasks:
-                title = task.get('title', 'N/A')
-                due_date_str = "N/A"
-                if 'due' in task:
-                    try:
-                        due_date_dt = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                        due_date_str = (due_date_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
-                    except ValueError:
-                        pass
-                report_message_text += f"- {title} (ครบกำหนด: {due_date_str})\n"
+            titles = [task.get('title', 'N/A') for task in outstanding_tasks]
+            report_message_text += "หัวข้อ: " + ", ".join(titles)
+            report_message_text += "\n\n**เคล็ดลับเพิ่มประสิทธิภาพสำหรับงานค้าง:**"
+            report_message_text += "\n- จัดลำดับความสำคัญของงานที่สำคัญและเร่งด่วนที่สุดก่อน"
+            report_message_text += "\n- แบ่งงานใหญ่ออกเป็นส่วนย่อยๆ ที่จัดการได้ง่ายขึ้น"
+            report_message_text += "\n- สื่อสารกับลูกค้าหรือทีมงานหากมีปัญหาหรือต้องการความช่วยเหลือ"
+            report_message_text += "\n- ใช้หน้าเว็บอัปเดตงานเพื่อบันทึกความคืบหน้าและรูปภาพ"
+            report_message_text += "\n- หากนัดใหม่ ให้ระบุวันนัดถัดไปในระบบ"
         else:
             report_message_text += "ไม่มีงานค้าง"
-        
-        # กำหนดผู้รับสำหรับรายงานงานค้าง (เช่น ผู้ดูแลระบบ, ผู้จัดการ)
-        recipients_for_outstanding_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] 
+
+        recipients_for_outstanding_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID]
         send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_outstanding_report)
         app.logger.info("Daily outstanding tasks report sent.")
 
-    # รายงานสรุปประจำวันเวลา 2 ทุ่มตามเวลาไทย
+    # --- 2. รายงานสรุปประจำวัน (20:00 น. ตามเวลาไทย) ---
     elif current_hour_thai == 20:
-        daily_tasks = get_daily_summary_tasks()
-        report_message_text = "--- สรุปงานประจำวัน ---\n"
-        needs_action_count = 0
-        completed_count = 0
-        overdue_count = 0
-        total_count = 0
-
+        daily_tasks = get_daily_summary_tasks() # Tasks created or completed today
+        report_message_text = "--- สรุปงานประจำวัน (20:00 น.) ---\n"
         if daily_tasks:
-            for task in daily_tasks:
-                total_count += 1
-                status = task.get('status')
-                is_overdue = False
-                if 'due' in task and status == 'needsAction':
-                    try:
-                        due_dt = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                        if due_dt < datetime.datetime.now(datetime.timezone.utc):
-                            is_overdue = True
-                    except ValueError:
-                        pass
-
-                if status == 'needsAction' and not is_overdue:
-                    needs_action_count += 1
-                elif status == 'completed':
-                    completed_count += 1
-                elif is_overdue:
-                    overdue_count += 1
-            
-            report_message_text += f"งานทั้งหมดที่เกี่ยวข้องวันนี้: {total_count} งาน\n"
-            report_message_text += f"  - รอดำเนินการ: {needs_action_count} งาน\n"
-            report_message_text += f"  - เสร็จสิ้น: {completed_count} งาน\n"
-            report_message_text += f"  - ค้างชำระ: {overdue_count} งาน\n"
+            titles = [task.get('title', 'N/A') for task in daily_tasks]
+            report_message_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
         else:
             report_message_text += "ไม่มีกิจกรรมงานในวันนี้"
-        
-        # กำหนดผู้รับสำหรับรายงานสรุป (เช่น ผู้ดูแลระบบ, ผู้จัดการ, HR)
-        recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
+
+        recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
         send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_summary_report)
         app.logger.info("Daily summary report sent.")
+
+    # --- 3. แจ้งเตือนงานนัดหมายลูกค้า (รันพร้อมกับรายงาน 6 โมงเช้า) ---
+    if current_hour_thai == 6: # สามารถเปลี่ยนเวลานี้ได้หากต้องการให้แจ้งเตือนช่วงเวลาอื่น เช่น 9 โมงเช้า
+        all_needs_action_tasks = get_google_tasks_for_report(show_completed=False)
+        appointment_reminders = []
+
+        for task_item in all_needs_action_tasks:
+            # ใช้ parse_tech_report_from_notes เพื่อดึงข้อมูล JSON จาก notes
+            notes = task_item.get('notes', '')
+            tech_report_data, _, _ = parse_tech_report_from_notes(notes) 
+            
+            next_appointment_iso = tech_report_data.get('next_appointment')
+
+            if next_appointment_iso:
+                try:
+                    # แปลง ISO format (UTC) เป็น datetime object แล้วแปลงเป็นเวลาท้องถิ่นไทยสำหรับเปรียบเทียบ
+                    next_app_dt_utc = datetime.datetime.fromisoformat(next_appointment_iso.replace('Z', '+00:00'))
+                    next_app_date_thai = (next_app_dt_utc + datetime.timedelta(hours=7)).date()
+
+                    # ถ้าวันนัดหมายตรงกับวันที่ปัจจุบัน
+                    if next_app_date_thai == current_date_thai:
+                        appointment_time_thai = (next_app_dt_utc + datetime.timedelta(hours=7)).strftime("%H:%M")
+                        task_title = task_item.get('title', 'N/A')
+                        task_id = task_item.get('id', 'N/A')
+                        update_url = url_for('update_task_details', task_id=task_id, _external=True)
+                        appointment_reminders.append(f"- {task_title} (เวลา: {appointment_time_thai}) [ID: {task_id}]\nอัปเดต: {update_url}")
+                except ValueError as e:
+                    app.logger.error(f"Error parsing next_appointment date for task {task_item.get('id')}: {e}")
+
+        if appointment_reminders:
+            appointment_message_text = "--- แจ้งเตือนงานนัดหมายลูกค้าวันนี้ ---\n"
+            appointment_message_text += "\n".join(appointment_reminders)
+            
+            # ส่งการแจ้งเตือนไปยังช่างและผู้ดูแล
+            recipients_for_appointment = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
+            send_message_to_recipients(TextMessage(text=appointment_message_text), recipients_for_appointment)
+            app.logger.info("Daily appointment reminders sent.")
+        else:
+            app.logger.info("No appointments scheduled for today.")
 
 def parse_tech_report_from_notes(notes):
     """
@@ -504,9 +513,16 @@ def handle_message(event):
                 update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
                 
                 # กำหนดผู้รับสำหรับแจ้งเตือนงานใหม่ (เช่น ช่างเทคนิค)
-                # เพิ่ม LINE_ADMIN_GROUP_ID ด้วยเพื่อให้ผู้ดูแลระบบเห็นการแจ้งเตือนนี้
+                # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
                 recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
-                task_message = TextMessage(text=f"งานใหม่ถูกสร้างแล้ว:\nหัวข้อ: {task.get('title')}\nID: {task.get('id')}\nรายละเอียด: {task.get('notes')}\nสถานะ: {task.get('status')}\n\nอัปเดตงานที่นี่: {update_url}")
+                
+                # ปรับปรุงข้อความแจ้งเตือนให้กระชับและชัดเจนขึ้น
+                task_message = TextMessage(text=(
+                    f"งานใหม่ถูกสร้างแล้ว!\n"
+                    f"🎯 หัวข้อ: {task.get('title')}\n"
+                    f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {update_url}\n"
+                    f"(ID งาน: {task.get('id')})"
+                ))
                 send_message_to_recipients(task_message, recipients_for_new_task)
                 
                 # ตอบกลับผู้ใช้ที่สร้างงาน
@@ -578,6 +594,7 @@ def handle_message(event):
                                 )
                             )
                             # ส่งรายงานสรุปไปยังกลุ่มที่เกี่ยวข้องหลังจากงานเสร็จสิ้น
+                            # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
                             report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
                             recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
                             send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
@@ -668,18 +685,16 @@ def create_task_page():
             if created_task:
                 app.logger.info(f"Task created via web form: {created_task.get('title')}")
                 # ส่งการแจ้งเตือน LINE หลังจากสร้าง Task จาก Web Form
+                # ปรับปรุงข้อความแจ้งเตือนให้กระชับและชัดเจนขึ้น
                 new_task_notification_text = (
-                    f"งานใหม่ถูกสร้างจากเว็บฟอร์ม: {title}\n"
-                    f"ลูกค้า: {customer_name}\n"
-                    f"โทร: {customer_phone}\n"
-                    f"กำหนดส่ง: {due_date_str.replace('T', ' ') if due_date_str else '-'}\n"
-                    f"สถานที่: {location or '-'}\n"
-                    f"ID สำหรับสรุปงาน: {created_task.get('id')}\n"
-                    f"อัปเดตงานที่นี่: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}\n"
-                    f"(ใช้คำสั่ง LINE 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
+                    f"งานใหม่ถูกสร้างจากเว็บฟอร์ม!\n"
+                    f"🎯 หัวข้อ: {title}\n"
+                    f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}\n"
+                    f"(ID งาน: {created_task.get('id')})"
                 )
                 
                 # กำหนดผู้รับ: LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID
+                # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
                 recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
                 send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_web_task)
                 
@@ -810,6 +825,7 @@ def update_task_details(task_id):
                 report_lines.append("ไฟล์แนบ: " + ", ".join(all_attachment_urls))
 
             report_summary_message_obj = TextMessage(text="\n".join(report_lines))
+            # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
             recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
             send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
 
