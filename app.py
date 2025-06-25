@@ -12,9 +12,9 @@ from flask import Flask, request, render_template, redirect, url_for, abort, sen
 from werkzeug.utils import secure_filename
 
 # LINE Messaging API (Using v3 for best practice and to resolve deprecation warnings)
-from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest # Removed TextSendMessage
+from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
 from linebot.v3 import WebhookHandler
-from linebot.v3.webhooks import MessageEvent # Ensure MessageEvent is imported from here
+from linebot.v3.webhooks import MessageEvent
 from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
@@ -30,11 +30,16 @@ app = Flask(__name__)
 # --- Configuration ---
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'} # Allowed file extensions
 
 # Create upload folder if it doesn't exist
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+# Helper function for allowed file types
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # LINE Bot API Configuration - Get from Environment Variables for security
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
@@ -253,7 +258,70 @@ def callback():
 
     return 'OK'
 
-@handler.add(MessageEvent, message=TextMessage) # This TextMessage is from linebot.v3.webhooks
+# New route for technician update form (GET request)
+@app.route('/tech_update/<task_id>', methods=['GET'])
+def tech_update_form(task_id):
+    # You might want to fetch task details here to pre-fill or display
+    return render_template('tech_update_form.html', task_id=task_id)
+
+# New route for submitting technician update (POST request)
+@app.route('/tech_update/<task_id>', methods=['POST'])
+def submit_tech_update(task_id):
+    repair_list = request.form.get('repair_list', '').strip()
+    spare_parts = request.form.get('spare_parts', '').strip()
+    
+    attachment_urls = []
+    if 'photo' in request.files:
+        files = request.files.getlist('photo') # Allow multiple files
+        for file in files:
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+                # Generate external URL for the saved file
+                file_url = url_for('uploaded_file', filename=filename, _external=True)
+                attachment_urls.append(file_url)
+            else:
+                app.logger.warning(f"Skipping invalid file upload: {file.filename}")
+
+    service = get_google_tasks_service()
+    if not service:
+        return "Error: Could not connect to Google Tasks service.", 500
+
+    task_list_id = get_google_tasks_list_id(service)
+    if not task_list_id:
+        return "Error: Could not retrieve task list ID.", 500
+
+    try:
+        current_task = service.tasks().get(tasklist=task_list_id, task=task_id).execute()
+        current_notes = current_task.get('notes', '')
+
+        update_sections = []
+        update_sections.append(f"\n\n--- ข้อมูลเพิ่มเติมโดยช่าง ---")
+        update_sections.append(f"บันทึกเมื่อ: {datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=7))).strftime('%d/%m/%Y %H:%M')}")
+        if repair_list:
+            update_sections.append(f"รายการซ่อม: {repair_list}")
+        if spare_parts:
+            update_sections.append(f"สรุปอะไหล่: {spare_parts}")
+        if attachment_urls:
+            update_sections.append("รูปภาพ/ไฟล์แนบ:")
+            for url in attachment_urls:
+                update_sections.append(f"- {url}")
+        
+        new_notes = current_notes + "\n".join(update_sections)
+
+        updated_task = update_google_task(task_id, new_notes=new_notes)
+
+        if updated_task:
+            return redirect(url_for('summary')) # Redirect to summary after update
+        else:
+            return "Error updating Google Task.", 500
+    except HttpError as err:
+        app.logger.error(f"Error updating Google Task {task_id} from web form: {err}")
+        return f"Error updating task: {err}", 500
+
+
+@handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text_message = event.message.text
     app.logger.info(f"Received message: {text_message} from user {event.source.user_id}")
@@ -292,10 +360,14 @@ def handle_message(event):
                     )
                 )
                 
-                # Send push message to admin/manager
-                notification_message_obj = TextMessage(
-                    text=f"***แจ้งงานใหม่***\nหัวข้อ: {title}\nลูกค้า: {customer_name}\nเบอร์โทร: {phone_number}\nกำหนดส่ง: {due_tomorrow_5pm.strftime('%d/%m/%Y %H:%M')}\nสถานะ: รอดำเนินการ\nID งาน: {task['id']}"
+                # Send push message to admin/manager with the new update link
+                tech_update_link = url_for('tech_update_form', task_id=task['id'], _external=True)
+                notification_message_text = (
+                    f"***แจ้งงานใหม่***\nหัวข้อ: {title}\nลูกค้า: {customer_name}\nเบอร์โทร: {phone_number}\n"
+                    f"กำหนดส่ง: {due_tomorrow_5pm.strftime('%d/%m/%Y %H:%M')}\nสถานะ: รอดำเนินการ\nID งาน: {task['id']}\n"
+                    f"**ลิงก์เพิ่มข้อมูลโดยช่าง:** {tech_update_link}"
                 )
+                notification_message_obj = TextMessage(text=notification_message_text)
                 recipients_for_new_task = [LINE_ADMIN_USER_ID, LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID]
                 send_message_to_recipients(notification_message_obj, recipients_for_new_task)
 
@@ -464,6 +536,7 @@ def summary():
             parsed_task['tech_time_taken'] = None
             
         # Extract attachment URLs from notes
+        # Updated regex to also capture URLs from "รูปภาพ/ไฟล์แนบ:" section
         attachment_urls_match = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png|gif|pdf|docx|doc|xlsx|xls|pptx|ppt|zip|rar|txt))', notes)
         parsed_task['attachment_urls'] = attachment_urls_match if attachment_urls_match else []
 
@@ -479,7 +552,7 @@ def summary():
     
     return render_template('tasks_summary.html', tasks=tasks, summary=task_status_counts)
 
-# For serving uploaded files (if needed)
+# For serving uploaded files
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
