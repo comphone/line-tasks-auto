@@ -780,4 +780,26 @@ def handle_message(event):
             line_messaging_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล
+                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                )
+            )
+    
+    # Reply for unrecognized commands
+    else:
+        # ใช้ line_messaging_api.reply_message (v3)
+        line_messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text="กรุณาส่งข้อความในรูปแบบที่ถูกต้อง เช่น 'task:หัวข้อ|ลูกค้า|เบอร์โทร...' หรือ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+            )
+        )
+
+# --- Main execution block ---
+if __name__ == '__main__':
+    # Ensure uploads directory exists on local run
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+    
+    # This block is for local development only
+    # On Render, the app is run by gunicorn
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
