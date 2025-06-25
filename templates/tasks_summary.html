@@ -1,13 +1,30 @@
+
 <!DOCTYPE html>
-<html>
-<head><title>สรุปงานรายวัน</title></head>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สรุปงาน</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
 <body>
-  <h2>งานทั้งหมด</h2>
-  {% for task in tasks %}
-    <details>
-      <summary>{{ task.title }}</summary>
-      <pre>{{ task.notes }}</pre>
-    </details>
-  {% endfor %}
+<div class="container">
+    <h2>รายการงานทั้งหมด</h2>
+    {% for task in tasks %}
+    <div class="card">
+        <h3>{{ task.topic }}</h3>
+        <p><strong>ลูกค้า:</strong> {{ task.customer }} | <strong>โทร:</strong> {{ task.phone }}</p>
+        <p><strong>ที่อยู่:</strong> {{ task.address }}</p>
+        <p><strong>เวลานัด:</strong> {{ task.appointment }}</p>
+        <p><strong>รายละเอียด:</strong> {{ task.detail }}</p>
+        {% if task.coord %}
+        <p><strong>พิกัด:</strong> {{ task.coord }} <a href="https://maps.google.com?q={{ task.coord }}" target="_blank">ดูแผนที่</a></p>
+        {% endif %}
+        {% if task.file_url %}
+        <p><strong>แนบไฟล์:</strong> <a href="{{ url_for('static', filename='uploads/' + task.file_url.split('/')[-1]) }}" target="_blank">เปิดไฟล์</a></p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
 </body>
 </html>

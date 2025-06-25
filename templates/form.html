@@ -1,29 +1,27 @@
+
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Service Task Form</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ฟอร์มงานบริการ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <h1>ฟอร์มบันทึกงาน</h1>
-  <form method="post">
-    <input name="topic" placeholder="หัวข้องาน" required><br>
-    <input name="customer" placeholder="ชื่อลูกค้า" required><br>
-    <input name="phone" placeholder="เบอร์โทร"><br>
-    <input name="address" placeholder="ที่อยู่"><br>
-    <input id="date" name="date" placeholder="เลือกวันที่" required><br>
-    <input name="mapurl" placeholder="พิกัด Google Maps"><br>
-    <textarea name="detail" placeholder="รายละเอียดงาน"></textarea><br>
-    <input name="image" placeholder="ลิงก์รูปภาพ"><br>
-    <button type="submit">ส่งข้อมูล</button>
-  </form>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script>
-    flatpickr("#date", {
-      enableTime: false,
-      dateFormat: "Y-m-d",
-      onClose: () => document.activeElement.blur()
-    });
-  </script>
+<div class="container">
+    <h2>บันทึกงานบริการ</h2>
+    <form action="/" method="post" enctype="multipart/form-data">
+        <input type="text" name="topic" placeholder="หัวข้องาน" required>
+        <input type="text" name="customer" placeholder="ชื่อลูกค้า" required>
+        <input type="text" name="phone" placeholder="เบอร์โทร" required>
+        <input type="text" name="address" placeholder="ที่อยู่" required>
+        <input type="datetime-local" name="appointment" required>
+        <input type="text" name="latitude" placeholder="Latitude">
+        <input type="text" name="longitude" placeholder="Longitude">
+        <textarea name="detail" placeholder="รายละเอียดงาน" rows="3"></textarea>
+        <input type="file" name="attachment">
+        <button type="submit">ส่งข้อมูล</button>
+    </form>
+</div>
 </body>
 </html>

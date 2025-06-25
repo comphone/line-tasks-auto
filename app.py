@@ -1,48 +1,65 @@
 
-from flask import Flask, render_template, request, redirect
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
-import json
 import os
+from flask import Flask, request, render_template, redirect, url_for, send_from_directory
+from werkzeug.utils import secure_filename
+import datetime
 
 app = Flask(__name__)
-scheduler = BackgroundScheduler()
-scheduler.start()
+UPLOAD_FOLDER = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 
-# Load configuration
-with open("config.json", "r", encoding="utf-8") as f:
-    config = json.load(f)
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-LINE_NOTIFY_TOKEN = config.get("LINE_NOTIFY_TOKEN")
-GOOGLE_TASKS_LIST_ID = config.get("GOOGLE_TASKS_LIST_ID", "")
-PORT = int(os.environ.get("PORT", 10000))
-
-def send_line_notify(message):
-    url = "https://notify-api.line.me/api/notify"
-    headers = {"Authorization": f"Bearer {LINE_NOTIFY_TOKEN}"}
-    data = {"message": message}
-    requests.post(url, headers=headers, data=data)
-
-@app.route("/", methods=["GET", "POST"])
+@app.route('/', methods=['GET', 'POST'])
 def form():
-    if request.method == "POST":
-        topic = request.form["topic"]
-        customer = request.form["customer"]
-        phone = request.form["phone"]
-        address = request.form["address"]
-        time = request.form["time"]
-        location = request.form["location"]
-        detail = request.form["detail"]
-        message = f"""🛠 งานใหม่: {topic}
-👤 ลูกค้า: {customer}
-📞 เบอร์: {phone}
-📍 ที่อยู่: {address}
-🕒 เวลานัด: {time}
-📌 พิกัด: {location}
-📝 รายละเอียด: {detail}"""
-        send_line_notify(message)
-        return redirect("/")
-    return render_template("form.html")
+    if request.method == 'POST':
+        topic = request.form.get('topic')
+        customer = request.form.get('customer')
+        phone = request.form.get('phone')
+        address = request.form.get('address')
+        appointment = request.form.get('appointment')
+        latitude = request.form.get('latitude')
+        longitude = request.form.get('longitude')
+        detail = request.form.get('detail')
+        file_url = None
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT)
+        file = request.files.get('attachment')
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            file_url = filepath
+
+        with open("tasks_log.txt", "a", encoding="utf-8") as f:
+            f.write(f"{datetime.datetime.now()}|{topic}|{customer}|{phone}|{address}|{appointment}|{latitude},{longitude}|{detail}|{file_url}\n")
+
+        return redirect(url_for('summary'))
+
+    return render_template('form.html')
+
+@app.route('/summary')
+def summary():
+    tasks = []
+    if os.path.exists("tasks_log.txt"):
+        with open("tasks_log.txt", "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split('|')
+                if len(parts) == 9:
+                    dt, topic, customer, phone, address, appointment, coord, detail, file_url = parts
+                    tasks.append({
+                        "datetime": dt,
+                        "topic": topic,
+                        "customer": customer,
+                        "phone": phone,
+                        "address": address,
+                        "appointment": appointment,
+                        "coord": coord,
+                        "detail": detail,
+                        "file_url": file_url
+                    })
+    return render_template("tasks_summary.html", tasks=tasks)
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
