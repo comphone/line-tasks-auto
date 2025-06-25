@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <title>ฟอร์มแจ้งงาน</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <h2>ฟอร์มแจ้งงานใหม่</h2>
+    <form method="POST" enctype="multipart/form-data">
+      <label>หัวข้องาน:</label><br>
+      <input type="text" name="title"><br>
+      <label>ชื่อลูกค้า:</label><br>
+      <input type="text" name="customer"><br>
+      <label>เบอร์โทร:</label><br>
+      <input type="text" name="phone"><br>
+      <label>ที่อยู่:</label><br>
+      <input type="text" name="address"><br>
+      <label>เวลานัดหมาย:</label><br>
+      <input type="datetime-local" name="schedule"><br>
+      <label>พิกัด (Google Maps):</label><br>
+      <input type="text" name="location"><br>
+      <label>รายละเอียดงาน:</label><br>
+      <textarea name="detail"></textarea><br>
+      <label>แนบรูปภาพ:</label><br>
+      <input type="file" name="image"><br><br>
+      <button type="submit">บันทึกงาน</button>
+    </form>
+  </body>
+</html>
