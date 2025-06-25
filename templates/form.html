@@ -1,1 +1,29 @@
-<html>... [form UI code already included in previous build] ...</html>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Service Task Form</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body>
+  <h1>ฟอร์มบันทึกงาน</h1>
+  <form method="post">
+    <input name="topic" placeholder="หัวข้องาน" required><br>
+    <input name="customer" placeholder="ชื่อลูกค้า" required><br>
+    <input name="phone" placeholder="เบอร์โทร"><br>
+    <input name="address" placeholder="ที่อยู่"><br>
+    <input id="date" name="date" placeholder="เลือกวันที่" required><br>
+    <input name="mapurl" placeholder="พิกัด Google Maps"><br>
+    <textarea name="detail" placeholder="รายละเอียดงาน"></textarea><br>
+    <input name="image" placeholder="ลิงก์รูปภาพ"><br>
+    <button type="submit">ส่งข้อมูล</button>
+  </form>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    flatpickr("#date", {
+      enableTime: false,
+      dateFormat: "Y-m-d",
+      onClose: () => document.activeElement.blur()
+    });
+  </script>
+</body>
+</html>

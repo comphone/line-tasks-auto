@@ -1,1 +1,13 @@
-<html>... [summary UI code already included in previous build] ...</html>
+<!DOCTYPE html>
+<html>
+<head><title>สรุปงานรายวัน</title></head>
+<body>
+  <h2>งานทั้งหมด</h2>
+  {% for task in tasks %}
+    <details>
+      <summary>{{ task.title }}</summary>
+      <pre>{{ task.notes }}</pre>
+    </details>
+  {% endfor %}
+</body>
+</html>
