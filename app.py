@@ -614,7 +614,7 @@ def handle_message(event):
                                 report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
                                 recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
                                 send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
-                                app.logger.info(f"Task '{task_id}' updated to 'completed' in Google Tasks via group command.")
+                                app.logger.info(f"Task '{task_id}' updated to 'completed' in Google Tasks via group command. Notification sent to admin/tech groups.")
                             else:
                                 line_messaging_api.reply_message(
                                     ReplyMessageRequest(
@@ -653,6 +653,7 @@ def handle_message(event):
                 )
 
         elif text_message.lower() == "งานค้าง":
+            app.logger.info(f"Detected 'งานค้าง' command in group.")
             outstanding_tasks = get_daily_outstanding_tasks()
             reply_text = "--- รายงานงานค้าง ---\n"
             if outstanding_tasks:
@@ -665,6 +666,7 @@ def handle_message(event):
             app.logger.info(f"Replied with outstanding tasks to group.")
 
         elif text_message.lower() == "สรุปงาน":
+            app.logger.info(f"Detected 'สรุปงาน' command in group.")
             daily_tasks = get_daily_summary_tasks()
             reply_text = "--- สรุปงานประจำวัน ---\n"
             if daily_tasks:
@@ -677,8 +679,8 @@ def handle_message(event):
             app.logger.info(f"Replied with daily summary to group.")
         
         else:
-            # If in group and not a recognized service command, do nothing (remain silent)
-            app.logger.info(f"Ignored non-service message in group: '{text_message}' (not a service command or 'comphone').")
+            # If in group and not a recognized service command (including 'comphone' which is handled above), do nothing (remain silent)
+            app.logger.info(f"Ignored non-service message in group: '{text_message}'. No reply sent.")
             pass
 
     # --- Logic for Private Chats ---
@@ -818,6 +820,7 @@ def handle_message(event):
                 )
 
         elif text_message.lower() == "งานค้าง":
+            app.logger.info(f"Detected 'งานค้าง' command in private chat.")
             outstanding_tasks = get_daily_outstanding_tasks()
             reply_text = "--- รายงานงานค้าง ---\n"
             if outstanding_tasks:
@@ -830,6 +833,7 @@ def handle_message(event):
             app.logger.info(f"Replied with outstanding tasks to private chat.")
 
         elif text_message.lower() == "สรุปงาน":
+            app.logger.info(f"Detected 'สรุปงาน' command in private chat.")
             daily_tasks = get_daily_summary_tasks()
             reply_text = "--- สรุปงานประจำวัน ---\n"
             if daily_tasks:
@@ -842,14 +846,14 @@ def handle_message(event):
             app.logger.info(f"Replied with daily summary to private chat.")
         
         else:
-            # If in private chat and not a recognized service command, send the default private greeting
+            # If in private chat and not a recognized service command (including 'comphone' which is handled above), send the default private greeting
             line_messaging_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=default_private_reply)]
                 )
             )
-            app.logger.info(f"Replied with general greeting to private chat: '{text_message}' (not a service command or 'comphone').")
+            app.logger.info(f"Replied with general greeting to private chat: '{text_message}'.")
 
 
 # --- Flask Routes ---
