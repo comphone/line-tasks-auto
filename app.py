@@ -470,229 +470,345 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    text_message = event.message.text
+    text_message = event.message.text.strip() # Strip whitespace for cleaner matching
     app.logger.info(f"Received message: {text_message}")
 
     # ตรวจสอบว่าข้อความมาจากกลุ่มหรือไม่
     is_from_group = event.source.type == 'group'
-
-    # Initialize a flag to check if any service command was handled
-    handled_service_command = False
     
-    # --- Check for service commands (both English and Thai) ---
-    if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
-        handled_service_command = True
-        command_content = ""
-        if text_message.lower().startswith("task:"):
-            command_content = text_message[len("task:"):].strip()
-        else: # Assumed to be "งานใหม่:"
-            command_content = text_message[len("งานใหม่:"):].strip()
-        
-        parts = command_content.split('|')
-        if len(parts) >= 3:
-            title = parts[0].strip()
-            customer_name = parts[1].strip()
-            customer_phone = parts[2].strip()
-            
-            notes_for_task = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
-            
-            due_date = None
-            if len(parts) > 3 and parts[3].strip():
-                try:
-                    due_dt_local = datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M")
-                    due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
-                    due_date = due_dt_utc.isoformat() + 'Z'
-                    notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
-                except ValueError:
+    # Define a default reply for unrecognized commands in private chat
+    default_private_reply = (
+        "สวัสดีครับ คอมโฟน แอนด์ อิเลคโทรนิคส์ ยินดีให้บริการงานบริการซ่อมครับ 🙏\n"
+        "หากคุณลูกค้าต้องการสอบถามข้อมูล หรือแจ้งงานซ่อม สามารถฝากข้อความไว้ได้เลยนะครับ ทางร้านจะรีบติดต่อกลับโดยเร็วที่สุดครับ"
+        "\n\n📞 ติดต่อสอบถามเพิ่มเติมได้ที่:\n"
+        "  โทรศัพท์: 0981929199, 043571779"
+        "\n🌐 เยี่ยมชมเพจของเรา: https://www.facebook.com/comphone101"
+    )
+
+    # --- Logic for Group Chats ---
+    if is_from_group:
+        # Service commands for groups
+        if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
+            command_content = text_message[len("task:"):].strip() if text_message.lower().startswith("task:") else text_message[len("งานใหม่:"):].strip()
+            parts = command_content.split('|')
+            if len(parts) >= 3:
+                # ... (existing create task logic) ...
+                title = parts[0].strip()
+                customer_name = parts[1].strip()
+                customer_phone = parts[2].strip()
+                notes_for_task = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
+                due_date = None
+                if len(parts) > 3 and parts[3].strip():
+                    try:
+                        due_dt_local = datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M")
+                        due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
+                        due_date = due_dt_utc.isoformat() + 'Z'
+                        notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
+                    except ValueError:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="ในกลุ่ม: รูปแบบวันที่/เวลาไม่ถูกต้อง. โปรดใช้YYYY-MM-DD HH:MM สำหรับ 'task:' หรือ 'งานใหม่:'")]
+                            )
+                        )
+                        return
+                if len(parts) > 4 and parts[4].strip():
+                    location = parts[4].strip()
+                    notes_for_task += f"\nสถานที่: {location}"
+
+                task = create_google_task(title, notes=notes_for_task, due=due_date)
+                if task:
+                    update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+                    recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
+                    task_message = TextMessage(text=(
+                        f"งานใหม่ถูกสร้างแล้ว!\n"
+                        f"🎯 หัวข้อ: {task.get('title')}\n"
+                        f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {update_url}\n"
+                        f"(ID งาน: {task.get('id')})"
+                    ))
+                    send_message_to_recipients(task_message, recipients_for_new_task)
+                    # No direct reply in group for successful task creation, notification is sent via push.
+                else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
-                            messages=[TextMessage(text="รูปแบบวันที่/เวลาไม่ถูกต้อง. โปรดใช้YYYY-MM-DD HH:MM")]
-                        )
-                    )
-                    return # Stop processing
-            if len(parts) > 4 and parts[4].strip():
-                location = parts[4].strip()
-                notes_for_task += f"\nสถานที่: {location}"
-
-            task = create_google_task(title, notes=notes_for_task, due=due_date)
-            if task:
-                update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
-                recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
-                task_message = TextMessage(text=(
-                    f"งานใหม่ถูกสร้างแล้ว!\n"
-                    f"🎯 หัวข้อ: {task.get('title')}\n"
-                    f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {update_url}\n"
-                    f"(ID งาน: {task.get('id')})"
-                ))
-                send_message_to_recipients(task_message, recipients_for_new_task)
-                
-                if not is_from_group: # Reply only if not from a group to avoid double replies
-                     line_messaging_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[TextMessage(text=f"สร้างงานเรียบร้อยแล้ว: {task.get('title')} (ID: {task.get('id')})\nคุณสามารถดูและอัปเดตงานได้ที่: {update_url}")]
+                            messages=[TextMessage(text="ในกลุ่ม: ไม่สามารถสร้าง Task ใน Google Tasks ได้")]
                         )
                     )
             else:
                 line_messaging_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="ไม่สามารถสร้าง Task ใน Google Tasks ได้")]
+                        messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'task:' หรือ 'งานใหม่:' ไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
                     )
                 )
-        else:
-            line_messaging_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่' หรือ 'งานใหม่:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
-                )
-            )
 
-    elif text_message.lower().startswith("complete ") or text_message.lower().startswith("เสร็จสิ้น "):
-        handled_service_command = True
-        command_content = ""
-        if text_message.lower().startswith("complete "):
-            command_content = text_message[len("complete "):].strip()
-        else: # Assumed to be "เสร็จสิ้น "
-            command_content = text_message[len("เสร็จสิ้น "):].strip()
+        elif text_message.lower().startswith("complete ") or text_message.lower().startswith("เสร็จสิ้น "):
+            command_content = text_message[len("complete "):].strip() if text_message.lower().startswith("complete ") else text_message[len("เสร็จสิ้น "):].strip()
+            try:
+                command_parts = command_content.split(':', 1)
+                if len(command_parts) > 1:
+                    task_id = command_parts[0].strip()
+                    summary_parts = command_parts[1].strip().split('|')
+                    if len(summary_parts) >= 3:
+                        summary_result = summary_parts[0].strip()
+                        equipment_used = summary_parts[1].strip()
+                        time_taken = summary_parts[2].strip()
 
-        try:
-            command_parts = command_content.split(':', 1)
-            
-            if len(command_parts) > 1: # Fixed: This 'if' now has its corresponding 'else' block
-                task_id = command_parts[0].strip()
-                summary_parts = command_parts[1].strip().split('|')
-                if len(summary_parts) >= 3:
-                    summary_result = summary_parts[0].strip()
-                    equipment_used = summary_parts[1].strip()
-                    time_taken = summary_parts[2].strip()
+                        service = get_google_tasks_service()
+                        if service:
+                            current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
+                            current_notes = current_task.get('notes', '')
+                            old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
+                            tech_report_data = {
+                                'summary_date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                'work_summary': summary_result,
+                                'equipment_used': equipment_used,
+                                'time_taken': time_taken,
+                                'next_appointment': old_tech_report.get('next_appointment'),
+                                'attachment_urls': old_attachment_urls
+                            }
+                            new_notes_content = json.dumps(tech_report_data, ensure_ascii=False)
+                            new_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
+                            new_notes = new_notes.strip()
 
-                    service = get_google_tasks_service()
-                    if service:
-                        current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
-                        current_notes = current_task.get('notes', '')
-                        
-                        old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
-                        
-                        tech_report_data = {
-                            'summary_date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            'work_summary': summary_result,
-                            'equipment_used': equipment_used,
-                            'time_taken': time_taken,
-                            'next_appointment': old_tech_report.get('next_appointment'),
-                            'attachment_urls': old_attachment_urls
-                        }
-                        
-                        new_notes_content = json.dumps(tech_report_data, ensure_ascii=False)
-                        new_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
-                        new_notes = new_notes.strip()
-
-                        updated_task = update_google_task(task_id, notes=new_notes, status='completed')
-                        if updated_task:
-                            line_messaging_api.reply_message(
-                                ReplyMessageRequest(
-                                    reply_token=event.reply_token,
-                                    messages=[TextMessage(text=f"อัปเดตงาน ID {task_id} เป็น 'เสร็จสิ้น' พร้อมสรุปผลเรียบร้อยแล้ว")]
+                            updated_task = update_google_task(task_id, notes=new_notes, status='completed')
+                            if updated_task:
+                                line_messaging_api.reply_message(
+                                    ReplyMessageRequest(
+                                        reply_token=event.reply_token,
+                                        messages=[TextMessage(text=f"ในกลุ่ม: อัปเดตงาน ID {task_id} เป็น 'เสร็จสิ้น' พร้อมสรุปผลเรียบร้อยแล้ว")]
+                                    )
                                 )
-                            )
-                            report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
-                            recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
-                            send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                                report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
+                                recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
+                                send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                            else:
+                                line_messaging_api.reply_message(
+                                    ReplyMessageRequest(
+                                        reply_token=event.reply_token,
+                                        messages=[TextMessage(text="ในกลุ่ม: ไม่สามารถอัปเดต Task ใน Google Tasks ได้.")]
+                                    )
+                                )
                         else:
                             line_messaging_api.reply_message(
                                 ReplyMessageRequest(
                                     reply_token=event.reply_token,
-                                    messages=[TextMessage(text="ไม่สามารถอัปเดต Task ใน Google Tasks ได้.")]
+                                    messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                                 )
                             )
-                    else:
-                        line_messaging_api.reply_message(
-                            ReplyMessageRequest(
-                                reply_token=event.reply_token,
-                                messages=[TextMessage(text="ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
-                            )
-                        )
-                else: # Else for `if len(summary_parts) >= 3:`
+                else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
-                            messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา' หรือ 'เสร็จสิ้น <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                            messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดระบุ Task ID และสรุปผล เช่น 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                         )
                     )
-            else: # Added: Else for `if len(command_parts) > 1:`
+            except Exception as e:
+                app.logger.error(f"Error processing 'complete' command in group: {e}")
                 line_messaging_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดระบุ Task ID และสรุปผล เช่น 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                        messages=[TextMessage(text="ในกลุ่ม: เกิดข้อผิดพลาดในการประมวลผลคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:'. โปรดตรวจสอบรูปแบบให้ถูกต้อง")]
                     )
                 )
-        except Exception as e:
-            app.logger.error(f"Error processing 'complete' command: {e}")
-            line_messaging_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา' หรือ 'เสร็จสิ้น <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
-                )
-            )
 
-    elif text_message.lower() == "งานค้าง": # New command for outstanding tasks
-        handled_service_command = True
-        outstanding_tasks = get_daily_outstanding_tasks()
-        reply_text = "--- รายงานงานค้าง ---\n"
-        if outstanding_tasks:
-            titles = [task.get('title', 'N/A') for task in outstanding_tasks]
-            reply_text += "หัวข้อ: " + ", ".join(titles)
-        else:
-            reply_text += "ไม่มีงานค้าง"
-        
-        line_messaging_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=reply_text)]
-            )
-        )
-        app.logger.info(f"Replied with outstanding tasks to {event.source.type}.")
-
-    elif text_message.lower() == "สรุปงาน": # New command for daily summary
-        handled_service_command = True
-        daily_tasks = get_daily_summary_tasks()
-        reply_text = "--- สรุปงานประจำวัน ---\n"
-        if daily_tasks:
-            titles = [task.get('title', 'N/A') for task in daily_tasks]
-            reply_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
-        else:
-            reply_text += "ไม่มีกิจกรรมงานในวันนี้"
-        
-        line_messaging_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=reply_text)]
-            )
-        )
-        app.logger.info(f"Replied with daily summary to {event.source.type}.")
-    
-    # ถ้าไม่มีคำสั่งงานเซอร์วิสใดๆ ถูกจัดการ ให้ดำเนินการตามเงื่อนไขการตอบกลับทั่วไป
-    if not handled_service_command:
-        if not is_from_group:
-            # นี่คือข้อความตอบกลับอัตโนมัติสำหรับลูกค้าทั่วไป (แชทส่วนตัว)
-            reply_text = (
-                "สวัสดีครับ คอมโฟน แอนด์ อิเลคโทรนิคส์ ยินดีให้บริการงานบริการซ่อมครับ 🙏\n"
-                "หากคุณลูกค้าต้องการสอบถามข้อมูล หรือแจ้งงานซ่อม สามารถฝากข้อความไว้ได้เลยนะครับ ทางร้านจะรีบติดต่อกลับโดยเร็วที่สุดครับ"
-                "\n\n📞 ติดต่อสอบถามเพิ่มเติมได้ที่:\n"
-                "  โทรศัพท์: 0981929199, 043571779" # เพิ่มเบอร์ 043571779 และจัดรูปแบบ
-                "\n🌐 เยี่ยมชมเพจของเรา: https://www.facebook.com/comphone101" # เพิ่มลิงก์ Facebook Page
-            )
+        elif text_message.lower() == "งานค้าง":
+            outstanding_tasks = get_daily_outstanding_tasks()
+            reply_text = "--- รายงานงานค้าง ---\n"
+            if outstanding_tasks:
+                titles = [task.get('title', 'N/A') for task in outstanding_tasks]
+                reply_text += "หัวข้อ: " + ", ".join(titles)
+            else:
+                reply_text += "ไม่มีงานค้าง"
             line_messaging_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=reply_text)]
-                )
-            )
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+            app.logger.info(f"Replied with outstanding tasks to group.")
+
+        elif text_message.lower() == "สรุปงาน":
+            daily_tasks = get_daily_summary_tasks()
+            reply_text = "--- สรุปงานประจำวัน ---\n"
+            if daily_tasks:
+                titles = [task.get('title', 'N/A') for task in daily_tasks]
+                reply_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
+            else:
+                reply_text += "ไม่มีกิจกรรมงานในวันนี้"
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+            app.logger.info(f"Replied with daily summary to group.")
+        
         else:
-            app.logger.info(f"Ignored message in group: '{text_message}' (not a service command)")
-            # ไม่มีการตอบกลับอัตโนมัติสำหรับข้อความทั่วไปในกลุ่ม
+            # If in group and not a recognized service command, do nothing (remain silent)
+            app.logger.info(f"Ignored non-service message in group: '{text_message}'")
             pass
+
+    # --- Logic for Private Chats ---
+    else: # not is_from_group (i.e., private chat)
+        if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
+            command_content = text_message[len("task:"):].strip() if text_message.lower().startswith("task:") else text_message[len("งานใหม่:"):].strip()
+            parts = command_content.split('|')
+            if len(parts) >= 3:
+                # ... (existing create task logic) ...
+                title = parts[0].strip()
+                customer_name = parts[1].strip()
+                customer_phone = parts[2].strip()
+                notes_for_task = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
+                due_date = None
+                if len(parts) > 3 and parts[3].strip():
+                    try:
+                        due_dt_local = datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M")
+                        due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
+                        due_date = due_dt_utc.isoformat() + 'Z'
+                        notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
+                    except ValueError:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบวันที่/เวลาไม่ถูกต้อง. โปรดใช้YYYY-MM-DD HH:MM สำหรับ 'task:' หรือ 'งานใหม่:'")]
+                            )
+                        )
+                        return
+                if len(parts) > 4 and parts[4].strip():
+                    location = parts[4].strip()
+                    notes_for_task += f"\nสถานที่: {location}"
+
+                task = create_google_task(title, notes=notes_for_task, due=due_date)
+                if task:
+                    update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+                    recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID] # Still push to these groups
+                    task_message = TextMessage(text=(
+                        f"งานใหม่ถูกสร้างแล้ว!\n"
+                        f"🎯 หัวข้อ: {task.get('title')}\n"
+                        f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {update_url}\n"
+                        f"(ID งาน: {task.get('id')})"
+                    ))
+                    send_message_to_recipients(task_message, recipients_for_new_task)
+                    
+                    # Always reply directly in private chat for confirmation
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=f"สร้างงานเรียบร้อยแล้ว: {task.get('title')} (ID: {task.get('id')})\nคุณสามารถดูและอัปเดตงานได้ที่: {update_url}")]
+                        )
+                    )
+                else:
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="ในแชทส่วนตัว: ไม่สามารถสร้าง Task ใน Google Tasks ได้")]
+                        )
+                    )
+            else:
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'task:' หรือ 'งานใหม่:' ไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
+                    )
+                )
+
+        elif text_message.lower().startswith("complete ") or text_message.lower().startswith("เสร็จสิ้น "):
+            command_content = text_message[len("complete "):].strip() if text_message.lower().startswith("complete ") else text_message[len("เสร็จสิ้น "):].strip()
+            try:
+                command_parts = command_content.split(':', 1)
+                if len(command_parts) > 1:
+                    task_id = command_parts[0].strip()
+                    summary_parts = command_parts[1].strip().split('|')
+                    if len(summary_parts) >= 3:
+                        summary_result = summary_parts[0].strip()
+                        equipment_used = summary_parts[1].strip()
+                        time_taken = summary_parts[2].strip()
+
+                        service = get_google_tasks_service()
+                        if service:
+                            current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
+                            current_notes = current_task.get('notes', '')
+                            old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
+                            tech_report_data = {
+                                'summary_date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                'work_summary': summary_result,
+                                'equipment_used': equipment_used,
+                                'time_taken': time_taken,
+                                'next_appointment': old_tech_report.get('next_appointment'),
+                                'attachment_urls': old_attachment_urls
+                            }
+                            new_notes_content = json.dumps(tech_report_data, ensure_ascii=False)
+                            new_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
+                            new_notes = new_notes.strip()
+
+                            updated_task = update_google_task(task_id, notes=new_notes, status='completed')
+                            if updated_task:
+                                line_messaging_api.reply_message(
+                                    ReplyMessageRequest(
+                                        reply_token=event.reply_token,
+                                        messages=[TextMessage(text=f"ในแชทส่วนตัว: อัปเดตงาน ID {task_id} เป็น 'เสร็จสิ้น' พร้อมสรุปผลเรียบร้อยแล้ว")]
+                                    )
+                                )
+                                report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
+                                recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
+                                send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                            else:
+                                line_messaging_api.reply_message(
+                                    ReplyMessageRequest(
+                                        reply_token=event.reply_token,
+                                        messages=[TextMessage(text="ในแชทส่วนตัว: ไม่สามารถอัปเดต Task ใน Google Tasks ได้.")]
+                                    )
+                                )
+                        else:
+                            line_messaging_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                                )
+                            )
+                else:
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดระบุ Task ID และสรุปผล เช่น 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                        )
+                    )
+            except Exception as e:
+                app.logger.error(f"Error processing 'complete' command in private chat: {e}")
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="ในแชทส่วนตัว: เกิดข้อผิดพลาดในการประมวลผลคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:'. โปรดตรวจสอบรูปแบบให้ถูกต้อง")]
+                    )
+                )
+
+        elif text_message.lower() == "งานค้าง":
+            outstanding_tasks = get_daily_outstanding_tasks()
+            reply_text = "--- รายงานงานค้าง ---\n"
+            if outstanding_tasks:
+                titles = [task.get('title', 'N/A') for task in outstanding_tasks]
+                reply_text += "หัวข้อ: " + ", ".join(titles)
+            else:
+                reply_text += "ไม่มีงานค้าง"
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+            app.logger.info(f"Replied with outstanding tasks to private chat.")
+
+        elif text_message.lower() == "สรุปงาน":
+            daily_tasks = get_daily_summary_tasks()
+            reply_text = "--- สรุปงานประจำวัน ---\n"
+            if daily_tasks:
+                titles = [task.get('title', 'N/A') for task in daily_tasks]
+                reply_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
+            else:
+                reply_text += "ไม่มีกิจกรรมงานในวันนี้"
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+            app.logger.info(f"Replied with daily summary to private chat.")
+        
+        else:
+            # If in private chat and not a recognized service command, send the default private greeting
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=default_private_reply)]
+                )
+            )
+            app.logger.info(f"Replied with general greeting to private chat: '{text_message}'")
 
 
 # --- Flask Routes ---
