@@ -24,7 +24,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError # แก้ไขจาก googleapient.errors เป็น googleapiclient.errors
+from googleapiclient.errors import HttpError 
 
 # เริ่มต้น Flask App
 app = Flask(__name__)
@@ -48,6 +48,9 @@ LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 LINE_MANAGER_USER_ID = os.environ.get('LINE_MANAGER_USER_ID')
 LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID')
 LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
+
+# Google Tasks Specific ID
+GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default') # ดึงจาก env หรือใช้ @default
 
 # ตรวจสอบให้แน่ใจว่าตัวแปรสภาพแวดล้อมที่สำคัญถูกตั้งค่า
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
@@ -162,7 +165,8 @@ def create_google_task(title, notes=None, due=None):
         app.logger.error("Failed to get Google Tasks service for creation.")
         return None
     try:
-        task_list_id = '@default' # รายการ Task เริ่มต้น
+        # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+        task_list_id = GOOGLE_TASKS_LIST_ID 
         task_body = {
             'title': title,
             'notes': notes,
@@ -185,7 +189,8 @@ def update_google_task(task_id, title=None, notes=None, due=None, status=None):
         app.logger.error("Failed to get Google Tasks service for update.")
         return None
     try:
-        task_list_id = '@default'
+        # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+        task_list_id = GOOGLE_TASKS_LIST_ID 
         current_task = service.tasks().get(tasklist=task_list_id, task=task_id).execute()
         
         if title:
@@ -216,7 +221,8 @@ def get_google_tasks_for_report(show_completed=False, due_min=None, due_max=None
         app.logger.error("Failed to get Google Tasks service for report.")
         return []
     try:
-        task_list_id = '@default'
+        # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+        task_list_id = GOOGLE_TASKS_LIST_ID
         results = service.tasks().list(
             tasklist=task_list_id,
             showCompleted=show_completed,
@@ -611,7 +617,8 @@ def handle_message(event):
 
                             service = get_google_tasks_service()
                             if service:
-                                current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
+                                # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+                                current_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
                                 current_notes = current_task.get('notes', '')
                                 old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
                                 tech_report_data = {
@@ -786,7 +793,8 @@ def handle_message(event):
 
                             service = get_google_tasks_service()
                             if service:
-                                current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
+                                # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+                                current_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
                                 current_notes = current_task.get('notes', '')
                                 old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
                                 tech_report_data = {
@@ -967,7 +975,8 @@ def update_task_details(task_id):
         return "ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้", 500
 
     try:
-        task_list_id = '@default'
+        # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+        task_list_id = GOOGLE_TASKS_LIST_ID
         google_task_raw = service.tasks().get(tasklist=task_list_id, task=task_id).execute()
         
         # จัดรูปแบบวันที่และการแสดงผลสถานะสำหรับเทมเพลต
