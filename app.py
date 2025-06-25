@@ -1,61 +1,51 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask import Flask, render_template, request, jsonify
 from datetime import datetime
-from apscheduler.schedulers.background import BackgroundScheduler
-import os
-import json
+import json, os, uuid
 
 app = Flask(__name__)
 
-UPLOAD_FOLDER = 'static/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-scheduler = BackgroundScheduler()
-scheduler.start()
+DATA_FILE = 'tasks.json'
 
 def load_tasks():
-    if os.path.exists('tasks.json'):
-        with open('tasks.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
+    if not os.path.exists(DATA_FILE):
+        return []
+    with open(DATA_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 def save_tasks(tasks):
-    with open('tasks.json', 'w', encoding='utf-8') as f:
-        json.dump(tasks, f, ensure_ascii=False, indent=4)
+    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+        json.dump(tasks, f, ensure_ascii=False, indent=2)
 
-@app.route('/')
-def index():
+@app.route('/', methods=['GET', 'POST'])
+def form():
+    if request.method == 'POST':
+        tasks = load_tasks()
+        new_task = {
+            "id": str(uuid.uuid4()),
+            "title": request.form['title'],
+            "description": request.form['description'],
+            "status": request.form['status'],
+            "date": request.form['date'],
+            "technician": request.form['technician']
+        }
+        tasks.append(new_task)
+        save_tasks(tasks)
+        return render_template('form.html', message="✅ บันทึกเรียบร้อยแล้ว")
     return render_template('form.html')
 
-@app.route('/submit_task', methods=['POST'])
-def submit_task():
-    title = request.form['title']
-    detail = request.form['detail']
-    date = request.form['date']
-
+@app.route('/summary')
+def summary():
+    date = request.args.get('date')
     tasks = load_tasks()
-    task = {"id": len(tasks), "title": title, "detail": detail, "date": date}
-    tasks.append(task)
-    save_tasks(tasks)
-
-    return redirect(url_for('index'))
-
-@app.route('/tasks_summary')
-def tasks_summary():
-    tasks = load_tasks()
+    if date:
+        tasks = [t for t in tasks if t['date'] == date]
     return render_template('tasks_summary.html', tasks=tasks)
 
-@app.route('/task_detail/<int:task_id>')
+@app.route('/task/<task_id>')
 def task_detail(task_id):
     tasks = load_tasks()
-    task = next((task for task in tasks if task['id'] == task_id), None)
-    return jsonify(task)
-
-def daily_summary():
-    tasks = load_tasks()
-    summary = [task['title'] for task in tasks]
-    print("สรุปงานประจำวันที่ยังไม่เสร็จ:", summary)
-
-scheduler.add_job(daily_summary, 'cron', hour=20, minute=0)
+    task = next((t for t in tasks if t['id'] == task_id), None)
+    return jsonify(task if task else {"error": "ไม่พบข้อมูล"})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
