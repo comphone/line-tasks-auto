@@ -1,71 +1,65 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สรุปงานทั้งหมด</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    </head>
+<body>
+    <div class="container">
+        <h1>สรุปงานทั้งหมด</h1>
 
-{% block title %}สรุป Task{% endblock %}
-
-{% block content %}
-<h2 class="mb-4">สรุป Task ทั้งหมด</h2>
-{% if tasks %}
-<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-    {% for task in tasks %}
-    <div class="col">
-        <div class="card h-100 shadow-sm">
-            <div class="card-header bg-info text-white">
-                <h5 class="card-title mb-0">{{ task.topic }}</h5>
+        <div class="summary-overview">
+            <h2>ภาพรวมสถานะงาน</h2>
+            <p><strong>รวมทั้งหมด:</strong> {{ summary.total }} งาน</p>
+            <ul>
+                <li><strong>รอดำเนินการ:</strong> {{ summary.needsAction }} งาน ({{ summary.needsAction_percent }}%)</li>
+                <li><strong>เสร็จสิ้น:</strong> {{ summary.completed }} งาน ({{ summary.completed_percent }}%)</li>
+                <li><strong>ค้างชำระ:</strong> {{ summary.overdue }} งาน ({{ summary.overdue_percent }}%)</li>
+            </ul>
             </div>
-            <div class="card-body">
-                <p class="card-text"><strong>ลูกค้า:</strong> {{ task.customer }}</p>
-                <p class="card-text"><strong>โทรศัพท์:</strong> {{ task.phone }}</p>
-                <p class="card-text"><strong>ที่อยู่:</strong> {{ task.address }}</p>
-                <p class="card-text"><strong>นัดหมาย:</strong> {{ task.appointment }}</p>
-                <p class="card-text"><strong>สถานะ:</strong>
-                    {% if task.status == 'PENDING' %}
-                        <span class="badge bg-warning text-dark">รอดำเนินการ</span>
-                    {% elif task.status == 'COMPLETED' %}
-                        <span class="badge bg-success">เสร็จสิ้น</span>
-                    {% else %}
-                        <span class="badge bg-secondary">{{ task.status }}</span>
-                    {% endif %}
-                </p>
-                <p class="card-text"><strong>พิกัด:</strong>
-                    {% if task.coord and task.coord != ',' %}
-                        {% set coords = task.coord.split(',') %}
-                        {% if coords|length == 2 %}
-                            <a href="http://maps.google.com/?q={{ coords[0] }},{{ coords[1] }}" target="_blank" class="text-decoration-none">
-                                {{ task.coord }} <i class="fas fa-map-marker-alt"></i>
-                            </a>
-                        {% else %}
-                            {{ task.coord }}
+
+        <h2>รายการงานโดยละเอียด</h2>
+        {% if tasks %}
+            <div class="task-list">
+                {% for task in tasks %}
+                    <div class="task-item {{ 'completed' if task.status == 'completed' else 'pending' }}">
+                        <h3>{{ task.get('title', 'ไม่มีหัวข้อ') }}</h3>
+                        <p><strong>สถานะ:</strong> {{ task.display_status }}</p>
+                        <p><strong>ID งาน:</strong> {{ task.id }}</p>
+                        <p><strong>สร้างเมื่อ:</strong> {{ task.created_formatted }}</p>
+                        {% if task.due_formatted != 'N/A' %}
+                            <p><strong>กำหนดส่ง:</strong> {{ task.due_formatted }}</p>
                         {% endif %}
-                    {% else %}
-                        -
-                    {% endif %}
-                </p>
-                <p class="card-text"><strong>รายละเอียด:</strong> {{ task.detail }}</p>
-                {# --- แสดงผลไฟล์แนบหลายภาพ --- #}
-                {% if task.file_urls %}
-                    <p class="card-text">
-                        <strong>ไฟล์แนบ:</strong><br>
-                        {% for f_url in task.file_urls %}
-                            {% if f_url %}
-                                {% set display_filename = f_url.split('/')[-1] %}
-                                <a href="{{ url_for('static', filename=f_url.replace('static/', '')) }}" target="_blank" class="text-decoration-none d-block">
-                                    <i class="fas fa-file-alt"></i> {{ display_filename }}
-                                </a>
-                            {% endif %}
-                        {% endfor %}
-                    </p>
-                {% endif %}
+                        {% if task.completed_formatted != 'N/A' and task.status == 'completed' %}
+                            <p><strong>เสร็จสิ้นเมื่อ:</strong> {{ task.completed_formatted }}</p>
+                        {% endif %}
+                        
+                        <p><strong>รายละเอียดงาน:</strong> {{ task.get('notes', 'ไม่มีรายละเอียด') | replace('\n', '<br>') | safe }}</p>
+                        
+                        {% if task.tech_work_summary %}
+                            <h4>--- สรุปงานโดยช่าง ---</h4>
+                            <p><strong>วันที่สรุป:</strong> {{ task.tech_summary_date }}</p>
+                            <p><strong>สรุปผลการทำงาน:</strong> {{ task.tech_work_summary }}</p>
+                            <p><strong>รายการอุปกรณ์ที่ใช้:</strong> {{ task.tech_equipment_used }}</p>
+                            <p><strong>ระยะเวลาที่ทำเสร็จ:</strong> {{ task.tech_time_taken }}</p>
+                        {% endif %}
+
+                        {% if task.attachment_urls %}
+                            <p><strong>ไฟล์แนบ:</strong>
+                                {% for file_url in task.attachment_urls %}
+                                    <a href="{{ file_url }}" target="_blank">ไฟล์ {{ loop.index }}</a>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </p>
+                        {% endif %}
+                    </div>
+                {% endfor %}
             </div>
-            <div class="card-footer text-muted">
-                <small>บันทึกเมื่อ: {{ task.datetime }}</small>
-            </div>
-        </div>
+        {% else %}
+            <p>ไม่มีงานที่แสดง</p>
+        {% endif %}
     </div>
-    {% endfor %}
-</div>
-{% else %}
-    <div class="alert alert-info" role="alert">
-        ยังไม่มี Task ที่ถูกบันทึกไว้
-    </div>
-{% endif %}
-{% endblock %}
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
