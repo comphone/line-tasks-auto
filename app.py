@@ -559,9 +559,9 @@ def handle_message(event):
 
         try:
             command_parts = command_content.split(':', 1)
-            task_id = command_parts[0].strip()
             
-            if len(command_parts) > 1:
+            if len(command_parts) > 1: # Fixed: This 'if' now has its corresponding 'else' block
+                task_id = command_parts[0].strip()
                 summary_parts = command_parts[1].strip().split('|')
                 if len(summary_parts) >= 3:
                     summary_result = summary_parts[0].strip()
@@ -610,24 +610,31 @@ def handle_message(event):
                         line_messaging_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
-                                messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา' หรือ 'เสร็จสิ้น <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                                messages=[TextMessage(text="ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
                             )
                         )
-                else:
+                else: # Else for `if len(summary_parts) >= 3:`
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
                             messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา' หรือ 'เสร็จสิ้น <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                         )
                     )
-            except Exception as e:
-                app.logger.error(f"Error processing 'complete' command: {e}")
+            else: # Added: Else for `if len(command_parts) > 1:`
                 line_messaging_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                        messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้อง. โปรดระบุ Task ID และสรุปผล เช่น 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
                     )
                 )
+        except Exception as e:
+            app.logger.error(f"Error processing 'complete' command: {e}")
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา' หรือ 'เสร็จสิ้น <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                )
+            )
 
     elif text_message.lower() == "งานค้าง": # New command for outstanding tasks
         handled_service_command = True
@@ -672,8 +679,8 @@ def handle_message(event):
             reply_text = (
                 "สวัสดีครับ คอมโฟน แอนด์ อิเลคโทรนิคส์ ยินดีให้บริการครับ 🙏\n"
                 "ถ้าคุณลูกค้าต้องการสอบถามเกี่ยวกับสินค้าและบริการ สามารถฝากข้อความไว้ได้เลยนะครับ ทางร้านจะรีบติดต่อกลับโดยเร็วที่สุดครับ"
-                "\n📞 หรือติดต่อที่เบอร์ 043571779 มือถือ 0981929199"
-                "\n🌐 ดูบริการของเราได้ที่: https://www.facebook.com/comphone101 (เปลี่ยนเป็น URL จริงของหน้าเว็บคุณ)"
+                "\n📞 หรือติดต่อที่เบอร์ 043571779"
+                "\n🌐 ดูบริการของเราได้ที่: https://your-app-url.onrender.com (เปลี่ยนเป็น URL จริงของหน้าเว็บคุณ)"
             )
             line_messaging_api.reply_message(
                 ReplyMessageRequest(
