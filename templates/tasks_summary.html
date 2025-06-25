@@ -5,10 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>สรุปงานทั้งหมด</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    </head>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); max-width: 800px; margin: auto; }
+        h1, h2 { color: #333; text-align: center; margin-bottom: 20px;}
+        .summary-overview { background-color: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .summary-overview ul { list-style: none; padding: 0; }
+        .summary-overview li { margin-bottom: 5px; }
+        .task-list { display: grid; gap: 20px; }
+        .task-item { background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; }
+        .task-item.completed { border-left: 5px solid #28a745; }
+        .task-item.pending { border-left: 5px solid #ffc107; }
+        .task-item h3 { margin-top: 0; color: #007bff; }
+        .task-item p { margin: 5px 0; }
+        .task-item h4 { margin-top: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .button-group { text-align: center; margin-top: 20px; }
+        .button-group a {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+        .button-group a:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
 <body>
     <div class="container">
         <h1>สรุปงานทั้งหมด</h1>
+
+        <div class="button-group">
+            <a href="{{ url_for('create_task_page') }}">สร้างงานใหม่</a>
+        </div>
 
         <div class="summary-overview">
             <h2>ภาพรวมสถานะงาน</h2>
@@ -18,7 +50,7 @@
                 <li><strong>เสร็จสิ้น:</strong> {{ summary.completed }} งาน ({{ summary.completed_percent }}%)</li>
                 <li><strong>ค้างชำระ:</strong> {{ summary.overdue }} งาน ({{ summary.overdue_percent }}%)</li>
             </ul>
-            </div>
+        </div>
 
         <h2>รายการงานโดยละเอียด</h2>
         {% if tasks %}
@@ -53,6 +85,27 @@
                                 {% endfor %}
                             </p>
                         {% endif %}
+
+                        {# เพิ่มฟอร์มสำหรับอัปเดตสถานะงาน (เสร็จสิ้น/เปิดใหม่) #}
+                        <form method="POST" action="{{ url_for('create_task_page') }}">
+                            <input type="hidden" name="command_type" value="update_task">
+                            <input type="hidden" name="task_id" value="{{ task.id }}">
+                            <br>
+                            {% if task.status == 'needsAction' %}
+                                <hr>
+                                <h4>อัปเดตงาน (สำหรับช่าง)</h4>
+                                <label for="summary_result_{{ task.id }}">สรุปผลการทำงาน:</label>
+                                <textarea id="summary_result_{{ task.id }}" name="summary_result" rows="2"></textarea>
+                                <label for="equipment_used_{{ task.id }}">รายการอุปกรณ์ที่ใช้:</label>
+                                <input type="text" id="equipment_used_{{ task.id }}" name="equipment_used">
+                                <label for="time_taken_{{ task.id }}">ระยะเวลาที่ทำเสร็จ:</label>
+                                <input type="text" id="time_taken_{{ task.id }}" name="time_taken">
+                                <button type="submit" name="action" value="complete" style="background-color: #28a745; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer;">ทำเครื่องหมายว่าเสร็จสิ้น</button>
+                            {% else %}
+                                <hr>
+                                <button type="submit" name="action" value="reopen" style="background-color: #dc3545; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer;">เปิดงานใหม่</button>
+                            {% endif %}
+                        </form>
                     </div>
                 {% endfor %}
             </div>
