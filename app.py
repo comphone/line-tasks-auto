@@ -444,7 +444,7 @@ def parse_google_task_dates(task_item):
     # จัดรูปแบบวันที่ 'completed'
     if 'completed' in parsed_task:
         try:
-            completed_dt = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
+            completed_dt = datetime.datetime.fromisoformat(task['completed'].replace('Z', '+00:00'))
             # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
             parsed_task['completed_formatted'] = (completed_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
@@ -471,7 +471,8 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text_message = event.message.text.strip() # Strip whitespace for cleaner matching
-    app.logger.info(f"Received message: {text_message}")
+    app.logger.info(f"Received message: '{text_message}'") 
+    app.logger.info(f"Message source type: {event.source.type}") 
 
     # ตรวจสอบว่าข้อความมาจากกลุ่มหรือไม่
     is_from_group = event.source.type == 'group'
@@ -486,7 +487,9 @@ def handle_message(event):
     )
 
     # --- New: Handle "comphone" or "วิธีใช้" command for help ---
+    # This check happens BEFORE differentiating between group/private to ensure it always works.
     if text_message.lower() == "comphone" or text_message.lower() == "วิธีใช้":
+        app.logger.info(f"Detected 'comphone' or 'วิธีใช้' command from {event.source.type}. Sending help message.")
         help_message = (
             "📋 คู่มือคำสั่งสำหรับ Comphone Service Bot:\n\n"
             "➡️ สร้างงานใหม่:\n"
@@ -510,17 +513,17 @@ def handle_message(event):
                 messages=[TextMessage(text=help_message)]
             )
         )
-        app.logger.info(f"Replied with help message to {event.source.type}.")
+        app.logger.info(f"Sent help message to {event.source.type}.")
         return # Exit the function after handling the help command
 
     # --- Logic for Group Chats ---
     if is_from_group:
+        app.logger.info(f"Processing message in a GROUP chat: '{text_message}'")
         # Service commands for groups
         if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
             command_content = text_message[len("task:"):].strip() if text_message.lower().startswith("task:") else text_message[len("งานใหม่:"):].strip()
             parts = command_content.split('|')
             if len(parts) >= 3:
-                # ... (existing create task logic) ...
                 title = parts[0].strip()
                 customer_name = parts[1].strip()
                 customer_phone = parts[2].strip()
@@ -555,7 +558,7 @@ def handle_message(event):
                         f"(ID งาน: {task.get('id')})"
                     ))
                     send_message_to_recipients(task_message, recipients_for_new_task)
-                    # No direct reply in group for successful task creation, notification is sent via push.
+                    app.logger.info(f"Task '{title}' created in Google Tasks via group command. Notification sent to admin/tech groups.")
                 else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
@@ -611,6 +614,7 @@ def handle_message(event):
                                 report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
                                 recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
                                 send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                                app.logger.info(f"Task '{task_id}' updated to 'completed' in Google Tasks via group command.")
                             else:
                                 line_messaging_api.reply_message(
                                     ReplyMessageRequest(
@@ -622,9 +626,16 @@ def handle_message(event):
                             line_messaging_api.reply_message(
                                 ReplyMessageRequest(
                                     reply_token=event.reply_token,
-                                    messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                                    messages=[TextMessage(text="ในกลุ่ม: ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
                                 )
                             )
+                    else:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                            )
+                        )
                 else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
@@ -667,16 +678,16 @@ def handle_message(event):
         
         else:
             # If in group and not a recognized service command, do nothing (remain silent)
-            app.logger.info(f"Ignored non-service message in group: '{text_message}'")
+            app.logger.info(f"Ignored non-service message in group: '{text_message}' (not a service command or 'comphone').")
             pass
 
     # --- Logic for Private Chats ---
     else: # not is_from_group (i.e., private chat)
+        app.logger.info(f"Processing message in a PRIVATE chat: '{text_message}'")
         if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
             command_content = text_message[len("task:"):].strip() if text_message.lower().startswith("task:") else text_message[len("งานใหม่:"):].strip()
             parts = command_content.split('|')
             if len(parts) >= 3:
-                # ... (existing create task logic) ...
                 title = parts[0].strip()
                 customer_name = parts[1].strip()
                 customer_phone = parts[2].strip()
@@ -719,6 +730,7 @@ def handle_message(event):
                             messages=[TextMessage(text=f"สร้างงานเรียบร้อยแล้ว: {task.get('title')} (ID: {task.get('id')})\nคุณสามารถดูและอัปเดตงานได้ที่: {update_url}")]
                         )
                     )
+                    app.logger.info(f"Task '{title}' created in Google Tasks via private command. Confirmation sent to user.")
                 else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
@@ -774,6 +786,7 @@ def handle_message(event):
                                 report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
                                 recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
                                 send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                                app.logger.info(f"Task '{task_id}' updated to 'completed' in Google Tasks via private command. Confirmation sent to user.")
                             else:
                                 line_messaging_api.reply_message(
                                     ReplyMessageRequest(
@@ -836,7 +849,7 @@ def handle_message(event):
                     messages=[TextMessage(text=default_private_reply)]
                 )
             )
-            app.logger.info(f"Replied with general greeting to private chat: '{text_message}'")
+            app.logger.info(f"Replied with general greeting to private chat: '{text_message}' (not a service command or 'comphone').")
 
 
 # --- Flask Routes ---
