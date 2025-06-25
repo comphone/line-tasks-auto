@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-load_dotenv() # <--- เพิ่มบรรทัดนี้
+load_dotenv() # โหลดตัวแปรสภาพแวดล้อมจากไฟล์ .env
 
 import os
 import sys
@@ -8,13 +8,13 @@ import re
 import json
 from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory
 
-# For secure filename handling and file uploads
+# สำหรับจัดการชื่อไฟล์ที่ปลอดภัยและการอัปโหลดไฟล์
 from werkzeug.utils import secure_filename
 
-# LINE Messaging API
-from linebot import LineBotApi, WebhookHandler
+# LINE Messaging API (ใช้ v3 เพื่อหลีกเลี่ยงการแจ้งเตือน Deprecated)
+from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
+from linebot.v3.webhooks import WebhookHandler, MessageEvent # เปลี่ยน WebhookHandler และ MessageEvent มาจาก linebot.v3.webhooks
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 # Google Tasks API
 from google.auth.transport.requests import Request
@@ -23,53 +23,62 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Initialize Flask App
+# เริ่มต้น Flask App
 app = Flask(__name__)
 
-# --- Configuration ---
+# --- การตั้งค่า ---
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'} # ประเภทไฟล์ที่อนุญาตให้อัปโหลด
 
-# Create upload folder if it doesn't exist
+# สร้างโฟลเดอร์อัปโหลดหากยังไม่มี
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# LINE Bot API Configuration - Get from Environment Variables for security
+# การตั้งค่า LINE Bot API - ดึงจากตัวแปรสภาพแวดล้อมเพื่อความปลอดภัย
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 
-# LINE Recipient IDs - Get from Environment Variables
-# IMPORTANT: Ensure these are set correctly on Render and/or in your local .env file
+# ID ผู้รับ LINE - ดึงจากตัวแปรสภาพแวดล้อม
+# สำคัญ: ตรวจสอบให้แน่ใจว่าตั้งค่าเหล่านี้ถูกต้องบน Render และ/หรือในไฟล์ .env ของคุณ
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 LINE_MANAGER_USER_ID = os.environ.get('LINE_MANAGER_USER_ID')
 LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID')
 LINE_TECHNICIAN_GROUP_ID = os.environ.get('LINE_TECHNICIAN_GROUP_ID')
 
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
+# ตรวจสอบให้แน่ใจว่าตัวแปรสภาพแวดล้อมที่สำคัญถูกตั้งค่า
+if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
+    app.logger.error("LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET is not set in environment variables.")
+    sys.exit(1) # จบการทำงานหากตัวแปรที่จำเป็นไม่ถูกตั้งค่า
 
-# Google Tasks API Configuration
+# เริ่มต้น LINE Messaging API client และ handler (v3)
+configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
+line_api_client = ApiClient(configuration) # เปลี่ยนชื่อตัวแปรเพื่อหลีกเลี่ยงความสับสน
+line_messaging_api = MessagingApi(line_api_client) # ใช้ MessagingApi จาก linebot.v3.messaging
+handler = WebhookHandler(LINE_CHANNEL_SECRET) # ใช้ WebhookHandler จาก linebot.v3.webhooks
+
+# การตั้งค่า Google Tasks API
 SCOPES = ['https://www.googleapis.com/auth/tasks']
-# For Render deployment, 'credentials.json' should be created from GOOGLE_CREDENTIALS_JSON env var
+# สำหรับการ Deploy บน Render, 'credentials.json' ควรถูกสร้างจากตัวแปรสภาพแวดล้อม GOOGLE_CREDENTIALS_JSON
 GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 
-# --- Helper Functions ---
+# --- ฟังก์ชันตัวช่วย ---
 
 def allowed_file(filename):
-    """Checks if the file extension is allowed."""
+    """ตรวจสอบว่านามสกุลไฟล์ที่อัปโหลดได้รับอนุญาตหรือไม่"""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_google_tasks_service():
     """
-    Authenticates with Google Tasks API.
-    Prioritizes loading token from GOOGLE_TOKEN_JSON env var for Render.
-    Falls back to local token.json or initiates OAuth flow using credentials.json (or GOOGLE_CREDENTIALS_JSON env var).
+    รับรองความถูกต้องด้วย Google Tasks API
+    จัดลำดับความสำคัญในการโหลดโทเค็นจากตัวแปรสภาพแวดล้อม GOOGLE_TOKEN_JSON สำหรับ Render
+    หากไม่สำเร็จ จะลองจากไฟล์ token.json หรือเริ่มกระบวนการ OAuth ใหม่โดยใช้ credentials.json
+    (หรือตัวแปรสภาพแวดล้อม GOOGLE_CREDENTIALS_JSON)
     """
     creds = None
 
-    # 1. Try to load token from environment variable (for Render deployment)
+    # 1. ลองโหลดโทเค็นจากตัวแปรสภาพแวดล้อม (สำหรับ Render deployment)
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
     if google_token_json_str:
         try:
@@ -80,7 +89,7 @@ def get_google_tasks_service():
             app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Attempting other methods.")
             creds = None
 
-    # 2. If not loaded from env var, try to load from local token.json (for local development)
+    # 2. หากไม่โหลดจากตัวแปรสภาพแวดล้อม ลองโหลดจากไฟล์ token.json ในเครื่อง (สำหรับการพัฒนาในเครื่อง)
     if not creds and os.path.exists('token.json'):
         try:
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -89,7 +98,7 @@ def get_google_tasks_service():
             app.logger.warning(f"Could not load token from local token.json: {e}. Attempting re-authentication.")
             creds = None
 
-    # 3. If no valid credentials, try to refresh or initiate new OAuth flow
+    # 3. หากไม่มีข้อมูลรับรองที่ถูกต้อง ลองรีเฟรชหรือเริ่มกระบวนการ OAuth ใหม่
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
@@ -99,7 +108,7 @@ def get_google_tasks_service():
                 app.logger.error(f"Error refreshing Google token: {e}. Will attempt full re-authentication.")
                 creds = None
         else:
-            # Create credentials.json from GOOGLE_CREDENTIALS_JSON env var if it exists
+            # สร้าง credentials.json จากตัวแปรสภาพแวดล้อม GOOGLE_CREDENTIALS_JSON หากมี
             if not os.path.exists(GOOGLE_CREDENTIALS_FILE_NAME):
                 google_credentials_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
                 if google_credentials_json:
@@ -117,16 +126,16 @@ def get_google_tasks_service():
             try:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
-                # For local development, run_local_server opens browser for auth
-                # Render deployment relies on GOOGLE_TOKEN_JSON env var being manually updated.
+                # สำหรับการพัฒนาในเครื่อง, run_local_server จะเปิดเบราว์เซอร์เพื่อการรับรองความถูกต้อง
+                # การ Deploy บน Render อาศัยการอัปเดตตัวแปรสภาพแวดล้อม GOOGLE_TOKEN_JSON ด้วยตนเอง
                 creds = flow.run_local_server(port=0) 
                 app.logger.info("Google OAuth flow completed locally.")
             except Exception as e:
                 app.logger.error(f"Error during Google OAuth flow: {e}. Ensure {GOOGLE_CREDENTIALS_FILE_NAME} is valid.")
                 return None
             
-            # Save the new token locally for future use (if on local dev)
-            if creds and not os.environ.get('GOOGLE_TOKEN_JSON'): # Only save if not using env var for token
+            # บันทึกโทเค็นใหม่ในเครื่องสำหรับการใช้งานในอนาคต (หากอยู่ในการพัฒนาในเครื่อง)
+            if creds and not os.environ.get('GOOGLE_TOKEN_JSON'): # บันทึกเฉพาะเมื่อไม่ได้ใช้ตัวแปรสภาพแวดล้อมสำหรับโทเค็น
                 try:
                     with open('token.json', 'w') as token:
                         token.write(creds.to_json())
@@ -139,13 +148,13 @@ def get_google_tasks_service():
     return None
 
 def create_google_task(title, notes=None, due=None):
-    """Creates a new task in Google Tasks."""
+    """สร้าง Task ใหม่ใน Google Tasks"""
     service = get_google_tasks_service()
     if not service:
         app.logger.error("Failed to get Google Tasks service for creation.")
         return None
     try:
-        task_list_id = '@default' # Default task list
+        task_list_id = '@default' # รายการ Task เริ่มต้น
         task_body = {
             'title': title,
             'notes': notes,
@@ -162,7 +171,7 @@ def create_google_task(title, notes=None, due=None):
         return None
 
 def update_google_task(task_id, title=None, notes=None, due=None, status=None):
-    """Updates an existing task in Google Tasks."""
+    """อัปเดต Task ที่มีอยู่ใน Google Tasks"""
     service = get_google_tasks_service()
     if not service:
         app.logger.error("Failed to get Google Tasks service for update.")
@@ -193,7 +202,7 @@ def update_google_task(task_id, title=None, notes=None, due=None, status=None):
         return None
 
 def get_google_tasks_for_report(show_completed=False, due_min=None, due_max=None):
-    """Fetches tasks from Google Tasks for reporting purposes."""
+    """ดึง Task จาก Google Tasks สำหรับวัตถุประสงค์ในการรายงาน"""
     service = get_google_tasks_service()
     if not service:
         app.logger.error("Failed to get Google Tasks service for report.")
@@ -212,20 +221,20 @@ def get_google_tasks_for_report(show_completed=False, due_min=None, due_max=None
         return []
 
 def get_daily_outstanding_tasks():
-    """Gets tasks due by end of today that are not completed."""
+    """รับ Task ที่ครบกำหนดภายในสิ้นวันนี้ที่ยังไม่เสร็จสมบูรณ์"""
     today_end = datetime.datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
     outstanding_tasks = get_google_tasks_for_report(
-        show_completed=False, # Only uncompleted tasks
+        show_completed=False, # เฉพาะ Task ที่ยังไม่เสร็จ
         due_max=today_end.isoformat(timespec='milliseconds') + "Z"
     )
     return outstanding_tasks
 
 def get_daily_summary_tasks():
-    """Gets tasks created or completed today."""
+    """รับ Task ที่สร้างหรือเสร็จสิ้นในวันนี้"""
     today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = datetime.datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
 
-    all_tasks = get_google_tasks_for_report(show_completed=True) # Fetch all to filter by created/completed date
+    all_tasks = get_google_tasks_for_report(show_completed=True) # ดึงทั้งหมดเพื่อกรองตามวันที่สร้าง/เสร็จสิ้น
 
     daily_tasks = []
     for task in all_tasks:
@@ -252,39 +261,41 @@ def get_daily_summary_tasks():
 
 def send_message_to_recipients(message_object, recipient_ids):
     """
-    Sends a LINE message (TextSendMessage object) to a list of LINE User IDs or Group IDs.
-    :param message_object: The TextSendMessage object.
-    :param recipient_ids: A list of User IDs or Group IDs (strings).
+    ส่งข้อความ LINE (ออบเจกต์ TextMessage) ไปยังรายการ ID ผู้ใช้ LINE หรือ ID กลุ่ม LINE โดยใช้ v3 API.
+    :param message_object: ออบเจกต์ TextMessage.
+    :param recipient_ids: รายการ User ID หรือ Group ID (สตริง).
     """
     for recipient_id in recipient_ids:
-        # แก้ไขตรงนี้ให้ตรวจสอบแค่ว่า recipient_id มีค่า (ไม่เป็น None หรือสตริงว่าง)
         if recipient_id:
             try:
-                line_bot_api.push_message(recipient_id, message_object)
+                # ใช้ PushMessageRequest สำหรับ v3 API
+                line_messaging_api.push_message(
+                    PushMessageRequest(
+                        to=recipient_id,
+                        messages=[message_object]
+                    )
+                )
                 app.logger.info(f"Message sent to LINE recipient: {recipient_id}")
             except Exception as e:
                 app.logger.error(f"Failed to send message to LINE recipient {recipient_id}: {e}")
         else:
             app.logger.warning(f"Skipping message send to empty recipient ID: {recipient_id}")
 
+
 def send_daily_reports():
     """
-    Function to be called by a Render Cron Job at specific times (e.g., 6 AM and 8 PM).
-    Determines which report to send based on current hour.
+    ฟังก์ชันที่จะถูกเรียกโดย Render Cron Job ในเวลาที่กำหนด (เช่น 6 โมงเช้า และ 2 ทุ่ม).
+    กำหนดว่าจะส่งรายงานใดตามชั่วโมงปัจจุบัน.
     """
-    current_hour_utc = datetime.datetime.now(datetime.timezone.utc).hour # Render uses UTC
+    current_hour_utc = datetime.datetime.now(datetime.timezone.utc).hour # Render ใช้ UTC
     
-    # Adjust hour for Thai timezone (UTC+7)
-    # If Render is at UTC, 6:00 AM (Thai) = 23:00 PM (UTC of previous day)
-    # If Render is at UTC, 8:00 PM (Thai) = 13:00 PM (UTC)
-
-    # Convert current_hour_utc to Thai local hour for logic
+    # ปรับชั่วโมงสำหรับเขตเวลาไทย (UTC+7)
     current_hour_thai = (current_hour_utc + 7) % 24 
     app.logger.info(f"Cron job triggered. Current UTC hour: {current_hour_utc}, Thai local hour: {current_hour_thai}")
 
     report_message_text = ""
 
-    # Report outstanding tasks at 6:00 AM Thai time
+    # รายงานงานค้างเวลา 6 โมงเช้าตามเวลาไทย
     if current_hour_thai == 6:
         outstanding_tasks = get_daily_outstanding_tasks()
         report_message_text = "--- รายงานงานค้างประจำวัน ---\n"
@@ -295,64 +306,95 @@ def send_daily_reports():
                 if 'due' in task:
                     try:
                         due_date_dt = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                        due_date_str = due_date_dt.strftime("%Y-%m-%d %H:%M")
+                        due_date_str = (due_date_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
                     except ValueError:
                         pass
-                report_message_text += f"- {title} (Due: {due_date_str})\n"
+                report_message_text += f"- {title} (ครบกำหนด: {due_date_str})\n"
         else:
-            report_message_text += "ไม่มีงานค้างในวันนี้\n"
+            report_message_text += "ไม่มีงานค้าง"
         
-        app.logger.info(f"Preparing daily outstanding tasks report.")
-        recipients = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] # Send to Admin Group and Manager
-        send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
+        # กำหนดผู้รับสำหรับรายงานงานค้าง (เช่น ผู้ดูแลระบบ, ผู้จัดการ)
+        recipients_for_outstanding_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID] 
+        send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_outstanding_report)
+        app.logger.info("Daily outstanding tasks report sent.")
 
-    # Summarize daily tasks at 8:00 PM Thai time
+    # รายงานสรุปประจำวันเวลา 2 ทุ่มตามเวลาไทย
     elif current_hour_thai == 20:
-        summary_tasks = get_daily_summary_tasks()
+        daily_tasks = get_daily_summary_tasks()
         report_message_text = "--- สรุปงานประจำวัน ---\n"
-        if summary_tasks:
-            for task in summary_tasks:
-                title = task.get('title', 'N/A')
-                status = task.get('status', 'unknown')
-                report_message_text += f"- {title} (สถานะ: {'เสร็จสิ้น' if status == 'completed' else 'ค้าง'})\n"
-        else:
-            report_message_text += "ไม่มีงานที่ถูกสร้างหรือเสร็จสิ้นในวันนี้\n"
-        
-        app.logger.info(f"Preparing daily summary tasks report.")
-        recipients = [LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID] # Send to Admin Group and HR Group
-        send_message_to_recipients(TextSendMessage(text=report_message_text), recipients)
-    else:
-        app.logger.info(f"No report scheduled for Thai hour {current_hour_thai}.")
+        needs_action_count = 0
+        completed_count = 0
+        overdue_count = 0
+        total_count = 0
 
+        if daily_tasks:
+            for task in daily_tasks:
+                total_count += 1
+                status = task.get('status')
+                is_overdue = False
+                if 'due' in task and status == 'needsAction':
+                    try:
+                        due_dt = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                        if due_dt < datetime.datetime.now(datetime.timezone.utc):
+                            is_overdue = True
+                    except ValueError:
+                        pass
+
+                if status == 'needsAction' and not is_overdue:
+                    needs_action_count += 1
+                elif status == 'completed':
+                    completed_count += 1
+                elif is_overdue:
+                    overdue_count += 1
+            
+            report_message_text += f"งานทั้งหมดที่เกี่ยวข้องวันนี้: {total_count} งาน\n"
+            report_message_text += f"  - รอดำเนินการ: {needs_action_count} งาน\n"
+            report_message_text += f"  - เสร็จสิ้น: {completed_count} งาน\n"
+            report_message_text += f"  - ค้างชำระ: {overdue_count} งาน\n"
+        else:
+            report_message_text += "ไม่มีกิจกรรมงานในวันนี้"
+        
+        # กำหนดผู้รับสำหรับรายงานสรุป (เช่น ผู้ดูแลระบบ, ผู้จัดการ, HR)
+        recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
+        send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_summary_report)
+        app.logger.info("Daily summary report sent.")
+
+# ฟังก์ชันตัวช่วยสำหรับแยกวิเคราะห์และจัดรูปแบบวันที่จาก Google Tasks
 def parse_google_task_dates(task_item):
-    """Helper to parse and format dates from Google Task API response."""
-    parsed_task = task_item.copy() # Make a copy to avoid modifying original
+    """
+    แยกวิเคราะห์และจัดรูปแบบวันที่ 'created', 'due', 'completed' จากออบเจกต์ Google Tasks API
+    และเพิ่มฟิลด์ที่จัดรูปแบบแล้ว ('_formatted') ไปยัง dictionary ของ task_item
+    """
+    parsed_task = task_item.copy() # ทำสำเนาเพื่อหลีกเลี่ยงการแก้ไขต้นฉบับ
     
-    # Format 'created' date
+    # จัดรูปแบบวันที่ 'created'
     if 'created' in parsed_task:
         try:
             created_dt = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
-            parsed_task['created_formatted'] = created_dt.strftime("%Y-%m-%d %H:%M:%S")
+            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
+            parsed_task['created_formatted'] = (created_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['created_formatted'] = 'N/A'
     else:
         parsed_task['created_formatted'] = 'N/A'
 
-    # Format 'due' date
+    # จัดรูปแบบวันที่ 'due'
     if 'due' in parsed_task:
         try:
             due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
-            parsed_task['due_formatted'] = due_dt.strftime("%Y-%m-%d %H:%M")
+            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
+            parsed_task['due_formatted'] = (due_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
         except ValueError:
             parsed_task['due_formatted'] = 'N/A'
     else:
         parsed_task['due_formatted'] = 'N/A'
 
-    # Format 'completed' date
+    # จัดรูปแบบวันที่ 'completed'
     if 'completed' in parsed_task:
         try:
             completed_dt = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
-            parsed_task['completed_formatted'] = completed_dt.strftime("%Y-%m-%d %H:%M:%S")
+            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
+            parsed_task['completed_formatted'] = (completed_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['completed_formatted'] = 'N/A'
     else:
@@ -362,99 +404,111 @@ def parse_google_task_dates(task_item):
 
 # --- Flask Routes ---
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route("/", methods=['GET', 'POST'])
 def form():
     """
-    Handles the task creation form submission and displays the task summary.
-    When accessed via GET, it fetches and displays the task summary.
-    When accessed via POST, it processes the form submission.
+    จัดการการส่งฟอร์มการสร้าง Task และแสดงผลสรุป Task
+    เมื่อเข้าถึงด้วย GET จะดึงและแสดงผลสรุป Task
+    เมื่อเข้าถึงด้วย POST จะประมวลผลการส่งฟอร์ม
     """
     if request.method == 'POST':
-        topic = request.form.get('topic')
-        customer = request.form.get('customer')
-        phone = request.form.get('phone')
-        address = request.form.get('address')
-        appointment = request.form.get('appointment')
-        latitude = request.form.get('latitude')
-        longitude = request.form.get('longitude')
-        detail = request.form.get('detail')
-        task_status = "PENDING" # Initial status
+        command_type = request.form.get('command_type')
 
-        # Handle multiple file uploads
-        file_urls = []
-        files = request.files.getlist('attachments')
-        for file in files:
-            if file and allowed_file(file.filename):
-                timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                original_filename = secure_filename(file.filename)
-                unique_filename = f"{timestamp}_{original_filename}"
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                file.save(filepath)
-                file_urls.append(os.path.join('static', 'uploads', unique_filename)) 
-        
-        file_urls_str = ",".join(file_urls) # Store as comma-separated string in log file
+        if command_type == 'create_task':
+            title = request.form['title']
+            customer_name = request.form['customer_name']
+            customer_phone = request.form['customer_phone']
+            due_date_str = request.form.get('due_date')
+            location = request.form.get('location')
 
-        coord = f"{latitude},{longitude}" if latitude and longitude else ""
-
-        # Save to tasks_log.txt
-        try:
-            with open("tasks_log.txt", "a", encoding="utf-8") as f:
-                f.write(f"{datetime.datetime.now()}|{topic}|{customer}|{phone}|{address}|{appointment}|{coord}|{detail}|{file_urls_str}|{task_status}\n")
-            app.logger.info("Task logged to tasks_log.txt.")
-        except IOError as e:
-            app.logger.error(f"Error writing to tasks_log.txt: {e}")
-
-        # Create Google Task
-        if topic:
-            task_title = f"{topic} ({customer})" if customer else topic
-            
-            google_task_notes = f"โทร: {phone or '-'}\nที่อยู่: {address or '-'}\nรายละเอียด: {detail or '-'}"
-            if appointment:
-                google_task_notes += f"\nนัดหมาย: {appointment}"
-            if coord and coord != ',':
-                # แก้ไข URL Google Maps
-                google_task_notes += f"\nพิกัด: http://maps.google.com/?q={latitude},{longitude}" 
-            if file_urls:
-                full_file_urls = []
-                for f_url in file_urls:
-                    # Generate full external URLs for Google Tasks notes
-                    # _external=True requires the app to know its public URL (Flask handles this implicitly on Render)
-                    full_file_urls.append(url_for('static', filename=f_url.replace('static/', ''), _external=True))
-                google_task_notes += f"\nไฟล์แนบ: {', '.join(full_file_urls)}"
-
+            notes = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
             due_date_gmt = None
-            if appointment:
+            if due_date_str:
                 try:
-                    dt_obj = datetime.datetime.strptime(appointment, "%Y-%m-%d %H:%M")
-                    due_date_gmt = dt_obj.isoformat() + "Z"
+                    # แปลงรูปแบบ datetime-local (เช่น '2025-06-25T14:30') เป็นออบเจกต์ datetime ของ Python
+                    due_dt_local = datetime.datetime.fromisoformat(due_date_str)
+                    # สมมติว่าอินพุตเป็นเวลาท้องถิ่นไทย (+7 UTC), แปลงเป็น UTC สำหรับ Google Tasks
+                    due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
+                    due_date_gmt = due_dt_utc.isoformat() + 'Z' # เพิ่ม Z สำหรับ UTC
+                    notes += f"\nกำหนดส่ง: {due_date_str.replace('T', ' ')}" # เก็บวันที่ที่จัดรูปแบบเดิมไว้ใน notes
                 except ValueError:
-                    app.logger.warning(f"Could not parse appointment date for Google Task: {appointment}")
+                    app.logger.error(f"Invalid due date format from form: {due_date_str}")
+                    # คุณอาจต้องการเปลี่ยนเส้นทางพร้อมข้อความแสดงข้อผิดพลาดหรือเรนเดอร์เทมเพลตพร้อมข้อผิดพลาด
+                    pass
+            if location:
+                notes += f"\nสถานที่: {location}"
 
-            created_task = create_google_task(task_title, google_task_notes, due=due_date_gmt)
-            
-            # --- เพิ่มส่วนนี้เพื่อส่ง LINE Notification หลังสร้าง Task จาก Web Form ---
+            created_task = create_google_task(title, notes=notes, due=due_date_gmt)
             if created_task:
+                app.logger.info(f"Task created via web form: {created_task.get('title')}")
+                # ส่งการแจ้งเตือน LINE หลังจากสร้าง Task จาก Web Form
                 new_task_notification_text = (
-                    f"งานใหม่ถูกสร้างจากเว็บฟอร์ม: {topic}\n"
-                    f"ลูกค้า: {customer}\n"
-                    f"โทร: {phone}\n"
-                    f"ที่อยู่: {address}\n"
-                    f"นัดหมาย: {appointment or '-'}\n"
-                    f"พิกัด: {('http://maps.google.com/?q=' + latitude + ',' + longitude) if latitude and longitude else '-'}\n"
-                    f"รายละเอียด: {detail or '-'}\n"
+                    f"งานใหม่ถูกสร้างจากเว็บฟอร์ม: {title}\n"
+                    f"ลูกค้า: {customer_name}\n"
+                    f"โทร: {customer_phone}\n"
+                    f"กำหนดส่ง: {due_date_str.replace('T', ' ') if due_date_str else '-'}\n"
+                    f"สถานที่: {location or '-'}\n"
                     f"ID สำหรับสรุปงาน: {created_task.get('id')}\n"
                     f"(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
                 )
                 
                 # กำหนดผู้รับ: LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID
                 recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
-                send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_web_task)
-            # --- จบส่วนที่เพิ่ม ---
+                send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_web_task)
+                
+                return redirect(url_for('form')) # เปลี่ยนเส้นทางไปยังคำขอ GET เพื่อรีเฟรชรายการ
+            else:
+                app.logger.error("Failed to create task via web form.")
+                return "Failed to create task", 500
 
-        return redirect(url_for('summary'))
+        elif command_type == 'update_task':
+            task_id = request.form['task_id']
+            action = request.form['action']
+            
+            if action == 'complete':
+                summary_result = request.form.get('summary_result', '')
+                equipment_used = request.form.get('equipment_used', '')
+                time_taken = request.form.get('time_taken', '')
 
-    # If GET request, fetch tasks and summary data to display the dashboard
+                service = get_google_tasks_service()
+                if service:
+                    current_task = service.tasks().get(tasklist='@default', task=task_id).execute()
+                    current_notes = current_task.get('notes', '')
+                    
+                    summary_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    new_notes = (f"{current_notes}\n\n--- สรุปงานโดยช่าง ---\n"
+                                 f"วันที่สรุป: {summary_date}\n"
+                                 f"สรุปผลการทำงาน: {summary_result}\n"
+                                 f"อุปกรณ์ที่ใช้: {equipment_used}\n"
+                                 f"ระยะเวลาที่ทำเสร็จ: {time_taken}")
+
+                    updated_task = update_google_task(task_id, notes=new_notes, status='completed')
+                    if updated_task:
+                        app.logger.info(f"Task {task_id} completed via web form.")
+                        # ส่งรายงานสรุปไปยังกลุ่มที่เกี่ยวข้องหลังจากงานเสร็จสิ้น
+                        report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
+                        recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
+                        send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+
+                        return redirect(url_for('form'))
+                    else:
+                        app.logger.error(f"Failed to complete task {task_id} via web form.")
+                        return "Failed to complete task", 500
+                else:
+                    return "Google Tasks service not available", 500
+
+            elif action == 'reopen':
+                updated_task = update_google_task(task_id, status='needsAction')
+                if updated_task:
+                    app.logger.info(f"Task {task_id} reopened via web form.")
+                    return redirect(url_for('form'))
+                else:
+                    app.logger.error(f"Failed to reopen task {task_id} via web form.")
+                    return "Failed to reopen task", 500
+        return "Invalid command", 400
+
     else: # request.method == 'GET'
+        # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
         tasks_raw = get_google_tasks_for_report(show_completed=True) 
 
         tasks = []
@@ -465,58 +519,71 @@ def form():
             'total': 0
         }
 
-        current_time_utc = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) # เวลา UTC ปัจจุบัน, ไม่มีข้อมูลโซนเวลา
 
         for task_item in tasks_raw:
-            task_status_counts['total'] += 1
+            parsed_task = parse_google_task_dates(task_item) # เรียกใช้ฟังก์ชันตัวช่วย
 
-            parsed_task = parse_google_task_dates(task_item)
-
+            # กำหนดสถานะการแสดงผลและนับจำนวนงาน
             status = parsed_task.get('status', 'unknown')
-            parsed_task['display_status'] = 'รอดำเนินการ' 
+            parsed_task['display_status'] = 'รอดำเนินการ' # สถานะการแสดงผลเริ่มต้น
+            is_overdue = False
 
             if status == 'completed':
                 parsed_task['display_status'] = 'เสร็จสิ้น'
                 task_status_counts['completed'] += 1
             elif status == 'needsAction':
                 task_status_counts['needsAction'] += 1
-                if 'due' in parsed_task and parsed_task['due'] and parsed_task['due_formatted'] != 'N/A':
+                # ตรวจสอบงานที่ค้างชำระ (Overdue)
+                if parsed_task['due_formatted'] != 'N/A':
                     try:
-                        due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
-                        if due_dt < current_time_utc:
-                            parsed_task['display_status'] = 'ค้างชำระ' 
+                        # แปลง due_formatted (ซึ่งเป็นเวลาท้องถิ่นไทย) กลับเป็น datetime object เพื่อเปรียบเทียบ
+                        # หาก due_dt เป็น UTC ก็เปรียบเทียบกับ now ที่เป็น UTC
+                        due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        if due_dt_utc < now:
+                            is_overdue = True
+                            parsed_task['display_status'] = 'ค้างชำระ' # ค้างชำระ
                             task_status_counts['overdue'] += 1
                     except ValueError:
-                        pass
+                        pass # ไม่สนใจวันที่ที่ไม่สามารถแยกวิเคราะห์ได้
 
+            # แยกข้อมูลสรุปงานจากช่างจากช่อง 'notes' (ถ้ามี)
             notes = parsed_task.get('notes', '')
-            summary_match = re.search(
-                r"--- สรุปงานโดยช่าง \((.*?)\) ---\n"
-                r"สรุปผลการทำงาน: (.*?)\n"
-                r"รายการอุปกรณ์ที่ใช้: (.*?)\n"
-                r"ระยะเวลาที่ทำเสร็จ: (.*?)\n",
+            # Regex เพื่อค้นหาสรุปงานจากช่างใน notes
+            tech_summary_match = re.search(
+                r"--- สรุปงานโดยช่าง ---\s*\n"
+                r"วันที่สรุป:\s*(?P<date>.*?)\s*\n"
+                r"สรุปผลการทำงาน:\s*(?P<summary>.*?)\s*\n"
+                r"อุปกรณ์ที่ใช้:\s*(?P<equipment>.*?)\s*\n"
+                r"ระยะเวลาที่ทำเสร็จ:\s*(?P<time>.*)",
                 notes, re.DOTALL
             )
-            if summary_match:
-                parsed_task['tech_summary_date'] = summary_match.group(1)
-                parsed_task['tech_work_summary'] = summary_match.group(2)
-                parsed_task['tech_equipment_used'] = summary_match.group(3)
-                parsed_task['tech_time_taken'] = summary_match.group(4)
+            
+            if tech_summary_match:
+                parsed_task['tech_summary_date'] = tech_summary_match.group('date').strip()
+                parsed_task['tech_work_summary'] = tech_summary_match.group('summary').strip()
+                parsed_task['tech_equipment_used'] = tech_summary_match.group('equipment').strip()
+                parsed_task['tech_time_taken'] = tech_summary_match.group('time').strip()
             else:
+                # กำหนดค่าเริ่มต้นเป็น None หากไม่พบข้อมูลสรุปช่าง
+                parsed_task['tech_summary_date'] = None
                 parsed_task['tech_work_summary'] = None
                 parsed_task['tech_equipment_used'] = None
                 parsed_task['tech_time_taken'] = None
+                
+            # แยก URL ของไฟล์แนบจาก notes (หากมี)
+            # ปรับปรุง regex เพื่อดึง URL ทั้งหมดที่คล้าย URL ของไฟล์
+            attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xlsx|xls|pptx|ppt|zip|rar|txt)', notes)
+            parsed_task['attachment_urls'] = attachment_urls if attachment_urls else []
 
-            file_urls_match = re.search(r"ไฟล์แนบ: (.*)", notes)
-            if file_urls_match:
-                parsed_task['attachment_urls'] = [url.strip() for url in file_urls_match.group(1).split(',')]
-            else:
-                parsed_task['attachment_urls'] = []
 
             tasks.append(parsed_task)
+            task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
 
+        # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
         tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
 
+        # คำนวณเปอร์เซ็นต์สำหรับแสดงผล
         total_tasks = task_status_counts['total']
         if total_tasks > 0:
             task_status_counts['completed_percent'] = round((task_status_counts['completed'] / total_tasks) * 100, 2)
@@ -531,8 +598,10 @@ def form():
 
 @app.route('/summary')
 def summary():
-    """Displays a summary of tasks fetched directly from Google Tasks,
-    along with calculated statistics."""
+    """แสดงผลสรุป Task ที่ดึงมาจาก Google Tasks พร้อมสถิติที่คำนวณได้"""
+    # ฟังก์ชันนี้ถูกใช้เป็นหน้าสรุปโดยเฉพาะ และมี logic คล้ายกับ GET request ของ '/'
+    # สามารถเรียกใช้ logic ร่วมกันได้ แต่แยกไว้เพื่อความชัดเจนของ route
+    
     # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
     tasks_raw = get_google_tasks_for_report(show_completed=True) 
 
@@ -544,67 +613,59 @@ def summary():
         'total': 0
     }
 
-    current_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    current_time_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
     for task_item in tasks_raw:
-        task_status_counts['total'] += 1
-
-        # แปลงและจัดรูปแบบวันที่จาก Google Task API
         parsed_task = parse_google_task_dates(task_item)
 
-        # กำหนดสถานะการแสดงผลและนับจำนวนงาน
         status = parsed_task.get('status', 'unknown')
-        parsed_task['display_status'] = 'รอดำเนินการ' # Default display status
+        parsed_task['display_status'] = 'รอดำเนินการ' 
+        is_overdue = False
 
         if status == 'completed':
             parsed_task['display_status'] = 'เสร็จสิ้น'
             task_status_counts['completed'] += 1
         elif status == 'needsAction':
             task_status_counts['needsAction'] += 1
-            # ตรวจสอบงานที่ค้างชำระ (Overdue)
-            if 'due' in parsed_task and parsed_task['due'] and parsed_task['due_formatted'] != 'N/A':
+            if parsed_task['due_formatted'] != 'N/A':
                 try:
-                    due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
-                    if due_dt < current_time_utc:
-                        parsed_task['display_status'] = 'ค้างชำระ' # Overdue
+                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).replace(tzinfo=None)
+                    if due_dt_utc < current_time_utc:
+                        is_overdue = True
+                        parsed_task['display_status'] = 'ค้างชำระ' 
                         task_status_counts['overdue'] += 1
                 except ValueError:
-                    pass # ไม่สนใจวันที่ที่ไม่สามารถแยกวิเคราะห์ได้
+                    pass
 
-        # แยกข้อมูลสรุปงานจากช่างจากช่อง 'notes' (ถ้ามี)
         notes = parsed_task.get('notes', '')
-        # Regex เพื่อค้นหาสรุปงานจากช่างใน notes
-        summary_match = re.search(
-            r"--- สรุปงานโดยช่าง \((.*?)\) ---\n"
-            r"สรุปผลการทำงาน: (.*?)\n"
-            r"รายการอุปกรณ์ที่ใช้: (.*?)\n"
-            r"ระยะเวลาที่ทำเสร็จ: (.*?)\n",
+        tech_summary_match = re.search(
+            r"--- สรุปงานโดยช่าง ---\s*\n"
+            r"วันที่สรุป:\s*(?P<date>.*?)\s*\n"
+            r"สรุปผลการทำงาน:\s*(?P<summary>.*?)\s*\n"
+            r"อุปกรณ์ที่ใช้:\s*(?P<equipment>.*?)\s*\n"
+            r"ระยะเวลาที่ทำเสร็จ:\s*(?P<time>.*)",
             notes, re.DOTALL
         )
-        if summary_match:
-            parsed_task['tech_summary_date'] = summary_match.group(1)
-            parsed_task['tech_work_summary'] = summary_match.group(2)
-            parsed_task['tech_equipment_used'] = summary_match.group(3)
-            parsed_task['tech_time_taken'] = summary_match.group(4)
+        
+        if tech_summary_match:
+            parsed_task['tech_summary_date'] = tech_summary_match.group('date').strip()
+            parsed_task['tech_work_summary'] = tech_summary_match.group('summary').strip()
+            parsed_task['tech_equipment_used'] = tech_summary_match.group('equipment').strip()
+            parsed_task['tech_time_taken'] = tech_summary_match.group('time').strip()
         else:
-            # กำหนดค่าเริ่มต้นเป็น None หากไม่พบข้อมูลสรุปช่าง
+            parsed_task['tech_summary_date'] = None
             parsed_task['tech_work_summary'] = None
             parsed_task['tech_equipment_used'] = None
             parsed_task['tech_time_taken'] = None
-
-        # แยก URL ของไฟล์แนบจาก notes (หากมี)
-        file_urls_match = re.search(r"ไฟล์แนบ: (.*)", notes)
-        if file_urls_match:
-            parsed_task['attachment_urls'] = [url.strip() for url in file_urls_match.group(1).split(',')]
-        else:
-            parsed_task['attachment_urls'] = []
+            
+        attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xlsx|xls|pptx|ppt|zip|rar|txt)', notes)
+        parsed_task['attachment_urls'] = attachment_urls if attachment_urls else []
 
         tasks.append(parsed_task)
+        task_status_counts['total'] += 1
 
-    # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
     tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
 
-    # คำนวณเปอร์เซ็นต์สำหรับแสดงผล
     total_tasks = task_status_counts['total']
     if total_tasks > 0:
         task_status_counts['completed_percent'] = round((task_status_counts['completed'] / total_tasks) * 100, 2)
@@ -617,207 +678,18 @@ def summary():
 
     return render_template("tasks_summary.html", tasks=tasks, summary=task_status_counts)
 
-@app.route("/callback", methods=['POST'])
-def callback():
-    """Handles LINE webhook events."""
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    """ให้บริการไฟล์ที่อัปโหลด"""
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        app.logger.error("Invalid signature. Check channel access token/channel secret.")
-        abort(400)
-    except Exception as e:
-        app.logger.error(f"Unhandled exception in LINE webhook handler: {e}")
-        abort(500)
-
-    return 'OK'
-
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    """Processes incoming LINE text messages."""
-    text_message = event.message.text
-    app.logger.info(f"Received LINE message: {text_message}")
-
-    # --- Debugging: Log Source ID (for getting recipient IDs) ---
-    if event.source.type == 'group':
-        app.logger.info(f"Message from Group ID: {event.source.group_id}")
-        print(f"!!! Group ID: {event.source.group_id} !!!") # Prints to Render logs
-    elif event.source.type == 'user':
-        app.logger.info(f"Message from User ID: {event.source.user_id}")
-        print(f"!!! User ID: {event.source.user_id} !!!") # Prints to Render logs
-    # --- End Debugging Block ---
-
-    # Command to create a new task:
-    # Format: task:หัวข้อ|ลูกค้า|เบอร์โทร|ที่อยู่|วันเวลา_นัดหมาย(YYYY-MM-DD HH:MM)|ละติจูด,ลองจิจูด|รายละเอียด
-    if text_message.lower().startswith("task:"):
-        try:
-            parts_str = text_message[len("task:"):]
-            parts = parts_str.split('|')
-
-            topic = parts[0].strip() if len(parts) > 0 else "No Topic"
-            customer = parts[1].strip() if len(parts) > 1 else ""
-            phone = parts[2].strip() if len(parts) > 2 else ""
-            address = parts[3].strip() if len(parts) > 3 else ""
-            appointment = parts[4].strip() if len(parts) > 4 else ""
-            coord_str = parts[5].strip() if len(parts) > 5 else ""
-            detail = parts[6].strip() if len(parts) > 6 else ""
-            task_status = "PENDING"
-
-            latitude = ""
-            longitude = ""
-            if coord_str:
-                map_url_regex = r"(?:@(-?\d+\.\d+),(-?\d+\.\d+))|(?:\/maps\/place\/(?:[^/]+\/)?@(-?\d+\.\d+),(-?\d+\.\d+))"
-                match = re.search(map_url_regex, coord_str)
-                if match:
-                    # Determine which group contains lat/lng based on the regex match
-                    if match.group(1) and match.group(2): # @lat,lng
-                        latitude = match.group(1)
-                        longitude = match.group(2)
-                    elif match.group(3) and match.group(4): # /place/@lat,lng
-                        latitude = match.group(3)
-                        longitude = match.group(4)
-                else: # Assume direct lat,long if not a map URL
-                    coords_parts = coord_str.split(',')
-                    if len(coords_parts) == 2:
-                        try:
-                            latitude = str(float(coords_parts[0].strip()))
-                            longitude = str(float(coords_parts[1].strip()))
-                        except ValueError:
-                            pass
-            final_coord = f"{latitude},{longitude}" if latitude and longitude else coord_str
-
-            # Save to tasks_log.txt (no file attachments from LINE command)
-            with open("tasks_log.txt", "a", encoding="utf-8") as f:
-                f.write(f"{datetime.datetime.now()}|{topic}|{customer}|{phone}|{address}|{appointment}|{final_coord}|{detail}|None|{task_status}\n")
-            app.logger.info("Task from LINE logged to tasks_log.txt.")
-
-            # Create Google Task from LINE message
-            task_title = f"{topic} (จาก LINE)"
-            task_notes = f"ลูกค้า: {customer or '-'}\nโทร: {phone or '-'}\nที่อยู่: {address or '-'}\nรายละเอียด: {detail or '-'}"
-            if appointment:
-                task_notes += f"\nนัดหมาย: {appointment}"
-            if final_coord and final_coord != ',':
-                # แก้ไข URL Google Maps
-                task_notes += f"\nพิกัด: http://maps.google.com/?q={latitude},{longitude}"
-
-            due_date_gmt = None
-            if appointment:
-                try:
-                    dt_obj = datetime.datetime.strptime(appointment, "%Y-%m-%d %H:%M")
-                    due_date_gmt = dt_obj.isoformat() + "Z"
-                except ValueError:
-                    app.logger.warning(f"Could not parse LINE appointment date: {appointment}")
-
-            created_task = create_google_task(task_title, task_notes, due=due_date_gmt)
-            
-            # Reply to user and notify relevant groups/users
-            if created_task:
-                reply_message_text = f"Task '{topic}' ได้รับการบันทึกแล้ว! (ID: {created_task.get('id')})"
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text=reply_message_text)
-                )
-                
-                # Notify Admin Group and Technician Group about the new task
-                new_task_notification_text = f"งานใหม่ถูกสร้าง: {topic}\nลูกค้า: {customer}\nID สำหรับสรุปงาน: {created_task.get('id')}\n(ใช้คำสั่ง 'complete {created_task.get('id')}: สรุป | อุปกรณ์ | เวลา')"
-                
-                recipients_for_new_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID] 
-                send_message_to_recipients(TextSendMessage(text=new_task_notification_text), recipients_for_new_task)
-            else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เกิดข้อผิดพลาดในการสร้าง Task กรุณาลองใหม่"))
-
-        except Exception as e:
-            app.logger.error(f"Error processing 'task:' command: {e}")
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|ที่อยู่|วันเวลา_นัดหมาย(YYYY-MM-DD HH:MM)|ละติจูด,ลองจิจูด|รายละเอียด'"))
-    
-    # Command for technician to complete and summarize a task:
-    # Format: complete <Google_Task_ID>: สรุปผลการทำงาน | รายการอุปกรณ์ที่ใช้ | ระยะเวลาที่ทำเสร็จ
-    elif text_message.lower().startswith("complete "):
-        try:
-            command_body = text_message[len("complete "):].strip()
-            
-            parts_colon = command_body.split(':', 1)
-            google_task_id = parts_colon[0].strip()
-
-            work_summary = ""
-            equipment_used = ""
-            time_taken = ""
-
-            if len(parts_colon) > 1:
-                summary_detail = parts_colon[1].strip()
-                summary_parts = summary_detail.split('|', 2)
-                
-                work_summary = summary_parts[0].strip() if len(summary_parts) > 0 else ""
-                equipment_used = summary_parts[1].strip() if len(summary_parts) > 1 else ""
-                time_taken = summary_parts[2].strip() if len(summary_parts) > 2 else ""
-            
-            summary_notes_text = f"\n\n--- สรุปงานโดยช่าง ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}) ---\n" \
-                                 f"สรุปผลการทำงาน: {work_summary or '-'}\n" \
-                                 f"รายการอุปกรณ์ที่ใช้: {equipment_used or '-'}\n" \
-                                 f"ระยะเวลาที่ทำเสร็จ: {time_taken or '-'}\n"
-            
-            service = get_google_tasks_service()
-            if service:
-                task_list_id = '@default'
-                try:
-                    existing_task = service.tasks().get(tasklist=task_list_id, task=google_task_id).execute()
-                except HttpError as e:
-                    if e.resp.status == 404:
-                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ไม่พบ Task ID: {google_task_id}"))
-                        app.logger.warning(f"Task ID {google_task_id} not found for complete command.")
-                        return
-                    else:
-                        raise e # Re-raise other HTTP errors
-
-                current_notes = existing_task.get('notes', '')
-                new_notes = current_notes + summary_notes_text if current_notes else summary_notes_text
-                
-                updated_task = update_google_task(
-                    task_id=google_task_id,
-                    notes=new_notes,
-                    status='completed'
-                )
-
-                if updated_task:
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"งาน '{updated_task.get('title', 'N/A')}' (ID: {google_task_id}) ได้รับการสรุปและทำเครื่องหมายว่าเสร็จสิ้นแล้ว!"))
-
-                    # Send summary report to relevant LINE groups/users
-                    admin_report_message_text = f"--- รายงานสรุปงานจากช่าง (LINE) ---\n" \
-                                               f"Task ID: {google_task_id}\n" \
-                                               f"หัวข้อ: {updated_task.get('title', 'N/A')}\n" \
-                                               f"สรุปผล: {work_summary or '-'}\n" \
-                                               f"อุปกรณ์ที่ใช้: {equipment_used or '-'}\n" \
-                                               f"ระยะเวลา: {time_taken or '-'}\n" \
-                                               f"เวลาสรุป: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n" \
-                                               f"สถานะ: เสร็จสิ้น\n"
-                    
-                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID] 
-                    send_message_to_recipients(TextSendMessage(text=admin_report_message_text), recipients_for_summary_report)
-                else:
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่สามารถอัปเดต Task ใน Google Tasks ได้."))
-            else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้"))
-
-        except Exception as e:
-            app.logger.error(f"Error processing 'complete' command: {e}")
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="รูปแบบคำสั่งไม่ถูกต้องหรือเกิดข้อผิดพลาด. โปรดใช้รูปแบบ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'"))
-    
-    # Reply for unrecognized commands
-    else:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="กรุณาส่งข้อความในรูปแบบที่ถูกต้อง เช่น 'task:หัวข้อ|ลูกค้า|เบอร์โทร...' หรือ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")
-        )
-
-# --- Main execution block ---
+# --- บล็อกการดำเนินการหลัก ---
 if __name__ == '__main__':
-    # Ensure uploads directory exists on local run
+    # ตรวจสอบให้แน่ใจว่าโฟลเดอร์อัปโหลดมีอยู่เมื่อรันในเครื่อง
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
     
-    # This block is for local development only
-    # On Render, the app is run by gunicorn
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+    # บล็อกนี้สำหรับการพัฒนาในเครื่องเท่านั้น
+    # บน Render, แอปจะถูกรันโดย Gunicorn หรือ WSGI server ที่คล้ายกัน
+    # ดังนั้น app.run() จะไม่ถูกเรียก
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
