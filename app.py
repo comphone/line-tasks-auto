@@ -13,12 +13,11 @@ from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
 
-# [FIX] Corrected LINE Bot SDK imports for Flex Messages
+# [FINAL FIX] Corrected LINE Bot SDK imports for Flex Messages
 from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest,
-    FlexMessage
+    Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest, FlexMessage
 )
-from linebot.v3.template import (
+from linebot.v3.models import (
     BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
     ButtonComponent, SeparatorComponent, URIAction
 )
