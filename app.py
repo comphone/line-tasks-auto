@@ -231,7 +231,7 @@ def get_google_tasks_service():
                 try:
                     with open('token.json', 'w') as token:
                         token.write(creds.to_json())
-                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") 
+                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") # เพิ่มคำเตือน
                 except Exception as e:
                     app.logger.error(f"Error saving local token.json: {e}")
 
@@ -502,11 +502,11 @@ def send_daily_reports():
             else:
                 app.logger.info("No appointments scheduled for today.")
     except Exception as e:
-        app.logger.error(f"Error in send_daily_reports function: {e}", exc_info=True) # Catch all exceptions in this function
+        app.logger.error(f"Error in send_daily_reports function: {e}", exc_info=True) 
 
 def parse_tech_report_from_notes(notes):
     """
-    แยกวิเคราะห์ข้อมูลรายงานช่างและ URL ไฟล์แนบจาก notes ที่มีโครงสร้าง JSON.
+    Parses technician report data and attachment URLs from structured JSON in notes.
     """
     tech_report_data = {
         'summary_date': None,
@@ -516,70 +516,70 @@ def parse_tech_report_from_notes(notes):
         'next_appointment': None,
         'attachment_urls': []
     }
-    notes_display = notes # ส่วนของ notes ที่จะแสดงผล ไม่รวม JSON
+    notes_display = notes # Part of notes to display, excluding JSON
 
-    # ค้นหาส่วน JSON ที่เราฝังไว้
+    # Find the embedded JSON section
     tech_report_match = re.search(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
     if tech_report_match:
         json_str = tech_report_match.group(1)
         try:
             data = json.loads(json_str)
             tech_report_data.update(data)
-            # ลบส่วน JSON ออกจาก notes_display
+            # Remove the JSON section from notes_display
             notes_display = notes.replace(tech_report_match.group(0), "").strip()
         except json.JSONDecodeError as e:
             app.logger.error(f"Error decoding JSON from notes: {e}")
-            # ถ้าถอดรหัส JSON ไม่ได้ ให้ถือว่าไม่มีข้อมูล tech report ที่ถูกต้อง
+            # If JSON decoding fails, assume no valid tech report data
             tech_report_data = {
                 'summary_date': None, 'work_summary': None, 'equipment_used': None,
                 'time_taken': None, 'next_appointment': None, 'attachment_urls': []
             }
-            notes_display = notes # ถ้ามี error ใน JSON ให้แสดง notes เดิมทั้งหมดไปก่อน
+            notes_display = notes # If there's a JSON error, display all original notes
             
-    # แยกวิเคราะห์ URL ไฟล์แนบที่อาจจะอยู่ในรูปแบบเดิม (ถ้าไม่มี JSON) หรือเป็นส่วนเสริม
-    # ตรวจสอบว่าไม่ซ้ำกับที่อยู่ใน tech_report_data['attachment_urls']
+    # Extract legacy attachment URLs (if no JSON) or as supplementary
+    # Ensure they are not duplicates of those already in tech_report_data['attachment_urls']
     legacy_attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xls|xlsx|pptx|ppt|zip|rar|txt)', notes_display)
     
-    # รวม URL ทั้งหมดและกำจัด URL ที่ซ้ำกัน
+    # Combine all URLs and remove duplicates
     all_attachment_urls = list(set(tech_report_data['attachment_urls'] + legacy_attachment_urls))
     
     return tech_report_data, all_attachment_urls, notes_display
 
 def parse_google_task_dates(task_item):
     """
-    แยกวิเคราะห์และจัดรูปแบบวันที่ 'created', 'due', 'completed' จากออบเจกต์ Google Tasks API
-    และเพิ่มฟิลด์ที่จัดรูปแบบแล้ว ('_formatted') ไปยัง dictionary ของ task_item
+    Parses and formats 'created', 'due', 'completed' dates from a Google Tasks API item.
+    Adds formatted fields ('_formatted') to the task_item dictionary.
     """
-    parsed_task = task_item.copy() # ทำสำเนาเพื่อหลีกเลี่ยงการแก้ไขต้นฉบับ
+    parsed_task = task_item.copy() # Make a copy to avoid modifying original
     
-    # จัดรูปแบบวันที่ 'created'
+    # Format 'created' date
     if 'created' in parsed_task:
         try:
-            created_dt = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
-            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            parsed_task['created_formatted'] = (created_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+            created_dt_utc = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
+            created_dt_thai = created_dt_utc.astimezone(THAILAND_TZ) # Convert to Thai local time (+7 UTC) for display
+            parsed_task['created_formatted'] = created_dt_thai.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['created_formatted'] = 'N/A'
     else:
         parsed_task['created_formatted'] = 'N/A'
 
-    # จัดรูปแบบวันที่ 'due'
+    # Format 'due' date
     if 'due' in parsed_task:
         try:
-            due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
-            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            parsed_task['due_formatted'] = (due_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
+            due_dt_utc = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
+            due_dt_thai = due_dt_utc.astimezone(THAILAND_TZ) # Convert to Thai local time (+7 UTC) for display
+            parsed_task['due_formatted'] = due_dt_thai.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             parsed_task['due_formatted'] = 'N/A'
     else:
         parsed_task['due_formatted'] = 'N/A'
 
-    # จัดรูปแบบวันที่ 'completed'
+    # Format 'completed' date
     if 'completed' in parsed_task:
         try:
-            completed_dt = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
-            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            parsed_task['completed_formatted'] = (completed_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+            completed_dt_utc = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
+            completed_dt_thai = completed_dt_utc.astimezone(THAILAND_TZ) # Convert to Thai local time (+7 UTC) for display
+            parsed_task['completed_formatted'] = completed_dt_thai.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['completed_formatted'] = 'N/A'
     else:
@@ -670,10 +670,9 @@ def handle_message(event):
                     due_date = None
                     if len(parts) > 3 and parts[3].strip():
                         try:
-                            # รับเวลาท้องถิ่นไทย แล้วแปลงเป็น UTC สำหรับ Google Tasks
                             due_dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M"))
                             due_dt_utc = due_dt_local.astimezone(pytz.utc)
-                            due_date = due_dt_utc.isoformat() # ISO format พร้อม timezone
+                            due_date = due_dt_utc.isoformat()
                             notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
                         except ValueError:
                             line_messaging_api.reply_message(
