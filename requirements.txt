@@ -7,3 +7,4 @@ google-auth-oauthlib==1.2.0
 gunicorn==22.0.0
 python-dotenv
 pytz
+firebase-admin
