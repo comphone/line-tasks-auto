@@ -13,9 +13,11 @@ from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
 
-# LINE & Google API imports
+# [FIX] Updated LINE Bot SDK imports
 from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest,
+    Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
+)
+from linebot.v3.messaging.models import (
     FlexMessage, FlexContainer, BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
     ButtonComponent, SeparatorComponent, URIAction
 )
@@ -60,7 +62,6 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
 # --- Mock Settings Functions (Placeholders) ---
-# In a real application, this data would come from a database like Firestore.
 def get_app_settings():
     """Mock function to get app settings."""
     app.logger.info("Using MOCK get_app_settings()")
