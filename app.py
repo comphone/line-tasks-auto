@@ -709,10 +709,9 @@ def update_task_details(task_id):
             try:
                 next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
                 next_app_dt_utc = next_app_dt_local.astimezone(pytz.utc)
-                next_appointment_gmt = next_app_dt_utc.isoformat() # ISO format พร้อม timezone
+                next_appointment_gmt = next_app_dt_utc.isoformat()
             except ValueError:
                 app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
-                # สามารถเพิ่ม flash message ให้ผู้ใช้ทราบได้
         
         updated_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
