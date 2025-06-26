@@ -1,1 +1,0 @@
-// JavaScript to auto-close datepicker
