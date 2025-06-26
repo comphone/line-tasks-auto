@@ -558,9 +558,10 @@ def parse_google_task_dates(task_item):
     # จัดรูปแบบวันที่ 'created'
     if 'created' in parsed_task:
         try:
-            created_dt = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
-            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            parsed_task['created_formatted'] = (created_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+            # แปลงเป็น aware datetime object (UTC) แล้วแปลงเป็นเวลาท้องถิ่นไทย
+            created_dt_utc = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
+            created_dt_thai = created_dt_utc.astimezone(THAILAND_TZ)
+            parsed_task['created_formatted'] = created_dt_thai.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['created_formatted'] = 'N/A'
     else:
@@ -569,9 +570,10 @@ def parse_google_task_dates(task_item):
     # จัดรูปแบบวันที่ 'due'
     if 'due' in parsed_task:
         try:
-            due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
+            due_dt_utc = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
             # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            parsed_task['due_formatted'] = (due_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
+            due_dt_thai = due_dt_utc.astimezone(THAILAND_TZ)
+            parsed_task['due_formatted'] = due_dt_thai.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             parsed_task['due_formatted'] = 'N/A'
     else:
@@ -580,9 +582,10 @@ def parse_google_task_dates(task_item):
     # จัดรูปแบบวันที่ 'completed'
     if 'completed' in parsed_task:
         try:
-            completed_dt = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
+            completed_dt_utc = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
             # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            parsed_task['completed_formatted'] = (completed_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+            completed_dt_thai = completed_dt_utc.astimezone(THAILAND_TZ)
+            parsed_task['completed_formatted'] = completed_dt_thai.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['completed_formatted'] = 'N/A'
     else:
@@ -613,7 +616,7 @@ def create_task_page():
             due_date_gmt = None
             if due_date_str:
                 try:
-                    # แปลงรูปแบบ datetime-local (เช่น '2025-06-25T14:30') เป็นออบเจกต์ datetime ของ Python
+                    # แปลงรูปแบบ datetime-local (เช่น '2025-06-25T14:30') เป็นออบเจกต์ datetime ของ Python (เป็นเวลาท้องถิ่น)
                     due_dt_local = datetime.datetime.fromisoformat(due_date_str)
                     # สมมติว่าอินพุตเป็นเวลาท้องถิ่นไทย (+7 UTC), แปลงเป็น UTC สำหรับ Google Tasks
                     due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
@@ -664,7 +667,7 @@ def update_task_details(task_id):
         return "ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้", 500
 
     try:
-        task_list_id = '@default'
+        task_list_id = GOOGLE_TASKS_LIST_ID
         google_task_raw = service.tasks().get(tasklist=task_list_id, task=task_id).execute()
         
         # จัดรูปแบบวันที่และการแสดงผลสถานะสำหรับเทมเพลต
@@ -813,8 +816,16 @@ def summary():
             # ตรวจสอบงานที่ค้างชำระ (Overdue)
             if parsed_task['due_formatted'] != 'N/A':
                 try:
+                    # แปลงเป็น aware datetime object (UTC) แล้วแปลงเป็นเวลาท้องถิ่นไทย
                     due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).replace(tzinfo=None)
-                    if due_dt_utc < current_time_thai: # เปรียบเทียบเวลาใน timezone เดียวกัน
+                    
+                    # ทำให้ due_dt_utc เป็น aware ใน Timezone ไทยเพื่อเปรียบเทียบกับ current_time_thai
+                    # หรือเปรียบเทียบ current_time_thai (aware) กับ due_dt_utc (aware) ที่แปลงเป็น UTC
+                    # การแปลง current_time_thai ให้เป็น naive อาจทำให้เกิดปัญหาเดิมอีก
+                    # ให้ due_dt_utc ถูกทำให้ aware ใน UTC ก่อนเปรียบเทียบ
+                    due_dt_utc_aware = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).astimezone(pytz.utc)
+
+                    if due_dt_utc_aware < current_time_thai.astimezone(pytz.utc): # เปรียบเทียบ UTC aware กับ UTC aware
                         is_overdue = True
                         parsed_task['display_status'] = 'ค้างชำระ' # ค้างชำระ
                         task_status_counts['overdue'] += 1
