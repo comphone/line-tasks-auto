@@ -164,8 +164,7 @@ def save_app_settings(settings_data):
         app.logger.error("Firestore client not available. Cannot save settings.")
         return False
 
-# --- ฟังก์ชันตัวช่วย Google Tasks (ย้ายขึ้นมาด้านบน) ---
-# เพื่อให้ฟังก์ชันอื่น ๆ ที่จำเป็นต้องใช้สามารถเรียกได้
+# --- ฟังก์ชันตัวช่วย Google Tasks ---
 def get_google_tasks_service():
     """
     รับรองความถูกต้องด้วย Google Tasks API.
@@ -558,10 +557,9 @@ def parse_google_task_dates(task_item):
     # จัดรูปแบบวันที่ 'created'
     if 'created' in parsed_task:
         try:
-            # แปลงเป็น aware datetime object (UTC) แล้วแปลงเป็นเวลาท้องถิ่นไทย
-            created_dt_utc = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
-            created_dt_thai = created_dt_utc.astimezone(THAILAND_TZ)
-            parsed_task['created_formatted'] = created_dt_thai.strftime("%Y-%m-%d %H:%M:%S")
+            created_dt = datetime.datetime.fromisoformat(parsed_task['created'].replace('Z', '+00:00'))
+            # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
+            parsed_task['created_formatted'] = (created_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['created_formatted'] = 'N/A'
     else:
@@ -570,10 +568,9 @@ def parse_google_task_dates(task_item):
     # จัดรูปแบบวันที่ 'due'
     if 'due' in parsed_task:
         try:
-            due_dt_utc = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
+            due_dt = datetime.datetime.fromisoformat(parsed_task['due'].replace('Z', '+00:00'))
             # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            due_dt_thai = due_dt_utc.astimezone(THAILAND_TZ)
-            parsed_task['due_formatted'] = due_dt_thai.strftime("%Y-%m-%d %H:%M")
+            parsed_task['due_formatted'] = (due_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
         except ValueError:
             parsed_task['due_formatted'] = 'N/A'
     else:
@@ -582,16 +579,429 @@ def parse_google_task_dates(task_item):
     # จัดรูปแบบวันที่ 'completed'
     if 'completed' in parsed_task:
         try:
-            completed_dt_utc = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
+            completed_dt = datetime.datetime.fromisoformat(parsed_task['completed'].replace('Z', '+00:00'))
             # แปลงเป็นเวลาท้องถิ่นไทย (+7 UTC) สำหรับการแสดงผล
-            completed_dt_thai = completed_dt_utc.astimezone(THAILAND_TZ)
-            parsed_task['completed_formatted'] = completed_dt_thai.strftime("%Y-%m-%d %H:%M:%S")
+            parsed_task['completed_formatted'] = (completed_dt + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             parsed_task['completed_formatted'] = 'N/A'
     else:
         parsed_task['completed_formatted'] = 'N/A'
         
     return parsed_task
+
+# --- Flask Routes ---
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body received by /callback: " + body) # Updated log
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        app.logger.error("Invalid LINE signature error in /callback. Check LINE_CHANNEL_SECRET.") # Added log for specific error
+        abort(400)
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred during handler.handle in /callback: {e}", exc_info=True) # Added general error log
+        abort(500) # Abort with 500 for general server errors
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    app.logger.info("--- Entering handle_message function ---") # New log to confirm entry
+    try:
+        text_message = event.message.text.strip() # Strip whitespace for cleaner matching
+        app.logger.info(f"Received message: '{text_message}'") 
+        app.logger.info(f"Message source type: {event.source.type}") 
+
+        # ตรวจสอบว่าข้อความมาจากกลุ่มหรือไม่
+        is_from_group = event.source.type == 'group'
+        
+        # Define a default reply for unrecognized commands in private chat
+        default_private_reply = (
+            "สวัสดีครับ คอมโฟน แอนด์ อิเลคโทรนิคส์ ยินดีให้บริการงานบริการซ่อมครับ 🙏\n"
+            "หากคุณลูกค้าต้องการสอบถามข้อมูล หรือแจ้งงานซ่อม สามารถฝากข้อความไว้ได้เลยนะครับ ทางร้านจะรีบติดต่อกลับโดยเร็วที่สุดครับ"
+            "\n\n📞 ติดต่อสอบถามเพิ่มเติมได้ที่:\n"
+            "  โทรศัพท์: 0981929199, 043571779"
+            "\n🌐 เยี่ยมชมเพจของเรา: https://www.facebook.com/comphone101"
+        )
+
+        # --- Handle "comphone" or "วิธีใช้" command for help ---
+        # This check happens BEFORE differentiating between group/private to ensure it always works.
+        if text_message.lower() == "comphone" or text_message.lower() == "วิธีใช้":
+            app.logger.info(f"Detected 'comphone' or 'วิธีใช้' command from {event.source.type}. Sending help message.")
+            help_message = (
+                "📋 คู่มือคำสั่งสำหรับ Comphone Service Bot:\n\n"
+                "➡️ สร้างงานใหม่:\n"
+                "  `task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่`\n"
+                "  หรือ `งานใหม่:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่`\n"
+                "  ตัวอย่าง: `task:ซ่อมจอแตก|คุณสมชาย|0812345678|2025-07-30 14:00|บ้านลูกค้า`\n\n"
+                "➡️ สรุปและปิดงาน:\n"
+                "  `complete <Google_Task_ID>:สรุปผล|อุปกรณ์ที่ใช้|ระยะเวลา`\n"
+                "  หรือ `เสร็จสิ้น <Google_Task_ID>:สรุปผล|อุปกรณ์ที่ใช้|ระยะเวลา`\n"
+                "  ตัวอย่าง: `complete Abc123Xyz:เปลี่ยนแบตเตอรี่|แบตเตอรี่ใหม่,ไขควง|30นาที`\n\n"
+                "➡️ ดึงรายการงานค้าง:\n"
+                "  `งานค้าง`\n\n"
+                "➡️ ดูสรุปงานประจำวัน (สร้าง/เสร็จสิ้นวันนี้):\n"
+                "  `สรุปงาน`\n\n"
+                "💡 หากต้องการอัปเดตงานเพิ่มเติม เช่น เพิ่มรูปภาพ หรือกำหนดวันนัดหมายใหม่\n"
+                "   โปรดใช้ลิงก์ที่ได้รับเมื่อสร้างงานหรือลิงก์อัปเดตงานบนหน้าเว็บ."
+            )
+            line_messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=help_message)]
+                )
+            )
+            app.logger.info(f"Sent help message to {event.source.type}.")
+            return # Exit the function after handling the help command
+
+        # --- Logic for Group Chats ---
+        if is_from_group:
+            app.logger.info(f"Processing message in a GROUP chat: '{text_message}'")
+            # Service commands for groups
+            if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
+                command_content = text_message[len("task:"):].strip() if text_message.lower().startswith("task:") else text_message[len("งานใหม่:"):].strip()
+                parts = command_content.split('|')
+                if len(parts) >= 3:
+                    title = parts[0].strip()
+                    customer_name = parts[1].strip()
+                    customer_phone = parts[2].strip()
+                    notes_for_task = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
+                    due_date = None
+                    if len(parts) > 3 and parts[3].strip():
+                        try:
+                            # รับเวลาท้องถิ่นไทย แล้วแปลงเป็น UTC สำหรับ Google Tasks
+                            due_dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M"))
+                            due_dt_utc = due_dt_local.astimezone(pytz.utc)
+                            due_date = due_dt_utc.isoformat() # ISO format พร้อม timezone
+                            notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
+                        except ValueError:
+                            line_messaging_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[TextMessage(text="ในกลุ่ม: รูปแบบวันที่/เวลาไม่ถูกต้อง. โปรดใช้YYYY-MM-DD HH:MM สำหรับ 'task:' หรือ 'งานใหม่:'")]
+                                )
+                            )
+                            return
+                    if len(parts) > 4 and parts[4].strip():
+                        location = parts[4].strip()
+                        notes_for_task += f"\nสถานที่: {location}"
+
+                    task = create_google_task(title, notes=notes_for_task, due=due_date)
+                    if task:
+                        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+                        recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
+                        task_message = TextMessage(text=(
+                            f"งานใหม่ถูกสร้างแล้ว!\n"
+                            f"🎯 หัวข้อ: {task.get('title')}\n"
+                            f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {update_url}\n"
+                            f"(ID งาน: {task.get('id')})"
+                        ))
+                        send_message_to_recipients(task_message, recipients_for_new_task)
+                        app.logger.info(f"Task '{title}' created in Google Tasks via group command. Notification sent to admin/tech groups.")
+                    else:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="ในกลุ่ม: ไม่สามารถสร้าง Task ใน Google Tasks ได้")]
+                            )
+                        )
+                else:
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'task:' หรือ 'งานใหม่:' ไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
+                        )
+                    )
+
+            elif text_message.lower().startswith("complete ") or text_message.lower().startswith("เสร็จสิ้น "):
+                command_content = text_message[len("complete "):].strip() if text_message.lower().startswith("complete ") else text_message[len("เสร็จสิ้น "):].strip()
+                try:
+                    command_parts = command_content.split(':', 1)
+                    if len(command_parts) > 1:
+                        task_id = command_parts[0].strip()
+                        summary_parts = command_content.split('|')
+                        if len(summary_parts) >= 3:
+                            summary_result = summary_parts[0].strip()
+                            equipment_used = summary_parts[1].strip()
+                            time_taken = summary_parts[2].strip()
+
+                            service = get_google_tasks_service()
+                            if service:
+                                # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+                                current_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+                                current_notes = current_task.get('notes', '')
+                                old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
+                                tech_report_data = {
+                                    'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"), # บันทึกเวลาไทย
+                                    'work_summary': summary_result,
+                                    'equipment_used': equipment_used,
+                                    'time_taken': time_taken,
+                                    'next_appointment': old_tech_report.get('next_appointment'),
+                                    'attachment_urls': old_attachment_urls
+                                }
+                                new_notes_content = json.dumps(tech_report_data, ensure_ascii=False)
+                                new_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
+                                new_notes = new_notes.strip()
+
+                                updated_task = update_google_task(task_id, notes=new_notes, status='completed')
+                                if updated_task:
+                                    line_messaging_api.reply_message(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[TextMessage(text=f"ในกลุ่ม: อัปเดตงาน ID {task_id} เป็น 'เสร็จสิ้น' พร้อมสรุปผลเรียบร้อยแล้ว")]
+                                        )
+                                    )
+                                    report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
+                                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
+                                    send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                                    app.logger.info(f"Task '{task_id}' updated to 'completed' in Google Tasks via group command. Notification sent to admin/tech groups.")
+                                else:
+                                    line_messaging_api.reply_message(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[TextMessage(text="ในกลุ่ม: ไม่สามารถอัปเดต Task ใน Google Tasks ได้.")]
+                                        )
+                                    )
+                            else:
+                                line_messaging_api.reply_message(
+                                    ReplyMessageRequest(
+                                        reply_token=event.reply_token,
+                                        messages=[TextMessage(text="ในกลุ่ม: ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
+                                    )
+                                )
+                        else:
+                            line_messaging_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                                )
+                            )
+                    else:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="ในกลุ่ม: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดระบุ Task ID และสรุปผล เช่น 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                            )
+                        )
+                except Exception as e:
+                    app.logger.error(f"Error processing 'complete' command in group: {e}", exc_info=True) # Added exc_info
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="ในกลุ่ม: เกิดข้อผิดพลาดในการประมวลผลคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:'. โปรดตรวจสอบรูปแบบให้ถูกต้อง")]
+                        )
+                    )
+
+            elif text_message.lower() == "งานค้าง":
+                app.logger.info(f"Detected 'งานค้าง' command in group.")
+                outstanding_tasks = get_daily_outstanding_tasks()
+                reply_text = "--- รายงานงานค้าง ---\n"
+                if outstanding_tasks:
+                    titles = [task.get('title', 'N/A') for task in outstanding_tasks]
+                    reply_text += "หัวข้อ: " + ", ".join(titles)
+                else:
+                    reply_text += "ไม่มีงานค้าง"
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+                app.logger.info(f"Replied with outstanding tasks to group.")
+
+            elif text_message.lower() == "สรุปงาน":
+                app.logger.info(f"Detected 'สรุปงาน' command in group.")
+                daily_tasks = get_daily_summary_tasks()
+                reply_text = "--- สรุปงานประจำวัน ---\n"
+                if daily_tasks:
+                    titles = [task.get('title', 'N/A') for task in daily_tasks]
+                    reply_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
+                else:
+                    reply_text += "ไม่มีกิจกรรมงานในวันนี้"
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+                app.logger.info(f"Replied with daily summary to group.")
+            
+            else:
+                # ถ้าในกลุ่มและไม่ใช่คำสั่งงานเซอร์วิสที่รู้จัก (รวมถึง 'comphone' ซึ่งถูกจัดการด้านบน), ให้ตอบกลับด้วยข้อความทั่วไปสำหรับกลุ่ม
+                # หรือจะเงียบไปเลยก็ได้ ถ้าไม่ต้องการให้ตอบอะไรในกลุ่มเลยนอกจากคำสั่ง
+                # ในที่นี้ ผมจะให้เงียบไปเลยเพื่อไม่ให้รบกวน
+                app.logger.info(f"Ignored non-service message in group: '{text_message}'. No reply sent.")
+                pass
+
+        # --- Logic for Private Chats ---
+        else: # not is_from_group (i.e., private chat)
+            app.logger.info(f"Processing message in a PRIVATE chat: '{text_message}'")
+            # ถ้าเป็นคำสั่งงานเซอร์วิสในแชทส่วนตัว (task, complete, งานค้าง, สรุปงาน)
+            if text_message.lower().startswith("task:") or text_message.lower().startswith("งานใหม่:"):
+                command_content = text_message[len("task:"):].strip() if text_message.lower().startswith("task:") else text_message[len("งานใหม่:"):].strip()
+                parts = command_content.split('|')
+                if len(parts) >= 3:
+                    title = parts[0].strip()
+                    customer_name = parts[1].strip()
+                    customer_phone = parts[2].strip()
+                    notes_for_task = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
+                    due_date = None
+                    if len(parts) > 3 and parts[3].strip():
+                        try:
+                            # รับเวลาท้องถิ่นไทย แล้วแปลงเป็น UTC สำหรับ Google Tasks
+                            due_dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M"))
+                            due_dt_utc = due_dt_local.astimezone(pytz.utc)
+                            due_date = due_dt_utc.isoformat() # ISO format พร้อม timezone
+                            notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
+                        except ValueError:
+                            line_messaging_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบวันที่/เวลาไม่ถูกต้อง. โปรดใช้YYYY-MM-DD HH:MM สำหรับ 'task:' หรือ 'งานใหม่:'")]
+                                )
+                            )
+                            return
+                    if len(parts) > 4 and parts[4].strip():
+                        location = parts[4].strip()
+                        notes_for_task += f"\nสถานที่: {location}"
+
+                    task = create_google_task(title, notes=notes_for_task, due=due_date)
+                    if task:
+                        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+                        recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID] # Still push to these groups
+                        task_message = TextMessage(text=(
+                            f"งานใหม่ถูกสร้างแล้ว!\n"
+                            f"🎯 หัวข้อ: {task.get('title')}\n"
+                            f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {update_url}\n"
+                            f"(ID งาน: {task.get('id')})"
+                        ))
+                        send_message_to_recipients(task_message, recipients_for_new_task)
+                        
+                        # Always reply directly in private chat for confirmation
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=f"สร้างงานเรียบร้อยแล้ว: {task.get('title')} (ID: {task.get('id')})\nคุณสามารถดูและอัปเดตงานได้ที่: {update_url}")]
+                            )
+                        )
+                        app.logger.info(f"Task '{title}' created in Google Tasks via private command. Confirmation sent to user.")
+                    else:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                messages=[TextMessage(text="ในแชทส่วนตัว: ไม่สามารถสร้าง Task ใน Google Tasks ได้")]
+                            )
+                        )
+                else:
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'task:' หรือ 'งานใหม่:' ไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
+                        )
+                    )
+
+            elif text_message.lower().startswith("complete ") or text_message.lower().startswith("เสร็จสิ้น "):
+                command_content = text_message[len("complete "):].strip() if text_message.lower().startswith("complete ") else text_message[len("เสร็จสิ้น "):].strip()
+                try:
+                    command_parts = command_content.split(':', 1)
+                    if len(command_parts) > 1:
+                        task_id = command_parts[0].strip()
+                        summary_parts = command_content.split('|')
+                        if len(summary_parts) >= 3:
+                            summary_result = summary_parts[0].strip()
+                            equipment_used = summary_parts[1].strip()
+                            time_taken = summary_parts[2].strip()
+
+                            service = get_google_tasks_service()
+                            if service:
+                                # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
+                                current_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+                                current_notes = current_task.get('notes', '')
+                                old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
+                                tech_report_data = {
+                                    'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"), # บันทึกเวลาไทย
+                                    'work_summary': summary_result,
+                                    'equipment_used': equipment_used,
+                                    'time_taken': time_taken,
+                                    'next_appointment': old_tech_report.get('next_appointment'),
+                                    'attachment_urls': old_attachment_urls
+                                }
+                                new_notes_content = json.dumps(tech_report_data, ensure_ascii=False)
+                                new_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
+                                new_notes = new_notes.strip()
+
+                                updated_task = update_google_task(task_id, notes=new_notes, status='completed')
+                                if updated_task:
+                                    line_messaging_api.reply_message(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[TextMessage(text=f"ในแชทส่วนตัว: อัปเดตงาน ID {task_id} เป็น 'เสร็จสิ้น' พร้อมสรุปผลเรียบร้อยแล้ว")]
+                                    )
+                                    )
+                                    report_summary_message_obj = TextMessage(text=f"งาน ID {task_id} ได้รับการสรุปและเสร็จสิ้นแล้ว:\nหัวข้อ: {updated_task.get('title')}\nสรุปผล: {summary_result}\nอุปกรณ์: {equipment_used}\nเวลาที่ใช้: {time_taken}")
+                                    recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
+                                    send_message_to_recipients(report_summary_message_obj, recipients_for_summary_report)
+                                    app.logger.info(f"Task '{task_id}' updated to 'completed' in Google Tasks via private command. Confirmation sent to user.")
+                                else:
+                                    line_messaging_api.reply_message(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[TextMessage(text="ในแชทส่วนตัว: ไม่สามารถอัปเดต Task ใน Google Tasks ได้.")]
+                                        )
+                                    )
+                            else:
+                                line_messaging_api.reply_message(
+                                    ReplyMessageRequest(
+                                        reply_token=event.reply_token,
+                                        messages=[TextMessage(text="ในแชทส่วนตัว: ไม่สามารถเชื่อมต่อ Google Tasks ได้ในขณะนี้")]
+                                    )
+                                )
+                    else:
+                        line_messaging_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:' ไม่ถูกต้อง. โปรดใช้ 'complete <Google_Task_ID>: สรุปผล | อุปกรณ์ | ระยะเวลา'")]
+                        )
+                    )
+                except Exception as e:
+                    app.logger.error(f"Error processing 'complete' command in private chat: {e}", exc_info=True) # Added exc_info
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="ในแชทส่วนตัว: เกิดข้อผิดพลาดในการประมวลผลคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:'. โปรดตรวจสอบรูปแบบให้ถูกต้อง")]
+                        )
+                    )
+
+            elif text_message.lower() == "งานค้าง":
+                app.logger.info(f"Detected 'งานค้าง' command in private chat.")
+                outstanding_tasks = get_daily_outstanding_tasks()
+                reply_text = "--- รายงานงานค้าง ---\n"
+                if outstanding_tasks:
+                    titles = [task.get('title', 'N/A') for task in outstanding_tasks]
+                    reply_text += "หัวข้อ: " + ", ".join(titles)
+                else:
+                    reply_text += "ไม่มีงานค้าง"
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+                app.logger.info(f"Replied with outstanding tasks to private chat.")
+
+            elif text_message.lower() == "สรุปงาน":
+                app.logger.info(f"Detected 'สรุปงาน' command in private chat.")
+                daily_tasks = get_daily_summary_tasks()
+                reply_text = "--- สรุปงานประจำวัน ---\n"
+                if daily_tasks:
+                    titles = [task.get('title', 'N/A') for task in daily_tasks]
+                    reply_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
+                else:
+                    reply_text += "ไม่มีกิจกรรมงานในวันนี้"
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+                app.logger.info(f"Replied with daily summary to private chat.")
+            
+            else:
+                # If in private chat and not a recognized service command (including 'comphone' which is handled above), send the default private greeting
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=default_private_reply)]
+                    )
+                )
+                app.logger.info(f"Replied with general greeting to private chat: '{text_message}'.")
+
 
 # --- Flask Routes ---
 
@@ -616,12 +1026,10 @@ def create_task_page():
             due_date_gmt = None
             if due_date_str:
                 try:
-                    # แปลงรูปแบบ datetime-local (เช่น '2025-06-25T14:30') เป็นออบเจกต์ datetime ของ Python (เป็นเวลาท้องถิ่น)
                     due_dt_local = datetime.datetime.fromisoformat(due_date_str)
-                    # สมมติว่าอินพุตเป็นเวลาท้องถิ่นไทย (+7 UTC), แปลงเป็น UTC สำหรับ Google Tasks
-                    due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
-                    due_date_gmt = due_dt_utc.isoformat() + 'Z' # เพิ่ม Z สำหรับ UTC
-                    notes += f"\nกำหนดส่ง: {due_date_str.replace('T', ' ')}" # เก็บวันที่ที่จัดรูปแบบเดิมไว้ใน notes
+                    due_dt_utc = THAILAND_TZ.localize(due_dt_local).astimezone(pytz.utc)
+                    due_date_gmt = due_dt_utc.isoformat()
+                    notes += f"\nกำหนดส่ง: {due_date_str.replace('T', ' ')}"
                 except ValueError:
                     app.logger.error(f"Invalid due date format from form: {due_date_str}")
                     pass
@@ -631,28 +1039,22 @@ def create_task_page():
             created_task = create_google_task(title, notes=notes, due=due_date_gmt)
             if created_task:
                 app.logger.info(f"Task created via web form: {created_task.get('title')}")
-                # ส่งการแจ้งเตือน LINE หลังจากสร้าง Task จาก Web Form
-                # ปรับปรุงข้อความแจ้งเตือนให้กระชับและชัดเจนขึ้น
                 new_task_notification_text = (
                     f"งานใหม่ถูกสร้างจากเว็บฟอร์ม!\n"
                     f"🎯 หัวข้อ: {title}\n"
                     f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}\n"
                     f"(ID งาน: {created_task.get('id')})"
                 )
-                
-                # กำหนดผู้รับ: LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID
-                # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
                 recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
                 send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_web_task)
                 
-                return redirect(url_for('summary')) # เปลี่ยนเส้นทางไปยังหน้าสรุปงานหลังจากสร้าง Task สำเร็จ
+                return redirect(url_for('summary'))
             else:
                 app.logger.error("Failed to create task via web form.")
                 return "Failed to create task", 500
         return "Invalid command", 400
 
     else: # request.method == 'GET'
-        # สำหรับคำขอ GET ไปยังหน้า '/', แสดงฟอร์มสร้างงาน
         return render_template('create_task_form.html') 
 
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
@@ -670,27 +1072,22 @@ def update_task_details(task_id):
         task_list_id = GOOGLE_TASKS_LIST_ID
         google_task_raw = service.tasks().get(tasklist=task_list_id, task=task_id).execute()
         
-        # จัดรูปแบบวันที่และการแสดงผลสถานะสำหรับเทมเพลต
         task = parse_google_task_dates(google_task_raw)
         task['display_status'] = 'รอดำเนินการ' if task['status'] == 'needsAction' else 'เสร็จสิ้น'
         
-        # แยกข้อมูล Tech Report และ Attachment URLs จาก notes
         tech_report, attachment_urls, remaining_notes = parse_tech_report_from_notes(task.get('notes', ''))
         
-        # เพิ่มข้อมูล tech_report และ attachment_urls เข้าไปในออบเจกต์ task ที่จะส่งไปให้ template
         task['tech_report'] = tech_report
         task['attachment_urls'] = attachment_urls
-        task['notes_display'] = remaining_notes # notes ส่วนที่เหลือที่ไม่ได้เป็น JSON
+        task['notes_display'] = remaining_notes
 
-        # สำหรับค่าเริ่มต้นใน datetime-local input field
         if tech_report.get('next_appointment'):
             try:
-                # แปลง ISO format (UTC) กลับเป็น datetime object แล้วแปลงเป็นเวลาท้องถิ่นไทยสำหรับแสดงผล
                 next_app_dt_utc = datetime.datetime.fromisoformat(tech_report['next_appointment'].replace('Z', '+00:00'))
                 next_app_dt_local = next_app_dt_utc.astimezone(THAILAND_TZ)
                 task['tech_next_appointment_datetime_local'] = next_app_dt_local.strftime("%Y-%m-%dT%H:%M")
             except ValueError:
-                task['tech_next_appointment_datetime_local'] = '' # หากมีปัญหาในการแปลง
+                task['tech_next_appointment_datetime_local'] = ''
         else:
             task['tech_next_appointment_datetime_local'] = ''
 
@@ -708,7 +1105,6 @@ def update_task_details(task_id):
         new_status = request.form.get('status', task.get('status'))
         next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
 
-        # เก็บ URL ของไฟล์แนบเก่าไว้
         existing_attachment_urls = tech_report.get('attachment_urls', [])
         
         uploaded_file_urls = []
@@ -723,21 +1119,17 @@ def update_task_details(task_id):
                 else:
                     app.logger.warning(f"Skipping disallowed file: {file.filename}")
 
-        # รวม URL ไฟล์แนบเก่าและใหม่
         all_attachment_urls = list(set(existing_attachment_urls + uploaded_file_urls))
 
         next_appointment_gmt = None
         if new_status == 'needsAction' and next_appointment_date_str:
             try:
-                # รับเวลาท้องถิ่นไทย แล้วแปลงเป็น UTC สำหรับ Google Tasks
                 next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
                 next_app_dt_utc = next_app_dt_local.astimezone(pytz.utc)
-                next_appointment_gmt = next_app_dt_utc.isoformat() # ISO format พร้อม timezone
+                next_appointment_gmt = next_app_dt_utc.isoformat()
             except ValueError:
                 app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
-                # สามารถเพิ่ม flash message ให้ผู้ใช้ทราบได้
         
-        # สร้าง Tech Report Structure ใหม่
         updated_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             'work_summary': work_summary,
@@ -747,18 +1139,15 @@ def update_task_details(task_id):
             'attachment_urls': all_attachment_urls
         }
         
-        # สร้าง notes ใหม่
-        # รักษา notes เดิมที่ไม่ใช่ Tech Report JSON
         new_notes_content = json.dumps(updated_tech_report_data, ensure_ascii=False)
         updated_notes = f"{remaining_notes.strip()}\n\n--- TECH_REPORT_START ---\n{new_notes_content}\n--- TECH_REPORT_END ---"
-        updated_notes = updated_notes.strip() # ลบช่องว่างที่เกินมา
+        updated_notes = updated_notes.strip()
 
         updated_task = update_google_task(task_id, notes=updated_notes, status=new_status)
 
         if updated_task:
             app.logger.info(f"Task {task_id} updated via web form by technician.")
             
-            # ส่งรายงานสรุปไปยัง LINE Group
             report_lines = [
                 f"งาน ID {task_id} ได้รับการอัปเดตแล้ว:",
                 f"หัวข้อ: {updated_task.get('title', 'N/A')}",
@@ -787,7 +1176,6 @@ def update_task_details(task_id):
 @app.route('/summary')
 def summary():
     """แสดงผลสรุป Task ที่ดึงมาจาก Google Tasks พร้อมสถิติที่คำนวณได้"""
-    # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
     tasks_raw = get_google_tasks_for_report(show_completed=True) 
 
     tasks = []
@@ -803,9 +1191,8 @@ def summary():
     for task_item in tasks_raw:
         parsed_task = parse_google_task_dates(task_item) # เรียกใช้ฟังก์ชันตัวช่วย
 
-        # กำหนดสถานะการแสดงผลและนับจำนวนงาน
         status = parsed_task.get('status', 'unknown')
-        parsed_task['display_status'] = 'รอดำเนินการ' # สถานะการแสดงผลเริ่มต้น
+        parsed_task['display_status'] = 'รอดำเนินการ' 
         is_overdue = False
 
         if status == 'completed':
@@ -813,38 +1200,26 @@ def summary():
             task_status_counts['completed'] += 1
         elif status == 'needsAction':
             task_status_counts['needsAction'] += 1
-            # ตรวจสอบงานที่ค้างชำระ (Overdue)
             if parsed_task['due_formatted'] != 'N/A':
                 try:
-                    # แปลงเป็น aware datetime object (UTC) แล้วแปลงเป็นเวลาท้องถิ่นไทย
-                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).replace(tzinfo=None)
-                    
-                    # ทำให้ due_dt_utc เป็น aware ใน Timezone ไทยเพื่อเปรียบเทียบกับ current_time_thai
-                    # หรือเปรียบเทียบ current_time_thai (aware) กับ due_dt_utc (aware) ที่แปลงเป็น UTC
-                    # การแปลง current_time_thai ให้เป็น naive อาจทำให้เกิดปัญหาเดิมอีก
-                    # ให้ due_dt_utc ถูกทำให้ aware ใน UTC ก่อนเปรียบเทียบ
-                    due_dt_utc_aware = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).astimezone(pytz.utc)
-
-                    if due_dt_utc_aware < current_time_thai.astimezone(pytz.utc): # เปรียบเทียบ UTC aware กับ UTC aware
+                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).astimezone(pytz.utc)
+                    if due_dt_utc < current_time_thai.astimezone(pytz.utc): # เปรียบเทียบ UTC aware กับ UTC aware
                         is_overdue = True
-                        parsed_task['display_status'] = 'ค้างชำระ' # ค้างชำระ
+                        parsed_task['display_status'] = 'ค้างชำระ' 
                         task_status_counts['overdue'] += 1
                 except ValueError:
-                    pass # ไม่สนใจวันที่ที่ไม่สามารถแยกวิเคราะห์ได้
+                    pass 
 
-            # แยกข้อมูลสรุปงานจากช่างจากช่อง 'notes' (ถ้ามี)
         tech_report_data, attachment_urls, remaining_notes = parse_tech_report_from_notes(parsed_task.get('notes', ''))
         parsed_task['tech_report'] = tech_report_data
         parsed_task['attachment_urls'] = attachment_urls
-        parsed_task['notes_display'] = remaining_notes # notes ส่วนที่เหลือที่ไม่ได้เป็น JSON
+        parsed_task['notes_display'] = remaining_notes 
 
         tasks.append(parsed_task)
-        task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
+        task_status_counts['total'] += 1 
 
-    # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
     tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
 
-    # คำนวณเปอร์เซ็นต์สำหรับแสดงผล
     total_tasks = task_status_counts['total']
     if total_tasks > 0:
         task_status_counts['completed_percent'] = round((task_status_counts['completed'] / total_tasks) * 100, 2)
