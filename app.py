@@ -186,7 +186,7 @@ def get_google_tasks_service():
     # 2. หากไม่โหลดจาก env var ลองโหลดจากไฟล์ token.json ในเครื่อง (สำหรับการพัฒนาในเครื่อง)
     if not creds and os.path.exists('token.json'):
         try:
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            creds = Credentials.from_authorized_file('token.json', SCOPES)
             app.logger.info("Google token loaded from local token.json.")
         except Exception as e:
             app.logger.warning(f"Could not load token from local token.json: {e}. Attempting re-authentication.")
@@ -528,12 +528,12 @@ def parse_tech_report_from_notes(notes):
             notes_display = notes.replace(tech_report_match.group(0), "").strip()
         except json.JSONDecodeError as e:
             app.logger.error(f"Error decoding JSON from notes: {e}")
-            # If JSON decoding fails, assume no valid tech report data
+            # ถ้าถอดรหัส JSON ไม่ได้ ให้ถือว่าไม่มีข้อมูล tech report ที่ถูกต้อง
             tech_report_data = {
                 'summary_date': None, 'work_summary': None, 'equipment_used': None,
                 'time_taken': None, 'next_appointment': None, 'attachment_urls': []
             }
-            notes_display = notes # If there's a JSON error, display all original notes
+            notes_display = notes # ถ้ามี error ใน JSON ให้แสดง notes เดิมทั้งหมดไปก่อน
             
     # Extract legacy attachment URLs (if no JSON) or as supplementary
     # Ensure they are not duplicates of those already in tech_report_data['attachment_urls']
@@ -1084,8 +1084,8 @@ def settings_page():
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
     """
-    Page for technicians to update task details and status.
-    Supports multiple image uploads.
+    หน้าสำหรับช่างเทคนิคอัปเดตรายละเอียดงานและสถานะ
+    รองรับการอัปโหลดหลายรูปภาพ
     """
     service = get_google_tasks_service()
     if not service:
