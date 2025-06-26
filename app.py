@@ -591,9 +591,9 @@ def parse_google_task_dates(task_item):
 @app.route("/", methods=['GET', 'POST'])
 def create_task_page(): 
     """
-    จัดการการส่งฟอร์มการสร้าง Task
-    เมื่อเข้าถึงด้วย GET จะแสดงฟอร์มสร้างงานใหม่
-    เมื่อเข้าถึงด้วย POST จะประมวลผลการสร้างงานและเปลี่ยนเส้นทางไปยังหน้าสรุปงาน
+    Handles task creation form submission.
+    On GET, displays the new task creation form.
+    On POST, processes task creation and redirects to the summary page.
     """
     if request.method == 'POST':
         command_type = request.form.get('command_type')
@@ -643,8 +643,8 @@ def create_task_page():
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
     """
-    หน้าสำหรับช่างเทคนิคอัปเดตรายละเอียดงานและสถานะ
-    รองรับการอัปโหลดหลายรูปภาพ
+    Page for technicians to update task details and status.
+    Supports multiple image uploads.
     """
     service = get_google_tasks_service()
     if not service:
