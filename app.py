@@ -709,9 +709,10 @@ def update_task_details(task_id):
             try:
                 next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
                 next_app_dt_utc = next_app_dt_local.astimezone(pytz.utc)
-                next_appointment_gmt = next_app_dt_utc.isoformat()
+                next_appointment_gmt = next_app_dt_utc.isoformat() # ISO format พร้อม timezone
             except ValueError:
                 app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
+                # สามารถเพิ่ม flash message ให้ผู้ใช้ทราบได้
         
         updated_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -759,6 +760,7 @@ def update_task_details(task_id):
 @app.route('/summary')
 def summary():
     """แสดงผลสรุป Task ที่ดึงมาจาก Google Tasks พร้อมสถิติที่คำนวณได้"""
+    # ดึงงานทั้งหมดจาก Google Tasks (รวมงานที่เสร็จสิ้นแล้วด้วย)
     tasks_raw = get_google_tasks_for_report(show_completed=True) 
 
     tasks = []
@@ -823,7 +825,7 @@ def uploaded_file(filename):
     """ให้บริการไฟล์ที่อัปโหลด"""
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- บล็อกการดำเนินการหลัก ---
+# --- บล็อกการดำเนินการหลัก --
 if __name__ == '__main__':
     # ตรวจสอบให้แน่ใจว่าโฟลเดอร์อัปโหลดมีอยู่เมื่อรันในเครื่อง
     if not os.path.exists(UPLOAD_FOLDER):
