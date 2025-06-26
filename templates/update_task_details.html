@@ -63,7 +63,7 @@
                                     <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment }}</p>
                                     {% endif %}
                                     {% if report.attachment_urls %}
-                                    <p class="mb-1"><strong>ไฟล์แนบในครั้งนั้น:</strong></p>
+                                    <p class="mb-1 mt-2"><strong>ไฟล์แนบในครั้งนั้น:</strong></p>
                                     <div class="d-flex flex-wrap attachment-preview">
                                         {% for url in report.attachment_urls %}
                                         <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="Attachment"></a>
@@ -126,6 +126,17 @@
                         <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกการอัปเดต</button>
                     </div>
                 </form>
+
+                <!-- Delete Task Section -->
+                <hr class="my-4">
+                <div class="text-end">
+                    <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" style="display: inline;">
+                        <button type="submit" class="btn btn-danger" 
+                                onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้? การกระทำนี้ไม่สามารถย้อนกลับได้');">
+                            <i class="fas fa-trash-alt me-2"></i>ลบรายการนี้
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
@@ -163,6 +174,12 @@
                     }
                 }
             });
+
+            // Auto open the first accordion item if it exists
+            const firstAccordionButton = document.querySelector('#techHistoryAccordion .accordion-button');
+            if(firstAccordionButton) {
+                // Not collapsing it, just for reference if needed
+            }
         });
     </script>
 </body>

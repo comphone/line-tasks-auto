@@ -13,18 +13,20 @@ from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 
 # LINE & Google API imports
-from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest
+from linebot.v3.messaging import (
+    Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest,
+    FlexMessage, FlexContainer, BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
+    ButtonComponent, SeparatorComponent, URIAction
+)
 from linebot.v3 import WebhookHandler
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
-# Firebase (assuming it's configured)
-# from firebase_admin import credentials, initialize_app, firestore
 
 # --- Initialization & Configurations ---
 app = Flask(__name__)
@@ -44,7 +46,7 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
 
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-SCOPES = ['https://www.googleapis.com/auth/tasks']
+SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar']
 GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
@@ -56,8 +58,8 @@ line_messaging_api = MessagingApi(line_api_client)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
-# --- Mock Helper Functions for Settings ---
-# These are placeholder functions. You should replace them with your actual Firebase logic.
+# --- Mock Settings Functions (Placeholders) ---
+# In a real application, this data would come from a database like Firestore.
 def get_app_settings():
     """Mock function to get app settings."""
     app.logger.info("Using MOCK get_app_settings()")
@@ -67,9 +69,9 @@ def get_app_settings():
             'outstanding_report_hour_thai': 20
         },
         'line_recipients': {
-            'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', 'YOUR_ADMIN_GROUP_ID'),
-            'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', 'YOUR_MANAGER_USER_ID'),
-            'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', 'YOUR_TECHNICIAN_GROUP_ID')
+            'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+            'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
+            'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
         }
     }
 
@@ -79,8 +81,8 @@ def save_app_settings(settings_data):
     return True
 
 # --- Google API Helper Functions ---
-def get_google_tasks_service():
-    """Handles Google API authentication and returns a service object."""
+def get_google_service(api_name, api_version):
+    """Handles Google API authentication and returns a service object for the specified API."""
     creds = None
     token_path = 'token.json'
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
@@ -103,32 +105,87 @@ def get_google_tasks_service():
                 app.logger.error(f"Error refreshing Google token, re-authenticating: {e}")
                 creds = None
         if not creds:
-            google_credentials_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
-            if not os.path.exists(GOOGLE_CREDENTIALS_FILE_NAME) and google_credentials_json:
-                with open(GOOGLE_CREDENTIALS_FILE_NAME, "w") as f:
-                    f.write(google_credentials_json)
-
             if os.path.exists(GOOGLE_CREDENTIALS_FILE_NAME):
                 flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
                 creds = flow.run_local_server(port=0)
             else:
                 app.logger.error("Google credentials file not found.")
                 return None
-        
         with open(token_path, 'w') as token:
             token.write(creds.to_json())
         app.logger.info(f"New token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render.")
 
     if creds:
-        try:
-            return build('tasks', 'v1', credentials=creds)
-        except Exception as e:
-            app.logger.error(f"Failed to build Google service: {e}")
-            return None
+        return build(api_name, api_version, credentials=creds)
     return None
 
-# --- Other Helper Functions ---
+def get_google_tasks_service():
+    """Gets the Google Tasks service object."""
+    return get_google_service('tasks', 'v1')
 
+def get_google_calendar_service():
+    """Gets the Google Calendar service object."""
+    return get_google_service('calendar', 'v3')
+
+# --- Task and Event Creation Functions ---
+def create_google_task(title, notes=None, due=None):
+    """Creates a new task in Google Tasks."""
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
+        if due: task_body['due'] = due
+        return service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_body).execute()
+    except HttpError as e:
+        app.logger.error(f"Error creating Google Task: {e}")
+        return None
+
+def create_google_calendar_event(summary, location, description, start_time, end_time, timezone='Asia/Bangkok'):
+    """Creates a new event in Google Calendar."""
+    service = get_google_calendar_service()
+    if not service:
+        app.logger.error("Failed to get Google Calendar service.")
+        return None
+    try:
+        event = {
+            'summary': summary, 'location': location, 'description': description,
+            'start': {'dateTime': start_time, 'timeZone': timezone},
+            'end': {'dateTime': end_time, 'timeZone': timezone},
+            'reminders': {'useDefault': True},
+        }
+        return service.events().insert(calendarId='primary', body=event).execute()
+    except HttpError as e:
+        app.logger.error(f"Error creating Google Calendar Event: {e}")
+        return None
+
+def delete_google_task(task_id):
+    """Deletes a task from Google Tasks."""
+    service = get_google_tasks_service()
+    if not service: return False
+    try:
+        service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        app.logger.info(f"Successfully deleted task ID: {task_id}")
+        return True
+    except HttpError as err:
+        app.logger.error(f"API Error deleting task {task_id}: {err}")
+        return False
+
+def update_google_task(task_id, notes=None, status=None):
+    """Helper to update a specific task."""
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        if notes is not None: task['notes'] = notes
+        if status is not None:
+            task['status'] = status
+            if status == 'completed': task['completed'] = datetime.datetime.now(pytz.utc).isoformat()
+        return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
+    except HttpError as e:
+        app.logger.error(f"Failed to update task {task_id}: {e}")
+        return None
+
+# --- Data Parsing and Utility Functions ---
 @cached(cache)
 def get_google_tasks_for_report(show_completed=True):
     """Fetches tasks from Google Tasks API, with caching."""
@@ -189,33 +246,165 @@ def parse_tech_report_from_notes(notes):
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
 
-def update_google_task(task_id, notes=None, status=None):
-    """Helper to update a specific task."""
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        if notes is not None: task['notes'] = notes
-        if status is not None:
-            task['status'] = status
-            if status == 'completed': task['completed'] = datetime.datetime.now(pytz.utc).isoformat()
-        return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
-    except HttpError as e:
-        app.logger.error(f"Failed to update task {task_id}: {e}")
-        return None
-
 def allowed_file(filename):
     """Checks for allowed file extensions."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def create_task_flex_message(task):
+    """Creates a LINE Flex Message for a given task."""
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    parsed_dates = parse_google_task_dates(task)
+    update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+
+    phone_action = None
+    if customer_info.get('phone') and customer_info.get('phone') != 'N/A':
+        phone_number = re.sub(r'\D', '', customer_info['phone'])
+        phone_action = URIAction(label=customer_info['phone'], uri=f"tel:{phone_number}")
+    
+    map_action = None
+    map_url_match = re.search(r"https?://(www\.google\.com/maps|maps\.app\.goo\.gl)\S+", task.get('notes', ''))
+    if map_url_match:
+        map_url = map_url_match.group(0)
+        map_action = URIAction(label="📍 เปิด Google Maps", uri=map_url)
+
+    body_contents = [
+        TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True),
+        BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
+            BoxComponent(layout='baseline', spacing='sm', contents=[
+                TextComponent(text='ลูกค้า', color='#aaaaaa', size='sm', flex=2),
+                TextComponent(text=customer_info.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)
+            ]),
+            BoxComponent(layout='baseline', spacing='sm', contents=[
+                TextComponent(text='โทร', color='#aaaaaa', size='sm', flex=2),
+                TextComponent(text=customer_info.get('phone', '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')
+            ]),
+            BoxComponent(layout='baseline', spacing='sm', contents=[
+                TextComponent(text='นัดหมาย', color='#aaaaaa', size='sm', flex=2),
+                TextComponent(text=parsed_dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)
+            ])
+        ])
+    ]
+
+    footer_contents = [
+        ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url))
+    ]
+    if map_action:
+        footer_contents.insert(0, ButtonComponent(style='link', height='sm', action=map_action))
+        footer_contents.insert(1, SeparatorComponent(margin='md'))
+
+    bubble = BubbleContainer(direction='ltr',
+        header=BoxComponent(layout='vertical', contents=[TextComponent(text='📢 แจ้งเตือนงาน', weight='bold', color='#ffffff')], background_color='#007BFF', padding_all='12px'),
+        body=BoxComponent(layout='vertical', contents=body_contents),
+        footer=BoxComponent(layout='vertical', spacing='sm', contents=footer_contents, flex=0),
+        action=URIAction(uri=update_url)
+    )
+
+    return FlexMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
+
+def create_customer_history_carousel(tasks, customer_name):
+    """Creates a Flex Message Carousel Container for a customer's task history."""
+    if not tasks: return None
+
+    bubbles = []
+    tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
+    
+    for task in tasks[:12]: # Carousel limit is 12
+        parsed = parse_google_task_dates(task)
+        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+
+        status_text, status_color = "รอดำเนินการ", "#FFA500"
+        if task.get('status') == 'completed':
+            status_text, status_color = "เสร็จสิ้น", "#28A745"
+        elif 'due' in task and task['due']:
+            try:
+                due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                if due_dt_utc < datetime.datetime.now(pytz.utc):
+                    status_text, status_color = "ยังไม่ดำเนินการ", "#DC3545"
+            except (ValueError, TypeError): pass
+        
+        bubble = BubbleContainer(direction='ltr',
+            body=BoxComponent(layout='vertical', spacing='md', contents=[
+                TextComponent(text=task.get('title', 'N/A'), weight='bold', size='lg', wrap=True),
+                SeparatorComponent(margin='md'),
+                BoxComponent(layout='vertical', margin='md', spacing='sm', contents=[
+                    BoxComponent(layout='baseline', spacing='sm', contents=[
+                        TextComponent(text='สถานะ', color='#aaaaaa', size='sm', flex=2),
+                        TextComponent(text=status_text, wrap=True, color=status_color, size='sm', flex=5, weight='bold')
+                    ]),
+                    BoxComponent(layout='baseline', spacing='sm', contents=[
+                        TextComponent(text='วันที่สร้าง', color='#aaaaaa', size='sm', flex=2),
+                        TextComponent(text=parsed.get('created_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)
+                    ])
+                ])
+            ]),
+            footer=BoxComponent(layout='vertical', spacing='sm', contents=[
+                ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด / อัปเดต', uri=update_url))
+            ])
+        )
+        bubbles.append(bubble)
+
+    return CarouselContainer(contents=bubbles)
+
 
 # --- Web Page Routes ---
 
 @app.route("/", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
-        # Logic to handle form submission
-        # ...
-        return redirect(url_for('summary'))
+        customer_name = request.form.get('customer')
+        customer_phone = request.form.get('phone')
+        address = request.form.get('address')
+        detail = request.form.get('detail')
+        appointment_str = request.form.get('appointment')
+        
+        today_str = datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')
+        title = f"งานลูกค้า: {customer_name} ({today_str})"
+        
+        notes_parts = [
+            f"ลูกค้า: {customer_name}",
+            f"เบอร์โทร: {customer_phone or '-'}",
+            f"ที่อยู่: {address or '-'}"
+        ]
+        
+        map_url_from_form = request.form.get('latitude_longitude')
+        if map_url_from_form:
+             notes_parts.append(f"ลิงก์แผนที่: {map_url_from_form}")
+
+        notes_parts.append(f"\nรายละเอียดงาน:\n{detail or '-'}")
+        
+        notes = "\n".join(notes_parts)
+
+        due_date_gmt, start_time_iso, end_time_iso = None, None, None
+        if appointment_str:
+            try:
+                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
+                start_time_iso = dt_local.isoformat()
+                end_time_iso = (dt_local + datetime.timedelta(hours=1)).isoformat()
+            except ValueError:
+                app.logger.error(f"Invalid appointment format: {appointment_str}")
+
+        created_task = create_google_task(title, notes=notes, due=due_date_gmt)
+
+        if created_task and start_time_iso:
+            app.logger.info("Creating Google Calendar event...")
+            create_google_calendar_event(summary=title, location=address or '', description=notes, start_time=start_time_iso, end_time=end_time_iso)
+        
+        if created_task:
+            flex_message = create_task_flex_message(created_task)
+            settings = get_app_settings()
+            recipients = [id for id in [settings['line_recipients'].get('admin_group_id'), settings['line_recipients'].get('technician_group_id')] if id]
+            if recipients:
+                try:
+                    line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=[flex_message]))
+                except Exception as e:
+                    app.logger.error(f"Failed to push Flex Message: {e}")
+            flash('สร้างงานและส่งแจ้งเตือนเรียบร้อยแล้ว!', 'success')
+            return redirect(url_for('summary'))
+        else:
+            flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
+            return redirect(url_for('form_page'))
+
     return render_template('form.html')
 
 @app.route('/summary')
@@ -232,7 +421,9 @@ def summary():
         task for task in tasks_raw 
         if not search_query or 
         search_query in task.get('title', '').lower() or 
-        search_query in task.get('notes', '').lower()
+        search_query in task.get('notes', '').lower() or
+        search_query in parse_customer_info_from_notes(task.get('notes', '')).get('name', '').lower() or
+        search_query in parse_customer_info_from_notes(task.get('notes', '')).get('phone', '')
     ]
 
     tasks = []
@@ -260,10 +451,8 @@ def summary():
                     if due_dt_utc < current_time_utc:
                         is_overdue = True
                         summary_stats['overdue'] += 1
-                except (ValueError, TypeError):
-                    pass
-            parsed_task['display_status'] = 'ค้างชำระ' if is_overdue else 'รอดำเนินการ'
-
+                except (ValueError, TypeError): pass
+            parsed_task['display_status'] = 'ยังไม่ดำเนินการ' if is_overdue else 'รอดำเนินการ'
         tasks.append(parsed_task)
 
     tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
@@ -282,8 +471,7 @@ def summary():
 def update_task_details(task_id):
     """Displays and handles updates for a single task, showing history."""
     service = get_google_tasks_service()
-    if not service:
-        abort(503, "Google Tasks service is unavailable.")
+    if not service: abort(503, "Google Tasks service is unavailable.")
 
     try:
         task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
@@ -297,16 +485,63 @@ def update_task_details(task_id):
             try:
                 next_app_dt_utc = datetime.datetime.fromisoformat(history[0]['next_appointment'].replace('Z', '+00:00'))
                 task['tech_next_appointment_datetime_local'] = next_app_dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
-            except (ValueError, TypeError):
-                task['tech_next_appointment_datetime_local'] = ''
-        else:
-            task['tech_next_appointment_datetime_local'] = ''
-    except HttpError:
-        abort(404, "Task not found.")
+            except (ValueError, TypeError): task['tech_next_appointment_datetime_local'] = ''
+        else: task['tech_next_appointment_datetime_local'] = ''
+    except HttpError: abort(404, "Task not found.")
 
     if request.method == 'POST':
-        # ... (Form processing logic from previous turn)
-        pass
+        work_summary = request.form.get('work_summary', '').strip()
+        equipment_used = request.form.get('equipment_used', '').strip()
+        time_taken = request.form.get('time_taken', '').strip()
+        new_status = request.form.get('status', task.get('status'))
+        next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
+
+        # Get all attachments from history
+        all_attachment_urls = []
+        for report in task.get('tech_reports_history', []):
+            all_attachment_urls.extend(report.get('attachment_urls', []))
+        
+        # Add new attachments
+        if 'files[]' in request.files:
+            files = request.files.getlist('files[]')
+            for file in files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    all_attachment_urls.append(url_for('uploaded_file', filename=filename, _external=True))
+        all_attachment_urls = list(set(all_attachment_urls))
+
+        next_appointment_gmt = None
+        if new_status == 'needsAction' and next_appointment_date_str:
+            try:
+                next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
+                next_appointment_gmt = next_app_dt_local.astimezone(pytz.utc).isoformat()
+            except ValueError: app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
+        
+        new_tech_report_data = {
+            'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            'work_summary': work_summary, 'equipment_used': equipment_used, 'time_taken': time_taken,
+            'next_appointment': next_appointment_gmt, 'attachment_urls': all_attachment_urls
+        }
+        
+        _, original_notes_text = parse_tech_report_from_notes(task.get('notes', ''))
+        
+        # Rebuild notes with all historical reports + the new one
+        all_reports_text = ""
+        # Sort by date ascending to rebuild in correct order
+        for report in sorted(task.get('tech_reports_history', []), key=lambda x: x.get('summary_date')):
+            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
+        all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(new_tech_report_data, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
+        updated_notes = original_notes_text + all_reports_text
+        
+        if update_google_task(task_id, notes=updated_notes, status=new_status):
+             flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
+        else:
+            flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
+
+        return redirect(url_for('summary'))
 
     return render_template('update_task_details.html', task=task)
     
@@ -339,6 +574,15 @@ def settings_page():
     current_settings = get_app_settings()
     return render_template('settings_page.html', settings=current_settings)
 
+@app.route('/delete_task/<task_id>', methods=['POST'])
+def delete_task(task_id):
+    """Handles the deletion of a task."""
+    if delete_google_task(task_id):
+        flash('ลบรายการงานเรียบร้อยแล้ว', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
+    return redirect(url_for('summary'))
+
 # --- LINE Webhook and Command Handlers ---
 
 @app.route("/callback", methods=['POST'])
@@ -353,66 +597,63 @@ def callback():
         abort(400)
     return 'OK'
 
-def reply_to_line(reply_token, text_message):
+def reply_to_line(reply_token, messages):
     """Central function for sending reply messages."""
     try:
         line_messaging_api.reply_message(
-            ReplyMessageRequest(reply_token=reply_token, messages=[TextMessage(text=text_message)])
+            ReplyMessageRequest(reply_token=reply_token, messages=messages)
         )
     except Exception as e:
         app.logger.error(f"Failed to reply to LINE: {e}")
 
 def handle_help_command(event):
     """Handles the 'comphone' command."""
-    reply_message = (
+    reply_message = TextMessage(text=(
         "🤖 **วิธีใช้งานบอท** 🤖\n\n"
-        "พิมพ์คำสั่งต่อไปนี้เพื่อสั่งงาน:\n\n"
         "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
         "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
         "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
+        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า\n(เช่น: c สมศรี)\n\n"
         "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
         "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE"
-    )
-    reply_to_line(event.reply_token, reply_message)
+    ))
+    reply_to_line(event.reply_token, [reply_message])
 
 def handle_outstanding_tasks_command(event):
     """Handles 'งานค้าง' command."""
     tasks = get_google_tasks_for_report(show_completed=False)
     if tasks is None:
-        return reply_to_line(event.reply_token, "⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     if not tasks:
-        return reply_to_line(event.reply_token, "✅ ยอดเยี่ยม! ไม่มีงานค้างในขณะนี้")
+        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างในขณะนี้")])
         
     message_lines = ["--- 📋 รายการงานค้าง ---"]
     tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
     for i, task in enumerate(tasks[:15]): # Limit to 15 to avoid long messages
-        parsed_task = parse_google_task_dates(task)
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n(ID: {task.get('id')})")
-    reply_to_line(event.reply_token, "\n\n".join(message_lines))
-
+    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
 
 def handle_completed_tasks_command(event):
     """Handles 'งานเสร็จ' command."""
     tasks = get_google_tasks_for_report(show_completed=True)
     if tasks is None:
-        return reply_to_line(event.reply_token, "⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     
     completed_tasks = [t for t in tasks if t.get('status') == 'completed']
     if not completed_tasks:
-        return reply_to_line(event.reply_token, "ยังไม่มีงานที่ทำเสร็จ")
+        return reply_to_line(event.reply_token, [TextMessage(text="ยังไม่มีงานที่ทำเสร็จ")])
 
     message_lines = ["--- ✅ 5 รายการงานที่เสร็จล่าสุด ---"]
     completed_tasks.sort(key=lambda x: x.get('completed', ''), reverse=True)
     for i, task in enumerate(completed_tasks[:5]):
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}")
-    reply_to_line(event.reply_token, "\n".join(message_lines))
-
+    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
 
 def handle_summary_command(event):
     """Handles 'สรุปรายงาน' command."""
     tasks = get_google_tasks_for_report(show_completed=True)
     if tasks is None:
-        return reply_to_line(event.reply_token, "⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
 
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0}
     current_time_utc = datetime.datetime.now(pytz.utc)
@@ -428,43 +669,52 @@ def handle_summary_command(event):
                         stats['overdue'] += 1
                 except (ValueError, TypeError): pass
     
-    reply_message = (
+    reply_message = TextMessage(text=(
         f"--- 📊 สรุปรายงาน ---\n"
         f"งานทั้งหมด: {len(tasks)}\n"
         f"✅ เสร็จสิ้น: {stats['completed']}\n"
         f"⏳ รอดำเนินการ: {stats['needsAction']}\n"
-        f"❗️ ค้างชำระ: {stats['overdue']}"
-    )
-    reply_to_line(event.reply_token, reply_message)
+        f"❗️ ยังไม่ดำเนินการ: {stats['overdue']}"
+    ))
+    reply_to_line(event.reply_token, [reply_message])
 
 def handle_view_task_command(event, task_id):
-    """Handles 'ดูงาน <ID>' command."""
+    """Handles 'ดูงาน <ID>' command by replying with a Flex Message."""
     task = get_single_task(task_id)
     if not task:
-        return reply_to_line(event.reply_token, f"ไม่พบงาน ID: {task_id}")
-        
-    parsed = parse_google_task_dates(task)
-    customer = parse_customer_info_from_notes(task.get('notes', ''))
-    update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
-
-    details = [
-        f"🔍 รายละเอียดงาน: {task.get('title', 'N/A')}",
-        f"สถานะ: {'เสร็จสิ้น' if task.get('status') == 'completed' else 'รอดำเนินการ'}",
-        f"ลูกค้า: {customer.get('name', 'N/A')}",
-        f"โทร: {customer.get('phone', 'N/A')}",
-        f"กำหนดส่ง: {parsed.get('due_formatted', 'N/A')}",
-        f"\n👉 แก้ไข/อัปเดตงาน:\n{update_url}"
-    ]
-    reply_to_line(event.reply_token, "\n".join(details))
-
+        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบงาน ID: {task_id}")])
+    
+    flex_message = create_task_flex_message(task)
+    reply_to_line(event.reply_token, [flex_message])
 
 def handle_complete_task_command(event, task_id):
     """Handles 'เสร็จงาน <ID>' command."""
     updated_task = update_google_task(task_id, status='completed')
     if updated_task:
-        reply_to_line(event.reply_token, f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")
+        reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")])
     else:
-        reply_to_line(event.reply_token, f"❌ ไม่สามารถปิดงาน ID: {task_id} ได้")
+        reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน ID: {task_id} ได้")])
+
+def handle_customer_search_command(event, customer_name):
+    """Handles customer history search command."""
+    all_tasks = get_google_tasks_for_report(show_completed=True)
+    if all_tasks is None:
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล")])
+
+    found_tasks = []
+    for task in all_tasks:
+        info = parse_customer_info_from_notes(task.get('notes', ''))
+        if customer_name.lower() in info.get('name', '').lower():
+            found_tasks.append(task)
+    
+    if not found_tasks:
+        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบประวัติงานสำหรับลูกค้าชื่อ '{customer_name}'")])
+
+    carousel = create_customer_history_carousel(found_tasks, customer_name)
+    alt_text = f"ประวัติงานของลูกค้า: {customer_name}"
+    flex_message = FlexMessage(alt_text=alt_text, contents=carousel)
+    
+    reply_to_line(event.reply_token, [flex_message])
 
 # Command Dispatcher Dictionary
 COMMANDS = {
@@ -480,6 +730,11 @@ def handle_message(event):
     text = event.message.text.strip()
     text_lower = text.lower()
 
+    if text_lower.startswith('c '):
+        parts = text.split(maxsplit=1)
+        if len(parts) > 1: handle_customer_search_command(event, parts[1])
+        return
+
     if text_lower.startswith('ดูงาน '):
         parts = text.split()
         if len(parts) > 1: handle_view_task_command(event, parts[1])
@@ -493,10 +748,65 @@ def handle_message(event):
     if text_lower in COMMANDS:
         COMMANDS[text_lower](event)
 
+# --- Cron Job Endpoint ---
+@app.route('/trigger_daily_reports')
+def trigger_daily_reports():
+    """Endpoint for Cron Job to send daily reports."""
+    app.logger.info("Cron job triggered for daily reports.")
+    settings = get_app_settings()
+    now_thai = datetime.datetime.now(THAILAND_TZ)
+    current_hour = now_thai.hour
+
+    appointment_hour = settings.get('report_times', {}).get('appointment_reminder_hour_thai', 7)
+    summary_hour = settings.get('report_times', {}).get('outstanding_report_hour_thai', 20)
+
+    tasks_to_process = get_google_tasks_for_report(show_completed=False)
+    if tasks_to_process is None:
+        return "Failed to get tasks from Google API", 500
+
+    messages_to_send = []
+    recipients = []
+    
+    # Check for morning appointment reminders
+    if current_hour == appointment_hour:
+        app.logger.info("Processing daily APPOINTMENT reminders.")
+        today_appointments = []
+        for task in tasks_to_process:
+            if 'due' in task and task['due']:
+                 try:
+                    due_dt = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00')).astimezone(THAILAND_TZ)
+                    if due_dt.date() == now_thai.date():
+                        today_appointments.append(task)
+                 except (ValueError, TypeError): continue
+        
+        if today_appointments:
+            today_appointments.sort(key=lambda x: x.get('due', ''))
+            messages_to_send = [create_task_flex_message(task) for task in today_appointments]
+            recipients = [id for id in [settings['line_recipients'].get('technician_group_id'), settings['line_recipients'].get('admin_group_id')] if id]
+
+    # Check for evening outstanding summary
+    elif current_hour == summary_hour:
+        app.logger.info("Processing daily OUTSTANDING tasks summary.")
+        if tasks_to_process:
+            tasks_to_process.sort(key=lambda x: x.get('due', '9999-99-99'))
+            message_lines = ["--- 🌙 สรุปงานค้าง ---"]
+            for task in tasks_to_process:
+                info = parse_customer_info_from_notes(task.get('notes', ''))
+                message_lines.append(f"ลูกค้า: {info['name']}\nโทร: {info['phone']}\nงาน: {task.get('title')}")
+            messages_to_send = [TextMessage(text="\n\n".join(message_lines))]
+            recipients = [id for id in [settings['line_recipients'].get('manager_user_id'), settings['line_recipients'].get('admin_group_id')] if id]
+
+    if messages_to_send and recipients:
+        # Push up to 5 messages at a time
+        for i in range(0, len(messages_to_send), 5):
+            line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5]))
+        return f"{len(messages_to_send)} messages sent to {len(recipients)} recipients.", 200
+
+    return "No report scheduled or no recipients for this hour.", 200
+
 # --- Main Execution ---
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
-
