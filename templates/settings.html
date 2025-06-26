@@ -1,32 +1,104 @@
+
 <!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>หน้าตั้งค่าระบบ</title>
+    <title>ตั้งค่าระบบ</title>
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            margin: 30px;
+            background-color: #f2f2f2;
+        }
+        h2 {
+            color: #333;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            display: block;
+            margin: 10px 0 4px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"], input[type="checkbox"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+        }
+        .checkbox-group label {
+            margin: 0 10px 0 0;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #218838;
+        }
+    </style>
 </head>
 <body>
-    <h1>หน้าตั้งค่าระบบ</h1>
+    <h2>ตั้งค่าระบบ</h2>
+    <form action="/save-settings" method="post">
+        <div class="section">
+            <h3>Line Recipients</h3>
+            <label>Admin Group ID</label>
+            <input type="text" name="line_recipients[admin_group_id]" value="{{ settings.line_recipients.admin_group_id }}">
 
-    <h2>LINE Groups</h2>
-    <ul>
-        <li>Admin Group ID: {{ settings.line_recipients.admin_group_id }}</li>
-        <li>HR Group ID: {{ settings.line_recipients.hr_group_id }}</li>
-        <li>Manager User ID: {{ settings.line_recipients.manager_user_id }}</li>
-        <li>Technician Group ID: {{ settings.line_recipients.technician_group_id }}</li>
-    </ul>
+            <label>HR Group ID</label>
+            <input type="text" name="line_recipients[hr_group_id]" value="{{ settings.line_recipients.hr_group_id }}">
 
-    <h2>Report Options</h2>
-    <ul>
-        <li>Include Overdue Tips: {{ settings.report_options.include_overdue_tips }}</li>
-        <li>Outstanding Titles Only: {{ settings.report_options.include_titles_only_outstanding }}</li>
-        <li>Summary Titles Only: {{ settings.report_options.include_titles_only_summary }}</li>
-    </ul>
+            <label>Technician Group ID</label>
+            <input type="text" name="line_recipients[technician_group_id]" value="{{ settings.line_recipients.technician_group_id }}">
 
-    <h2>Report Times (Thailand)</h2>
-    <ul>
-        <li>Appointment Reminder: {{ settings.report_times.appointment_reminder_hour_thai }} น.</li>
-        <li>Outstanding Report: {{ settings.report_times.outstanding_report_hour_thai }} น.</li>
-        <li>Summary Report: {{ settings.report_times.summary_report_hour_thai }} น.</li>
-    </ul>
+            <label>Manager User ID</label>
+            <input type="text" name="line_recipients[manager_user_id]" value="{{ settings.line_recipients.manager_user_id }}">
+        </div>
+
+        <div class="section">
+            <h3>Report Options</h3>
+            <div class="checkbox-group">
+                <input type="checkbox" name="report_options[include_overdue_tips]" {% if settings.report_options.include_overdue_tips %}checked{% endif %}>
+                <label>Include Overdue Tips</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" name="report_options[include_titles_only_outstanding]" {% if settings.report_options.include_titles_only_outstanding %}checked{% endif %}>
+                <label>Include Titles Only Outstanding</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" name="report_options[include_titles_only_summary]" {% if settings.report_options.include_titles_only_summary %}checked{% endif %}>
+                <label>Include Titles Only Summary</label>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Report Times (Thai Time)</h3>
+            <label>Appointment Reminder Hour</label>
+            <input type="number" name="report_times[appointment_reminder_hour_thai]" value="{{ settings.report_times.appointment_reminder_hour_thai }}">
+
+            <label>Outstanding Report Hour</label>
+            <input type="number" name="report_times[outstanding_report_hour_thai]" value="{{ settings.report_times.outstanding_report_hour_thai }}">
+
+            <label>Summary Report Hour</label>
+            <input type="number" name="report_times[summary_report_hour_thai]" value="{{ settings.report_times.summary_report_hour_thai }}">
+        </div>
+
+        <button type="submit">💾 บันทึกการตั้งค่า</button>
+    </form>
 </body>
 </html>
