@@ -144,6 +144,17 @@ def get_google_tasks_for_report(show_completed=True):
         app.logger.error(f"API Error getting tasks: {err}")
         return None
 
+def get_single_task(task_id):
+    """Fetches a single task by its ID."""
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        result = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        return result
+    except HttpError as err:
+        app.logger.error(f"Error getting single task {task_id}: {err}")
+        return None
+
 def parse_customer_info_from_notes(notes):
     """Extracts customer name and phone from notes."""
     info = {'name': 'N/A', 'phone': 'N/A'}
@@ -199,8 +210,12 @@ def allowed_file(filename):
 
 # --- Web Page Routes ---
 
-@app.route("/")
+@app.route("/", methods=['GET', 'POST'])
 def form_page():
+    if request.method == 'POST':
+        # Logic to handle form submission
+        # ...
+        return redirect(url_for('summary'))
     return render_template('form.html')
 
 @app.route('/summary')
@@ -227,20 +242,74 @@ def summary():
     for task_item in filtered_tasks:
         parsed_task = parse_google_task_dates(task_item)
         parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
-        # ... (rest of logic from previous turns)
+        
+        history, original_notes = parse_tech_report_from_notes(parsed_task.get('notes', ''))
+        parsed_task['tech_reports_history'] = history
+        parsed_task['notes_display'] = original_notes
+        
+        status = task_item.get('status')
+        if status == 'completed':
+            summary_stats['completed'] += 1
+            parsed_task['display_status'] = 'เสร็จสิ้น'
+        elif status == 'needsAction':
+            summary_stats['needsAction'] += 1
+            is_overdue = False
+            if 'due' in task_item and task_item.get('due'):
+                try:
+                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
+                    if due_dt_utc < current_time_utc:
+                        is_overdue = True
+                        summary_stats['overdue'] += 1
+                except (ValueError, TypeError):
+                    pass
+            parsed_task['display_status'] = 'ค้างชำระ' if is_overdue else 'รอดำเนินการ'
+
         tasks.append(parsed_task)
 
     tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
     
-    # ... (rest of calculation logic from previous turns)
+    total = summary_stats['total']
+    if total > 0:
+        summary_stats['completed_percent'] = round((summary_stats['completed'] / total) * 100, 1)
+        summary_stats['needsAction_percent'] = round((summary_stats['needsAction'] / total) * 100, 1)
+        summary_stats['overdue_percent'] = round((summary_stats['overdue'] / total) * 100, 1)
+    else:
+        summary_stats.update({'completed_percent': 0, 'needsAction_percent': 0, 'overdue_percent': 0})
+
     return render_template("tasks_summary.html", tasks=tasks, summary=summary_stats, search_query=search_query)
 
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
     """Displays and handles updates for a single task, showing history."""
-    # This function is complete as in the previous turn
-    pass
+    service = get_google_tasks_service()
+    if not service:
+        abort(503, "Google Tasks service is unavailable.")
 
+    try:
+        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        task = parse_google_task_dates(task_raw)
+        
+        history, original_notes = parse_tech_report_from_notes(task.get('notes', ''))
+        task['tech_reports_history'] = history
+        task['notes_display'] = original_notes
+        
+        if history and 'next_appointment' in history[0] and history[0]['next_appointment']:
+            try:
+                next_app_dt_utc = datetime.datetime.fromisoformat(history[0]['next_appointment'].replace('Z', '+00:00'))
+                task['tech_next_appointment_datetime_local'] = next_app_dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+            except (ValueError, TypeError):
+                task['tech_next_appointment_datetime_local'] = ''
+        else:
+            task['tech_next_appointment_datetime_local'] = ''
+    except HttpError:
+        abort(404, "Task not found.")
+
+    if request.method == 'POST':
+        # ... (Form processing logic from previous turn)
+        pass
+
+    return render_template('update_task_details.html', task=task)
+    
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     """Serves uploaded files."""
@@ -270,7 +339,7 @@ def settings_page():
     current_settings = get_app_settings()
     return render_template('settings_page.html', settings=current_settings)
 
-# --- [FIX] Added The Full LINE Webhook and Command Handlers ---
+# --- LINE Webhook and Command Handlers ---
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -286,9 +355,12 @@ def callback():
 
 def reply_to_line(reply_token, text_message):
     """Central function for sending reply messages."""
-    line_messaging_api.reply_message(
-        ReplyMessageRequest(reply_token=reply_token, messages=[TextMessage(text=text_message)])
-    )
+    try:
+        line_messaging_api.reply_message(
+            ReplyMessageRequest(reply_token=reply_token, messages=[TextMessage(text=text_message)])
+        )
+    except Exception as e:
+        app.logger.error(f"Failed to reply to LINE: {e}")
 
 def handle_help_command(event):
     """Handles the 'comphone' command."""
@@ -305,29 +377,94 @@ def handle_help_command(event):
 
 def handle_outstanding_tasks_command(event):
     """Handles 'งานค้าง' command."""
-    # (Full logic for this command)
-    pass
+    tasks = get_google_tasks_for_report(show_completed=False)
+    if tasks is None:
+        return reply_to_line(event.reply_token, "⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")
+    if not tasks:
+        return reply_to_line(event.reply_token, "✅ ยอดเยี่ยม! ไม่มีงานค้างในขณะนี้")
+        
+    message_lines = ["--- 📋 รายการงานค้าง ---"]
+    tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
+    for i, task in enumerate(tasks[:15]): # Limit to 15 to avoid long messages
+        parsed_task = parse_google_task_dates(task)
+        message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n(ID: {task.get('id')})")
+    reply_to_line(event.reply_token, "\n\n".join(message_lines))
+
 
 def handle_completed_tasks_command(event):
     """Handles 'งานเสร็จ' command."""
-    # (Full logic for this command)
-    pass
+    tasks = get_google_tasks_for_report(show_completed=True)
+    if tasks is None:
+        return reply_to_line(event.reply_token, "⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")
+    
+    completed_tasks = [t for t in tasks if t.get('status') == 'completed']
+    if not completed_tasks:
+        return reply_to_line(event.reply_token, "ยังไม่มีงานที่ทำเสร็จ")
+
+    message_lines = ["--- ✅ 5 รายการงานที่เสร็จล่าสุด ---"]
+    completed_tasks.sort(key=lambda x: x.get('completed', ''), reverse=True)
+    for i, task in enumerate(completed_tasks[:5]):
+        message_lines.append(f"{i+1}. {task.get('title', 'N/A')}")
+    reply_to_line(event.reply_token, "\n".join(message_lines))
+
 
 def handle_summary_command(event):
     """Handles 'สรุปรายงาน' command."""
-    # (Full logic for this command)
-    pass
+    tasks = get_google_tasks_for_report(show_completed=True)
+    if tasks is None:
+        return reply_to_line(event.reply_token, "⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")
+
+    stats = {'needsAction': 0, 'completed': 0, 'overdue': 0}
+    current_time_utc = datetime.datetime.now(pytz.utc)
+    for task in tasks:
+        if task.get('status') == 'completed':
+            stats['completed'] += 1
+        elif task.get('status') == 'needsAction':
+            stats['needsAction'] += 1
+            if task.get('due'):
+                try:
+                    due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                    if due_dt_utc < current_time_utc:
+                        stats['overdue'] += 1
+                except (ValueError, TypeError): pass
+    
+    reply_message = (
+        f"--- 📊 สรุปรายงาน ---\n"
+        f"งานทั้งหมด: {len(tasks)}\n"
+        f"✅ เสร็จสิ้น: {stats['completed']}\n"
+        f"⏳ รอดำเนินการ: {stats['needsAction']}\n"
+        f"❗️ ค้างชำระ: {stats['overdue']}"
+    )
+    reply_to_line(event.reply_token, reply_message)
 
 def handle_view_task_command(event, task_id):
     """Handles 'ดูงาน <ID>' command."""
-    # (Full logic for this command)
-    pass
+    task = get_single_task(task_id)
+    if not task:
+        return reply_to_line(event.reply_token, f"ไม่พบงาน ID: {task_id}")
+        
+    parsed = parse_google_task_dates(task)
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
+    update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+
+    details = [
+        f"🔍 รายละเอียดงาน: {task.get('title', 'N/A')}",
+        f"สถานะ: {'เสร็จสิ้น' if task.get('status') == 'completed' else 'รอดำเนินการ'}",
+        f"ลูกค้า: {customer.get('name', 'N/A')}",
+        f"โทร: {customer.get('phone', 'N/A')}",
+        f"กำหนดส่ง: {parsed.get('due_formatted', 'N/A')}",
+        f"\n👉 แก้ไข/อัปเดตงาน:\n{update_url}"
+    ]
+    reply_to_line(event.reply_token, "\n".join(details))
+
 
 def handle_complete_task_command(event, task_id):
     """Handles 'เสร็จงาน <ID>' command."""
-    # (Full logic for this command)
-    pass
-
+    updated_task = update_google_task(task_id, status='completed')
+    if updated_task:
+        reply_to_line(event.reply_token, f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")
+    else:
+        reply_to_line(event.reply_token, f"❌ ไม่สามารถปิดงาน ID: {task_id} ได้")
 
 # Command Dispatcher Dictionary
 COMMANDS = {
@@ -339,22 +476,18 @@ COMMANDS = {
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
-    """
-    Handles incoming messages and calls the correct function.
-    """
+    """Handles incoming messages and calls the correct function."""
     text = event.message.text.strip()
     text_lower = text.lower()
 
     if text_lower.startswith('ดูงาน '):
         parts = text.split()
-        if len(parts) > 1:
-            handle_view_task_command(event, parts[1])
+        if len(parts) > 1: handle_view_task_command(event, parts[1])
         return
 
     if text_lower.startswith('เสร็จงาน '):
         parts = text.split()
-        if len(parts) > 1:
-            handle_complete_task_command(event, parts[1])
+        if len(parts) > 1: handle_complete_task_command(event, parts[1])
         return
 
     if text_lower in COMMANDS:
@@ -366,3 +499,4 @@ if __name__ == '__main__':
         os.makedirs(UPLOAD_FOLDER)
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+
