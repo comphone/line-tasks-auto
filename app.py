@@ -23,6 +23,7 @@ from linebot.exceptions import InvalidSignatureError
 # Google Tasks API
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -230,7 +231,7 @@ def get_google_tasks_service():
                 try:
                     with open('token.json', 'w') as token:
                         token.write(creds.to_json())
-                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") # เพิ่มคำเตือน
+                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") 
                 except Exception as e:
                     app.logger.error(f"Error saving local token.json: {e}")
 
@@ -419,8 +420,8 @@ def send_daily_reports():
 
     settings = get_app_settings() # ดึงการตั้งค่าล่าสุดจาก Firestore
 
-    # --- 1. รายงานงานค้างประจำวัน (ตามเวลาที่ตั้งค่า) ---
     try: # เพิ่ม try-except block ครอบฟังก์ชันทั้งหมดเพื่อจับข้อผิดพลาด
+        # --- 1. รายงานงานค้างประจำวัน (ตามเวลาที่ตั้งค่า) ---
         if current_hour_thai == settings['report_times']['outstanding_report_hour_thai']:
             app.logger.info("Processing outstanding tasks report.")
             outstanding_tasks = get_daily_outstanding_tasks()
@@ -480,7 +481,7 @@ def send_daily_reports():
                 if next_appointment_iso:
                     try:
                         next_app_dt_utc = datetime.datetime.fromisoformat(next_appointment_iso.replace('Z', '+00:00'))
-                        next_app_dt_local = next_app_dt_utc.astimezone(THAILAND_TZ) # แปลงเป็นเวลาท้องถิ่นไทย
+                        next_app_dt_local = next_app_dt_utc.astimezone(THAILAND_TZ) 
                         
                         if next_app_dt_local.date() == current_date_thai:
                             appointment_time_thai = next_app_dt_local.strftime("%H:%M")
@@ -813,10 +814,21 @@ def handle_message(event):
                 app.logger.info(f"Replied with daily summary to group.")
             
             else:
-                # ถ้าในกลุ่มและไม่ใช่คำสั่งงานเซอร์วิสที่รู้จัก (รวมถึง 'comphone' ซึ่งถูกจัดการด้านบน), ให้ตอบกลับด้วยข้อความทั่วไปสำหรับกลุ่ม
-                # หรือจะเงียบไปเลยก็ได้ ถ้าไม่ต้องการให้ตอบอะไรในกลุ่มเลยนอกจากการเยื้อง
-                app.logger.info(f"Ignored non-service message in group: '{text_message}'. No reply sent.")
-                pass
+                # ถ้าในกลุ่มและไม่ใช่คำสั่งงานเซอร์วิสที่รู้จัก (รวมถึง 'comphone' ซึ่งถูกจัดการด้านบน)
+                # และถ้าเป็นกลุ่มที่ไม่ใช่กลุ่มที่ตั้งค่าไว้ (LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID)
+                # เพื่อให้ LINE Bot ตอบคำถามลูกค้าทั่วไปได้ในกลุ่มอื่น ๆ
+                if event.source.group_id not in [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID]:
+                    line_messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=default_private_reply)] # ใช้ข้อความตอบกลับทั่วไป
+                        )
+                    )
+                    app.logger.info(f"Replied with general greeting to non-service group: '{text_message}'.")
+                else:
+                    # ถ้ามาจากกลุ่มที่เป็นกลุ่มช่าง/ผู้ดูแล/HR และไม่ใช่คำสั่งงานเซอร์วิส ก็จะไม่ตอบกลับอะไรเลย (เงียบ)
+                    app.logger.info(f"Ignored non-service message in service group: '{text_message}'. No reply sent.")
+                    pass
 
         # --- Logic for Private Chats ---
         else: # not is_from_group (i.e., private chat)
@@ -833,10 +845,9 @@ def handle_message(event):
                     due_date = None
                     if len(parts) > 3 and parts[3].strip():
                         try:
-                            # รับเวลาท้องถิ่นไทย แล้วแปลงเป็น UTC สำหรับ Google Tasks
                             due_dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(parts[3].strip(), "%Y-%m-%d %H:%M"))
                             due_dt_utc = due_dt_local.astimezone(pytz.utc)
-                            due_date = due_dt_utc.isoformat() # ISO format พร้อม timezone
+                            due_date = due_dt_utc.isoformat()
                             notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}"
                         except ValueError:
                             line_messaging_api.reply_message(
@@ -853,7 +864,7 @@ def handle_message(event):
                     task = create_google_task(title, notes=notes_for_task, due=due_date)
                     if task:
                         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
-                        recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID] # Still push to these groups
+                        recipients_for_new_task = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
                         task_message = TextMessage(text=(
                             f"งานใหม่ถูกสร้างแล้ว!\n"
                             f"🎯 หัวข้อ: {task.get('title')}\n"
@@ -862,7 +873,6 @@ def handle_message(event):
                         ))
                         send_message_to_recipients(task_message, recipients_for_new_task)
                         
-                        # Always reply directly in private chat for confirmation
                         line_messaging_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
@@ -879,6 +889,7 @@ def handle_message(event):
                 else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
+                            reply_token=event.reply_token,
                             messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'task:' หรือ 'งานใหม่:' ไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
                         )
                     )
@@ -897,7 +908,6 @@ def handle_message(event):
 
                             service = get_google_tasks_service()
                             if service:
-                                # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
                                 current_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
                                 current_notes = current_task.get('notes', '')
                                 old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
@@ -944,7 +954,7 @@ def handle_message(event):
                             )
                         )
                 except Exception as e:
-                    app.logger.error(f"Error processing 'complete' command in private chat: {e}", exc_info=True) # Added exc_info
+                    app.logger.error(f"Error processing 'complete' command in private chat: {e}", exc_info=True)
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
                             messages=[TextMessage(text="ในแชทส่วนตัว: เกิดข้อผิดพลาดในการประมวลผลคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:'. โปรดตรวจสอบรูปแบบให้ถูกต้อง")]
