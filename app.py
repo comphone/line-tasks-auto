@@ -166,7 +166,7 @@ def save_app_settings(settings_data):
 def get_google_tasks_service():
     """
     รับรองความถูกต้องด้วย Google Tasks API.
-    จัดลำดับความสำคัญในการโหลดโทเค็นจากตัวแกรสภาพแวดล้อม GOOGLE_TOKEN_JSON สำหรับ Render.
+    จัดลำดับความสำคัญในการโหลดโทเค็นจากตัวแปรสภาพแวดล้อม GOOGLE_TOKEN_JSON สำหรับ Render.
     หากไม่สำเร็จ จะลองจากไฟล์ token.json หรือเริ่มกระบวนการ OAuth ใหม่โดยใช้ credentials.json
     (หรือตัวแปรสภาพแวดล้อม GOOGLE_CREDENTIALS_JSON)
     """
@@ -346,7 +346,7 @@ def get_daily_summary_tasks():
 
     # ดึงงานทั้งหมดจาก Google Tasks โดยระบุ timeMin/timeMax สำหรับ created หรือ completed (ใน UTC)
     # ควรดึงทั้งหมดแล้วกรองในโค้ดจะยืดหยุ่นกว่า ถ้า API ไม่รองรับการกรองด้วย created/completed ในช่วง
-    all_tasks = get_google_tasks_for_report(showCompleted=True) 
+    all_tasks = get_google_tasks_for_report(show_completed=True) 
 
     daily_tasks = []
     for task in all_tasks:
@@ -678,7 +678,7 @@ def update_task_details(task_id):
         # สำหรับค่าเริ่มต้นใน datetime-local input field
         if tech_report.get('next_appointment'):
             try:
-                # แปลง ISO format (UTC) เป็น datetime object แล้วแปลงเป็นเวลาท้องถิ่นไทยสำหรับแสดงผล
+                # แปลง ISO format (UTC) กลับเป็น datetime object แล้วแปลงเป็นเวลาท้องถิ่นไทยสำหรับแสดงผล
                 next_app_dt_utc = datetime.datetime.fromisoformat(tech_report['next_appointment'].replace('Z', '+00:00'))
                 next_app_dt_local = next_app_dt_utc.astimezone(THAILAND_TZ)
                 task['tech_next_appointment_datetime_local'] = next_app_dt_local.strftime("%Y-%m-%dT%H:%M")
@@ -809,7 +809,7 @@ def summary():
                 try:
                     due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00')).astimezone(pytz.utc)
                     # แก้ไข: เปรียบเทียบ aware datetime (UTC) กับ aware datetime (UTC)
-                    if due_dt_utc < current_time_thai.astimezone(pytz.utc):
+                    if due_dt_utc < current_time_thai.astimezone(pytz.utc): # เปรียบเทียบ UTC aware กับ UTC aware
                         is_overdue = True
                         parsed_task['display_status'] = 'ค้างชำระ' # ค้างชำระ
                         task_status_counts['overdue'] += 1
