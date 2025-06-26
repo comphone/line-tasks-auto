@@ -231,7 +231,7 @@ def get_google_tasks_service():
                 try:
                     with open('token.json', 'w') as token:
                         token.write(creds.to_json())
-                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") # เพิ่มคำเตือน
+                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") 
                 except Exception as e:
                     app.logger.error(f"Error saving local token.json: {e}")
 
