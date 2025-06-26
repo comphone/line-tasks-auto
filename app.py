@@ -528,12 +528,12 @@ def parse_tech_report_from_notes(notes):
             notes_display = notes.replace(tech_report_match.group(0), "").strip()
         except json.JSONDecodeError as e:
             app.logger.error(f"Error decoding JSON from notes: {e}")
-            # ถ้าถอดรหัส JSON ไม่ได้ ให้ถือว่าไม่มีข้อมูล tech report ที่ถูกต้อง
+            # If JSON decoding fails, assume no valid tech report data
             tech_report_data = {
                 'summary_date': None, 'work_summary': None, 'equipment_used': None,
                 'time_taken': None, 'next_appointment': None, 'attachment_urls': []
             }
-            notes_display = notes # ถ้ามี error ใน JSON ให้แสดง notes เดิมทั้งหมดไปก่อน
+            notes_display = notes # If there's a JSON error, display all original notes
             
     # Extract legacy attachment URLs (if no JSON) or as supplementary
     # Ensure they are not duplicates of those already in tech_report_data['attachment_urls']
@@ -624,8 +624,8 @@ def handle_message(event):
             "\n🌐 เยี่ยมชมเพจของเรา: https://www.facebook.com/comphone101"
         )
 
-        # --- Handle "comphone" or "วิธีใช้" or "สวัสดี" command for help ---
-        if text_message.lower() in ["comphone", "วิธีใช้", "สวัสดี"]: # แก้ไขตรงนี้เพื่อรวม "สวัสดี"
+        # --- Handle "comphone" or "วิธีใช้" or "สวัสดี" or "วิธีใช้บอท" command for help ---
+        if text_message.lower() in ["comphone", "วิธีใช้", "สวัสดี", "วิธีใช้บอท"]: # แก้ไขตรงนี้เพื่อรวม "สวัสดี" และ "วิธีใช้บอท"
             app.logger.info(f"Detected '{text_message}' command from {event.source.type}. Sending help message.")
             help_message = (
                 "📋 คู่มือคำสั่งสำหรับ Comphone Service Bot:\n\n"
@@ -982,13 +982,18 @@ def handle_message(event):
 
     except Exception as e:
         app.logger.error(f"An unexpected error occurred in handle_message (outer try-except): {e}", exc_info=True)
+        # Attempt to reply with a generic error message if possible
         try:
-            line_messaging_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="บอทเกิดข้อผิดพลาดภายใน. โปรดลองอีกครั้งในภายหลัง.")]
+            # Check if event.reply_token is available before using it
+            if hasattr(event, 'reply_token') and event.reply_token:
+                line_messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="บอทเกิดข้อผิดพลาดภายใน. โปรดลองอีกครั้งในภายหลัง.")]
+                    )
                 )
-            )
+            else:
+                app.logger.warning("No reply_token available to send error reply in handle_message.")
         except Exception as reply_e:
             app.logger.error(f"Failed to send error reply in handle_message: {reply_e}")
 
@@ -998,9 +1003,9 @@ def handle_message(event):
 @app.route("/", methods=['GET', 'POST'])
 def create_task_page(): 
     """
-    จัดการการส่งฟอร์มการสร้าง Task
-    เมื่อเข้าถึงด้วย GET จะแสดงฟอร์มสร้างงานใหม่
-    เมื่อเข้าถึงด้วย POST จะประมวลผลการสร้างงานและเปลี่ยนเส้นทางไปยังหน้าสรุปงาน
+    Handles task creation form submission.
+    On GET, displays the new task creation form.
+    On POST, processes task creation and redirects to the summary page.
     """
     if request.method == 'POST':
         command_type = request.form.get('command_type')
@@ -1079,8 +1084,8 @@ def settings_page():
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
     """
-    หน้าสำหรับช่างเทคนิคอัปเดตรายละเอียดงานและสถานะ
-    รองรับการอัปโหลดหลายรูปภาพ
+    Page for technicians to update task details and status.
+    Supports multiple image uploads.
     """
     service = get_google_tasks_service()
     if not service:
@@ -1237,7 +1242,7 @@ def summary():
         parsed_task['notes_display'] = remaining_notes # notes ส่วนที่เหลือที่ไม่ได้เป็น JSON
 
         tasks.append(parsed_task)
-        task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
+        task_status_counts['total'] = len(tasks) # นับรวมใน total หลังจากประมวลผล status
 
     # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
     tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
