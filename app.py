@@ -727,7 +727,6 @@ def handle_message(event):
 
                             service = get_google_tasks_service()
                             if service:
-                                # ใช้ GOOGLE_TASKS_LIST_ID ที่กำหนดไว้
                                 current_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
                                 current_notes = current_task.get('notes', '')
                                 old_tech_report, old_attachment_urls, remaining_notes = parse_tech_report_from_notes(current_notes)
@@ -889,7 +888,6 @@ def handle_message(event):
                 else:
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
-                            reply_token=event.reply_token,
                             messages=[TextMessage(text="ในแชทส่วนตัว: รูปแบบคำสั่ง 'task:' หรือ 'งานใหม่:' ไม่ถูกต้อง. โปรดใช้ 'task:หัวข้อ|ลูกค้า|เบอร์โทร|กำหนดส่ง(YYYY-MM-DD HH:MM)|สถานที่'")]
                         )
                     )
