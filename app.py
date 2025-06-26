@@ -22,8 +22,7 @@ from linebot.exceptions import InvalidSignatureError
 
 # Google Tasks API
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -231,7 +230,7 @@ def get_google_tasks_service():
                 try:
                     with open('token.json', 'w') as token:
                         token.write(creds.to_json())
-                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") # เพิ่มคำเตือน
+                    app.logger.error(f"Local token.json saved: {token.name}. Please copy its content to GOOGLE_TOKEN_JSON env var on Render.") 
                 except Exception as e:
                     app.logger.error(f"Error saving local token.json: {e}")
 
@@ -610,7 +609,7 @@ def create_task_page():
             due_date_gmt = None
             if due_date_str:
                 try:
-                    # แปลงรูปแบบ datetime-local (เช่น '2025-06-25T14:30') เป็นออบเจกต์ datetime ของ Python
+                    # แปลงรูปแบบ datetime-local (เช่น '2025-06-25T14:30') เป็นออบเจกต์ datetime ของ Python (เป็นเวลาท้องถิ่น)
                     due_dt_local = datetime.datetime.fromisoformat(due_date_str)
                     # สมมติว่าอินพุตเป็นเวลาท้องถิ่นไทย (+7 UTC), แปลงเป็น UTC สำหรับ Google Tasks
                     due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
@@ -679,7 +678,7 @@ def update_task_details(task_id):
         # สำหรับค่าเริ่มต้นใน datetime-local input field
         if tech_report.get('next_appointment'):
             try:
-                # แปลง ISO format (UTC) กลับเป็น datetime object แล้วแปลงเป็นเวลาท้องถิ่นไทยสำหรับแสดงผล
+                # แปลง ISO format (UTC) เป็น datetime object แล้วแปลงเป็นเวลาท้องถิ่นไทยสำหรับแสดงผล
                 next_app_dt_utc = datetime.datetime.fromisoformat(tech_report['next_appointment'].replace('Z', '+00:00'))
                 next_app_dt_local = next_app_dt_utc.astimezone(THAILAND_TZ)
                 task['tech_next_appointment_datetime_local'] = next_app_dt_local.strftime("%Y-%m-%dT%H:%M")
