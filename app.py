@@ -11,6 +11,7 @@ import pytz
 from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
+from geopy.distance import geodesic
 
 # LINE & Google API imports
 from linebot.v3.messaging import (
@@ -212,6 +213,41 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
+def extract_lat_lon_from_notes(notes):
+    """Extracts latitude and longitude from task notes."""
+    if not notes: return None
+    match = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", notes)
+    if match: return (float(match.group(1)), float(match.group(2)))
+    match = re.search(r"พิกัด:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)", notes)
+    if match: return (float(match.group(1)), float(match.group(2)))
+    return None
+
+def find_nearby_jobs(completed_task_id, radius_km=5):
+    """Finds nearby pending jobs based on a completed task's location."""
+    completed_task = get_single_task(completed_task_id)
+    if not completed_task: return []
+
+    origin_coords = extract_lat_lon_from_notes(completed_task.get('notes', ''))
+    if not origin_coords:
+        app.logger.info(f"Completed task {completed_task_id} has no location data. Skipping nearby search.")
+        return []
+
+    pending_tasks = get_google_tasks_for_report(show_completed=False)
+    if not pending_tasks: return []
+
+    nearby_jobs = []
+    for task in pending_tasks:
+        if task.get('id') == completed_task_id: continue
+        task_coords = extract_lat_lon_from_notes(task.get('notes', ''))
+        if task_coords:
+            distance = geodesic(origin_coords, task_coords).kilometers
+            if distance <= radius_km:
+                task['distance_km'] = round(distance, 1)
+                nearby_jobs.append(task)
+    
+    nearby_jobs.sort(key=lambda x: x['distance_km'])
+    return nearby_jobs
+
 def parse_customer_info_from_notes(notes):
     """Extracts customer name and phone from notes."""
     info = {'name': 'N/A', 'phone': 'N/A'}
@@ -301,6 +337,34 @@ def create_task_flex_message(task):
 
     return FlexMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
 
+def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
+    """Creates a Flex Message Carousel for nearby job suggestions."""
+    if not nearby_tasks: return None
+    
+    bubbles = []
+    for task in nearby_tasks[:12]:
+        customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+        
+        phone_action = None
+        if customer_info.get('phone') and customer_info.get('phone') != 'N/A':
+            phone_number = re.sub(r'\D', '', customer_info['phone'])
+            phone_action = URIAction(label=f"📞 โทร: {customer_info['phone']}", uri=f"tel:{phone_number}")
+
+        bubble = BubbleContainer(direction='ltr',
+            header=BoxComponent(layout='vertical', background_color='#FFDDC2', contents=[TextComponent(text='💡 แนะนำงานใกล้เคียง!', weight='bold', color='#BF5A00', size='md')]),
+            body=BoxComponent(layout='vertical', spacing='md', contents=[
+                TextComponent(text=f"ห่างไป {task['distance_km']} กม.", size='sm', color='#555555'),
+                TextComponent(text=f"ลูกค้า: {customer_info.get('name', 'N/A')}", weight='bold', size='lg', wrap=True),
+                TextComponent(text=task.get('title', '-'), wrap=True, size='sm', color='#666666')
+            ]),
+            footer=BoxComponent(layout='vertical', spacing='sm', contents=([phone_action] if phone_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด/แผนที่', uri=update_url))])
+        )
+        bubbles.append(bubble)
+
+    alt_text = f"คุณอยู่ใกล้กับงานอื่น! หลังจากปิดงาน '{completed_task_title}'"
+    return FlexMessage(alt_text=alt_text, contents=CarouselContainer(contents=bubbles))
+
 def create_customer_history_carousel(tasks, customer_name):
     """Creates a Flex Message Carousel Container for a customer's task history."""
     if not tasks: return None
@@ -308,7 +372,7 @@ def create_customer_history_carousel(tasks, customer_name):
     bubbles = []
     tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
     
-    for task in tasks[:12]: # Carousel limit is 12
+    for task in tasks[:12]:
         parsed = parse_google_task_dates(task)
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
 
@@ -337,14 +401,11 @@ def create_customer_history_carousel(tasks, customer_name):
                     ])
                 ])
             ]),
-            footer=BoxComponent(layout='vertical', spacing='sm', contents=[
-                ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด / อัปเดต', uri=update_url))
-            ])
+            footer=BoxComponent(layout='vertical', spacing='sm', contents=[ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด / อัปเดต', uri=update_url))])
         )
         bubbles.append(bubble)
 
     return CarouselContainer(contents=bubbles)
-
 
 # --- Web Page Routes ---
 
@@ -467,6 +528,19 @@ def summary():
 
     return render_template("tasks_summary.html", tasks=tasks, summary=summary_stats, search_query=search_query)
 
+def check_for_nearby_jobs_and_notify(completed_task_id, source_id):
+    """Central function to find and send nearby job notifications."""
+    nearby_tasks = find_nearby_jobs(completed_task_id)
+    if nearby_tasks:
+        completed_task = get_single_task(completed_task_id)
+        suggestion_message = create_nearby_job_suggestion_message(completed_task.get('title', ''), nearby_tasks)
+        if suggestion_message:
+            try:
+                line_messaging_api.push_message(PushMessageRequest(to=source_id, messages=[suggestion_message]))
+                app.logger.info(f"Sent nearby job suggestions to {source_id}")
+            except Exception as e:
+                app.logger.error(f"Failed to send nearby job suggestion: {e}")
+
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
     """Displays and handles updates for a single task, showing history."""
@@ -490,18 +564,17 @@ def update_task_details(task_id):
     except HttpError: abort(404, "Task not found.")
 
     if request.method == 'POST':
+        original_status = task.get('status')
+        new_status = request.form.get('status')
         work_summary = request.form.get('work_summary', '').strip()
         equipment_used = request.form.get('equipment_used', '').strip()
         time_taken = request.form.get('time_taken', '').strip()
-        new_status = request.form.get('status', task.get('status'))
         next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
 
-        # Get all attachments from history
         all_attachment_urls = []
         for report in task.get('tech_reports_history', []):
             all_attachment_urls.extend(report.get('attachment_urls', []))
         
-        # Add new attachments
         if 'files[]' in request.files:
             files = request.files.getlist('files[]')
             for file in files:
@@ -526,9 +599,7 @@ def update_task_details(task_id):
         
         _, original_notes_text = parse_tech_report_from_notes(task.get('notes', ''))
         
-        # Rebuild notes with all historical reports + the new one
         all_reports_text = ""
-        # Sort by date ascending to rebuild in correct order
         for report in sorted(task.get('tech_reports_history', []), key=lambda x: x.get('summary_date')):
             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
@@ -536,8 +607,15 @@ def update_task_details(task_id):
         
         updated_notes = original_notes_text + all_reports_text
         
-        if update_google_task(task_id, notes=updated_notes, status=new_status):
-             flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
+        updated_task = update_google_task(task_id, notes=updated_notes, status=new_status)
+
+        if updated_task:
+            flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
+            if new_status == 'completed' and original_status != 'completed':
+                settings = get_app_settings()
+                tech_group_id = settings['line_recipients'].get('technician_group_id')
+                if tech_group_id:
+                    check_for_nearby_jobs_and_notify(task_id, tech_group_id)
         else:
             flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
 
@@ -692,6 +770,8 @@ def handle_complete_task_command(event, task_id):
     updated_task = update_google_task(task_id, status='completed')
     if updated_task:
         reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")])
+        source_id = event.source.group_id if event.source.type == 'group' else event.source.user_id
+        check_for_nearby_jobs_and_notify(task_id, source_id)
     else:
         reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน ID: {task_id} ได้")])
 
