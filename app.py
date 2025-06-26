@@ -23,7 +23,6 @@ from linebot.exceptions import InvalidSignatureError
 # Google Tasks API
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -173,7 +172,7 @@ def get_google_tasks_service():
     """
     creds = None
 
-    # 1. ลองโหลดโทเค็นจากตัวแปรสภาพแวดล้อม (สำหรับ Render deployment)
+    # 1. ลองโหลดโทเค็นจากตัวแกรสภาพแวดล้อม (สำหรับ Render deployment)
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
     if google_token_json_str:
         try:
@@ -219,7 +218,6 @@ def get_google_tasks_service():
                     return None
             
             try:
-                # แก้ไขการ import InstalledAppFlow ที่นี่ด้วยหากยังไม่ได้แก้ไข
                 flow = InstalledAppFlow.from_client_secrets_file(
                     GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
                 creds = flow.run_local_server(port=0) 
@@ -422,88 +420,88 @@ def send_daily_reports():
     settings = get_app_settings() # ดึงการตั้งค่าล่าสุดจาก Firestore
 
     # --- 1. รายงานงานค้างประจำวัน (ตามเวลาที่ตั้งค่า) ---
-    if current_hour_thai == settings['report_times']['outstanding_report_hour_thai']:
-        app.logger.info("Processing outstanding tasks report.")
-        outstanding_tasks = get_daily_outstanding_tasks()
-        report_message_text = f"--- รายงานงานค้างประจำวัน ({settings['report_times']['outstanding_report_hour_thai']}:00 น.) ---\n"
-        if outstanding_tasks:
-            titles = [task.get('title', 'N/A') for task in outstanding_tasks]
-            report_message_text += "หัวข้อ: " + ", ".join(titles)
-            if settings['report_options']['include_overdue_tips']: # ตามตัวเลือกในตั้งค่า
-                report_message_text += "\n\n**เคล็ดลับเพิ่มประสิทธิภาพสำหรับงานค้าง:**"
-                report_message_text += "\n- จัดลำดับความสำคัญของงานที่สำคัญและเร่งด่วนที่สุดก่อน"
-                report_message_text += "\n- แบ่งงานใหญ่ออกเป็นส่วนย่อยๆ ที่จัดการได้ง่ายขึ้น"
-                report_message_text += "\n- สื่อสารกับลูกค้าหรือทีมงานหากมีปัญหาหรือต้องการความช่วยเหลือ"
-                report_message_text += "\n- ใช้หน้าเว็บอัปเดตงานเพื่อบันทึกความคืบหน้าและรูปภาพ"
-                report_message_text += "\n- หากนัดใหม่ ให้ระบุวันนัดถัดไปในระบบ"
-        else:
-            report_message_text += "ไม่มีงานค้าง"
-        
-        # กำหนดผู้รับสำหรับรายงานงานค้าง (เช่น ผู้ดูแลระบบ, ผู้จัดการ)
-        # คุณสามารถแก้ไข ID ใน list นี้ได้ตามต้องการ
-        recipients_for_outstanding_report = [
-            settings['line_recipients']['admin_group_id'],
-            settings['line_recipients']['manager_user_id']
-        ] 
-        send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_outstanding_report)
-        app.logger.info("Daily outstanding tasks report sent.")
-
-    # --- 2. รายงานสรุปประจำวัน (ตามเวลาที่ตั้งค่า) ---
-    elif current_hour_thai == settings['report_times']['summary_report_hour_thai']:
-        app.logger.info("Processing daily summary report.")
-        daily_tasks = get_daily_summary_tasks() # Tasks created or completed today
-        report_message_text = f"--- สรุปงานประจำวัน ({settings['report_times']['summary_report_hour_thai']}:00 น.) ---\n"
-        if daily_tasks:
-            titles = [task.get('title', 'N/A') for task in daily_tasks]
-            report_message_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
-        else:
-            report_message_text += "ไม่มีกิจกรรมงานในวันนี้"
-
-        recipients_for_summary_report = [
-            settings['line_recipients']['admin_group_id'],
-            settings['line_recipients']['manager_user_id'],
-            settings['line_recipients']['hr_group_id']
-        ]
-        send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_summary_report)
-        app.logger.info("Daily summary report sent.")
-
-    # --- 3. แจ้งเตือนงานนัดหมายลูกค้า (รันพร้อมกับรายงาน 6 โมงเช้า - ตามเวลาที่ตั้งค่า) ---
-    if current_hour_thai == settings['report_times']['appointment_reminder_hour_thai']:
-        app.logger.info("Processing daily appointment reminders.")
-        all_needs_action_tasks = get_google_tasks_for_report(show_completed=False)
-        appointment_reminders = []
-
-        for task_item in all_needs_action_tasks:
-            notes = task_item.get('notes', '')
-            tech_report_data, _, _ = parse_tech_report_from_notes(notes) 
+    try: # เพิ่ม try-except block ครอบฟังก์ชันทั้งหมดเพื่อจับข้อผิดพลาด
+        if current_hour_thai == settings['report_times']['outstanding_report_hour_thai']:
+            app.logger.info("Processing outstanding tasks report.")
+            outstanding_tasks = get_daily_outstanding_tasks()
+            report_message_text = f"--- รายงานงานค้างประจำวัน ({settings['report_times']['outstanding_report_hour_thai']}:00 น.) ---\n"
+            if outstanding_tasks:
+                titles = [task.get('title', 'N/A') for task in outstanding_tasks]
+                report_message_text += "หัวข้อ: " + ", ".join(titles)
+                if settings['report_options']['include_overdue_tips']: # ตามตัวเลือกในตั้งค่า
+                    report_message_text += "\n\n**เคล็ดลับเพิ่มประสิทธิภาพสำหรับงานค้าง:**"
+                    report_message_text += "\n- จัดลำดับความสำคัญของงานที่สำคัญและเร่งด่วนที่สุดก่อน"
+                    report_message_text += "\n- แบ่งงานใหญ่ออกเป็นส่วนย่อยๆ ที่จัดการได้ง่ายขึ้น"
+                    report_message_text += "\n- สื่อสารกับลูกค้าหรือทีมงานหากมีปัญหาหรือต้องการความช่วยเหลือ"
+                    report_message_text += "\n- ใช้หน้าเว็บอัปเดตงานเพื่อบันทึกความคืบหน้าและรูปภาพ"
+                    report_message_text += "\n- หากนัดใหม่ ให้ระบุวันนัดถัดไปในระบบ"
+            else:
+                report_message_text += "ไม่มีงานค้าง"
             
-            next_appointment_iso = tech_report_data.get('next_appointment')
+            # กำหนดผู้รับสำหรับรายงานงานค้าง (เช่น ผู้ดูแลระบบ, ผู้จัดการ)
+            recipients_for_outstanding_report = [
+                settings['line_recipients']['admin_group_id'],
+                settings['line_recipients']['manager_user_id']
+            ] 
+            send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_outstanding_report)
+            app.logger.info("Daily outstanding tasks report sent.")
 
-            if next_appointment_iso:
-                try:
-                    # แปลง ISO format (UTC) เป็น datetime object แล้วแปลงเป็นเวลาท้องถิ่นไทยสำหรับเปรียบเทียบ
-                    next_app_dt_utc = datetime.datetime.fromisoformat(next_appointment_iso.replace('Z', '+00:00'))
-                    next_app_dt_local = next_app_dt_utc.astimezone(THAILAND_TZ) # แปลงเป็นเวลาท้องถิ่นไทย
-                    
-                    # ถ้าวันนัดหมายตรงกับวันที่ปัจจุบัน
-                    if next_app_dt_local.date() == current_date_thai:
-                        appointment_time_thai = next_app_dt_local.strftime("%H:%M")
-                        task_title = task_item.get('title', 'N/A')
-                        task_id = task_item.get('id', 'N/A')
-                        update_url = url_for('update_task_details', task_id=task_id, _external=True)
-                        appointment_reminders.append(f"- {task_title} (เวลา: {appointment_time_thai}) [ID: {task_id}]\nอัปเดต: {update_url}")
-                except ValueError as e:
-                    app.logger.error(f"Error parsing next_appointment date for task {task_item.get('id')}: {e}")
+        # --- 2. รายงานสรุปประจำวัน (ตามเวลาที่ตั้งค่า) ---
+        elif current_hour_thai == settings['report_times']['summary_report_hour_thai']:
+            app.logger.info("Processing daily summary report.")
+            daily_tasks = get_daily_summary_tasks() # Tasks created or completed today
+            report_message_text = f"--- สรุปงานประจำวัน ({settings['report_times']['summary_report_hour_thai']}:00 น.) ---\n"
+            if daily_tasks:
+                titles = [task.get('title', 'N/A') for task in daily_tasks]
+                report_message_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
+            else:
+                report_message_text += "ไม่มีกิจกรรมงานในวันนี้"
 
-        if appointment_reminders:
-            appointment_message_text = "--- แจ้งเตือนงานนัดหมายลูกค้าวันนี้ ---\n"
-            appointment_message_text += "\n".join(appointment_reminders)
-            
-            recipients_for_appointment = [settings['line_recipients']['technician_group_id'], settings['line_recipients']['admin_group_id']]
-            send_message_to_recipients(TextMessage(text=appointment_message_text), recipients_for_appointment)
-            app.logger.info("Daily appointment reminders sent.")
-        else:
-            app.logger.info("No appointments scheduled for today.")
+            recipients_for_summary_report = [
+                settings['line_recipients']['admin_group_id'],
+                settings['line_recipients']['manager_user_id'],
+                settings['line_recipients']['hr_group_id']
+            ]
+            send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_summary_report)
+            app.logger.info("Daily summary report sent.")
+
+        # --- 3. แจ้งเตือนงานนัดหมายลูกค้า (รันพร้อมกับรายงาน 6 โมงเช้า - ตามเวลาที่ตั้งค่า) ---
+        if current_hour_thai == settings['report_times']['appointment_reminder_hour_thai']:
+            app.logger.info("Processing daily appointment reminders.")
+            all_needs_action_tasks = get_google_tasks_for_report(show_completed=False)
+            appointment_reminders = []
+
+            for task_item in all_needs_action_tasks:
+                notes = task_item.get('notes', '')
+                tech_report_data, _, _ = parse_tech_report_from_notes(notes) 
+                
+                next_appointment_iso = tech_report_data.get('next_appointment')
+
+                if next_appointment_iso:
+                    try:
+                        next_app_dt_utc = datetime.datetime.fromisoformat(next_appointment_iso.replace('Z', '+00:00'))
+                        next_app_dt_local = next_app_dt_utc.astimezone(THAILAND_TZ) # แปลงเป็นเวลาท้องถิ่นไทย
+                        
+                        if next_app_dt_local.date() == current_date_thai:
+                            appointment_time_thai = next_app_dt_local.strftime("%H:%M")
+                            task_title = task_item.get('title', 'N/A')
+                            task_id = task_item.get('id', 'N/A')
+                            update_url = url_for('update_task_details', task_id=task_id, _external=True)
+                            appointment_reminders.append(f"- {task_title} (เวลา: {appointment_time_thai}) [ID: {task_id}]\nอัปเดต: {update_url}")
+                    except ValueError as e:
+                        app.logger.error(f"Error parsing next_appointment date for task {task_item.get('id')}: {e}")
+
+            if appointment_reminders:
+                appointment_message_text = "--- แจ้งเตือนงานนัดหมายลูกค้าวันนี้ ---\n"
+                appointment_message_text += "\n".join(appointment_reminders)
+                
+                recipients_for_appointment = [settings['line_recipients']['technician_group_id'], settings['line_recipients']['admin_group_id']]
+                send_message_to_recipients(TextMessage(text=appointment_message_text), recipients_for_appointment)
+                app.logger.info("Daily appointment reminders sent.")
+            else:
+                app.logger.info("No appointments scheduled for today.")
+    except Exception as e:
+        app.logger.error(f"Error in send_daily_reports function: {e}", exc_info=True) # Catch all exceptions in this function
 
 def parse_tech_report_from_notes(notes):
     """
@@ -781,7 +779,7 @@ def handle_message(event):
                             )
                         )
                 except Exception as e:
-                    app.logger.error(f"Error processing 'complete' command in group: {e}", exc_info=True) # Added exc_info
+                    app.logger.error(f"Error processing 'complete' command in group: {e}", exc_info=True)
                     line_messaging_api.reply_message(
                         ReplyMessageRequest(
                             messages=[TextMessage(text="ในกลุ่ม: เกิดข้อผิดพลาดในการประมวลผลคำสั่ง 'complete:' หรือ 'เสร็จสิ้น:'. โปรดตรวจสอบรูปแบบให้ถูกต้อง")]
@@ -816,8 +814,7 @@ def handle_message(event):
             
             else:
                 # ถ้าในกลุ่มและไม่ใช่คำสั่งงานเซอร์วิสที่รู้จัก (รวมถึง 'comphone' ซึ่งถูกจัดการด้านบน), ให้ตอบกลับด้วยข้อความทั่วไปสำหรับกลุ่ม
-                # หรือจะเงียบไปเลยก็ได้ ถ้าไม่ต้องการให้ตอบอะไรในกลุ่มเลยนอกจากคำสั่ง
-                # ในที่นี้ ผมจะให้เงียบไปเลยเพื่อไม่ให้รบกวน
+                # หรือจะเงียบไปเลยก็ได้ ถ้าไม่ต้องการให้ตอบอะไรในกลุ่มเลยนอกจากการเยื้อง
                 app.logger.info(f"Ignored non-service message in group: '{text_message}'. No reply sent.")
                 pass
 
@@ -1116,6 +1113,7 @@ def update_task_details(task_id):
                 next_appointment_gmt = next_app_dt_utc.isoformat() # ISO format พร้อม timezone
             except ValueError:
                 app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
+                # สามารถเพิ่ม flash message ให้ผู้ใช้ทราบได้
         
         updated_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
