@@ -605,7 +605,13 @@ def create_task_page():
             due_date_str = request.form.get('due_date')
             location = request.form.get('location')
 
+            # รับค่าที่อยู่ลูกค้า
+            address = request.form.get('address', '').strip() # เพิ่มการรับค่า address
+
             notes = f"ลูกค้า: {customer_name}\nเบอร์โทร: {customer_phone}"
+            if address: # เพิ่มที่อยู่ใน notes
+                notes += f"\nที่อยู่: {address}"
+            
             due_date_gmt = None
             if due_date_str:
                 try:
@@ -619,16 +625,40 @@ def create_task_page():
             if location:
                 notes += f"\nสถานที่: {location}"
 
+            # จัดการการอัปโหลดไฟล์หลายรูป
+            uploaded_file_urls = []
+            if 'files[]' in request.files:
+                files = request.files.getlist('files[]')
+                for file in files:
+                    if file and allowed_file(file.filename):
+                        filename = secure_filename(file.filename)
+                        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        file.save(file_path)
+                        uploaded_file_urls.append(url_for('uploaded_file', filename=filename, _external=True))
+                    else:
+                        app.logger.warning(f"Skipping disallowed file: {file.filename}")
+            
+            if uploaded_file_urls: # เพิ่ม URL รูปภาพใน notes
+                notes += "\n\nไฟล์แนบ (จากฟอร์มสร้างงาน): " + ", ".join(uploaded_file_urls)
+
             created_task = create_google_task(title, notes=notes, due=due_date_gmt)
             if created_task:
                 app.logger.info(f"Task created via web form: {created_task.get('title')}")
                 new_task_notification_text = (
                     f"งานใหม่ถูกสร้างจากเว็บฟอร์ม!\n"
                     f"🎯 หัวข้อ: {title}\n"
-                    f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}\n"
-                    f"(ID งาน: {created_task.get('id')})"
+                    f"ลูกค้า: {customer_name}\n"
+                    f"โทร: {customer_phone}\n"
+                    f"ที่อยู่: {address or '-'}\n"
+                    f"กำหนดส่ง: {due_date_str.replace('T', ' ') if due_date_str else '-'}\n"
+                    f"สถานที่: {location or '-'}\n"
+                    f"ID งาน: {created_task.get('id')}\n"
+                    f"🛠️ อัปเดตงาน (สถานะ, อุปกรณ์, รูปภาพ, นัดหมาย) ที่นี่: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}"
                 )
-                recipients_for_new_web_task = [LINE_ADMIN_GROUP_ID, LINE_TECHNICIAN_GROUP_ID]
+                # โหลด settings ล่าสุดเพื่อใช้ ID ผู้รับที่ถูกต้อง
+                settings = get_app_settings()
+                recipients_for_new_web_task = [settings['line_recipients']['admin_group_id'], settings['line_recipients']['technician_group_id']]
+                recipients_for_new_web_task = [id for id in recipients_for_new_web_task if id] # กรอง ID ที่ว่างเปล่า
                 send_message_to_recipients(TextMessage(text=new_task_notification_text), recipients_for_new_web_task)
                 
                 return redirect(url_for('summary'))

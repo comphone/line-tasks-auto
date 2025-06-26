@@ -16,11 +16,12 @@
         .task-item { background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; }
         .task-item.completed { border-left: 5px solid #28a745; }
         .task-item.pending { border-left: 5px solid #ffc107; }
+        .task-item.overdue { border-left: 5px solid #dc3545; } /* เพิ่มสไตล์สำหรับงานค้างชำระ */
         .task-item h3 { margin-top: 0; color: #007bff; }
         .task-item p { margin: 5px 0; }
         .task-item h4 { margin-top: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-        .button-group { text-align: center; margin-top: 20px; }
-        .button-group a {
+        .button-group { text-align: center; margin-top: 20px; margin-bottom: 20px;} /* เพิ่ม margin-bottom */
+        .button-group a, .button-group button { /* ปรับใช้กับ button ด้วย */
             display: inline-block;
             padding: 10px 20px;
             background-color: #007bff;
@@ -28,8 +29,10 @@
             text-decoration: none;
             border-radius: 5px;
             margin: 0 10px;
+            border: none; /* สำหรับปุ่ม */
+            cursor: pointer;
         }
-        .button-group a:hover {
+        .button-group a:hover, .button-group button:hover {
             background-color: #0056b3;
         }
         .task-actions {
@@ -47,6 +50,52 @@
         .task-actions a:hover {
             background-color: #5a6268;
         }
+        .search-form {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 8px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .search-form input[type="text"] {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .search-form button {
+            padding: 8px 15px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .search-form button:hover {
+            background-color: #218838;
+        }
+
+        /* Styles for printing */
+        @media print {
+            .button-group, .search-form {
+                display: none; /* ซ่อนปุ่มและฟอร์มค้นหาเมื่อพิมพ์ */
+            }
+            .container {
+                box-shadow: none;
+                margin: 0;
+                padding: 0;
+            }
+            .task-item {
+                border: 1px solid #ccc;
+                page-break-inside: avoid; /* ป้องกันงานถูกตัดครึ่งหน้า */
+                margin-bottom: 10px;
+            }
+            body {
+                background-color: #fff;
+            }
+        }
     </style>
 </head>
 <body>
@@ -56,8 +105,17 @@
         <div class="button-group">
             <a href="{{ url_for('create_task_page') }}">สร้างงานใหม่</a>
             <a href="{{ url_for('summary') }}">ดูสรุปงานทั้งหมด</a>
-            <a href="{{ url_for('settings_page') }}">ตั้งค่าระบบ</a> {# แก้ไขตรงนี้จาก 'get_app_settings' เป็น 'settings_page' #}
+            <a href="{{ url_for('settings_page') }}">ตั้งค่าระบบ</a>
+            <button onclick="window.print()">พิมพ์รายงาน</button> {# เพิ่มปุ่มพิมพ์ #}
         </div>
+
+        {# ฟอร์มค้นหา #}
+        <form class="search-form" method="GET" action="{{ url_for('summary') }}">
+            <input type="text" name="search_query" 
+                   placeholder="ค้นหาตามหัวข้อ, ลูกค้า, เบอร์โทร, ที่อยู่, สถานที่..." 
+                   value="{{ request.args.get('search_query', '') }}">
+            <button type="submit">ค้นหา</button>
+        </form>
 
         <div class="summary-overview">
             <h2>ภาพรวมสถานะงาน</h2>
@@ -69,13 +127,85 @@
             </ul>
         </div>
 
-        <h2>รายการงานโดยละเอียด</h2>
+        {# ส่วนงานค้างที่ยังไม่เสร็จ #}
+        <h2>งานค้างที่ยังไม่เสร็จ (Needs Action & Overdue)</h2>
+        {% set outstanding_and_overdue_tasks = tasks | selectattr('status', 'eq', 'needsAction') | list %}
+        {% if outstanding_and_overdue_tasks %}
+            <div class="task-list">
+                {% for task in outstanding_and_overdue_tasks %}
+                    {# เพิ่ม class 'overdue' ถ้างานค้างชำระ #}
+                    <div class="task-item {{ 'overdue' if task.display_status == 'ค้างชำระ' else 'pending' }}"> 
+                        <h3>{{ task.get('title', 'ไม่มีหัวข้อ') }} <small>({{ task.display_status }})</small></h3>
+                        <p><strong>ID งาน:</strong> {{ task.id }}</p>
+                        <p><strong>สร้างเมื่อ:</strong> {{ task.created_formatted }}</p>
+                        {% if task.due_formatted != 'N/A' %}
+                            <p><strong>กำหนดส่ง:</strong> {{ task.due_formatted }}</p>
+                        {% endif %}
+                        <p><strong>รายละเอียดงาน:</strong> {{ task.get('notes_display', 'ไม่มีรายละเอียด') | replace('\n', '<br>') | safe }}</p>
+                        {% if task.tech_report.next_appointment %}
+                            <p><strong>นัดหมายครั้งถัดไป:</strong> {{ task.tech_report.next_appointment }}</p>
+                        {% endif %}
+                        <div class="task-actions">
+                            <a href="{{ url_for('update_task_details', task_id=task.id) }}">อัปเดตงาน</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>ไม่มีงานค้างที่ยังไม่เสร็จ</p>
+        {% endif %}
+
+        <hr> {# เส้นแบ่งระหว่างส่วน #}
+
+        {# ส่วนงานที่เสร็จแล้ว #}
+        <h2>งานที่เสร็จแล้ว (Completed)</h2>
+        {% set completed_tasks = tasks | selectattr('status', 'eq', 'completed') | list %}
+        {% if completed_tasks %}
+            <div class="task-list">
+                {% for task in completed_tasks %}
+                    <div class="task-item completed">
+                        <h3>{{ task.get('title', 'ไม่มีหัวข้อ') }} <small>(เสร็จสิ้น)</small></h3>
+                        <p><strong>ID งาน:</strong> {{ task.id }}</p>
+                        <p><strong>สร้างเมื่อ:</strong> {{ task.created_formatted }}</p>
+                        <p><strong>เสร็จสิ้นเมื่อ:</strong> {{ task.completed_formatted }}</p>
+                        <p><strong>รายละเอียดงาน:</strong> {{ task.get('notes_display', 'ไม่มีรายละเอียด') | replace('\n', '<br>') | safe }}</p>
+                        {# แสดงสรุปงานจากช่าง (ถ้ามี) #}
+                        {% if task.tech_report and (task.tech_report.work_summary or task.tech_report.equipment_used or task.tech_report.time_taken) %}
+                            <h4>--- สรุปงานโดยช่าง ---</h4>
+                            <p><strong>วันที่สรุป:</strong> {{ task.tech_report.summary_date or 'N/A' }}</p>
+                            <p><strong>สรุปผลการทำงาน:</strong> {{ task.tech_report.work_summary or 'N/A' }}</p>
+                            <p><strong>รายการอุปกรณ์ที่ใช้:</strong> {{ task.tech_report.equipment_used or 'N/A' }}</p>
+                            <p><strong>ระยะเวลาที่ทำเสร็จ:</strong> {{ task.tech_report.time_taken or 'N/A' }}</p>
+                        {% endif %}
+                        {# แสดงรูปภาพแนบ #}
+                        {% if task.attachment_urls %}
+                            <div class="current-attachments">
+                                <p><strong>ไฟล์แนบ:</strong>
+                                    {% for file_url in task.attachment_urls %}
+                                        <a href="{{ file_url }}" target="_blank">ไฟล์ {{ loop.index }}</a>{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </p>
+                            </div>
+                        {% endif %}
+                        <div class="task-actions">
+                            <a href="{{ url_for('update_task_details', task_id=task.id) }}">ดูรายละเอียด/แก้ไข</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>ไม่มีงานที่เสร็จแล้ว</p>
+        {% endif %}
+
+        <hr> {# เส้นแบ่งระหว่างส่วน #}
+
+        {# รายการงานโดยละเอียดทั้งหมด (ส่วนเดิมที่อยู่ด้านล่างสุด) #}
+        <h2>รายการงานทั้งหมด (ทุกสถานะ)</h2>
         {% if tasks %}
             <div class="task-list">
                 {% for task in tasks %}
-                    <div class="task-item {{ 'completed' if task.status == 'completed' else 'pending' }}">
-                        <h3>{{ task.get('title', 'ไม่มีหัวข้อ') }}</h3>
-                        <p><strong>สถานะ:</strong> {{ task.display_status }}</p>
+                    <div class="task-item {{ 'completed' if task.status == 'completed' else ('overdue' if task.display_status == 'ค้างชำระ' else 'pending') }}">
+                        <h3>{{ task.get('title', 'ไม่มีหัวข้อ') }} <small>({{ task.display_status }})</small></h3>
                         <p><strong>ID งาน:</strong> {{ task.id }}</p>
                         <p><strong>สร้างเมื่อ:</strong> {{ task.created_formatted }}</p>
                         {% if task.due_formatted != 'N/A' %}
@@ -84,10 +214,7 @@
                         {% if task.completed_formatted != 'N/A' and task.status == 'completed' %}
                             <p><strong>เสร็จสิ้นเมื่อ:</strong> {{ task.completed_formatted }}</p>
                         {% endif %}
-                        
                         <p><strong>รายละเอียดงาน:</strong> {{ task.get('notes_display', 'ไม่มีรายละเอียด') | replace('\n', '<br>') | safe }}</p>
-                        
-                        {# แสดงสรุปงานจากช่าง (ถ้ามี) #}
                         {% if task.tech_report and (task.tech_report.work_summary or task.tech_report.equipment_used or task.tech_report.time_taken) %}
                             <h4>--- สรุปงานโดยช่าง ---</h4>
                             <p><strong>วันที่สรุป:</strong> {{ task.tech_report.summary_date or 'N/A' }}</p>
@@ -98,17 +225,15 @@
                                 <p><strong>นัดหมายครั้งถัดไป:</strong> {{ task.tech_report.next_appointment }}</p>
                             {% endif %}
                         {% endif %}
-
-                        {# แสดงรูปภาพแนบ #}
                         {% if task.attachment_urls %}
                             <div class="current-attachments">
-                                <p><strong>ไฟล์แนบ:</strong></p>
-                                {% for file_url in task.attachment_urls %}
-                                    <a href="{{ file_url }}" target="_blank">ไฟล์ {{ loop.index }}</a>{% if not loop.last %}, {% endif %}
-                                {% endfor %}
+                                <p><strong>ไฟล์แนบ:</strong>
+                                    {% for file_url in task.attachment_urls %}
+                                        <a href="{{ file_url }}" target="_blank">ไฟล์ {{ loop.index }}</a>{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </p>
                             </div>
                         {% endif %}
-
                         <div class="task-actions">
                             <a href="{{ url_for('update_task_details', task_id=task.id) }}">อัปเดตงาน</a>
                         </div>
