@@ -100,7 +100,6 @@ else:
 SETTINGS_COLLECTION = 'app_settings'
 MAIN_SETTINGS_DOC = 'main_settings'
 
-@app.route("/settings")
 def get_app_settings():
     """ดึงการตั้งค่าจาก Firestore หรือใช้ค่าเริ่มต้น/ตัวแปรสภาพแวดล้อมเป็นค่าสำรอง"""
     default_settings = {
