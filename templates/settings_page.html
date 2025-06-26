@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ตั้งค่าระบบ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); max-width: 800px; margin: auto; }
+        h1, h2 { color: #333; text-align: center; margin-bottom: 20px;}
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="number"], input[type="text"], textarea { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        input[type="submit"] { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        input[type="submit"]:hover { background-color: #0056b3; }
+        .button-group { text-align: center; margin-top: 20px; }
+        .button-group a {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+        .button-group a:hover {
+            background-color: #218838;
+        }
+        .form-section { border: 1px solid #eee; border-radius: 5px; padding: 15px; margin-bottom: 20px; background-color: #fafafa; }
+        .form-section h3 { margin-top: 0; color: #555; }
+        .success-message { color: green; text-align: center; margin-bottom: 15px; font-weight: bold; }
+        .error-message { color: red; text-align: center; margin-bottom: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ตั้งค่าระบบ</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="{{ category }}-message">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="form-section">
+                <h3>เวลาแจ้งเตือนรายงาน (เวลาไทย)</h3>
+                <label for="outstanding_report_hour">รายงานงานค้าง (6:00 น. หรือ 20:00 น.):</label>
+                <input type="number" id="outstanding_report_hour" name="outstanding_report_hour" min="0" max="23" value="{{ settings.report_times.outstanding_report_hour_thai }}">
+
+                <label for="summary_report_hour">สรุปงานประจำวัน (6:00 น. หรือ 20:00 น.):</label>
+                <input type="number" id="summary_report_hour" name="summary_report_hour" min="0" max="23" value="{{ settings.report_times.summary_report_hour_thai }}">
+                
+                <label for="appointment_reminder_hour">แจ้งเตือนนัดหมาย (6:00 น. หรือ 20:00 น.):</label>
+                <input type="number" id="appointment_reminder_hour" name="appointment_reminder_hour" min="0" max="23" value="{{ settings.report_times.appointment_reminder_hour_thai }}">
+            </div>
+
+            <div class="form-section">
+                <h3>ID ผู้รับข้อความ LINE (Group ID / User ID)</h3>
+                <p class="text-muted">คุณสามารถหา Group ID ได้โดยให้บอทเข้ากลุ่มแล้วพิมพ์อะไรก็ได้ในกลุ่ม จากนั้นตรวจสอบ Render logs</p>
+                <label for="admin_group_id">กลุ่มผู้ดูแลระบบ (Admin Group ID):</label>
+                <input type="text" id="admin_group_id" name="admin_group_id" value="{{ settings.line_recipients.admin_group_id or '' }}">
+
+                <label for="manager_user_id">ผู้จัดการ (User ID):</label>
+                <input type="text" id="manager_user_id" name="manager_user_id" value="{{ settings.line_recipients.manager_user_id or '' }}">
+
+                <label for="hr_group_id">กลุ่ม HR (Group ID):</label>
+                <input type="text" id="hr_group_id" name="hr_group_id" value="{{ settings.line_recipients.hr_group_id or '' }}">
+
+                <label for="technician_group_id">กลุ่มช่าง (Group ID):</label>
+                <input type="text" id="technician_group_id" name="technician_group_id" value="{{ settings.line_recipients.technician_group_id or '' }}">
+            </div>
+
+            <div class="form-section">
+                <h3>ตัวเลือกรายงาน</h3>
+                <label>
+                    <input type="checkbox" name="include_overdue_tips" value="true" {% if settings.report_options.include_overdue_tips %}checked{% endif %}>
+                    แสดงเคล็ดลับเพิ่มประสิทธิภาพสำหรับงานค้าง
+                </label><br>
+                <label>
+                    <input type="checkbox" name="include_titles_only_outstanding" value="true" {% if settings.report_options.include_titles_only_outstanding %}checked{% endif %}>
+                    รายงานงานค้างแสดงเฉพาะหัวข้อ
+                </label><br>
+                <label>
+                    <input type="checkbox" name="include_titles_only_summary" value="true" {% if settings.report_options.include_titles_only_summary %}checked{% endif %}>
+                    สรุปงานประจำวันแสดงเฉพาะหัวข้อ
+                </label>
+            </div>
+
+            <input type="submit" value="บันทึกการตั้งค่า">
+        </form>
+
+        <div class="button-group">
+            <a href="{{ url_for('create_task_page') }}">สร้างงานใหม่</a>
+            <a href="{{ url_for('summary') }}">ดูสรุปงานทั้งหมด</a>
+        </div>
+    </div>
+</body>
+</html>
