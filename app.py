@@ -539,7 +539,7 @@ def parse_tech_report_from_notes(notes):
     # Ensure they are not duplicates of those already in tech_report_data['attachment_urls']
     legacy_attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xls|xlsx|pptx|ppt|zip|rar|txt)', notes_display)
     
-    # Combine all URLs and remove duplicates
+    # รวม URL ทั้งหมดและกำจัด URL ที่ซ้ำกัน
     all_attachment_urls = list(set(tech_report_data['attachment_urls'] + legacy_attachment_urls))
     
     return tech_report_data, all_attachment_urls, notes_display
@@ -794,7 +794,7 @@ def handle_message(event):
                 else:
                     reply_text += "ไม่มีงานค้าง"
                 line_messaging_api.reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+                    ReplyMessageRequest(messages=[TextMessage(text=reply_text)]))
                 app.logger.info(f"Replied with outstanding tasks to group.")
 
             elif text_message.lower() == "สรุปงาน":
@@ -807,11 +807,14 @@ def handle_message(event):
                 else:
                     reply_text += "ไม่มีกิจกรรมงานในวันนี้"
                 line_messaging_api.reply_message(
-                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
+                    ReplyMessageRequest(messages=[TextMessage(text=reply_text)]))
                 app.logger.info(f"Replied with daily summary to group.")
             
             else:
-                # If in group and not a recognized service command (including 'comphone' which is handled above), do nothing (remain silent)
+                # ถ้าในกลุ่มและไม่ใช่คำสั่งงานเซอร์วิสที่รู้จัก (รวมถึง 'comphone' ซึ่งถูกจัดการด้านบน)
+                # และถ้าเป็นกลุ่มที่ไม่ใช่กลุ่มที่ตั้งค่าไว้ (LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID)
+                # เพื่อให้ LINE Bot ตอบคำถามลูกค้าทั่วไปได้ในกลุ่มอื่น ๆ
+                # ในที่นี้ จะไม่ตอบกลับอะไรเลยในกลุ่มที่บอทถูกเพิ่มเข้ามาแต่ไม่ใช่กลุ่มบริการที่กำหนดไว้
                 app.logger.info(f"Ignored non-service message in group: '{text_message}'. No reply sent.")
                 pass
 
@@ -981,7 +984,6 @@ def handle_message(event):
 
     except Exception as e:
         app.logger.error(f"An unexpected error occurred in handle_message (outer try-except): {e}", exc_info=True)
-        # Attempt to reply with a generic error message if possible
         try:
             line_messaging_api.reply_message(
                 ReplyMessageRequest(
@@ -1047,11 +1049,40 @@ def create_task_page():
     else: # request.method == 'GET'
         return render_template('create_task_form.html') 
 
+# เพิ่ม route สำหรับหน้าตั้งค่าระบบ
+@app.route('/settings', methods=['GET', 'POST'])
+def settings_page():
+    settings = get_app_settings() # ดึงการตั้งค่าปัจจุบัน
+
+    if request.method == 'POST':
+        # ดึงข้อมูลจากฟอร์ม
+        settings['report_times']['outstanding_report_hour_thai'] = int(request.form.get('outstanding_report_hour', settings['report_times']['outstanding_report_hour_thai']))
+        settings['report_times']['summary_report_hour_thai'] = int(request.form.get('summary_report_hour', settings['report_times']['summary_report_hour_thai']))
+        settings['report_times']['appointment_reminder_hour_thai'] = int(request.form.get('appointment_reminder_hour', settings['report_times']['appointment_reminder_hour_thai']))
+
+        settings['line_recipients']['admin_group_id'] = request.form.get('admin_group_id', settings['line_recipients']['admin_group_id']).strip()
+        settings['line_recipients']['manager_user_id'] = request.form.get('manager_user_id', settings['line_recipients']['manager_user_id']).strip()
+        settings['line_recipients']['hr_group_id'] = request.form.get('hr_group_id', settings['line_recipients']['hr_group_id']).strip()
+        settings['line_recipients']['technician_group_id'] = request.form.get('technician_group_id', settings['line_recipients']['technician_group_id']).strip()
+
+        # Checkbox values are 'true' or None if not checked
+        settings['report_options']['include_overdue_tips'] = request.form.get('include_overdue_tips') == 'true'
+        settings['report_options']['include_titles_only_outstanding'] = request.form.get('include_titles_only_outstanding') == 'true'
+        settings['report_options']['include_titles_only_summary'] = request.form.get('include_titles_only_summary') == 'true'
+
+        if save_app_settings(settings):
+            flash('ตั้งค่าถูกบันทึกเรียบร้อยแล้ว', 'success')
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกตั้งค่า', 'error')
+        return redirect(url_for('settings_page'))
+    
+    return render_template('settings_page.html', settings=settings)
+
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
     """
-    Page for technicians to update task details and status.
-    Supports multiple image uploads.
+    หน้าสำหรับช่างเทคนิคอัปเดตรายละเอียดงานและสถานะ
+    รองรับการอัปโหลดหลายรูปภาพ
     """
     service = get_google_tasks_service()
     if not service:
@@ -1208,7 +1239,7 @@ def summary():
         parsed_task['notes_display'] = remaining_notes # notes ส่วนที่เหลือที่ไม่ได้เป็น JSON
 
         tasks.append(parsed_task)
-        task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
+        task_status_counts['total'] = len(tasks) # นับ total ที่นี่ให้ถูกต้อง
 
     # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
     tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
@@ -1241,4 +1272,3 @@ if __name__ == '__main__':
     # บน Render, แอปจะถูกรันโดย Gunicorn หรือ WSGI server ที่คล้ายกัน
     # ดังนั้น app.run() จะไม่ถูกเรียก
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
-
