@@ -539,7 +539,7 @@ def parse_tech_report_from_notes(notes):
     # Ensure they are not duplicates of those already in tech_report_data['attachment_urls']
     legacy_attachment_urls = re.findall(r'https?://\S+\.(?:png|jpg|jpeg|gif|pdf|docx|doc|xls|xlsx|pptx|ppt|zip|rar|txt)', notes_display)
     
-    # รวม URL ทั้งหมดและกำจัด URL ที่ซ้ำกัน
+    # Combine all URLs and remove duplicates
     all_attachment_urls = list(set(tech_report_data['attachment_urls'] + legacy_attachment_urls))
     
     return tech_report_data, all_attachment_urls, notes_display
@@ -624,10 +624,9 @@ def handle_message(event):
             "\n🌐 เยี่ยมชมเพจของเรา: https://www.facebook.com/comphone101"
         )
 
-        # --- Handle "comphone" or "วิธีใช้" command for help ---
-        # This check happens BEFORE differentiating between group/private to ensure it always works.
-        if text_message.lower() == "comphone" or text_message.lower() == "วิธีใช้":
-            app.logger.info(f"Detected 'comphone' or 'วิธีใช้' command from {event.source.type}. Sending help message.")
+        # --- Handle "comphone" or "วิธีใช้" or "สวัสดี" command for help ---
+        if text_message.lower() in ["comphone", "วิธีใช้", "สวัสดี"]: # แก้ไขตรงนี้เพื่อรวม "สวัสดี"
+            app.logger.info(f"Detected '{text_message}' command from {event.source.type}. Sending help message.")
             help_message = (
                 "📋 คู่มือคำสั่งสำหรับ Comphone Service Bot:\n\n"
                 "➡️ สร้างงานใหม่:\n"
@@ -794,7 +793,7 @@ def handle_message(event):
                 else:
                     reply_text += "ไม่มีงานค้าง"
                 line_messaging_api.reply_message(
-                    ReplyMessageRequest(messages=[TextMessage(text=reply_text)]))
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
                 app.logger.info(f"Replied with outstanding tasks to group.")
 
             elif text_message.lower() == "สรุปงาน":
@@ -807,14 +806,13 @@ def handle_message(event):
                 else:
                     reply_text += "ไม่มีกิจกรรมงานในวันนี้"
                 line_messaging_api.reply_message(
-                    ReplyMessageRequest(messages=[TextMessage(text=reply_text)]))
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)]))
                 app.logger.info(f"Replied with daily summary to group.")
             
             else:
                 # ถ้าในกลุ่มและไม่ใช่คำสั่งงานเซอร์วิสที่รู้จัก (รวมถึง 'comphone' ซึ่งถูกจัดการด้านบน)
-                # และถ้าเป็นกลุ่มที่ไม่ใช่กลุ่มที่ตั้งค่าไว้ (LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID, LINE_HR_GROUP_ID)
-                # เพื่อให้ LINE Bot ตอบคำถามลูกค้าทั่วไปได้ในกลุ่มอื่น ๆ
-                # ในที่นี้ จะไม่ตอบกลับอะไรเลยในกลุ่มที่บอทถูกเพิ่มเข้ามาแต่ไม่ใช่กลุ่มบริการที่กำหนดไว้
+                # เพื่อให้ LINE Bot เงียบในกลุ่มที่ตั้งใจให้เป็นกลุ่มเซอร์วิสเท่านั้น
+                # โดยเราจะไม่ใส่ group_id เข้าไปในเงื่อนไขการตรวจสอบนี้ เพราะต้องการให้เงียบในทุกกลุ่มที่ไม่ได้ระบุว่าเป็นกลุ่มลูกค้าทั่วไป
                 app.logger.info(f"Ignored non-service message in group: '{text_message}'. No reply sent.")
                 pass
 
@@ -1239,7 +1237,7 @@ def summary():
         parsed_task['notes_display'] = remaining_notes # notes ส่วนที่เหลือที่ไม่ได้เป็น JSON
 
         tasks.append(parsed_task)
-        task_status_counts['total'] = len(tasks) # นับ total ที่นี่ให้ถูกต้อง
+        task_status_counts['total'] += 1 # นับรวมใน total หลังจากประมวลผล status
 
     # จัดเรียงงานตามวันที่สร้าง (งานใหม่สุดอยู่บนสุด)
     tasks.sort(key=lambda x: x.get('created_formatted', '0000-00-00 00:00:00'), reverse=True)
