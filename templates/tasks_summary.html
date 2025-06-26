@@ -32,7 +32,7 @@
             color: #198754; 
         }
         
-        /* Styles for printing */
+        /* สไตล์สำหรับการพิมพ์ */
         @media print {
             .non-printable { 
                 display: none !important; 
@@ -71,7 +71,7 @@
             </div>
         </div>
 
-        <!-- Search Form -->
+        <!-- ฟอร์มค้นหา -->
         <div class="card mb-4 non-printable">
             <div class="card-body">
                 <form method="GET" action="{{ url_for('summary') }}">
@@ -83,7 +83,7 @@
             </div>
         </div>
 
-        <!-- Overview Cards -->
+        <!-- การ์ดสรุปภาพรวม -->
         <div class="row text-center non-printable">
             <div class="col-lg-3 col-md-6 mb-4">
                 <div class="card h-100">
@@ -105,7 +105,7 @@
                 <div class="card h-100">
                     <div class="card-body">
                         <h2 class="display-5 status-overdue">{{ summary.overdue }}</h2>
-                        <p class="text-muted mb-0">ค้างชำระ</p>
+                        <p class="text-muted mb-0">ยังไม่ดำเนินการ</p>
                     </div>
                 </div>
             </div>
@@ -119,12 +119,12 @@
             </div>
         </div>
 
-        <!-- Printable Area for Outstanding Tasks -->
+        <!-- ส่วนของตารางที่พิมพ์ได้ -->
         <div id="printable-area">
             <div class="card">
                 <div class="card-header">
                     <h4 class="mb-0">
-                        <i class="fas fa-tasks me-2"></i>รายงานงานค้างที่ยังไม่เสร็จ
+                        <i class="fas fa-tasks me-2"></i>รายงานงานที่ยังไม่เสร็จ
                     </h4>
                 </div>
                 <div class="card-body">
@@ -152,7 +152,7 @@
                                         <td>{{ task.customer.phone }}</td>
                                         <td class="text-center">{{ task.due_formatted }}</td>
                                         <td class="text-center">
-                                            {% if task.display_status == 'ค้างชำระ' %}
+                                            {% if task.display_status == 'ยังไม่ดำเนินการ' %}
                                                 <span class="badge bg-danger">{{ task.display_status }}</span>
                                             {% else %}
                                                 <span class="badge bg-warning text-dark">{{ task.display_status }}</span>
@@ -175,7 +175,7 @@
             </div>
         </div>
 
-        <!-- Completed Tasks List (non-printable) -->
+        <!-- รายการงานที่เสร็จแล้ว (ไม่ถูกพิมพ์) -->
         <div class="card non-printable">
             <div class="card-header">
                 <h5 class="mb-0">งานที่เสร็จสิ้นแล้ว</h5>
