@@ -53,11 +53,10 @@
     <div class="container">
         <h1>สรุปงานทั้งหมด</h1>
 
-        {# เพิ่มปุ่ม "สร้างงานใหม่" ที่นี่ #}
         <div class="button-group">
             <a href="{{ url_for('create_task_page') }}">สร้างงานใหม่</a>
-            <a href="{{ url_for('summary') }}">ดูสรุปงานทั้งหมด</a> {# เพิ่มเพื่อความชัดเจน แม้จะอยู่หน้านี้แล้ว #}
-            <a href="{{ url_for('settings_page') }}">ตั้งค่าระบบ</a> {# ปุ่มใหม่สำหรับตั้งค่า #}
+            <a href="{{ url_for('summary') }}">ดูสรุปงานทั้งหมด</a>
+            <a href="{{ url_for('settings_page') }}">ตั้งค่าระบบ</a>
         </div>
 
         <div class="summary-overview">
