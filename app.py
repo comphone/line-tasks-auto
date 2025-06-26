@@ -6,7 +6,8 @@ import sys
 import datetime
 import re
 import json
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory
+from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, session # เพิ่ม flash, session
+from firebase_admin import credentials, initialize_app, firestore # เพิ่ม Firebase Admin SDK
 
 # สำหรับจัดการชื่อไฟล์ที่ปลอดภัยและการอัปโหลดไฟล์
 from werkzeug.utils import secure_filename
@@ -26,6 +27,9 @@ from googleapiclient.errors import HttpError
 
 # เริ่มต้น Flask App
 app = Flask(__name__)
+# Flask Secret Key สำหรับ Flash Messages และ Session
+# สำคัญ: ต้องตั้งค่าใน Environment Variable ใน Production
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_key_dev_only') 
 
 # --- การตั้งค่า ---
 UPLOAD_FOLDER = 'static/uploads'
@@ -63,92 +67,112 @@ SCOPES = ['https://www.googleapis.com/auth/tasks']
 # สำหรับการ Deploy บน Render, 'credentials.json' ควรถูกสร้างจากตัวแปรสภาพแวดล้อม GOOGLE_CREDENTIALS_JSON
 GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 
-# --- ฟังก์ชันตัวช่วย ---
+# --- Firebase Initialization for Firestore ---
+# ต้องตั้งค่า FIREBASE_SERVICE_ACCOUNT_KEY ใน Environment Variable บน Render
+# และ FIREBASE_DATABASE_URL ถ้าใช้ Realtime Database
+FIREBASE_SERVICE_ACCOUNT_KEY_JSON = os.environ.get('FIREBASE_SERVICE_ACCOUNT_KEY_JSON')
 
-def allowed_file(filename):
-    """ตรวจสอบว่านามสกุลไฟล์ที่อัปโหลดได้รับอนุญาตหรือไม่"""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+if FIREBASE_SERVICE_ACCOUNT_KEY_JSON:
+    try:
+        # Save the service account key to a temporary file
+        temp_key_path = "/tmp/firebase_key.json" # /tmp is writeable on Render
+        with open(temp_key_path, "w") as f:
+            f.write(FIREBASE_SERVICE_ACCOUNT_KEY_JSON)
+        
+        cred = credentials.Certificate(temp_key_path)
+        initialize_app(cred)
+        db = firestore.client()
+        app.logger.info("Firebase app initialized successfully.")
+    except Exception as e:
+        app.logger.error(f"Error initializing Firebase: {e}")
+        db = None # ตั้งค่า db เป็น None หากมีข้อผิดพลาดในการเริ่มต้น
+else:
+    app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_JSON not found. Firestore will not be available.")
+    db = None
 
-def get_google_tasks_service():
-    """
-    รับรองความถูกต้องด้วย Google Tasks API
-    จัดลำดับความสำคัญในการโหลดโทเค็นจากตัวแปรสภาพแวดล้อม GOOGLE_TOKEN_JSON สำหรับ Render
-    หากไม่สำเร็จ จะลองจากไฟล์ token.json หรือเริ่มกระบวนการ OAuth ใหม่โดยใช้ credentials.json
-    (หรือตัวแปรสภาพแวดล้อม GOOGLE_CREDENTIALS_JSON)
-    """
-    creds = None
+# --- ฟังก์ชันจัดการการตั้งค่าระบบ (Firestore) ---
+SETTINGS_COLLECTION = 'app_settings'
+MAIN_SETTINGS_DOC = 'main_settings'
 
-    # 1. ลองโหลดโทเค็นจากตัวแปรสภาพแวดล้อม (สำหรับ Render deployment)
-    google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
-    if google_token_json_str:
+def get_app_settings():
+    """ดึงการตั้งค่าจาก Firestore หรือใช้ค่าเริ่มต้น/ตัวแปรสภาพแวดล้อมเป็นค่าสำรอง"""
+    default_settings = {
+        'report_times': {
+            'outstanding_report_hour_thai': 6, # 6:00 AM (Thai) for outstanding report
+            'summary_report_hour_thai': 20,    # 8:00 PM (Thai) for daily summary
+            'appointment_reminder_hour_thai': 6 # 6:00 AM (Thai) for appointment reminder
+        },
+        'line_recipients': {
+            'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+            'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
+            'hr_group_id': os.environ.get('LINE_HR_GROUP_ID', ''),
+            'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
+        },
+        'report_options': {
+            'include_overdue_tips': True,
+            'include_titles_only_outstanding': True,
+            'include_titles_only_summary': True
+        }
+    }
+
+    if db:
         try:
-            creds_info = json.loads(google_token_json_str)
-            creds = Credentials.from_authorized_user_info(creds_info, SCOPES)
-            app.logger.info("Google token loaded from GOOGLE_TOKEN_JSON env var.")
+            doc_ref = db.collection(SETTINGS_COLLECTION).document(MAIN_SETTINGS_DOC)
+            doc = doc_ref.get()
+            if doc.exists:
+                settings = doc.to_dict()
+                # ผสานรวมกับค่าเริ่มต้นเพื่อให้แน่ใจว่ามีทุกฟิลด์
+                for key, value in default_settings.items():
+                    if key not in settings:
+                        settings[key] = value
+                    elif isinstance(value, dict) and isinstance(settings[key], dict):
+                        settings[key] = {**value, **settings[key]} # ผสาน dicts
+                app.logger.info("Settings loaded from Firestore.")
+                return settings
+            else:
+                # บันทึกค่าเริ่มต้นลง Firestore ถ้ายังไม่มี
+                doc_ref.set(default_settings)
+                app.logger.info("Default settings saved to Firestore.")
+                return default_settings
         except Exception as e:
-            app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Attempting other methods.")
-            creds = None
+            app.logger.error(f"Error fetching settings from Firestore: {e}. Using default settings.")
+            return default_settings
+    else:
+        app.logger.warning("Firestore client not available. Using default settings (from env vars if set).")
+        return default_settings
 
-    # 2. หากไม่โหลดจาก env var ลองโหลดจากไฟล์ token.json ในเครื่อง (สำหรับการพัฒนาในเครื่อง)
-    if not creds and os.path.exists('token.json'):
+def save_app_settings(settings_data):
+    """บันทึกการตั้งค่าลงใน Firestore"""
+    if db:
         try:
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-            app.logger.info("Google token loaded from local token.json.")
+            doc_ref = db.collection(SETTINGS_COLLECTION).document(MAIN_SETTINGS_DOC)
+            doc_ref.set(settings_data)
+            app.logger.info("Settings saved to Firestore.")
+            return True
         except Exception as e:
-            app.logger.warning(f"Could not load token from local token.json: {e}. Attempting re-authentication.")
-            creds = None
+            app.logger.error(f"Error saving settings to Firestore: {e}")
+            return False
+    else:
+        app.logger.error("Firestore client not available. Cannot save settings.")
+        return False
 
-    # 3. หากไม่มีข้อมูลรับรองที่ถูกต้อง ลองรีเฟรชหรือเริ่มกระบวนการ OAuth ใหม่
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                app.logger.info("Google token refreshed.")
-            except Exception as e:
-                app.logger.error(f"Error refreshing Google token: {e}. Will attempt full re-authentication.")
-                creds = None
-        else:
-            # สร้าง credentials.json จากตัวแปรสภาพแวดล้อม GOOGLE_CREDENTIALS_JSON หากมี
-            if not os.path.exists(GOOGLE_CREDENTIALS_FILE_NAME):
-                google_credentials_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
-                if google_credentials_json:
-                    try:
-                        with open(GOOGLE_CREDENTIALS_FILE_NAME, 'w') as f:
-                            f.write(google_credentials_json)
-                        app.logger.info(f"Created {GOOGLE_CREDENTIALS_FILE_NAME} from env var.")
-                    except Exception as e:
-                        app.logger.error(f"Error creating {GOOGLE_CREDENTIALS_FILE_NAME} from env var: {e}")
-                        return None
-                else:
-                    app.logger.error(f"Google credentials file not found: {GOOGLE_CREDENTIALS_FILE_NAME} and GOOGLE_CREDENTIALS_JSON env var is not set.")
-                    return None
-            
-            try:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
-                # สำหรับการพัฒนาในเครื่อง, run_local_server จะเปิดเบราว์เซอร์เพื่อการรับรองความถูกต้อง
-                # การ Deploy บน Render อาศัยการอัปเดตตัวแปรสภาพแวดล้อม GOOGLE_TOKEN_JSON ด้วยตนเอง.
-                # ถ้าคุณใช้ Render และต้องการให้มีการรับรองอัตโนมัติ (เช่น ผ่าน Service Account)
-                # คุณจะต้องใช้ flow ที่ต่างออกไป
-                creds = flow.run_local_server(port=0) 
-                app.logger.info("Google OAuth flow completed locally.")
-            except Exception as e:
-                app.logger.error(f"Error during Google OAuth flow: {e}. Ensure {GOOGLE_CREDENTIALS_FILE_NAME} is valid.")
-                return None
-            
-            # บันทึกโทเค็นใหม่ในเครื่องสำหรับการใช้งานในอนาคต (หากอยู่ในการพัฒนาในเครื่อง)
-            if creds and not os.environ.get('GOOGLE_TOKEN_JSON'): # บันทึกเฉพาะเมื่อไม่ได้ใช้ตัวแปรสภาพแวดล้อมสำหรับโทเค็น
-                try:
-                    with open('token.json', 'w') as token:
-                        token.write(creds.to_json())
-                    app.logger.info("Local token.json saved.")
-                except Exception as e:
-                    app.logger.error(f"Error saving local token.json: {e}")
+# --- ฟังก์ชันตัวช่วยอื่นๆ ---
 
-    if creds:
-        return build('tasks', 'v1', credentials=creds)
-    return None
+def get_google_tasks_list_id(service, title="My Tasks"):
+    """รับ Task List ID จาก Google Tasks หรือสร้างขึ้นใหม่หากไม่มี"""
+    try:
+        results = service.tasklists().list().execute()
+        items = results.get('items', [])
+        for item in items:
+            if item['title'] == title:
+                return item['id']
+        # ถ้า 'My Tasks' ไม่พบ, สร้างขึ้นมา
+        new_list = service.tasklists().insert(body={'title': title}).execute()
+        app.logger.info(f"Created new Google Task list: {title} with ID {new_list['id']}")
+        return new_list['id']
+    except HttpError as err:
+        app.logger.error(f"Error getting/creating task list: {err}")
+        return None
 
 def create_google_task(title, notes=None, due=None):
     """สร้าง Task ใหม่ใน Google Tasks"""
@@ -307,48 +331,58 @@ def send_daily_reports():
 
     app.logger.info(f"Cron job triggered. Current UTC time: {current_time_utc}, Thai local time: {current_date_thai} {current_hour_thai}:00")
 
-    # --- 1. รายงานงานค้างประจำวัน (6:00 น. ตามเวลาไทย) ---
-    if current_hour_thai == 6:
-        app.logger.info("Processing 6:00 AM outstanding tasks report.")
+    settings = get_app_settings() # ดึงการตั้งค่าล่าสุดจาก Firestore
+
+    # --- 1. รายงานงานค้างประจำวัน (ตามเวลาที่ตั้งค่า) ---
+    if current_hour_thai == settings['report_times']['outstanding_report_hour_thai']:
+        app.logger.info("Processing outstanding tasks report.")
         outstanding_tasks = get_daily_outstanding_tasks()
-        report_message_text = "--- รายงานงานค้างประจำวัน (6:00 น.) ---\n"
+        report_message_text = f"--- รายงานงานค้างประจำวัน ({settings['report_times']['outstanding_report_hour_thai']}:00 น.) ---\n"
         if outstanding_tasks:
             titles = [task.get('title', 'N/A') for task in outstanding_tasks]
             report_message_text += "หัวข้อ: " + ", ".join(titles)
-            report_message_text += "\n\n**เคล็ดลับเพิ่มประสิทธิภาพสำหรับงานค้าง:**"
-            report_message_text += "\n- จัดลำดับความสำคัญของงานที่สำคัญและเร่งด่วนที่สุดก่อน"
-            report_message_text += "\n- แบ่งงานใหญ่ออกเป็นส่วนย่อยๆ ที่จัดการได้ง่ายขึ้น"
-            report_message_text += "\n- สื่อสารกับลูกค้าหรือทีมงานหากมีปัญหาหรือต้องการความช่วยเหลือ"
-            report_message_text += "\n- ใช้หน้าเว็บอัปเดตงานเพื่อบันทึกความคืบหน้าและรูปภาพ"
-            report_message_text += "\n- หากนัดใหม่ ให้ระบุวันนัดถัดไปในระบบ"
+            if settings['report_options']['include_overdue_tips']: # ตามตัวเลือกในตั้งค่า
+                report_message_text += "\n\n**เคล็ดลับเพิ่มประสิทธิภาพสำหรับงานค้าง:**"
+                report_message_text += "\n- จัดลำดับความสำคัญของงานที่สำคัญและเร่งด่วนที่สุดก่อน"
+                report_message_text += "\n- แบ่งงานใหญ่ออกเป็นส่วนย่อยๆ ที่จัดการได้ง่ายขึ้น"
+                report_message_text += "\n- สื่อสารกับลูกค้าหรือทีมงานหากมีปัญหาหรือต้องการความช่วยเหลือ"
+                report_message_text += "\n- ใช้หน้าเว็บอัปเดตงานเพื่อบันทึกความคืบหน้าและรูปภาพ"
+                report_message_text += "\n- หากนัดใหม่ ให้ระบุวันนัดถัดไปในระบบ"
             app.logger.info(f"Found {len(outstanding_tasks)} outstanding tasks.")
         else:
             report_message_text += "ไม่มีงานค้าง"
-            app.logger.info("No outstanding tasks found for 6:00 AM report.")
+            app.logger.info("No outstanding tasks found for report.")
 
-        recipients_for_outstanding_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID]
+        recipients_for_outstanding_report = [
+            settings['line_recipients']['admin_group_id'],
+            settings['line_recipients']['manager_user_id']
+        ]
         send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_outstanding_report)
         app.logger.info("Daily outstanding tasks report sent.")
 
-    # --- 2. รายงานสรุปประจำวัน (20:00 น. ตามเวลาไทย) ---
-    elif current_hour_thai == 20:
-        app.logger.info("Processing 20:00 PM daily summary report.")
+    # --- 2. รายงานสรุปประจำวัน (ตามเวลาที่ตั้งค่า) ---
+    elif current_hour_thai == settings['report_times']['summary_report_hour_thai']:
+        app.logger.info("Processing daily summary report.")
         daily_tasks = get_daily_summary_tasks() # Tasks created or completed today
-        report_message_text = "--- สรุปงานประจำวัน (20:00 น.) ---\n"
+        report_message_text = f"--- สรุปงานประจำวัน ({settings['report_times']['summary_report_hour_thai']}:00 น.) ---\n"
         if daily_tasks:
             titles = [task.get('title', 'N/A') for task in daily_tasks]
             report_message_text += "หัวข้อที่เกี่ยวข้องวันนี้: " + ", ".join(titles)
             app.logger.info(f"Found {len(daily_tasks)} daily summary tasks.")
         else:
             report_message_text += "ไม่มีกิจกรรมงานในวันนี้"
-            app.logger.info("No daily summary tasks found for 20:00 PM report.")
+            app.logger.info("No daily summary tasks found for report.")
 
-        recipients_for_summary_report = [LINE_ADMIN_GROUP_ID, LINE_MANAGER_USER_ID, LINE_HR_GROUP_ID]
+        recipients_for_summary_report = [
+            settings['line_recipients']['admin_group_id'],
+            settings['line_recipients']['manager_user_id'],
+            settings['line_recipients']['hr_group_id']
+        ]
         send_message_to_recipients(TextMessage(text=report_message_text), recipients_for_summary_report)
         app.logger.info("Daily summary report sent.")
 
-    # --- 3. แจ้งเตือนงานนัดหมายลูกค้า (รันพร้อมกับรายงาน 6 โมงเช้า) ---
-    if current_hour_thai == 6: # สามารถเปลี่ยนเวลานี้ได้หากต้องการให้แจ้งเตือนช่วงเวลาอื่น เช่น 9 โมงเช้า
+    # --- 3. แจ้งเตือนงานนัดหมายลูกค้า (รันพร้อมกับรายงาน 6 โมงเช้า - ตามเวลาที่ตั้งค่า) ---
+    if current_hour_thai == settings['report_times']['appointment_reminder_hour_thai']:
         app.logger.info("Processing daily appointment reminders.")
         all_needs_action_tasks = get_google_tasks_for_report(show_completed=False)
         appointment_reminders = []
@@ -377,7 +411,7 @@ def send_daily_reports():
             appointment_message_text = "--- แจ้งเตือนงานนัดหมายลูกค้าวันนี้ ---\n"
             appointment_message_text += "\n".join(appointment_reminders)
             
-            recipients_for_appointment = [LINE_TECHNICIAN_GROUP_ID, LINE_ADMIN_GROUP_ID]
+            recipients_for_appointment = [settings['line_recipients']['technician_group_id'], settings['line_recipients']['admin_group_id']]
             send_message_to_recipients(TextMessage(text=appointment_message_text), recipients_for_appointment)
             app.logger.info("Daily appointment reminders sent.")
         else:
@@ -508,8 +542,8 @@ def handle_message(event):
                         
                         # Assuming local input is Thai time (+7 UTC)
                         due_dt_utc = due_dt_local - datetime.timedelta(hours=7)
-                        due_date = due_dt_utc.isoformat() + 'Z' # Append Z for UTC
-                        notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}" # Keep local formatted date in notes
+                        due_date = due_dt_utc.isoformat() + 'Z' # เพิ่ม Z สำหรับ UTC
+                        notes_for_task += f"\nกำหนดส่ง: {parts[3].strip()}" # เก็บ local formatted date in notes
                     except ValueError:
                         line_messaging_api.reply_message(
                             ReplyMessageRequest(

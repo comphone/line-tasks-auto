@@ -12,21 +12,21 @@
         input[type="text"], input[type="tel"], input[type="datetime-local"], textarea { 
             width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; 
         }
-        input[type="submit"] { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        input[type="submit"] { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
         input[type="submit"]:hover { background-color: #0056b3; }
         h1 { color: #333; text-align: center; margin-bottom: 20px;}
         .button-group { text-align: center; margin-top: 20px; }
         .button-group a {
             display: inline-block;
             padding: 10px 20px;
-            background-color: #28a745;
+            background-color: #007bff; /* สีเดียวกับปุ่ม submit */
             color: white;
             text-decoration: none;
             border-radius: 5px;
             margin: 0 10px;
         }
         .button-group a:hover {
-            background-color: #218838;
+            background-color: #0056b3;
         }
     </style>
 </head>
@@ -55,6 +55,7 @@
         </form>
         <div class="button-group">
             <a href="{{ url_for('summary') }}">ดูสรุปงานทั้งหมด</a>
+            <a href="{{ url_for('settings_page') }}">ตั้งค่าระบบ</a> {# ปุ่มใหม่สำหรับตั้งค่า #}
         </div>
     </div>
 </body>
