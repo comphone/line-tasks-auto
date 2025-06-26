@@ -8,3 +8,5 @@ gunicorn==22.0.0
 python-dotenv
 pytz
 firebase-admin
+google-auth
+google-auth-oauthlib
