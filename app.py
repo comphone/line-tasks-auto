@@ -23,7 +23,7 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
 )
 from linebot.v3 import WebhookHandler
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent, GroupSource # Added GroupSource for source type check
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent, GroupSource, UserSource # Added GroupSource, UserSource for source type check
 from linebot.v3.exceptions import InvalidSignatureError
 
 from google.auth.transport.requests import Request
@@ -995,6 +995,9 @@ def trigger_daily_reports():
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
+    # The port Render.com expects your app to listen on
+    # It will set an environment variable PORT, so we should use it.
+    # Default to 8080 if not set (e.g., when running locally)
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
 
