@@ -953,8 +953,9 @@ def trigger_daily_reports():
         for task in tasks_to_process:
             if 'due' in task and task['due']:
                  try:
-                    due_dt = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00')).astimezone(THAILAND_TZ)
-                    if due_dt.date() == now_thai.date():
+                    due_dt = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                    dt_thai = dt_utc.astimezone(THAILAND_TZ) # Fixed: dt_utc should be used here
+                    if dt_thai.date() == now_thai.date(): # Fixed: dt_thai should be used here
                         today_appointments.append(task)
                  except (ValueError, TypeError): continue
         
