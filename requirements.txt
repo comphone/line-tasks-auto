@@ -12,3 +12,6 @@ google-auth
 google-auth-oauthlib
 cachetools
 geopy
+Flask-SQLAlchemy==3.1.1
+psycopg2-binary
+Flask-Login==0.6.3
