@@ -35,12 +35,33 @@
                 <h3 class="mb-0">อัปเดตรายละเอียดงาน</h3>
             </div>
             <div class="card-body p-4">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, message in messages %}
+                      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                      </div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
                 <div class="p-3 mb-4 task-details">
                     <h5>{{ task.get('title', 'N/A') }}</h5>
                     <p class="mb-1"><strong>ID งาน:</strong> {{ task.id }}</p>
                     <p class="mb-1"><strong>สถานะปัจจุบัน:</strong> {{ task.display_status }}</p>
                     <hr>
-                    <p class="mb-0"><strong>รายละเอียดเดิม:</strong><br>{{ task.notes_display | replace('\n', '<br>') | safe }}</p>
+                    {# Original notes_display is not ideal for direct display now that notes are complex #}
+                    {# <p class="mb-0"><strong>รายละเอียดเดิม:</strong><br>{{ task.notes_display | replace('\n', '<br>') | safe }}</p> #}
+                    <p class="mb-0"><strong>ข้อมูลจากระบบ:</strong> (ปรับปรุงจากเดิม)</p>
+                    <p class="mb-0">ลูกค้า: {{ task.customer_name_initial }}</p>
+                    <p class="mb-0">เบอร์โทร: {{ task.customer_phone_initial }}</p>
+                    <p class="mb-0">ที่อยู่: {{ task.customer_address_initial }}</p>
+                    {% if task.map_url_initial %}
+                        <p class="mb-0">ลิงก์แผนที่: <a href="{{ task.map_url_initial }}" target="_blank">{{ task.map_url_initial }}</a></p>
+                    {% endif %}
+                    <p class="mb-0">รายละเอียดงาน: {{ task.customer_detail_initial | replace('\n', '<br>') | safe }}</p>
+
                 </div>
 
                 {% if task.tech_reports_history %}
@@ -52,6 +73,9 @@
                             <h2 class="accordion-header" id="heading{{ loop.index }}">
                                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}">
                                     อัปเดตเมื่อ: {{ report.summary_date }}
+                                    {% if report.location_url %}
+                                    <i class="fas fa-map-marker-alt ms-2 text-primary" title="มีพิกัดแนบ"></i>
+                                    {% endif %}
                                 </button>
                             </h2>
                             <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#techHistoryAccordion">
@@ -61,6 +85,9 @@
                                     <p class="mb-1"><strong>เวลาที่ใช้:</strong> {{ report.time_taken or 'N/A' }}</p>
                                     {% if report.next_appointment %}
                                     <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment }}</p>
+                                    {% endif %}
+                                    {% if report.location_url %}
+                                    <p class="mb-1 mt-2"><strong>พิกัดที่บันทึก:</strong> <a href="{{ report.location_url }}" target="_blank">ดูบน Google Maps</a></p>
                                     {% endif %}
                                     {% if report.attachment_urls %}
                                     <p class="mb-1 mt-2"><strong>ไฟล์แนบในครั้งนั้น:</strong></p>
@@ -79,8 +106,38 @@
                 {% endif %}
                 
                 <hr>
-                <h5 class="mb-3">กรอกข้อมูลอัปเดตครั้งล่าสุด</h5>
+                <h5 class="mb-3">แก้ไขข้อมูลหลักของงาน</h5>
                 <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="customer_name" class="form-label"><strong>ชื่อลูกค้า:</strong></label>
+                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer_name_initial }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="customer_phone" class="form-label"><strong>เบอร์โทรศัพท์:</strong></label>
+                        <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer_phone_initial }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="address" class="form-label"><strong>ที่อยู่ลูกค้า:</strong></label>
+                        <textarea class="form-control" id="address" name="address" rows="2">{{ task.customer_address_initial }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label"><strong>ลิงก์แผนที่ (Google Maps URL):</strong></label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.map_url_initial }}" placeholder="เช่น https://maps.app.goo.gl/..." oninput="extractCoords(this.value)">
+                            <button class="btn btn-outline-secondary" type="button" id="shareLocationBtn"><i class="fas fa-map-marker-alt me-2"></i>แชร์พิกัดปัจจุบัน</button>
+                        </div>
+                        <input type="hidden" id="current_lat" name="current_lat">
+                        <input type="hidden" id="current_lon" name="current_lon">
+                        <small class="form-text text-muted" id="locationStatus"></small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="detail" class="form-label"><strong>รายละเอียดงาน:</strong></label>
+                        <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer_detail_initial }}</textarea>
+                    </div>
+
+                    <hr class="my-4">
+                    <h5 class="mb-3">กรอกข้อมูลอัปเดตครั้งล่าสุด</h5>
+
                     <div class="mb-3">
                         <label for="work_summary" class="form-label"><strong>สรุปผลการทำงาน:</strong></label>
                         <textarea class="form-control" id="work_summary" name="work_summary" rows="3" required></textarea>
@@ -97,9 +154,10 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="files" class="form-label"><strong>เพิ่มรูปภาพ (สำหรับครั้งนี้):</strong></label>
-                        <input type="file" class="form-control" id="files" name="files[]" multiple accept="image/*">
+                        <label for="files" class="form-label"><strong>เพิ่มรูปภาพ/ไฟล์ (สำหรับครั้งนี้):</strong></label>
+                        <input type="file" class="form-control" id="files" name="files[]" multiple accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation">
                         <div class="image-preview mt-2" id="imagePreview"></div>
+                        <small class="form-text text-muted">รองรับ: PNG, JPG, GIF, PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX</small>
                     </div>
 
                     <hr class="my-4">
@@ -146,6 +204,11 @@
         document.addEventListener('DOMContentLoaded', function() {
             const statusRadios = document.querySelectorAll('input[name="status"]');
             const appointmentGroup = document.getElementById('appointmentDateGroup');
+            const shareLocationBtn = document.getElementById('shareLocationBtn');
+            const locationStatus = document.getElementById('locationStatus');
+            const currentLatInput = document.getElementById('current_lat');
+            const currentLonInput = document.getElementById('current_lon');
+            const latitudeLongitudeInput = document.getElementById('latitude_longitude');
 
             function toggleAppointment() {
                 if (document.getElementById('status_needsAction').checked) {
@@ -156,22 +219,79 @@
             }
 
             statusRadios.forEach(radio => radio.addEventListener('change', toggleAppointment));
-            
-            // Image preview logic for new uploads
+            toggleAppointment(); // Set initial state
+
+            // Image/File preview logic for new uploads
             const filesInput = document.getElementById('files');
             const imagePreview = document.getElementById('imagePreview');
             filesInput.addEventListener('change', function(event) {
-                imagePreview.innerHTML = '';
+                imagePreview.innerHTML = ''; // Clear previous previews
                 for (const file of event.target.files) {
                     if (file.type.startsWith('image/')) {
                         const reader = new FileReader();
                         reader.onload = e => {
                             const img = document.createElement('img');
                             img.src = e.target.result;
+                            img.title = file.name; // Add title for hover
                             imagePreview.appendChild(img);
                         };
                         reader.readAsDataURL(file);
+                    } else {
+                        // For non-image files, show file name/icon
+                        const fileDiv = document.createElement('div');
+                        fileDiv.className = 'd-flex align-items-center me-2 mb-2';
+                        fileDiv.innerHTML = `<i class="fas fa-file-alt me-1"></i> ${file.name}`;
+                        imagePreview.appendChild(fileDiv);
                     }
+                }
+            });
+
+            // Function to extract coordinates from a Google Maps URL and fill the hidden fields
+            function extractCoords(inputUrl) {
+                const mapUrlRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+                const match = inputUrl.match(mapUrlRegex);
+                if (match) {
+                    currentLatInput.value = match[1];
+                    currentLonInput.value = match[2];
+                    locationStatus.textContent = `พิกัดถูกดึงจากลิงก์: Lat ${match[1]}, Lon ${match[2]}`;
+                    locationStatus.style.color = 'green';
+                } else {
+                    currentLatInput.value = '';
+                    currentLonInput.value = '';
+                    locationStatus.textContent = ''; // Clear status if no coords found
+                    locationStatus.style.color = '';
+                }
+            }
+            // Call on page load to pre-fill if initial map_url exists
+            extractCoords(latitudeLongitudeInput.value);
+
+
+            // Geolocation for "Share Current Location" button
+            shareLocationBtn.addEventListener('click', function() {
+                locationStatus.textContent = 'กำลังดึงพิกัด...';
+                locationStatus.style.color = 'orange';
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(function(position) {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        currentLatInput.value = lat;
+                        currentLonInput.value = lon;
+                        latitudeLongitudeInput.value = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                        locationStatus.textContent = `พิกัดปัจจุบัน: Lat ${lat}, Lon ${lon} (จากมือถือ)`;
+                        locationStatus.style.color = 'green';
+                    }, function(error) {
+                        locationStatus.textContent = 'ไม่สามารถดึงพิกัดได้: ' + error.message;
+                        locationStatus.style.color = 'red';
+                        currentLatInput.value = '';
+                        currentLonInput.value = '';
+                    }, {
+                        enableHighAccuracy: true,
+                        timeout: 5000,
+                        maximumAge: 0
+                    });
+                } else {
+                    locationStatus.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation.';
+                    locationStatus.style.color = 'red';
                 }
             });
 
@@ -184,3 +304,4 @@
     </script>
 </body>
 </html>
+
