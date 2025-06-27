@@ -51,16 +51,14 @@
                     <p class="mb-1"><strong>ID งาน:</strong> {{ task.id }}</p>
                     <p class="mb-1"><strong>สถานะปัจจุบัน:</strong> {{ task.display_status }}</p>
                     <hr>
-                    {# Original notes_display is not ideal for direct display now that notes are complex #}
-                    {# <p class="mb-0"><strong>รายละเอียดเดิม:</strong><br>{{ task.notes_display | replace('\n', '<br>') | safe }}</p> #}
-                    <p class="mb-0"><strong>ข้อมูลจากระบบ:</strong> (ปรับปรุงจากเดิม)</p>
-                    <p class="mb-0">ลูกค้า: {{ task.customer_name_initial }}</p>
-                    <p class="mb-0">เบอร์โทร: {{ task.customer_phone_initial }}</p>
-                    <p class="mb-0">ที่อยู่: {{ task.customer_address_initial }}</p>
+                    <p class="mb-0"><strong>ข้อมูลจากระบบ:</strong></p>
+                    <p class="mb-0">ลูกค้า: {{ task.customer_name_initial or '-' }}</p>
+                    <p class="mb-0">เบอร์โทร: {{ task.customer_phone_initial or '-' }}</p>
+                    <p class="mb-0">ที่อยู่: {{ task.customer_address_initial or '-' }}</p>
                     {% if task.map_url_initial %}
                         <p class="mb-0">ลิงก์แผนที่: <a href="{{ task.map_url_initial }}" target="_blank">{{ task.map_url_initial }}</a></p>
                     {% endif %}
-                    <p class="mb-0">รายละเอียดงาน: {{ task.customer_detail_initial | replace('\n', '<br>') | safe }}</p>
+                    <p class="mb-0">รายละเอียดงาน: {{ (task.customer_detail_initial or '-') | replace('\n', '<br>') | safe }}</p>
 
                 </div>
 
@@ -80,9 +78,9 @@
                             </h2>
                             <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#techHistoryAccordion">
                                 <div class="accordion-body">
-                                    <p class="mb-1"><strong>สรุปผล:</strong> {{ report.work_summary or 'N/A' }}</p>
-                                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong> {{ report.equipment_used or 'N/A' }}</p>
-                                    <p class="mb-1"><strong>เวลาที่ใช้:</strong> {{ report.time_taken or 'N/A' }}</p>
+                                    <p class="mb-1"><strong>สรุปผล:</strong> {{ report.work_summary or '-' }}</p>
+                                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong> {{ report.equipment_used or '-' }}</p>
+                                    <p class="mb-1"><strong>เวลาที่ใช้:</strong> {{ report.time_taken or '-' }}</p>
                                     {% if report.next_appointment %}
                                     <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment }}</p>
                                     {% endif %}
@@ -93,7 +91,13 @@
                                     <p class="mb-1 mt-2"><strong>ไฟล์แนบในครั้งนั้น:</strong></p>
                                     <div class="d-flex flex-wrap attachment-preview">
                                         {% for url in report.attachment_urls %}
-                                        <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="Attachment"></a>
+                                        <a href="{{ url }}" target="_blank">
+                                            {% if url.endswith(('.png', '.jpg', '.jpeg', '.gif')) %}
+                                                <img src="{{ url }}" alt="Attachment" onerror="this.onerror=null; this.src='https://placehold.co/120x120/E0E0E0/666666?text=File';" title="{{ url.split('/')[-1] }}">
+                                            {% else %}
+                                                <i class="fas fa-file-alt fa-3x text-secondary" title="{{ url.split('/')[-1] }}"></i>
+                                            {% endif %}
+                                        </a>
                                         {% endfor %}
                                     </div>
                                     {% endif %}
@@ -110,7 +114,7 @@
                 <form method="POST" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="customer_name" class="form-label"><strong>ชื่อลูกค้า:</strong></label>
-                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer_name_initial }}" required>
+                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer_name_initial }}">
                     </div>
                     <div class="mb-3">
                         <label for="customer_phone" class="form-label"><strong>เบอร์โทรศัพท์:</strong></label>
@@ -188,11 +192,31 @@
                 <!-- Delete Task Section -->
                 <hr class="my-4">
                 <div class="text-end">
-                    <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" style="display: inline;">
-                        <button type="submit" class="btn btn-danger" 
-                                onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้? การกระทำนี้ไม่สามารถย้อนกลับได้');">
-                            <i class="fas fa-trash-alt me-2"></i>ลบรายการนี้
-                        </button>
+                    <!-- Button to trigger the modal -->
+                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
+                        <i class="fas fa-trash-alt me-2"></i>ลบรายการนี้
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmDeleteModalLabel">ยืนยันการลบรายการ</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    คุณแน่ใจหรือไม่ว่าต้องการลบงาน "<strong>{{ task.get('title', 'N/A') }}</strong>" (ID: {{ task.id }})?
+                    การกระทำนี้ไม่สามารถย้อนกลับได้.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <form id="deleteTaskForm" action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" style="display: inline;">
+                        <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt me-2"></i>ยืนยันการลบ</button>
                     </form>
                 </div>
             </div>
@@ -248,19 +272,32 @@
 
             // Function to extract coordinates from a Google Maps URL and fill the hidden fields
             function extractCoords(inputUrl) {
-                const mapUrlRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-                const match = inputUrl.match(mapUrlRegex);
-                if (match) {
-                    currentLatInput.value = match[1];
-                    currentLonInput.value = match[2];
-                    locationStatus.textContent = `พิกัดถูกดึงจากลิงก์: Lat ${match[1]}, Lon ${match[2]}`;
-                    locationStatus.style.color = 'green';
+                let lat = '';
+                let lon = '';
+                // Updated regex to more strictly match a Google Maps URL that contains coordinates
+                const mapUrlRegex = /https?:\/\/(?:www\.)?(?:google\.com\/maps\/(?:place\/[^\/]+\/)?@|maps\.app\.goo\.gl\/)[-]?\d+\.\d+,[-]?\d+\.\d+/;
+                const coordExtractRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+
+                if (mapUrlRegex.test(inputUrl)) { // Check if it's a valid map URL first
+                    const match = inputUrl.match(coordExtractRegex);
+                    if (match) {
+                        lat = match[1];
+                        lon = match[2];
+                        locationStatus.textContent = `พิกัดถูกดึงจากลิงก์: Lat ${lat}, Lon ${lon}`;
+                        locationStatus.style.color = 'green';
+                    } else {
+                        locationStatus.textContent = 'ลิงก์แผนที่อาจไม่มีพิกัดที่ชัดเจน';
+                        locationStatus.style.color = 'orange';
+                    }
+                } else if (inputUrl.trim() !== '') {
+                    locationStatus.textContent = 'ไม่ใช่รูปแบบลิงก์ Google Maps ที่ถูกต้อง.';
+                    locationStatus.style.color = 'red';
                 } else {
-                    currentLatInput.value = '';
-                    currentLonInput.value = '';
-                    locationStatus.textContent = ''; // Clear status if no coords found
+                    locationStatus.textContent = ''; // Clear status if input is empty
                     locationStatus.style.color = '';
                 }
+                currentLatInput.value = lat;
+                currentLonInput.value = lon;
             }
             // Call on page load to pre-fill if initial map_url exists
             extractCoords(latitudeLongitudeInput.value);
@@ -279,6 +316,8 @@
                         latitudeLongitudeInput.value = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
                         locationStatus.textContent = `พิกัดปัจจุบัน: Lat ${lat}, Lon ${lon} (จากมือถือ)`;
                         locationStatus.style.color = 'green';
+                        // Re-run extractCoords to ensure hidden fields are updated if user clicks button after manually typing URL
+                        extractCoords(latitudeLongitudeInput.value); 
                     }, function(error) {
                         locationStatus.textContent = 'ไม่สามารถดึงพิกัดได้: ' + error.message;
                         locationStatus.style.color = 'red';
