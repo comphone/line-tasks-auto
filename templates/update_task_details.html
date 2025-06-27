@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>อัปเดตรายละเอียดงาน</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body { 
+            font-family: 'Sarabun', sans-serif; 
+            background-color: #f8f9fa; 
+        }
+        .container { 
+            max-width: 800px; 
+        }
+        .task-details { 
+            background-color: #e9ecef; 
+            border-radius: 0.5rem; 
+        }
+        .image-preview img, .attachment-preview img {
+            max-width: 120px;
+            max-height: 120px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h3 class="mb-0">อัปเดตรายละเอียดงาน</h3>
+            </div>
+            <div class="card-body p-4">
+                <div class="p-3 mb-4 task-details">
+                    <h5>{{ task.get('title', 'N/A') }}</h5>
+                    <p class="mb-1"><strong>ID งาน:</strong> {{ task.id }}</p>
+                    <p class="mb-1"><strong>สถานะปัจจุบัน:</strong> {{ task.display_status }}</p>
+                    <hr>
+                    <p class="mb-0"><strong>รายละเอียดเดิม:</strong><br>{{ task.notes_display | replace('\n', '<br>') | safe }}</p>
+                </div>
+
+                {% if task.tech_reports_history %}
+                <div class="mb-4">
+                    <h6><i class="fas fa-history"></i> ประวัติการสรุปงานโดยช่าง</h6>
+                    <div class="accordion" id="techHistoryAccordion">
+                        {% for report in task.tech_reports_history %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="heading{{ loop.index }}">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}">
+                                    อัปเดตเมื่อ: {{ report.summary_date }}
+                                </button>
+                            </h2>
+                            <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#techHistoryAccordion">
+                                <div class="accordion-body">
+                                    <p class="mb-1"><strong>สรุปผล:</strong> {{ report.work_summary or 'N/A' }}</p>
+                                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong> {{ report.equipment_used or 'N/A' }}</p>
+                                    <p class="mb-1"><strong>เวลาที่ใช้:</strong> {{ report.time_taken or 'N/A' }}</p>
+                                    {% if report.next_appointment %}
+                                    <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment }}</p>
+                                    {% endif %}
+                                    {% if report.attachment_urls %}
+                                    <p class="mb-1 mt-2"><strong>ไฟล์แนบในครั้งนั้น:</strong></p>
+                                    <div class="d-flex flex-wrap attachment-preview">
+                                        {% for url in report.attachment_urls %}
+                                        <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="Attachment"></a>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <hr>
+                <h5 class="mb-3">กรอกข้อมูลอัปเดตครั้งล่าสุด</h5>
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="work_summary" class="form-label"><strong>สรุปผลการทำงาน:</strong></label>
+                        <textarea class="form-control" id="work_summary" name="work_summary" rows="3" required></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="equipment_used" class="form-label"><strong>รายการอุปกรณ์ที่ใช้:</strong></label>
+                        <input type="text" class="form-control" id="equipment_used" name="equipment_used">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="time_taken" class="form-label"><strong>ระยะเวลาที่ทำเสร็จ (เช่น 2 ชม. 30 นาที):</strong></label>
+                        <input type="text" class="form-control" id="time_taken" name="time_taken">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="files" class="form-label"><strong>เพิ่มรูปภาพ (สำหรับครั้งนี้):</strong></label>
+                        <input type="file" class="form-control" id="files" name="files[]" multiple accept="image/*">
+                        <div class="image-preview mt-2" id="imagePreview"></div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="mb-3">
+                        <label class="form-label"><strong>อัปเดตสถานะงาน:</strong></label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="status" id="status_completed" value="completed" {% if task.status == 'completed' %}checked{% endif %}>
+                            <label class="form-check-label" for="status_completed">เสร็จสิ้น</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="status" id="status_needsAction" value="needsAction" {% if task.status == 'needsAction' %}checked{% endif %}>
+                            <label class="form-check-label" for="status_needsAction">ยังไม่เสร็จ (ต้องนัดหมายใหม่)</label>
+                        </div>
+                    </div>
+
+                    <div id="appointmentDateGroup" class="mb-3" style="display: {% if task.status == 'needsAction' %}'block'{% else %}'none'{% endif %};">
+                        <label for="next_appointment_date" class="form-label"><strong>วันนัดลูกค้าอีกครั้ง:</strong></label>
+                        <input type="datetime-local" class="form-control" id="next_appointment_date" name="next_appointment_date" value="{{ task.tech_next_appointment_datetime_local or '' }}">
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <a href="{{ url_for('summary') }}" class="btn btn-secondary">ยกเลิก</a>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกการอัปเดต</button>
+                    </div>
+                </form>
+
+                <!-- Delete Task Section -->
+                <hr class="my-4">
+                <div class="text-end">
+                    <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" style="display: inline;">
+                        <button type="submit" class="btn btn-danger" 
+                                onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้? การกระทำนี้ไม่สามารถย้อนกลับได้');">
+                            <i class="fas fa-trash-alt me-2"></i>ลบรายการนี้
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const statusRadios = document.querySelectorAll('input[name="status"]');
+            const appointmentGroup = document.getElementById('appointmentDateGroup');
+
+            function toggleAppointment() {
+                if (document.getElementById('status_needsAction').checked) {
+                    appointmentGroup.style.display = 'block';
+                } else {
+                    appointmentGroup.style.display = 'none';
+                }
+            }
+
+            statusRadios.forEach(radio => radio.addEventListener('change', toggleAppointment));
+            
+            // Image preview logic for new uploads
+            const filesInput = document.getElementById('files');
+            const imagePreview = document.getElementById('imagePreview');
+            filesInput.addEventListener('change', function(event) {
+                imagePreview.innerHTML = '';
+                for (const file of event.target.files) {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = e => {
+                            const img = document.createElement('img');
+                            img.src = e.target.result;
+                            imagePreview.appendChild(img);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                }
+            });
+
+            // Auto open the first accordion item if it exists
+            const firstAccordionButton = document.querySelector('#techHistoryAccordion .accordion-button');
+            if(firstAccordionButton) {
+                // Not collapsing it, just for reference if needed
+            }
+        });
+    </script>
+</body>
+</html>
