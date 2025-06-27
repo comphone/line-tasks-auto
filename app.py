@@ -779,9 +779,10 @@ def update_task_details(task_id):
         original_status = task.get('status')
         new_status = request.form.get('status')
         work_summary = request.form.get('work_summary', '').strip()
-        equipment_used = request.form.get('equipment_used', '').strip()
-        time_taken = request.form.get('time_taken', '').strip()
+        equipment_used = request.form.get('equipment_used', '').strip() # equipment_used is now multi-line
         next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
+
+        # Removed start_time_actual_str and end_time_actual_str processing
 
         # New fields for task details update - from app2.py
         # Get values, defaulting to empty string if not provided
@@ -836,8 +837,11 @@ def update_task_details(task_id):
 
         new_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-            'work_summary': work_summary, 'equipment_used': equipment_used, 'time_taken': time_taken,
-            'next_appointment': next_appointment_gmt, 'attachment_urls': all_attachment_urls,
+            'work_summary': work_summary,
+            'equipment_used': equipment_used, # equipment_used is now multi-line
+            # Removed start_time_actual and end_time_actual from new_tech_report_data
+            'next_appointment': next_appointment_gmt,
+            'attachment_urls': all_attachment_urls,
             'location_url': current_location_url # Add location to this report
         }
         
@@ -870,10 +874,13 @@ def update_task_details(task_id):
         
         all_reports_text = ""
         for report in all_reports_list:
-            # Ensure attachment_urls and location_url are empty lists/None if not present in report
+            # Ensure attachment_urls, start_time_actual, end_time_actual, and location_url are empty lists/None if not present in report
             report_to_dump = report.copy()
             report_to_dump['attachment_urls'] = report_to_dump.get('attachment_urls', [])
             report_to_dump['location_url'] = report_to_dump.get('location_url', None)
+            # Removed start_time_actual and end_time_actual from report_to_dump handling
+            if 'start_time_actual' in report_to_dump: del report_to_dump['start_time_actual']
+            if 'end_time_actual' in report_to_dump: del report_to_dump['end_time_actual']
 
             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report_to_dump, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
@@ -994,7 +1001,7 @@ def handle_outstanding_tasks_command(event):
 def handle_completed_tasks_command(event):
     """Handles 'งานเสร็จ' command."""
     tasks = get_google_tasks_for_report(show_completed=True)
-    if tasks is None: # Corrected: Changed from '=== None' to 'is None' for Python syntax
+    if tasks is None: 
         return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     
     completed_tasks = [t for t in tasks if t.get('status') == 'completed']
