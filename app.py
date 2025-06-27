@@ -918,6 +918,15 @@ def settings_page():
     current_settings = get_app_settings()
     return render_template('settings_page.html', settings=current_settings)
 
+@app.route('/delete_task/<task_id>', methods=['POST'])
+def delete_task(task_id):
+    """Handles the deletion of a task."""
+    if delete_google_task(task_id):
+        flash('ลบรายการงานเรียบร้อยแล้ว', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
+    return redirect(url_for('summary'))
+
 # --- Cron Job Endpoint ---
 @app.route('/trigger_daily_reports')
 def trigger_daily_reports():
