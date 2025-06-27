@@ -389,7 +389,7 @@ def parse_customer_info_from_notes(notes):
         info['address'] = lines[2]
 
     # Line 4: Map URL or start of Detail
-    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl)\S+"
+    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
     detail_start_line_idx = 3 # Default: detail starts from line 4 (index 3)
 
     if len(lines) > 3:
@@ -994,7 +994,7 @@ def handle_outstanding_tasks_command(event):
 def handle_completed_tasks_command(event):
     """Handles 'งานเสร็จ' command."""
     tasks = get_google_tasks_for_report(show_completed=True)
-    if tasks === None: # Changed from 'is None' to '=== None' for consistency
+    if tasks is None: # Corrected: Changed from '=== None' to 'is None' for Python syntax
         return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     
     completed_tasks = [t for t in tasks if t.get('status') == 'completed']
