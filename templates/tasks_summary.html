@@ -71,13 +71,26 @@
             </div>
         </div>
 
-        <!-- ฟอร์มค้นหา -->
+        <!-- ฟอร์มค้นหาและการกรองสถานะ -->
         <div class="card mb-4 non-printable">
             <div class="card-body">
                 <form method="GET" action="{{ url_for('summary') }}">
-                    <div class="input-group">
-                        <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากชื่องาน, ลูกค้า, เบอร์โทร..." value="{{ search_query or '' }}">
-                        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> ค้นหา</button>
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-8">
+                            <div class="input-group">
+                                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากชื่องาน, ลูกค้า, เบอร์โทร, ที่อยู่, รายละเอียด..." value="{{ search_query or '' }}">
+                                <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> ค้นหา</button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="statusFilter" class="visually-hidden">กรองตามสถานะ</label>
+                            <select class="form-select" id="statusFilter" name="status_filter" onchange="this.form.submit()">
+                                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>สถานะทั้งหมด</option>
+                                <option value="needsAction" {% if status_filter == 'needsAction' %}selected{% endif %}>รอดำเนินการ</option>
+                                <option value="overdue" {% if status_filter == 'overdue' %}selected{% endif %}>ยังไม่ดำเนินการ (เกินกำหนด)</option>
+                                <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>เสร็จสิ้น</option>
+                            </select>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -119,12 +132,17 @@
             </div>
         </div>
 
-        <!-- ส่วนของตารางที่พิมพ์ได้ -->
+        <!-- ส่วนของตารางที่พิมพ์ได้ (จะแสดงเฉพาะงานที่ filter แล้ว) -->
         <div id="printable-area">
             <div class="card">
                 <div class="card-header">
                     <h4 class="mb-0">
-                        <i class="fas fa-tasks me-2"></i>รายงานงานที่ยังไม่เสร็จ
+                        <i class="fas fa-tasks me-2"></i>รายงานงาน
+                        {% if status_filter == 'all' %}ทั้งหมด{% endif %}
+                        {% if status_filter == 'needsAction' %}รอดำเนินการ{% endif %}
+                        {% if status_filter == 'overdue' %}ยังไม่ดำเนินการ (เกินกำหนด){% endif %}
+                        {% if status_filter == 'completed' %}เสร็จสิ้น{% endif %}
+                        {% if search_query %} (ผลการค้นหา: "{{ search_query }}"){% endif %}
                     </h4>
                 </div>
                 <div class="card-body">
@@ -142,20 +160,23 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% set outstanding_tasks = tasks | selectattr('status', 'eq', 'needsAction') | list %}
-                                {% if outstanding_tasks %}
-                                    {% for task in outstanding_tasks %}
+                                {% if tasks %} {# Now 'tasks' directly contains the filtered tasks #}
+                                    {% for task in tasks %}
                                     <tr>
                                         <td class="text-center">{{ loop.index }}</td>
                                         <td>{{ task.get('title', 'N/A') }}</td>
-                                        <td>{{ task.customer.name }}</td>
-                                        <td>{{ task.customer.phone }}</td>
-                                        <td class="text-center">{{ task.due_formatted }}</td>
+                                        <td>{{ task.customer.name or '-' }}</td> {# Use 'or -' for missing names #}
+                                        <td>{{ task.customer.phone or '-' }}</td> {# Use 'or -' for missing phones #}
+                                        <td class="text-center">{{ task.due_formatted or '-' }}</td> {# Use 'or -' for missing dates #}
                                         <td class="text-center">
                                             {% if task.display_status == 'ยังไม่ดำเนินการ' %}
                                                 <span class="badge bg-danger">{{ task.display_status }}</span>
-                                            {% else %}
+                                            {% elif task.display_status == 'รอดำเนินการ' %}
                                                 <span class="badge bg-warning text-dark">{{ task.display_status }}</span>
+                                            {% elif task.display_status == 'เสร็จสิ้น' %}
+                                                <span class="badge bg-success">{{ task.display_status }}</span>
+                                            {% else %}
+                                                <span>{{ task.display_status }}</span> {# Fallback #}
                                             {% endif %}
                                         </td>
                                         <td class="text-center non-printable">
@@ -165,7 +186,7 @@
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="7" class="text-center text-muted py-3">ไม่มีงานค้าง</td>
+                                        <td colspan="7" class="text-center text-muted py-3">ไม่พบงานตามเงื่อนไขที่ระบุ</td>
                                     </tr>
                                 {% endif %}
                             </tbody>
@@ -175,19 +196,24 @@
             </div>
         </div>
 
-        <!-- รายการงานที่เสร็จแล้ว (ไม่ถูกพิมพ์) -->
-        <div class="card non-printable">
+        <!-- รายการงานที่เสร็จแล้ว (ส่วนนี้ยังคงเป็น non-printable เพื่อไม่ให้พิมพ์ซ้ำกับตารางด้านบน) -->
+        <!-- Note: This section now shows *all* completed tasks if status filter is 'all',
+             or it will be empty if a different filter is active.
+             The main table above is now the primary display. -->
+        <div class="card non-printable mt-4">
             <div class="card-header">
-                <h5 class="mb-0">งานที่เสร็จสิ้นแล้ว</h5>
+                <h5 class="mb-0">งานที่เสร็จสิ้นล่าสุด (ไม่ถูกกรองด้วยการค้นหา/สถานะด้านบน)</h5>
             </div>
             <div class="list-group list-group-flush">
-                {% set completed_tasks = tasks | selectattr('status', 'eq', 'completed') | sort(attribute='completed', reverse=true) | list %}
-                {% if completed_tasks %}
-                    {% for task in completed_tasks[:10] %} {# แสดงแค่ 10 งานล่าสุด #}
+                {# This section explicitly shows last 10 completed tasks from ALL tasks,
+                   regardless of the search/filter above, for quick reference. #}
+                {% set all_completed_tasks = tasks_raw | selectattr('status', 'eq', 'completed') | sort(attribute='completed', reverse=true) | list %}
+                {% if all_completed_tasks %}
+                    {% for task in all_completed_tasks[:10] %} {# แสดงแค่ 10 งานล่าสุด #}
                     <a href="{{ url_for('update_task_details', task_id=task.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                         <div>
                             <span class="status-completed">{{ task.get('title', 'N/A') }}</span>
-                            <small class="d-block text-muted">เสร็จสิ้นเมื่อ: {{ task.completed_formatted }}</small>
+                            <small class="d-block text-muted">เสร็จสิ้นเมื่อ: {{ (task | parse_google_task_dates).completed_formatted or '-' }}</small>
                         </div>
                         <span class="badge bg-success rounded-pill">เสร็จสิ้น</span>
                     </a>

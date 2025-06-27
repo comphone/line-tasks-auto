@@ -51,18 +51,19 @@
                         <textarea class="form-control" id="address" name="address" rows="2"></textarea>
                     </div>
                     <div class="mb-3">
-                        <label for="coord" class="form-label">พิกัดแผนที่ (วาง URL จาก Google Maps)</label>
-                        <input type="text" class="form-control" id="coord" name="latitude_longitude" placeholder="เช่น https://maps.app.goo.gl/..." oninput="extractCoords(this.value)">
-                        <input type="hidden" id="latitude" name="latitude">
-                        <input type="hidden" id="longitude" name="longitude">
+                        <!-- Changed name from 'coord' to 'latitude_longitude' to directly match app.py expectation for full URL -->
+                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (วาง URL จาก Google Maps)</label>
+                        <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" placeholder="เช่น https://maps.app.goo.gl/...">
+                        <!-- Removed hidden lat/lon inputs as app.py now expects the full URL -->
                     </div>
                     <div class="mb-3">
                         <label for="detail" class="form-label">รายละเอียดงาน</label>
                         <textarea class="form-control" id="detail" name="detail" rows="4"></textarea>
                     </div>
                     <div class="mb-3">
-                        <label for="attachments" class="form-label">แนบรูปภาพ/ไฟล์ (ได้หลายไฟล์)</label>
-                        <input class="form-control" type="file" id="attachments" name="attachments" multiple>
+                        <!-- Renamed 'attachments' to 'files[]' to match update_task_details and app.py's file handling for multiple files -->
+                        <label for="files" class="form-label">แนบรูปภาพ/ไฟล์ (ได้หลายไฟล์)</label>
+                        <input class="form-control" type="file" id="files" name="files[]" multiple>
                     </div>
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
                         <a href="{{ url_for('summary') }}" class="btn btn-secondary">ดูสรุปงาน</a>
@@ -85,16 +86,19 @@
             });
         });
 
-        function extractCoords(input) {
-            let latInput = document.getElementById('latitude');
-            let lngInput = document.getElementById('longitude');
-            const mapUrlRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-            const match = input.match(mapUrlRegex);
-            if (match) {
-                latInput.value = match[1];
-                lngInput.value = match[2];
-            }
-        }
+        // The extractCoords function is no longer needed since the full URL is now passed
+        // However, if you want to keep some client-side validation or processing for the URL,
+        // you might adjust it. For now, removing it as app.py handles the full URL.
+        // function extractCoords(input) {
+        //     let latInput = document.getElementById('latitude');
+        //     let lngInput = document.getElementById('longitude');
+        //     const mapUrlRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+        //     const match = input.match(mapUrlRegex);
+        //     if (match) {
+        //         latInput.value = match[1];
+        //         lngInput.value = match[2];
+        //     }
+        // }
     </script>
 </body>
 </html>
