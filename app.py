@@ -4,7 +4,7 @@ import datetime
 import re
 import json
 import pytz
-import mimetypes
+import mimetypes # Import this for guessing MIME type
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,7 +23,7 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
 )
 from linebot.v3 import WebhookHandler
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent # Added ImageMessageContent, FileMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
 from google.auth.transport.requests import Request
@@ -922,7 +922,7 @@ def handle_outstanding_tasks_command(event):
 def handle_completed_tasks_command(event):
     """Handles 'งานเสร็จ' command."""
     tasks = get_google_tasks_for_report(show_completed=True)
-    if tasks is None:
+    if tasks is None: # Corrected from `tasks === None` to `tasks is None`
         return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     
     completed_tasks = [t for t in tasks if t.get('status') == 'completed']
@@ -1167,7 +1167,7 @@ def trigger_daily_reports():
                     line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=messages_to_send[i:i+5]))
         else: # Single recipient
             for i in range(0, len(messages_to_send), 5):
-                line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5])
+                line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5])) # Corrected: Added closing parenthesis here
         
         return f"{len(messages_to_send)} messages sent to {len(recipients)} recipients.", 200
 
