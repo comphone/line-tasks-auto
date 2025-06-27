@@ -4,7 +4,7 @@ import datetime
 import re
 import json
 import pytz
-import mimetypes # Import this for guessing MIME type
+import mimetypes
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,7 +23,7 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
 )
 from linebot.v3 import WebhookHandler
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent # Added ImageMessageContent, FileMessageContent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
 from google.auth.transport.requests import Request
@@ -310,7 +310,8 @@ def extract_lat_lon_from_notes(notes):
     if match: return (float(match.group(1)), float(match.group(2)))
 
     # Check for Google Maps URL with embedded coordinates
-    map_url_match = re.search(r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)", notes)
+    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
+    map_url_match = re.search(map_url_regex, notes)
     if map_url_match:
         return (float(map_url_match.group(1)), float(map_url_match.group(2)))
         
@@ -346,37 +347,51 @@ def find_nearby_jobs(completed_task_id, radius_km=5):
 
 def parse_customer_info_from_notes(notes):
     """
-    Extracts customer name, phone, address, detail, and map_url from notes.
-    It now handles the full original note content, excluding tech reports.
+    Extracts customer name, phone, address, detail, and map_url from notes
+    based on line-by-line parsing.
+    Returns empty string "" for missing fields.
     """
-    info = {'name': 'N/A', 'phone': 'N/A', 'address': 'N/A', 'detail': 'N/A', 'map_url': None}
+    info = {
+        'name': '', 
+        'phone': '', 
+        'address': '', 
+        'detail': '', 
+        'map_url': None
+    }
     if not notes: return info
 
-    # Extract original "static" notes part by removing tech report blocks
-    original_notes_text = re.sub(r"--- TECH_REPORT_START ---\s*.*?\s*--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
+    # Remove tech report blocks first
+    base_notes_content = re.sub(r"--- TECH_REPORT_START ---\s*.*?\s*--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
     
-    # Use re.DOTALL for multi-line matches, and look for specific prefixes
-    name_match = re.search(r"ลูกค้า:\s*(.*?)(?=\nเบอร์โทร:|\nที่อยู่:|\nลิงก์แผนที่:|\nรายละเอียดงาน:|$)", original_notes_text, re.DOTALL)
-    if name_match: info['name'] = name_match.group(1).strip()
+    lines = [line.strip() for line in base_notes_content.split('\n') if line.strip()] # Only non-empty lines for parsing
+
+    # Line 1: Customer Name
+    if len(lines) > 0:
+        info['name'] = lines[0]
     
-    phone_match = re.search(r"เบอร์โทร:\s*(.*?)(?=\nที่อยู่:|\nลิงก์แผนที่:|\nรายละเอียดงาน:|$)", original_notes_text, re.DOTALL)
-    if phone_match: info['phone'] = phone_match.group(1).strip()
+    # Line 2: Phone Number
+    if len(lines) > 1:
+        info['phone'] = lines[1]
     
-    address_match = re.search(r"ที่อยู่:\s*(.*?)(?=\nลิงก์แผนที่:|\nรายละเอียดงาน:|$)", original_notes_text, re.DOTALL)
-    if address_match: info['address'] = address_match.group(1).strip()
+    # Line 3: Address
+    if len(lines) > 2:
+        info['address'] = lines[2]
 
-    map_url_match = re.search(r"ลิงก์แผนที่:\s*(https?://(?:www\.)?(?:google\.com/maps|maps\.app\.goo\.gl)\S+)", original_notes_text, re.DOTALL)
-    if map_url_match: info['map_url'] = map_url_match.group(1).strip()
+    # Line 4: Map URL or start of Detail
+    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps|maps\.app\.goo\.gl)\S+"
+    detail_start_line_idx = 3 # Default: detail starts from line 4 (index 3)
 
-    detail_match = re.search(r"รายละเอียดงาน:\s*\n(.*?)$", original_notes_text, re.DOTALL)
-    if detail_match: info['detail'] = detail_match.group(1).strip()
-    else: # Fallback: if no "รายละเอียดงาน:", assume the rest is detail
-        # This is a bit tricky; will try to extract remaining text after known tags
-        temp_text = original_notes_text
-        for tag in ["ลูกค้า:", "เบอร์โทร:", "ที่อยู่:", "ลิงก์แผนที่:"]:
-            temp_text = re.sub(f".*{re.escape(tag)}.*?\n", "", temp_text, flags=re.DOTALL)
-        info['detail'] = temp_text.strip() or 'N/A' # Remaining text is detail
-
+    if len(lines) > 3:
+        if re.match(map_url_regex, lines[3]):
+            info['map_url'] = lines[3]
+            detail_start_line_idx = 4 # Detail starts from line 5 (index 4)
+        else:
+            # Line 4 is not a map URL, so it's part of the detail
+            detail_start_line_idx = 3 
+    
+    # Remaining lines for Detail
+    if len(lines) > detail_start_line_idx -1: # Adjusted for 0-based indexing
+        info['detail'] = "\n".join(lines[detail_start_line_idx:])
 
     return info
     
@@ -390,9 +405,9 @@ def parse_google_task_dates(task_item):
                 dt_thai = dt_utc.astimezone(THAILAND_TZ)
                 parsed_task[f'{key}_formatted'] = dt_thai.strftime("%d/%m/%y %H:%M" if key == 'due' else "%d/%m/%y %H:%M:%S")
             except (ValueError, TypeError):
-                parsed_task[f'{key}_formatted'] = 'N/A'
+                parsed_task[f'{key}_formatted'] = '' # Change N/A to empty string
         else:
-            parsed_task[f'{key}_formatted'] = 'N/A'
+            parsed_task[f'{key}_formatted'] = '' # Change N/A to empty string
     return parsed_task
 
 def parse_tech_report_from_notes(notes):
@@ -424,19 +439,14 @@ def create_task_flex_message(task):
     update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
 
     phone_action = None
-    if customer_info.get('phone') and customer_info.get('phone') != 'N/A':
+    if customer_info.get('phone'): # Check for non-empty string
         phone_number = re.sub(r'\D', '', customer_info['phone'])
         phone_action = URIAction(label=customer_info['phone'], uri=f"tel:{phone_number}")
     
     map_action = None
     # Use map_url directly from parsed customer_info if available, else try to extract
     map_url = customer_info.get('map_url')
-    if not map_url: # Fallback to regex if not explicitly in customer_info (legacy notes)
-        map_url_match = re.search(r"https?://(www\.google\.com/maps|maps\.app\.goo\.gl)\S+", task.get('notes', ''))
-        if map_url_match:
-            map_url = map_url_match.group(0)
-
-    if map_url:
+    if map_url: # No fallback needed since parse_customer_info_from_notes is now line-by-line
         map_action = URIAction(label="📍 เปิด Google Maps", uri=map_url)
 
     body_contents = [
@@ -444,15 +454,15 @@ def create_task_flex_message(task):
         BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='ลูกค้า', color='#aaaaaa', size='sm', flex=2),
-                TextComponent(text=customer_info.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)
+                TextComponent(text=customer_info.get('name', '') or '-', wrap=True, color='#666666', size='sm', flex=5) # Display empty string as '-'
             ]),
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='โทร', color='#aaaaaa', size='sm', flex=2),
-                TextComponent(text=customer_info.get('phone', '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')
+                TextComponent(text=customer_info.get('phone', '') or '-', wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')
             ]),
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='นัดหมาย', color='#aaaaaa', size='sm', flex=2),
-                TextComponent(text=parsed_dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)
+                TextComponent(text=parsed_dates.get('due_formatted', '') or '-', wrap=True, color='#666666', size='sm', flex=5) # Display empty string as '-'
             ])
         ])
     ]
@@ -482,7 +492,7 @@ def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
         
         phone_action = None
-        if customer_info.get('phone') and customer_info.get('phone') != 'N/A':
+        if customer_info.get('phone'): # Check for non-empty string
             phone_number = re.sub(r'\D', '', customer_info['phone'])
             phone_action = URIAction(label=f"📞 โทร: {customer_info['phone']}", uri=f"tel:{phone_number}")
 
@@ -490,7 +500,7 @@ def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
             header=BoxComponent(layout='vertical', background_color='#FFDDC2', contents=[TextComponent(text='💡 แนะนำงานใกล้เคียง!', weight='bold', color='#BF5A00', size='md')]),
             body=BoxComponent(layout='vertical', spacing='md', contents=[
                 TextComponent(text=f"ห่างไป {task['distance_km']} กม.", size='sm', color='#555555'),
-                TextComponent(text=f"ลูกค้า: {customer_info.get('name', 'N/A')}", weight='bold', size='lg', wrap=True),
+                TextComponent(text=f"ลูกค้า: {customer_info.get('name', '') or 'N/A'}", weight='bold', size='lg', wrap=True),
                 TextComponent(text=task.get('title', '-'), wrap=True, size='sm', color='#666666')
             ]),
             footer=BoxComponent(layout='vertical', spacing='sm', contents=([phone_action] if phone_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด/แผนที่', uri=update_url))])
@@ -532,7 +542,7 @@ def create_customer_history_carousel(tasks, customer_name):
                     ]),
                     BoxComponent(layout='baseline', spacing='sm', contents=[
                         TextComponent(text='วันที่สร้าง', color='#aaaaaa', size='sm', flex=2),
-                        TextComponent(text=parsed.get('created_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)
+                        TextComponent(text=parsed.get('created_formatted', '') or '-', wrap=True, color='#666666', size='sm', flex=5) # Display empty string as '-'
                     ])
                 ])
             ]),
@@ -555,19 +565,28 @@ def form_page():
         map_url_from_form = request.form.get('latitude_longitude') # This is now the full Google Maps URL input
 
         today_str = datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')
-        title = f"งานลูกค้า: {customer_name} ({today_str})"
+        title = f"งานลูกค้า: {customer_name or 'ไม่ระบุชื่อลูกค้า'} ({today_str})" # Use 'ไม่ระบุชื่อลูกค้า' if name is empty
         
-        notes_parts = [
-            f"ลูกค้า: {customer_name}",
-            f"เบอร์โทร: {customer_phone or '-'}",
-            f"ที่อยู่: {address or '-'}"]
+        # Construct notes based on line-by-line format
+        notes_lines = []
+        notes_lines.append(customer_name or '') # Line 1: Customer Name
+        notes_lines.append(customer_phone or '') # Line 2: Phone
+        notes_lines.append(address or '') # Line 3: Address
         
-        if map_url_from_form:
-             notes_parts.append(f"ลิงก์แผนที่: {map_url_from_form}")
+        if map_url_from_form: # Line 4: Map URL (if present)
+            notes_lines.append(map_url_from_form)
+        
+        # Line 5 (or Line 4 if no map URL): Detail
+        # Ensure detail is the last part and handles multiple lines correctly
+        if detail:
+            # Append detail lines individually if it contains newlines, or as a single entry
+            notes_lines.extend(detail.split('\n'))
 
-        notes_parts.append(f"\nรายละเอียดงาน:\n{detail or '-'}")
-        
-        notes = "\n".join(notes_parts)
+        # Remove trailing empty strings if any, to keep notes concise
+        while notes_lines and notes_lines[-1] == '':
+            notes_lines.pop()
+
+        notes = "\n".join(notes_lines)
 
         due_date_gmt, start_time_iso, end_time_iso = None, None, None
         if appointment_str:
@@ -609,506 +628,103 @@ def form_page():
 
 @app.route('/summary')
 def summary():
-    """Displays the task summary page with search functionality."""
+    """Displays the task summary page with search functionality and status filtering."""
     search_query = request.args.get('search_query', '').strip().lower()
+    status_filter = request.args.get('status_filter', 'all').strip() # 'all', 'needsAction', 'overdue', 'completed'
+
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
     if tasks_raw is None:
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้ในขณะนี้', 'danger')
         tasks_raw = []
 
-    # Using the enhanced parse_customer_info_from_notes for filtering
-    filtered_tasks = [
-        task for task in tasks_raw 
-        if not search_query or 
-        search_query in task.get('title', '').lower() or 
-        search_query in parse_customer_info_from_notes(task.get('notes', '')).get('name', '').lower() or
-        search_query in parse_customer_info_from_notes(task.get('notes', '')).get('phone', '') or
-        search_query in parse_customer_info_from_notes(task.get('notes', '')).get('address', '').lower() or
-        search_query in parse_customer_info_from_notes(task.get('notes', '')).get('detail', '').lower()
-    ]
-
-    tasks = []
-    summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(filtered_tasks)}
     current_time_utc = datetime.datetime.now(pytz.utc)
 
-    for task_item in filtered_tasks:
+    # First, apply status filter
+    filtered_by_status_tasks = []
+    for task_item in tasks_raw:
+        task_status = task_item.get('status')
+        is_overdue_check = False
+        if task_status == 'needsAction' and 'due' in task_item and task_item.get('due'):
+            try:
+                due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
+                if due_dt_utc < current_time_utc:
+                    is_overdue_check = True
+            except (ValueError, TypeError):
+                pass # Ignore invalid date formats
+
+        if status_filter == 'all':
+            filtered_by_status_tasks.append(task_item)
+        elif status_filter == 'completed' and task_status == 'completed':
+            filtered_by_status_tasks.append(task_item)
+        elif status_filter == 'needsAction' and task_status == 'needsAction' and not is_overdue_check:
+            filtered_by_status_tasks.append(task_item)
+        elif status_filter == 'overdue' and is_overdue_check:
+            filtered_by_status_tasks.append(task_item)
+
+    # Then, apply search query filter to the results from status filter
+    final_filtered_tasks = []
+    for task in filtered_by_status_tasks:
+        if not search_query or \
+           search_query in task.get('title', '').lower() or \
+           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('name', '').lower() or \
+           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('phone', '') or \
+           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('address', '').lower() or \
+           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('detail', '').lower():
+            final_filtered_tasks.append(task)
+
+
+    tasks = []
+    # Re-calculate summary stats based on ALL tasks (tasks_raw) to show overall status counts
+    # This ensures the counts in the cards remain consistent regardless of current filter
+    total_summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
+    for task_item in tasks_raw:
+        task_status = task_item.get('status')
+        is_overdue_check = False
+        if task_status == 'needsAction' and 'due' in task_item and task_item.get('due'):
+            try:
+                due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
+                if due_dt_utc < current_time_utc:
+                    is_overdue_check = True
+            except (ValueError, TypeError): pass
+        
+        if task_status == 'completed':
+            total_summary_stats['completed'] += 1
+        elif task_status == 'needsAction':
+            total_summary_stats['needsAction'] += 1
+            if is_overdue_check:
+                total_summary_stats['overdue'] += 1
+
+
+    for task_item in final_filtered_tasks: # Iterate over the final filtered tasks for display
         parsed_task = parse_google_task_dates(task_item)
         parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
         
-        history, original_notes_text = parse_tech_report_from_notes(parsed_task.get('notes', ''))
+        history, original_notes_text_removed_tech_reports = parse_tech_report_from_notes(parsed_task.get('notes', ''))
         parsed_task['tech_reports_history'] = history
-        # The notes_display should now contain only the original customer info + detail, without tech reports
-        parsed_task['notes_display'] = original_notes_text
+        parsed_task['notes_display'] = original_notes_text_removed_tech_reports 
         
         status = task_item.get('status')
         if status == 'completed':
-            summary_stats['completed'] += 1
             parsed_task['display_status'] = 'เสร็จสิ้น'
         elif status == 'needsAction':
-            summary_stats['needsAction'] += 1
             is_overdue = False
             if 'due' in task_item and task_item.get('due'):
                 try:
                     due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                     if due_dt_utc < current_time_utc:
                         is_overdue = True
-                        summary_stats['overdue'] += 1
                 except (ValueError, TypeError): pass
             parsed_task['display_status'] = 'ยังไม่ดำเนินการ' if is_overdue else 'รอดำเนินการ'
         tasks.append(parsed_task)
 
     tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
     
-    total = summary_stats['total']
-    if total > 0:
-        summary_stats['completed_percent'] = round((summary_stats['completed'] / total) * 100, 1)
-        summary_stats['needsAction_percent'] = round((summary_stats['needsAction'] / total) * 100, 1)
-        summary_stats['overdue_percent'] = round((summary_stats['overdue'] / total) * 100, 1)
-    else:
-        summary_stats.update({'completed_percent': 0, 'needsAction_percent': 0, 'overdue_percent': 0})
-
-    return render_template("tasks_summary.html", tasks=tasks, summary=summary_stats, search_query=search_query)
-
-def check_for_nearby_jobs_and_notify(completed_task_id, source_id):
-    """Central function to find and send nearby job notifications."""
-    nearby_tasks = find_nearby_jobs(completed_task_id)
-    if nearby_tasks:
-        completed_task = get_single_task(completed_task_id)
-        suggestion_message = create_nearby_job_suggestion_message(completed_task.get('title', ''), nearby_tasks)
-        if suggestion_message:
-            try:
-                line_messaging_api.push_message(PushMessageRequest(to=source_id, messages=[suggestion_message]))
-                app.logger.info(f"Sent nearby job suggestions to {source_id}")
-            except Exception as e:
-                app.logger.error(f"Failed to send nearby job suggestion: {e}")
-
-@app.route('/update_task/<task_id>', methods=['GET', 'POST'])
-def update_task_details(task_id):
-    """Displays and handles updates for a single task, showing history."""
-    service = get_google_tasks_service()
-    if not service: abort(503, "Google Tasks service is unavailable.")
-
-    try:
-        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        task = parse_google_task_dates(task_raw)
-        
-        # Parse customer info and historical reports
-        customer_info_from_task = parse_customer_info_from_notes(task.get('notes', ''))
-        history, original_notes_base_text = parse_tech_report_from_notes(task.get('notes', ''))
-        
-        # Populate for GET request
-        task['customer_name_initial'] = customer_info_from_task.get('name', '')
-        task['customer_phone_initial'] = customer_info_from_task.get('phone', '')
-        task['customer_address_initial'] = customer_info_from_task.get('address', '')
-        task['customer_detail_initial'] = customer_info_from_task.get('detail', '')
-        task['map_url_initial'] = customer_info_from_task.get('map_url', '')
-
-        task['tech_reports_history'] = history
-        task['notes_display'] = original_notes_base_text # Still keep this for display of the original notes content
-
-        if history and 'next_appointment' in history[0] and history[0]['next_appointment']:
-            try:
-                next_app_dt_utc = datetime.datetime.fromisoformat(history[0]['next_appointment'].replace('Z', '+00:00'))
-                task['tech_next_appointment_datetime_local'] = next_app_dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
-            except (ValueError, TypeError): task['tech_next_appointment_datetime_local'] = ''
-        else: task['tech_next_appointment_datetime_local'] = ''
-
-    except HttpError: abort(404, "Task not found.")
-
-    if request.method == 'POST':
-        original_status = task.get('status')
-        new_status = request.form.get('status')
-        work_summary = request.form.get('work_summary', '').strip()
-        equipment_used = request.form.get('equipment_used', '').strip()
-        time_taken = request.form.get('time_taken', '').strip()
-        next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
-
-        # New fields for task details update
-        updated_customer_name = request.form.get('customer_name', '').strip()
-        updated_customer_phone = request.form.get('customer_phone', '').strip()
-        updated_address = request.form.get('address', '').strip()
-        updated_detail = request.form.get('detail', '').strip()
-        updated_map_url = request.form.get('latitude_longitude', '').strip() # From the map URL input
-
-        # --- Handle File Uploads from web form to Google Drive ---
-        all_attachment_urls = []
-        # Add existing attachments from all historical tech reports
-        for report in task.get('tech_reports_history', []):
-            all_attachment_urls.extend(report.get('attachment_urls', []))
-        
-        if 'files[]' in request.files:
-            files = request.files.getlist('files[]')
-            for file in files:
-                if file and allowed_file(file.filename):
-                    filename = secure_filename(file.filename)
-                    temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    file.save(temp_filepath) # Save temporarily
-
-                    # Guess MIME type if not provided by browser (e.g., for very old browsers)
-                    mime_type = file.mimetype if file.mimetype else mimetypes.guess_type(filename)[0] or 'application/octet-stream'
-                    
-                    drive_url = upload_file_to_google_drive(temp_filepath, filename, mime_type)
-                    
-                    if drive_url:
-                        all_attachment_urls.append(drive_url)
-                    else:
-                        app.logger.error(f"Failed to upload {filename} to Google Drive.")
-                    
-                    os.remove(temp_filepath) # Clean up temporary file
-
-        all_attachment_urls = list(set(all_attachment_urls)) # Remove duplicates
-
-        # --- Prepare new tech report data ---
-        next_appointment_gmt = None
-        if new_status == 'needsAction' and next_appointment_date_str:
-            try:
-                next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
-                next_appointment_gmt = next_app_dt_local.astimezone(pytz.utc).isoformat()
-            except ValueError: app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
-        
-        # Include current location in tech report if available (from JS)
-        current_lat = request.form.get('current_lat')
-        current_lon = request.form.get('current_lon')
-        current_location_url = None
-        if current_lat and current_lon:
-            current_location_url = f"https://www.google.com/maps/search/?api=1&query={current_lat},{current_lon}"
-
-        new_tech_report_data = {
-            'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-            'work_summary': work_summary, 'equipment_used': equipment_used, 'time_taken': time_taken,
-            'next_appointment': next_appointment_gmt, 'attachment_urls': all_attachment_urls,
-            'location_url': current_location_url # Add location to this report
-        }
-        
-        # --- Reconstruct Task Notes for main details and tech reports ---
-        # Get existing tech reports and the base notes content (without previous tech report blocks)
-        history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        
-        # Reconstruct the "static" part of notes with updated customer info, address, detail, and map URL
-        base_notes_parts = [
-            f"ลูกค้า: {updated_customer_name}",
-            f"เบอร์โทร: {updated_customer_phone or '-'}",
-            f"ที่อยู่: {updated_address or '-'}"]
-        
-        if updated_map_url:
-             base_notes_parts.append(f"ลิงก์แผนที่: {updated_map_url}")
-        
-        base_notes_parts.append(f"\nรายละเอียดงาน:\n{updated_detail or '-'}")
-        
-        updated_base_notes = "\n".join(base_notes_parts)
-
-        # Append the new tech report to the history
-        all_reports_list = sorted(history + [new_tech_report_data], key=lambda x: x.get('summary_date'))
-        
-        all_reports_text = ""
-        for report in all_reports_list:
-            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-        
-        # Combine base notes with all tech reports
-        final_updated_notes = updated_base_notes + all_reports_text
-
-        # Update Google Task with potentially new title, and the full reconstructed notes
-        updated_task = update_google_task(
-            task_id, 
-            title=f"งานลูกค้า: {updated_customer_name} ({datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')})", # Update title based on new customer name
-            notes=final_updated_notes, 
-            status=new_status
-        )
-
-        if updated_task:
-            flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
-            if new_status == 'completed' and original_status != 'completed':
-                settings = get_app_settings()
-                tech_group_id = settings['line_recipients'].get('technician_group_id')
-                if tech_group_id:
-                    check_for_nearby_jobs_and_notify(task_id, tech_group_id)
-        else:
-            flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
-
-        return redirect(url_for('summary'))
-
-    return render_template('update_task_details.html', task=task)
-    
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    """Serves uploaded files. (Primarily for local temp storage / legacy direct links)"""
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-@app.route('/settings', methods=['GET', 'POST'])
-def settings_page():
-    """Handles the settings page display and form submission."""
-    if request.method == 'POST':
-        settings_data = {
-            'report_times': {
-                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')),
-                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour'))
-            },
-            'line_recipients': {
-                'admin_group_id': request.form.get('admin_group_id', '').strip(),
-                'manager_user_id': request.form.get('manager_user_id', '').strip(),
-                'technician_group_id': request.form.get('technician_group_id', '').strip()
-            }
-        }
-        if save_app_settings(settings_data):
-            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
-        else:
-            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
-        return redirect(url_for('settings_page'))
-
-    current_settings = get_app_settings()
-    return render_template('settings_page.html', settings=current_settings)
-
-@app.route('/delete_task/<task_id>', methods=['POST'])
-def delete_task(task_id):
-    """Handles the deletion of a task."""
-    if delete_google_task(task_id):
-        flash('ลบรายการงานเรียบร้อยแล้ว', 'success')
-    else:
-        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
-    return redirect(url_for('summary'))
-
-# --- LINE Webhook and Command Handlers ---
-
-@app.route("/callback", methods=['POST'])
-def callback():
-    """Endpoint for receiving data from LINE Webhook"""
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return 'OK'
-
-def reply_to_line(reply_token, messages):
-    """Central function for sending reply messages."""
-    try:
-        line_messaging_api.reply_message(
-            ReplyMessageRequest(reply_token=reply_token, messages=messages)
-        )
-    except Exception as e:
-        app.logger.error(f"Failed to reply to LINE: {e}")
-
-def handle_help_command(event):
-    """Handles the 'comphone' command."""
-    reply_message = TextMessage(text=(
-        "🤖 **วิธีใช้งานบอท** 🤖\n\n"
-        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
-        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
-        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า\n(เช่น: c สมศรี)\n\n"
-        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
-        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
-        "➡️ คุณสามารถส่งรูปภาพหรือไฟล์มาที่นี่ได้ Bot จะช่วยอัปโหลดขึ้น Google Drive ให้ครับ"
-    ))
-    reply_to_line(event.reply_token, [reply_message])
-
-def handle_outstanding_tasks_command(event):
-    """Handles 'งานค้าง' command."""
-    tasks = get_google_tasks_for_report(show_completed=False)
-    if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
-    if not tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างในขณะนี้")])
-        
-    message_lines = ["--- 📋 รายการงานค้าง ---"]
-    tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
-    for i, task in enumerate(tasks[:15]): # Limit to 15 to avoid long messages
-        message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n(ID: {task.get('id')})")
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
-
-def handle_completed_tasks_command(event):
-    """Handles 'งานเสร็จ' command."""
-    tasks = get_google_tasks_for_report(show_completed=True)
-    if tasks is None: # Corrected from `tasks === None` to `tasks is None`
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
-    
-    completed_tasks = [t for t in tasks if t.get('status') == 'completed']
-    if not completed_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="ยังไม่มีงานที่ทำเสร็จ")])
-
-    message_lines = ["--- ✅ 5 รายการงานที่เสร็จล่าสุด ---"]
-    completed_tasks.sort(key=lambda x: x.get('completed', ''), reverse=True)
-    for i, task in enumerate(completed_tasks[:5]):
-        message_lines.append(f"{i+1}. {task.get('title', 'N/A')}")
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
-
-def handle_summary_command(event):
-    """Handles 'สรุปรายงาน' command."""
-    tasks = get_google_tasks_for_report(show_completed=True)
-    if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
-
-    stats = {'needsAction': 0, 'completed': 0, 'overdue': 0}
-    current_time_utc = datetime.datetime.now(pytz.utc)
-    for task in tasks:
-        if task.get('status') == 'completed':
-            stats['completed'] += 1
-        elif task.get('status') == 'needsAction':
-            stats['needsAction'] += 1
-            if task.get('due'):
-                try:
-                    due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                    if due_dt_utc < current_time_utc:
-                        stats['overdue'] += 1
-                except (ValueError, TypeError): pass
-    
-    reply_message = TextMessage(text=(
-        f"--- 📊 สรุปรายงาน ---\n"
-        f"งานทั้งหมด: {len(tasks)}\n"
-        f"✅ เสร็จสิ้น: {stats['completed']}\n"
-        f"⏳ รอดำเนินการ: {stats['needsAction']}\n"
-        f"❗️ ยังไม่ดำเนินการ: {stats['overdue']}"
-    ))
-    reply_to_line(event.reply_token, [reply_message])
-
-def handle_view_task_command(event, task_id):
-    """Handles 'ดูงาน <ID>' command by replying with a Flex Message."""
-    task = get_single_task(task_id)
-    if not task:
-        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบงาน ID: {task_id}")])
-    
-    flex_message = create_task_flex_message(task)
-    reply_to_line(event.reply_token, [flex_message])
-
-def handle_complete_task_command(event, task_id):
-    """Handles 'เสร็จงาน <ID>' command."""
-    # When completing from LINE command, we don't have detailed summary, so provide minimal notes.
-    # We retrieve the task's current notes to preserve customer info etc.
-    task_raw = get_single_task(task_id)
-    if not task_raw:
-        return reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน ID: {task_id} ได้: ไม่พบงาน")])
-    
-    current_notes = task_raw.get('notes', '')
-    history, original_notes_base_text = parse_tech_report_from_notes(current_notes)
-
-    # Create a simple tech report for LINE completion
-    line_tech_report_data = {
-        'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-        'work_summary': "งานเสร็จสิ้นผ่าน LINE Command",
-        'equipment_used': "N/A",
-        'time_taken': "N/A",
-        'next_appointment': None,
-        'attachment_urls': [],
-        'location_url': None
-    }
-    all_reports_list = sorted(history + [line_tech_report_data], key=lambda x: x.get('summary_date'))
-    all_reports_text = ""
-    for report in all_reports_list:
-        all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-    
-    final_updated_notes = original_notes_base_text + all_reports_text # Add new report to notes
-
-    updated_task = update_google_task(task_id, notes=final_updated_notes, status='completed')
-    if updated_task:
-        reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")])
-        source_id = event.source.group_id if event.source.type == 'group' else event.source.user_id
-        check_for_nearby_jobs_and_notify(task_id, source_id)
-    else:
-        reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน ID: {task_id} ได้")])
-
-def handle_customer_search_command(event, customer_name):
-    """Handles customer history search command."""
-    all_tasks = get_google_tasks_for_report(show_completed=True)
-    if all_tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล")])
-
-    found_tasks = []
-    for task in all_tasks:
-        info = parse_customer_info_from_notes(task.get('notes', ''))
-        if customer_name.lower() in info.get('name', '').lower():
-            found_tasks.append(task)
-    
-    if not found_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบประวัติงานสำหรับลูกค้าชื่อ '{customer_name}'")])
-
-    carousel = create_customer_history_carousel(found_tasks, customer_name)
-    alt_text = f"ประวัติงานของลูกค้า: {customer_name}"
-    flex_message = FlexMessage(alt_text=alt_text, contents=carousel)
-    
-    reply_to_line(event.reply_token, [flex_message])
-
-# Command Dispatcher Dictionary
-COMMANDS = {
-    'comphone': handle_help_command,
-    'งานค้าง': handle_outstanding_tasks_command,
-    'งานเสร็จ': handle_completed_tasks_command,
-    'สรุปรายงาน': handle_summary_command,
-}
-
-@handler.add(MessageEvent, message=(TextMessageContent, ImageMessageContent, FileMessageContent)) # Added ImageMessageContent, FileMessageContent
-def handle_message(event):
-    """Handles incoming messages and calls the correct function."""
-    
-    # Handle file/image messages first
-    if isinstance(event.message, ImageMessageContent) or isinstance(event.message, FileMessageContent):
-        message_content_id = event.message.id
-        
-        # Determine MIME type and file extension
-        if isinstance(event.message, ImageMessageContent):
-            # LINE usually sends images as JPEG or PNG, can be inferred from content_type if available
-            mime_type = event.message.content_type if hasattr(event.message, 'content_type') else 'image/jpeg' 
-            file_extension = 'jpg' if 'jpeg' in mime_type else ('png' if 'png' in mime_type else 'bin')
-        else: # FileMessageContent
-            mime_type = event.message.content_type # Use actual content_type from LINE
-            file_extension = event.message.file_name.split('.')[-1].lower() if event.message.file_name else 'bin'
-
-        filename = secure_filename(f"{message_content_id}.{file_extension}")
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-        try:
-            message_content = line_messaging_api.get_message_content(message_content_id)
-            with open(filepath, 'wb') as fd:
-                for chunk in message_content.iter_content():
-                    fd.write(chunk)
-            
-            # Upload to Google Drive
-            drive_url = upload_file_to_google_drive(filepath, filename, mime_type)
-            
-            # Clean up local temporary file
-            os.remove(filepath)
-
-            if drive_url:
-                reply_to_line(event.reply_token, [TextMessage(text=f"ได้รับไฟล์แล้วและอัปโหลดขึ้น Google Drive เรียบร้อย:\n{drive_url}\nหากต้องการแนบไฟล์นี้กับงานใด โปรดไปที่หน้าอัปเดตงานและเพิ่มลิงก์ด้วยตนเอง หรือแจ้ง ID งานมาหากคุณกำลังอัปเดตงานอยู่ครับ")])
-            else:
-                reply_to_line(event.reply_token, [TextMessage(text="เกิดข้อผิดพลาดในการอัปโหลดไฟล์ไปยัง Google Drive")])
-
-        except Exception as e:
-            app.logger.error(f"Failed to get message content or save/upload file from LINE: {e}")
-            reply_to_line(event.reply_token, [TextMessage(text="เกิดข้อผิดพลาดในการรับไฟล์")])
-        return
-
-    # Handle text messages
-    text = event.message.text.strip()
-    text_lower = text.lower()
-    
-    if text_lower == 'นัดหมาย':
-        liff_url = f"https://liff.line.me/{LIFF_ID_FORM}"
-        reply_to_line(event.reply_token, [TextMessage(text="กรุณากดปุ่มด้านล่างเพื่อเปิดฟอร์มสร้างงานและนัดหมายครับ",
-            quick_reply=QuickReply(items=[
-                QuickReplyButton(action=URIAction(label="➕ สร้างงานใหม่", uri=liff_url))
-            ]))])
-        return
-
-    if text_lower.startswith('c '):
-        parts = text.split(maxsplit=1)
-        if len(parts) > 1: handle_customer_search_command(event, parts[1])
-        return
-
-    if text_lower.startswith('ดูงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_view_task_command(event, parts[1])
-        return
-
-    if text_lower.startswith('เสร็จงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_complete_task_command(event, parts[1])
-        return
-
-    if text_lower in COMMANDS:
-        COMMANDS[text_lower](event)
+    return render_template("tasks_summary.html", 
+                           tasks=tasks, 
+                           summary=total_summary_stats, # Pass total stats for the cards
+                           search_query=search_query,
+                           status_filter=status_filter) # Pass active filter for highlighting
 
 # --- Cron Job Endpoint ---
 @app.route('/trigger_daily_reports')
@@ -1154,7 +770,8 @@ def trigger_daily_reports():
             message_lines = ["--- 🌙 สรุปงานค้าง ---"]
             for task in tasks_to_process:
                 info = parse_customer_info_from_notes(task.get('notes', ''))
-                message_lines.append(f"ลูกค้า: {info['name']}\nโทร: {info['phone']}\nงาน: {task.get('title')}")
+                # Changed to use info.get() with empty string and then 'or -' for display
+                message_lines.append(f"ลูกค้า: {info.get('name', '') or '-'}\nโทร: {info.get('phone', '') or '-'}\nงาน: {task.get('title')}") 
             messages_to_send = [TextMessage(text="\n\n".join(message_lines))]
             recipients = [id for id in [settings['line_recipients'].get('manager_user_id'), settings['line_recipients'].get('admin_group_id')] if id]
 
@@ -1167,7 +784,7 @@ def trigger_daily_reports():
                     line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=messages_to_send[i:i+5]))
         else: # Single recipient
             for i in range(0, len(messages_to_send), 5):
-                line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5])) # Corrected: Added closing parenthesis here
+                line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5]))
         
         return f"{len(messages_to_send)} messages sent to {len(recipients)} recipients.", 200
 
