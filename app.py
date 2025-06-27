@@ -993,6 +993,19 @@ def trigger_daily_reports():
     return "No report scheduled or no recipients for this hour.", 200
 
 # --- Main Execution ---
+from flask import abort, request
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers.get('X-Line-Signature', '')
+    body = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except Exception as e:
+        app.logger.error(f"LINE Webhook error: {e}")
+        abort(400)
+    return "OK"
+
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
@@ -1001,4 +1014,3 @@ if __name__ == '__main__':
     # Default to 8080 if not set (e.g., when running locally)
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
-
