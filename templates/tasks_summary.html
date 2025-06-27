@@ -186,32 +186,7 @@
                 </div>
             </div>
         </div>
-
-        {# The redundant section below was causing the TemplateSyntaxError and has been removed. #}
-        {#
-        <div class="card non-printable">
-            <div class="card-header">
-                <h5 class="mb-0">งานที่เสร็จสิ้นแล้ว</h5>
-            </div>
-            <div class="list-group list-group-flush">
-                {% set completed_tasks = tasks | selectattr('status', 'eq', 'completed') | sort(attribute='completed', reverse=true) | list %}
-                {% if completed_tasks %}
-                    {% for task in completed_tasks[:10] %} {# แสดงแค่ 10 งานล่าสุด #}
-                    <a href="{{ url_for('update_task_details', task_id=task.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="status-completed">{{ task.get('title', 'N/A') }}</span>
-                            <small class="d-block text-muted">เสร็จสิ้นเมื่อ: {{ task.completed_formatted or '-' }}</small>
-                        </div>
-                        <span class="badge bg-success rounded-pill">เสร็จสิ้น</span>
-                    </a>
-                    {% endfor %}
-                {% else %}
-                    <div class="list-group-item text-muted">ยังไม่มีงานที่เสร็จแล้ว</div>
-                {% endif %}
-            </div>
-        </div>
-        #}
-
+        {# End of the previously commented out section that might have caused issues, removed the redundant lines that caused the syntax error #}
     </div>
 </body>
 </html>
