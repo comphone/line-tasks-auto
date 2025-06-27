@@ -32,6 +32,16 @@
             color: #198754; 
         }
         
+        /* เพิ่มสไตล์สำหรับ card ที่คลิกได้ */
+        .clickable-card {
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .clickable-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
         /* สไตล์สำหรับการพิมพ์ */
         @media print {
             .non-printable { 
@@ -74,7 +84,7 @@
         <!-- ฟอร์มค้นหาและการกรองสถานะ -->
         <div class="card mb-4 non-printable">
             <div class="card-body">
-                <form method="GET" action="{{ url_for('summary') }}">
+                <form id="filterForm" method="GET" action="{{ url_for('summary') }}">
                     <div class="row g-3 align-items-center">
                         <div class="col-md-8">
                             <div class="input-group">
@@ -84,7 +94,7 @@
                         </div>
                         <div class="col-md-4">
                             <label for="statusFilter" class="visually-hidden">กรองตามสถานะ</label>
-                            <select class="form-select" id="statusFilter" name="status_filter" onchange="this.form.submit()">
+                            <select class="form-select" id="statusFilter" name="status_filter" onchange="document.getElementById('filterForm').submit()">
                                 <option value="all" {% if status_filter == 'all' %}selected{% endif %}>สถานะทั้งหมด</option>
                                 <option value="needsAction" {% if status_filter == 'needsAction' %}selected{% endif %}>รอดำเนินการ</option>
                                 <option value="overdue" {% if status_filter == 'overdue' %}selected{% endif %}>ยังไม่ดำเนินการ (เกินกำหนด)</option>
@@ -96,10 +106,10 @@
             </div>
         </div>
 
-        <!-- การ์ดสรุปภาพรวม -->
+        <!-- การ์ดสรุปภาพรวม (ทำให้คลิกได้) -->
         <div class="row text-center non-printable">
             <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
+                <div class="card h-100 clickable-card" data-status-filter="all">
                     <div class="card-body">
                         <h2 class="display-5">{{ summary.total }}</h2>
                         <p class="text-muted mb-0">งานทั้งหมด</p>
@@ -107,7 +117,7 @@
                 </div>
             </div>
             <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
+                <div class="card h-100 clickable-card" data-status-filter="needsAction">
                     <div class="card-body">
                         <h2 class="display-5 status-pending">{{ summary.needsAction }}</h2>
                         <p class="text-muted mb-0">รอดำเนินการ</p>
@@ -115,7 +125,7 @@
                 </div>
             </div>
             <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
+                <div class="card h-100 clickable-card" data-status-filter="overdue">
                     <div class="card-body">
                         <h2 class="display-5 status-overdue">{{ summary.overdue }}</h2>
                         <p class="text-muted mb-0">ยังไม่ดำเนินการ</p>
@@ -123,7 +133,7 @@
                 </div>
             </div>
             <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
+                <div class="card h-100 clickable-card" data-status-filter="completed">
                     <div class="card-body">
                         <h2 class="display-5 status-completed">{{ summary.completed }}</h2>
                         <p class="text-muted mb-0">เสร็จสิ้น</p>
@@ -226,5 +236,25 @@
         </div>
 
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const clickableCards = document.querySelectorAll('.clickable-card');
+            const statusFilterDropdown = document.getElementById('statusFilter');
+            const filterForm = document.getElementById('filterForm');
+
+            clickableCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    const status = this.getAttribute('data-status-filter');
+                    
+                    // ตั้งค่าค่าใน dropdown ให้ตรงกับการ์ดที่คลิก
+                    statusFilterDropdown.value = status;
+                    
+                    // ส่งฟอร์มเพื่อกรองข้อมูล
+                    filterForm.submit();
+                });
+            });
+        });
+    </script>
 </body>
 </html>
