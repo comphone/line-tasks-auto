@@ -726,6 +726,34 @@ def summary():
                            search_query=search_query,
                            status_filter=status_filter) # Pass active filter for highlighting
 
+# --- Added settings_page route ---
+@app.route('/settings', methods=['GET', 'POST'])
+def settings_page():
+    """Handles the settings page display and form submission."""
+    if request.method == 'POST':
+        settings_data = {
+            'report_times': {
+                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')),
+                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour'))
+            },
+            'line_recipients': {
+                'admin_group_id': request.form.get('admin_group_id', '').strip(),
+                'manager_user_id': request.form.get('manager_user_id', '').strip(),
+                'technician_group_id': request.form.get('technician_group_id', '').strip()
+            }
+        }
+        if save_app_settings(settings_data):
+            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
+        return redirect(url_for('settings_page'))
+
+    current_settings = get_app_settings()
+    return render_template('settings_page.html', settings=current_settings)
+
+# --- End of added settings_page route ---
+
+
 # --- Cron Job Endpoint ---
 @app.route('/trigger_daily_reports')
 def trigger_daily_reports():
