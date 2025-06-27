@@ -726,7 +726,174 @@ def summary():
                            search_query=search_query,
                            status_filter=status_filter) # Pass active filter for highlighting
 
-# --- Added settings_page route ---
+
+@app.route('/update_task/<task_id>', methods=['GET', 'POST'])
+def update_task_details(task_id):
+    """Displays and handles updates for a single task, showing history."""
+    service = get_google_tasks_service()
+    if not service: abort(503, "Google Tasks service is unavailable.")
+
+    try:
+        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        task = parse_google_task_dates(task_raw)
+        
+        # Parse customer info and historical reports
+        customer_info_from_task = parse_customer_info_from_notes(task.get('notes', ''))
+        history, original_notes_text_removed_tech_reports = parse_tech_report_from_notes(task.get('notes', ''))
+        
+        # Populate for GET request
+        # Ensure values are empty string if not found, instead of 'N/A'
+        task['customer_name_initial'] = customer_info_from_task.get('name', '')
+        task['customer_phone_initial'] = customer_info_from_task.get('phone', '')
+        task['customer_address_initial'] = customer_info_from_task.get('address', '')
+        task['customer_detail_initial'] = customer_info_from_task.get('detail', '')
+        task['map_url_initial'] = customer_info_from_task.get('map_url', '')
+
+        task['tech_reports_history'] = history
+        # The notes_display is not directly used for parsing anymore, but can be for debugging/fallback display
+        task['notes_display'] = original_notes_text_removed_tech_reports 
+        
+        if history and 'next_appointment' in history[0] and history[0]['next_appointment']:
+            try:
+                next_app_dt_utc = datetime.datetime.fromisoformat(history[0]['next_appointment'].replace('Z', '+00:00'))
+                task['tech_next_appointment_datetime_local'] = next_app_dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+            except (ValueError, TypeError): task['tech_next_appointment_datetime_local'] = ''
+        else: task['tech_next_appointment_datetime_local'] = ''
+
+    except HttpError: abort(404, "Task not found.")
+
+    if request.method == 'POST':
+        original_status = task.get('status')
+        new_status = request.form.get('status')
+        work_summary = request.form.get('work_summary', '').strip()
+        equipment_used = request.form.get('equipment_used', '').strip()
+        time_taken = request.form.get('time_taken', '').strip()
+        next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
+
+        # New fields for task details update
+        # Get values, defaulting to empty string if not provided
+        updated_customer_name = request.form.get('customer_name', '').strip()
+        updated_customer_phone = request.form.get('customer_phone', '').strip()
+        updated_address = request.form.get('address', '').strip()
+        updated_detail = request.form.get('detail', '').strip()
+        updated_map_url = request.form.get('latitude_longitude', '').strip() # From the map URL input
+
+        # --- Handle File Uploads from web form to Google Drive ---
+        all_attachment_urls = []
+        # Add existing attachments from all historical tech reports
+        for report in task.get('tech_reports_history', []):
+            all_attachment_urls.extend(report.get('attachment_urls', []))
+        
+        if 'files[]' in request.files:
+            files = request.files.getlist('files[]')
+            for file in files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    file.save(temp_filepath) # Save temporarily
+
+                    # Guess MIME type if not provided by browser (e.g., for very old browsers)
+                    mime_type = file.mimetype if file.mimetype else mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+                    
+                    drive_url = upload_file_to_google_drive(temp_filepath, filename, mime_type)
+                    
+                    if drive_url:
+                        all_attachment_urls.append(drive_url)
+                    else:
+                        app.logger.error(f"Failed to upload {filename} to Google Drive.")
+                    
+                    os.remove(temp_filepath) # Clean up temporary file
+
+        all_attachment_urls = list(set(all_attachment_urls)) # Remove duplicates
+
+        # --- Prepare new tech report data ---
+        next_appointment_gmt = None
+        if new_status == 'needsAction' and next_appointment_date_str:
+            try:
+                next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
+                next_appointment_gmt = next_app_dt_local.astimezone(pytz.utc).isoformat()
+            except ValueError: app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
+        
+        # Include current location in tech report if available (from JS)
+        current_lat = request.form.get('current_lat')
+        current_lon = request.form.get('current_lon')
+        current_location_url = None
+        if current_lat and current_lon:
+            current_location_url = f"https://www.google.com/maps/search/?api=1&query={current_lat},{current_lon}"
+
+        new_tech_report_data = {
+            'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            'work_summary': work_summary, 'equipment_used': equipment_used, 'time_taken': time_taken,
+            'next_appointment': next_appointment_gmt, 'attachment_urls': all_attachment_urls,
+            'location_url': current_location_url # Add location to this report
+        }
+        
+        # --- Reconstruct Task Notes for main details and tech reports (line-by-line) ---
+        # Get existing tech reports and the base notes content (without previous tech report blocks)
+        history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        
+        # Reconstruct the "static" part of notes with updated customer info, address, detail, and map URL
+        # based on the new line-by-line format
+        base_notes_lines = []
+        base_notes_lines.append(updated_customer_name or '') # Line 1: Customer Name
+        base_notes_lines.append(updated_customer_phone or '') # Line 2: Phone
+        base_notes_lines.append(updated_address or '') # Line 3: Address
+        
+        if updated_map_url: # Line 4: Map URL (if present)
+            base_notes_lines.append(updated_map_url)
+        
+        # Line 5 (or Line 4 if no map URL): Detail
+        if updated_detail:
+            base_notes_lines.extend(updated_detail.split('\n'))
+
+        # Remove trailing empty strings
+        while base_notes_lines and base_notes_lines[-1] == '':
+            base_notes_lines.pop()
+
+        updated_base_notes = "\n".join(base_notes_lines)
+
+        # Append the new tech report to the history
+        all_reports_list = sorted(history + [new_tech_report_data], key=lambda x: x.get('summary_date'))
+        
+        all_reports_text = ""
+        for report in all_reports_list:
+            # Ensure attachment_urls and location_url are empty lists/None if not present in report
+            report_to_dump = report.copy()
+            report_to_dump['attachment_urls'] = report_to_dump.get('attachment_urls', [])
+            report_to_dump['location_url'] = report_to_dump.get('location_url', None)
+
+            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report_to_dump, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
+        # Combine base notes with all tech reports
+        final_updated_notes = updated_base_notes + all_reports_text
+
+        # Update Google Task with potentially new title, and the full reconstructed notes
+        updated_task = update_google_task(
+            task_id, 
+            title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'} ({datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')})", # Use 'ไม่ระบุชื่อลูกค้า' if name is empty
+            notes=final_updated_notes, 
+            status=new_status
+        )
+
+        if updated_task:
+            flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
+            if new_status == 'completed' and original_status != 'completed':
+                settings = get_app_settings()
+                tech_group_id = settings['line_recipients'].get('technician_group_id')
+                if tech_group_id:
+                    check_for_nearby_jobs_and_notify(task_id, tech_group_id)
+        else:
+            flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
+
+        return redirect(url_for('summary'))
+
+    return render_template('update_task_details.html', task=task)
+    
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    """Serves uploaded files. (Primarily for local temp storage / legacy direct links)"""
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     """Handles the settings page display and form submission."""
@@ -750,9 +917,6 @@ def settings_page():
 
     current_settings = get_app_settings()
     return render_template('settings_page.html', settings=current_settings)
-
-# --- End of added settings_page route ---
-
 
 # --- Cron Job Endpoint ---
 @app.route('/trigger_daily_reports')
