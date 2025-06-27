@@ -8,9 +8,17 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f8f9fa; }
-        .container { max-width: 700px; }
-        .card-header { background-color: #0d6efd; color: white; }
+        body { 
+            font-family: 'Sarabun', sans-serif; 
+            background-color: #f8f9fa; 
+        }
+        .container { 
+            max-width: 700px; 
+        }
+        .card-header { 
+            background-color: #0d6efd; 
+            color: white; 
+        }
     </style>
 </head>
 <body>
@@ -31,7 +39,13 @@
                   {% endif %}
                 {% endwith %}
 
-                <form method="POST" enctype="multipart/form-data">
+                <div class="input-group mb-3">
+                    <input type="text" id="customer-search" class="form-control" placeholder="ค้นหาลูกค้าเก่า...">
+                    <button class="btn btn-outline-secondary" type="button" id="search-btn"><i class="fas fa-search"></i> ค้นหา</button>
+                </div>
+                <div id="search-results" class="list-group mb-3"></div>
+
+                <form method="POST" enctype="multipart/form-data" action="{{ url_for('form_page') }}">
                     <div class="mb-3">
                         <label for="customer" class="form-label"><strong>ชื่อลูกค้า</strong> <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="customer" name="customer" required>
@@ -83,18 +97,70 @@
                 dateFormat: "Y-m-d H:i",
                 locale: "th",
             });
-        });
 
-        function extractCoords(input) {
-            let latInput = document.getElementById('latitude');
-            let lngInput = document.getElementById('longitude');
-            const mapUrlRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-            const match = input.match(mapUrlRegex);
-            if (match) {
-                latInput.value = match[1];
-                lngInput.value = match[2];
+            function extractCoords(input) {
+                let latInput = document.getElementById('latitude');
+                let lngInput = document.getElementById('longitude');
+                const mapUrlRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+                const match = input.match(mapUrlRegex);
+                if (match) {
+                    latInput.value = match[1];
+                    lngInput.value = match[2];
+                }
             }
-        }
+            
+            const searchBtn = document.getElementById('search-btn');
+            const searchInput = document.getElementById('customer-search');
+            const resultsDiv = document.getElementById('search-results');
+
+            async function performSearch() {
+                const query = searchInput.value;
+                if (query.length < 2) {
+                    resultsDiv.innerHTML = '';
+                    return;
+                };
+                
+                const response = await fetch(`/search_customers?q=${encodeURIComponent(query)}`);
+                const customers = await response.json();
+                
+                resultsDiv.innerHTML = '';
+                
+                if (customers.length > 0) {
+                    customers.forEach(customer => {
+                        const item = document.createElement('a');
+                        item.href = '#';
+                        item.className = 'list-group-item list-group-item-action';
+                        item.textContent = `${customer.name} (${customer.phone || 'N/A'})`;
+                        item.onclick = (e) => {
+                            e.preventDefault();
+                            document.getElementById('customer').value = customer.name;
+                            document.getElementById('phone').value = customer.phone || '';
+                            document.getElementById('address').value = customer.address || '';
+                            
+                            // You might want to extract and fill the map URL too
+                            const coordInput = document.getElementById('coord');
+                            if(customer.map_url) {
+                                coordInput.value = customer.map_url;
+                                extractCoords(customer.map_url);
+                            } else {
+                                coordInput.value = '';
+                            }
+
+                            resultsDiv.innerHTML = ''; // Clear results after selection
+                        };
+                        resultsDiv.appendChild(item);
+                    });
+                } else {
+                    const noResult = document.createElement('div');
+                    noResult.className = 'list-group-item text-muted';
+                    noResult.textContent = 'ไม่พบข้อมูลลูกค้า';
+                    resultsDiv.appendChild(noResult);
+                }
+            }
+
+            searchBtn.addEventListener('click', performSearch);
+            searchInput.addEventListener('keyup', performSearch); // Search as you type
+        });
     </script>
 </body>
 </html>
