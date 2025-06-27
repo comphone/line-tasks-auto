@@ -3,228 +3,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>สรุปงานทั้งหมด</title>
+    <title>อัปเดตรายละเอียดงาน</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js">
     <style>
         body { 
             font-family: 'Sarabun', sans-serif; 
             background-color: #f8f9fa; 
         }
         .container { 
-            max-width: 1200px; 
+            max-width: 800px; 
         }
-        .card { 
-            margin-bottom: 1.5rem; 
-        }
-        .printable-table th { 
+        .task-details { 
             background-color: #e9ecef; 
+            border-radius: 0.5rem; 
         }
-        .status-overdue { 
-            color: #dc3545; 
-            font-weight: bold; 
-        }
-        .status-pending { 
-            color: #fd7e14; 
-            font-weight: bold; 
-        }
-        .status-completed { 
-            color: #198754; 
-        }
-        
-        /* สไตล์สำหรับการพิมพ์ */
-        @media print {
-            .non-printable { 
-                display: none !important; 
-            }
-            #printable-area, #printable-area * { 
-                visibility: visible; 
-            }
-            #printable-area {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-            }
-            .table { 
-                font-size: 11pt; 
-            }
-            .card { 
-                border: none; 
-                box-shadow: none; 
-            }
-            body { 
-                background-color: #fff; 
-            }
+        .image-preview img, .attachment-preview img {
+            max-width: 120px;
+            max-height: 120px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            object-fit: cover;
         }
     </style>
 </head>
 <body>
     <div class="container py-4">
-        
-        <div class="d-flex justify-content-between align-items-center mb-4 non-printable">
-            <h1 class="mb-0">สรุปสถานะงาน</h1>
-            <div>
-                <a href="{{ url_for('form_page') }}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>สร้างงานใหม่</a>
-                <button onclick="window.print()" class="btn btn-secondary"><i class="fas fa-print me-2"></i>พิมพ์รายงาน</button>
-                <a href="{{ url_for('settings_page') }}" class="btn btn-outline-secondary"><i class="fas fa-cog"></i></a>
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h3 class="mb-0">อัปเดตรายละเอียดงาน</h3>
             </div>
-        </div>
+            <div class="card-body p-4">
+                <!-- Original Task Details Display (slightly adjusted for new parsing) -->
+                <div class="p-3 mb-4 task-details">
+                    <h5>{{ task.get('title', 'N/A') }}</h5>
+                    <p class="mb-1"><strong>ID งาน:</strong> {{ task.id }}</p>
+                    <p class="mb-1"><strong>สถานะปัจจุบัน:</strong> {{ task.display_status }}</p>
+                    <hr>
+                    <!-- Display parsed customer info -->
+                    <p class="mb-1"><strong>ลูกค้า:</strong> {{ task.customer_name_initial or '-' }}</p>
+                    <p class="mb-1"><strong>เบอร์โทร:</strong> {{ task.customer_phone_initial or '-' }}</p>
+                    <p class="mb-1"><strong>ที่อยู่:</strong> {{ task.customer_address_initial or '-' }}</p>
+                    {% if task.map_url_initial %}
+                        <p class="mb-1"><strong>ลิงก์แผนที่:</strong> <a href="{{ task.map_url_initial }}" target="_blank">{{ task.map_url_initial }}</a></p>
+                    {% endif %}
+                    <p class="mb-0"><strong>รายละเอียดงาน:</strong><br>{{ task.customer_detail_initial | replace('\n', '<br>') | safe }}</p>
+                </div>
 
-        <!-- ฟอร์มค้นหาและการกรองสถานะ -->
-        <div class="card mb-4 non-printable">
-            <div class="card-body">
-                <form method="GET" action="{{ url_for('summary') }}">
-                    <div class="row g-3 align-items-center">
-                        <div class="col-md-8">
-                            <div class="input-group">
-                                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากชื่องาน, ลูกค้า, เบอร์โทร, ที่อยู่, รายละเอียด..." value="{{ search_query or '' }}">
-                                <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> ค้นหา</button>
+                {% if task.tech_reports_history %}
+                <div class="mb-4">
+                    <h6><i class="fas fa-history"></i> ประวัติการสรุปงานโดยช่าง</h6>
+                    <div class="accordion" id="techHistoryAccordion">
+                        {% for report in task.tech_reports_history %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="heading{{ loop.index }}">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" aria-expanded="false" aria-controls="collapse{{ loop.index }}">
+                                    อัปเดตเมื่อ: {{ report.summary_date }}
+                                </button>
+                            </h2>
+                            <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#techHistoryAccordion">
+                                <div class="accordion-body">
+                                    <p class="mb-1"><strong>สรุปผล:</strong> {{ report.work_summary or 'N/A' }}</p>
+                                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong> {{ report.equipment_used or 'N/A' }}</p>
+                                    <p class="mb-1"><strong>เวลาที่ใช้:</strong> {{ report.time_taken or 'N/A' }}</p>
+                                    {% if report.next_appointment %}
+                                    <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment | format_datetime_iso_to_thai }}</p>
+                                    {% endif %}
+                                    {% if report.location_url %}
+                                    <p class="mb-1"><strong>พิกัดตอนทำ:</strong> <a href="{{ report.location_url }}" target="_blank">เปิดแผนที่</a></p>
+                                    {% endif %}
+                                    {% if report.attachment_urls %}
+                                    <p class="mb-1 mt-2"><strong>ไฟล์แนบในครั้งนั้น:</strong></p>
+                                    <div class="d-flex flex-wrap attachment-preview">
+                                        {% for url in report.attachment_urls %}
+                                        {# Check if it's an image to display directly, otherwise show as link #}
+                                        {% set is_image = url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+                                        {% if is_image %}
+                                            <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="Attachment"></a>
+                                        {% else %}
+                                            <a href="{{ url }}" target="_blank" class="btn btn-sm btn-outline-info m-1">ดูไฟล์แนบ {{ loop.index }}</a>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <label for="statusFilter" class="visually-hidden">กรองตามสถานะ</label>
-                            <select class="form-select" id="statusFilter" name="status_filter" onchange="this.form.submit()">
-                                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>สถานะทั้งหมด</option>
-                                <option value="needsAction" {% if status_filter == 'needsAction' %}selected{% endif %}>รอดำเนินการ</option>
-                                <option value="overdue" {% if status_filter == 'overdue' %}selected{% endif %}>ยังไม่ดำเนินการ (เกินกำหนด)</option>
-                                <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>เสร็จสิ้น</option>
-                            </select>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <hr>
+                <h5 class="mb-3">กรอกข้อมูลอัปเดตครั้งล่าสุด</h5>
+                <form method="POST" enctype="multipart/form-data">
+                    <!-- New fields for updating task details from app2.py -->
+                    <div class="mb-3">
+                        <label for="customer_name" class="form-label"><strong>ชื่อลูกค้า:</strong></label>
+                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer_name_initial or '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="customer_phone" class="form-label"><strong>เบอร์โทรศัพท์:</strong></label>
+                        <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer_phone_initial or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="address" class="form-label"><strong>ที่อยู่ลูกค้า:</strong></label>
+                        <textarea class="form-control" id="address" name="address" rows="2">{{ task.customer_address_initial or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label"><strong>ลิงก์แผนที่ (Google Maps URL):</strong></label>
+                        <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.map_url_initial or '' }}" placeholder="เช่น https://maps.app.goo.gl/...">
+                    </div>
+                    <div class="mb-3">
+                        <label for="detail" class="form-label"><strong>รายละเอียดงาน:</strong></label>
+                        <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer_detail_initial or '' }}</textarea>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="mb-3">
+                        <label for="work_summary" class="form-label"><strong>สรุปผลการทำงาน:</strong></label>
+                        <textarea class="form-control" id="work_summary" name="work_summary" rows="3" required></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="equipment_used" class="form-label"><strong>รายการอุปกรณ์ที่ใช้:</strong></label>
+                        <input type="text" class="form-control" id="equipment_used" name="equipment_used">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="time_taken" class="form-label"><strong>ระยะเวลาที่ทำเสร็จ (เช่น 2 ชม. 30 นาที):</strong></label>
+                        <input type="text" class="form-control" id="time_taken" name="time_taken">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="files" class="form-label"><strong>เพิ่มรูปภาพ/ไฟล์ (สำหรับครั้งนี้):</strong></label>
+                        <input type="file" class="form-control" id="files" name="files[]" multiple accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation">
+                        <div class="image-preview mt-2" id="imagePreview"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-info btn-sm" id="getLocationBtn"><i class="fas fa-map-marker-alt me-2"></i>บันทึกพิกัดปัจจุบัน</button>
+                        <input type="hidden" id="current_lat" name="current_lat">
+                        <input type="hidden" id="current_lon" name="current_lon">
+                        <small class="form-text text-muted" id="locationStatus">หากต้องการบันทึกพิกัดที่ทำงานในตอนนี้</small>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="mb-3">
+                        <label class="form-label"><strong>อัปเดตสถานะงาน:</strong></label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="status" id="status_completed" value="completed" {% if task.status == 'completed' %}checked{% endif %}>
+                            <label class="form-check-label" for="status_completed">เสร็จสิ้น</label>
                         </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="status" id="status_needsAction" value="needsAction" {% if task.status == 'needsAction' %}checked{% endif %}>
+                            <label class="form-check-label" for="status_needsAction">ยังไม่เสร็จ (ต้องนัดหมายใหม่)</label>
+                        </div>
+                    </div>
+
+                    <div id="appointmentDateGroup" class="mb-3" style="display: {% if task.status == 'needsAction' %}'block'{% else %}'none'{% endif %};">
+                        <label for="next_appointment_date" class="form-label"><strong>วันนัดลูกค้าอีกครั้ง:</strong></label>
+                        <input type="datetime-local" class="form-control" id="next_appointment_date" name="next_appointment_date" value="{{ task.tech_next_appointment_datetime_local or '' }}">
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <a href="{{ url_for('summary') }}" class="btn btn-secondary">ยกเลิก</a>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกการอัปเดต</button>
                     </div>
                 </form>
-            </div>
-        </div>
 
-        <!-- การ์ดสรุปภาพรวม -->
-        <div class="row text-center non-printable">
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h2 class="display-5">{{ summary.total }}</h2>
-                        <p class="text-muted mb-0">งานทั้งหมด</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h2 class="display-5 status-pending">{{ summary.needsAction }}</h2>
-                        <p class="text-muted mb-0">รอดำเนินการ</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h2 class="display-5 status-overdue">{{ summary.overdue }}</h2>
-                        <p class="text-muted mb-0">ยังไม่ดำเนินการ</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h2 class="display-5 status-completed">{{ summary.completed }}</h2>
-                        <p class="text-muted mb-0">เสร็จสิ้น</p>
-                    </div>
+                <!-- Delete Task Section -->
+                <hr class="my-4">
+                <div class="text-end">
+                    <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้? การกระทำนี้ไม่สามารถย้อนกลับได้');">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash-alt me-2"></i>ลบรายการนี้
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
-
-        <!-- ส่วนของตารางที่พิมพ์ได้ (จะแสดงเฉพาะงานที่ filter แล้ว) -->
-        <div id="printable-area">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="mb-0">
-                        <i class="fas fa-tasks me-2"></i>รายงานงาน
-                        {% if status_filter == 'all' %}ทั้งหมด{% endif %}
-                        {% if status_filter == 'needsAction' %}รอดำเนินการ{% endif %}
-                        {% if status_filter == 'overdue' %}ยังไม่ดำเนินการ (เกินกำหนด){% endif %}
-                        {% if status_filter == 'completed' %}เสร็จสิ้น{% endif %}
-                        {% if search_query %} (ผลการค้นหา: "{{ search_query }}"){% endif %}
-                    </h4>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-striped table-hover printable-table">
-                            <thead class="text-center">
-                                <tr>
-                                    <th scope="col" style="width: 5%;">#</th>
-                                    <th scope="col">ชื่องาน</th>
-                                    <th scope="col">ชื่อลูกค้า</th>
-                                    <th scope="col">เบอร์โทร</th>
-                                    <th scope="col">กำหนดส่ง</th>
-                                    <th scope="col">สถานะ</th>
-                                    <th scope="col" class="non-printable" style="width: 10%;">จัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% if tasks %} {# Now 'tasks' directly contains the filtered tasks #}
-                                    {% for task in tasks %}
-                                    <tr>
-                                        <td class="text-center">{{ loop.index }}</td>
-                                        <td>{{ task.get('title', 'N/A') }}</td>
-                                        <td>{{ task.customer.name or '-' }}</td> {# Use 'or -' for missing names #}
-                                        <td>{{ task.customer.phone or '-' }}</td> {# Use 'or -' for missing phones #}
-                                        <td class="text-center">{{ task.due_formatted or '-' }}</td> {# Use 'or -' for missing dates #}
-                                        <td class="text-center">
-                                            {% if task.display_status == 'ยังไม่ดำเนินการ' %}
-                                                <span class="badge bg-danger">{{ task.display_status }}</span>
-                                            {% elif task.display_status == 'รอดำเนินการ' %}
-                                                <span class="badge bg-warning text-dark">{{ task.display_status }}</span>
-                                            {% elif task.display_status == 'เสร็จสิ้น' %}
-                                                <span class="badge bg-success">{{ task.display_status }}</span>
-                                            {% else %}
-                                                <span>{{ task.display_status }}</span> {# Fallback #}
-                                            {% endif %}
-                                        </td>
-                                        <td class="text-center non-printable">
-                                            <a href="{{ url_for('update_task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-primary">ดู/แก้ไข</a>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr>
-                                        <td colspan="7" class="text-center text-muted py-3">ไม่พบงานตามเงื่อนไขที่ระบุ</td>
-                                    </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- รายการงานที่เสร็จแล้ว (ส่วนนี้ยังคงเป็น non-printable เพื่อไม่ให้พิมพ์ซ้ำกับตารางด้านบน) -->
-        <!-- Note: This section now shows *all* completed tasks if status filter is 'all',
-             or it will be empty if a different filter is active.
-             The main table above is now the primary display. -->
-        <div class="card non-printable mt-4">
-            <div class="card-header">
-                <h5 class="mb-0">งานที่เสร็จสิ้นล่าสุด (ไม่ถูกกรองด้วยการค้นหา/สถานะด้านบน)</h5>
-            </div>
-            <div class="list-group list-group-flush">
-                {# This section explicitly shows last 10 completed tasks from ALL tasks,
-                   regardless of the search/filter above, for quick reference. #}
-                {% set all_completed_tasks = tasks_raw | selectattr('status', 'eq', 'completed') | sort(attribute='completed', reverse=true) | list %}
-                {% if all_completed_tasks %}
-                    {% for task in all_completed_tasks[:10] %} {# แสดงแค่ 10 งานล่าสุด #}
-                    <a href="{{ url_for('update_task_details', task_id=task.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="status-completed">{{ task.get('title', 'N/A') }}</span>
-                            {# Corrected: access .completed_formatted directly from the task object #}
-                            <small class="d-block text-muted">เสร็จสิ้นเมื่อ: {{ task.completed_formatted or '-' }}</small>
-                        </div>
-                        <span class="badge bg-success rounded-pill">เสร็จสิ้น</span>
-                    </a>
-                    {% endfor %}
-                {% else %}
-                    <div class="list-group-item text-muted">ยังไม่มีงานที่เสร็จแล้ว</div>
-                {% endif %}
-            </div>
-        </div>
-
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Flatpickr initialization for datetime input
+            flatpickr("#next_appointment_date", {
+                enableTime: true,
+                dateFormat: "Y-m-dTH:i", // Note the 'T' for datetime-local compatibility
+                locale: "th",
+            });
+
+            const statusRadios = document.querySelectorAll('input[name="status"]');
+            const appointmentGroup = document.getElementById('appointmentDateGroup');
+
+            function toggleAppointment() {
+                if (document.getElementById('status_needsAction').checked) {
+                    appointmentGroup.style.display = 'block';
+                } else {
+                    appointmentGroup.style.display = 'none';
+                }
+            }
+
+            // Initial call and event listener for status radios
+            toggleAppointment(); // Set initial visibility
+            statusRadios.forEach(radio => radio.addEventListener('change', toggleAppointment));
+            
+            // Image and file preview logic for new uploads
+            const filesInput = document.getElementById('files');
+            const imagePreview = document.getElementById('imagePreview');
+            filesInput.addEventListener('change', function(event) {
+                imagePreview.innerHTML = ''; // Clear previous previews
+                for (const file of event.target.files) {
+                    // Only show image previews directly
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = e => {
+                            const img = document.createElement('img');
+                            img.src = e.target.result;
+                            img.alt = file.name; // Add alt text for accessibility
+                            imagePreview.appendChild(img);
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        // For non-image files, you might show file name or icon
+                        const fileDiv = document.createElement('div');
+                        fileDiv.textContent = `ไฟล์: ${file.name}`;
+                        fileDiv.classList.add('p-2', 'border', 'rounded', 'm-1'); // Basic styling
+                        imagePreview.appendChild(fileDiv);
+                    }
+                }
+            });
+
+            // Geolocation logic
+            const getLocationBtn = document.getElementById('getLocationBtn');
+            const currentLatInput = document.getElementById('current_lat');
+            const currentLonInput = document.getElementById('current_lon');
+            const locationStatus = document.getElementById('locationStatus');
+
+            if (getLocationBtn) {
+                getLocationBtn.addEventListener('click', function() {
+                    locationStatus.textContent = 'กำลังค้นหาพิกัด...';
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                currentLatInput.value = position.coords.latitude;
+                                currentLonInput.value = position.coords.longitude;
+                                locationStatus.textContent = `บันทึกพิกัด: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
+                                locationStatus.style.color = 'green';
+                            },
+                            (error) => {
+                                console.error("Error getting location: ", error);
+                                locationStatus.textContent = 'ไม่สามารถดึงพิกัดได้ (โปรดอนุญาตการเข้าถึงตำแหน่ง)';
+                                locationStatus.style.color = 'red';
+                            },
+                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                        );
+                    } else {
+                        locationStatus.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation';
+                        locationStatus.style.color = 'red';
+                    }
+                });
+            }
+
+        });
+    </script>
 </body>
 </html>
