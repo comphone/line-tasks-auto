@@ -993,6 +993,33 @@ def trigger_daily_reports():
     return "No report scheduled or no recipients for this hour.", 200
 
 # --- Main Execution ---
+
+# --- LINE Webhook Route ---
+@app.route("/callback", methods=['POST'])
+def line_webhook():
+    signature = request.headers.get('X-Line-Signature', '')
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        app.logger.error("Invalid signature. Check your LINE_CHANNEL_SECRET.")
+        abort(400)
+    return 'OK'
+
+# --- LINE Text Message Handler Example ---
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle_message(event):
+    user_text = event.message.text
+    reply_token = event.reply_token
+    # Echo ตอบข้อความเดิมกลับ
+    line_messaging_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[TextMessage(text=f"คุณพิมพ์: {user_text}")]
+        )
+    )
+
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
