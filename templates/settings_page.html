@@ -27,7 +27,7 @@
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             background-color: #fff;
-            margin-top: 1.5rem; /* Add some space above */
+            margin-top: 20px; /* Added margin for spacing */
         }
         .qr-code-container img {
             max-width: 200px; /* Adjust size as needed */
@@ -99,31 +99,58 @@
                 </div>
             </div>
 
+            <!-- New QR Code Customization Section -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <i class="fas fa-qrcode me-2"></i>ตั้งค่า QR Code
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">ปรับแต่งลักษณะของ QR Code ที่แสดงในระบบ.</p>
+                    <div class="mb-3">
+                        <label for="qr_box_size" class="form-label">ขนาดจุด (Box Size)</label>
+                        <input type="number" class="form-control" id="qr_box_size" name="qr_box_size" min="1" max="20" value="{{ settings.qrcode_settings.box_size }}">
+                        <div class="form-text">ขนาดของแต่ละจุดใน QR Code (ยิ่งมากยิ่งใหญ่)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="qr_border" class="form-label">ขนาดขอบ (Border Size)</label>
+                        <input type="number" class="form-control" id="qr_border" name="qr_border" min="0" max="10" value="{{ settings.qrcode_settings.border }}">
+                        <div class="form-text">ขนาดขอบสีขาวรอบ QR Code</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="qr_fill_color" class="form-label">สีของ QR Code (Fill Color)</label>
+                        <input type="color" class="form-control form-control-color" id="qr_fill_color" name="qr_fill_color" value="{{ settings.qrcode_settings.fill_color }}">
+                        <div class="form-text">เลือกสีสำหรับส่วนที่เป็นจุดของ QR Code</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="qr_back_color" class="form-label">สีพื้นหลัง QR Code (Background Color)</label>
+                        <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color" value="{{ settings.qrcode_settings.back_color }}">
+                        <div class="form-text">เลือกสีสำหรับพื้นหลังของ QR Code</div>
+                    </div>
+                </div>
+            </div>
+
+
             <div class="text-center">
                 <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่า</button>
                 <a href="{{ url_for('summary') }}" class="btn btn-secondary btn-lg">กลับไปหน้าสรุป</a>
             </div>
         </form>
 
-        <!-- [START qrcode_settings_display] -->
-        <div class="card qr-code-container shadow-sm">
-            <div class="card-header">
+        <!-- QR Code for general summary page (added to settings page) -->
+        {% if qr_code_base64_general %}
+            <div class="qr-code-container">
                 <h5 class="mb-0">
                     <i class="fas fa-qrcode me-2"></i>สแกนเพื่อเข้าถึงหน้าสรุปงาน
                 </h5>
-            </div>
-            <div class="card-body">
                 <p class="text-muted mb-3">ให้ผู้อื่นสแกน QR Code นี้เพื่อเข้าสู่หน้าสรุปงานโดยตรง.</p>
-                {% if settings_qr_code_base64 %}
-                    <img src="{{ settings_qr_code_base64 }}" alt="QR Code for Summary Page">
-                    <p class="mt-2"><a href="{{ public_summary_url }}" target="_blank">เปิดหน้าสรุปงานในเบราวเซอร์</a></p>
-                {% else %}
-                    <p class="text-danger">ไม่สามารถสร้าง QR Code ได้. โปรดตรวจสอบการตั้งค่า URL.</p>
-                {% endif %}
+                <img src="{{ qr_code_base64_general }}" alt="QR Code for General Summary Report">
+                <p class="mt-2"><a href="{{ general_summary_url }}" target="_blank">เปิดหน้าสรุปงานในเบราวเซอร์</a></p>
             </div>
-        </div>
-        <!-- [END qrcode_settings_display] -->
-
+        {% else %}
+            <div class="qr-code-container text-danger">
+                ไม่สามารถสร้าง QR Code สำหรับหน้าสรุปงานทั่วไปได้.
+            </div>
+        {% endif %}
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
