@@ -764,7 +764,7 @@ def summary():
 
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
-    if tasks_raw is None:
+    if tasks_raw === None: # This line should be `is None`
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้ในขณะนี้', 'danger')
         tasks_raw = []
 
@@ -1011,14 +1011,22 @@ def update_task_details(task_id):
 
         return redirect(url_for('summary'))
 
-    # [START qrcode_render_update_task]
-    # URL ที่ QR Code จะชี้ไป (รายงานสรุปงานสำหรับลูกค้าของงานนี้)
-    # เราจะใช้ Task ID เป็น search_query เพื่อให้กรองเฉพาะงานนี้
-    public_report_url_for_task = url_for('summary', _external=True, search_query=task_id, status_filter='all') 
-    
+    # [START qrcode_render_update_task_flexible]
     # ดึงการตั้งค่า QR code จาก settings
     qr_settings = get_app_settings().get('qrcode_settings', {})
+    
+    # 1. ตรวจสอบว่ามี custom_url กำหนดไว้ใน settings หรือไม่
+    custom_qr_url_from_settings = qr_settings.get('custom_url', '').strip()
 
+    public_report_url_for_task = None
+    if custom_qr_url_from_settings and (custom_qr_url_from_settings.startswith('http://') or custom_qr_url_from_settings.startswith('https://')):
+        # 2. ถ้ามีและถูกต้อง ให้ใช้ custom_url สำหรับ QR code ของหน้านี้
+        public_report_url_for_task = custom_qr_url_from_settings
+    else:
+        # 3. ถ้าไม่มี custom_url หรือไม่ถูกต้อง ให้ใช้ URL ของรายงานงานเฉพาะ (แบบเดิม)
+        # เราจะใช้ Task ID เป็น search_query เพื่อให้กรองเฉพาะงานนี้
+        public_report_url_for_task = url_for('summary', _external=True, search_query=task_id, status_filter='all') 
+    
     # Generate QR code for this specific task's public report URL
     qr_code_base64_for_task = generate_qr_code_base64(
         public_report_url_for_task, 
@@ -1027,7 +1035,7 @@ def update_task_details(task_id):
         fill_color=qr_settings.get('fill_color', '#0056b3'), 
         back_color=qr_settings.get('back_color', '#FFFFFF') 
     )
-    # [END qrcode_render_update_task]
+    # [END qrcode_render_update_task_flexible]
 
     return render_template('update_task_details.html', 
                            task=task, 
@@ -1053,15 +1061,13 @@ def settings_page():
                 'manager_user_id': request.form.get('manager_user_id', '').strip(),
                 'technician_group_id': request.form.get('technician_group_id', '').strip()
             },
-            # [START qrcode_settings_post]
             'qrcode_settings': {
                 'box_size': int(request.form.get('qr_box_size', 8)),
                 'border': int(request.form.get('qr_border', 4)),
                 'fill_color': request.form.get('qr_fill_color', '#28a745'),
                 'back_color': request.form.get('qr_back_color', '#FFFFFF'),
-                'custom_url': request.form.get('qr_custom_url', '').strip() # Get custom URL from form
+                'custom_url': request.form.get('qr_custom_url', '').strip() 
             }
-            # [END qrcode_settings_post]
         }
         if save_app_settings(settings_data):
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
@@ -1071,25 +1077,20 @@ def settings_page():
 
     current_settings = get_app_settings()
     
-    # [START qrcode_render_settings]
-    # URL ที่ QR Code จะชี้ไป (สรุปงานทั่วไป)
     general_summary_url = url_for('summary', _external=True)
     
-    # ใช้ custom_url ถ้ามี, ไม่งั้นใช้ general_summary_url
     qr_url_to_use = current_settings.get('qrcode_settings', {}).get('custom_url', '').strip()
-    if not qr_url_to_use: # ถ้า custom_url ว่าง ให้ใช้ default
+    if not qr_url_to_use: 
         qr_url_to_use = general_summary_url
 
-    # ใช้การตั้งค่าจาก _APP_SETTINGS_STORE ในการสร้าง QR Code
     qr_settings = current_settings.get('qrcode_settings', {})
     qr_code_base64_general = generate_qr_code_base64(
-        qr_url_to_use, # ใช้ URL ที่ตัดสินใจแล้ว
+        qr_url_to_use, 
         box_size=qr_settings.get('box_size', 8),   
         border=qr_settings.get('border', 4),
         fill_color=qr_settings.get('fill_color', '#28a745'), 
         back_color=qr_settings.get('back_color', '#FFFFFF')
     )
-    # [END qrcode_render_settings]
 
     return render_template('settings_page.html', 
                            settings=current_settings,
