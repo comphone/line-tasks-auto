@@ -31,6 +31,20 @@
             border-radius: 4px;
             object-fit: cover;
         }
+        /* Style for QR code container */
+        .qr-code-container {
+            text-align: center;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background-color: #fff;
+        }
+        .qr-code-container img {
+            max-width: 200px; /* Adjust size as needed */
+            height: auto;
+            border: 5px solid #fff; /* White border around QR */
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -70,23 +84,8 @@
                             <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#techHistoryAccordion">
                                 <div class="accordion-body">
                                     <p class="mb-1"><strong>สรุปผล:</strong> {{ report.work_summary or 'N/A' }}</p>
-                                    {# Display parsed equipment list and total cost #}
-                                    {% if report.equipment_list %}
-                                        <p class="mb-1"><strong>รายการอุปกรณ์ที่ใช้:</strong></p>
-                                        <ul class="list-unstyled mb-1">
-                                        {% for eq_item in report.equipment_list %}
-                                            <li>- {{ eq_item.name }}: {{ eq_item.quantity }} {{ eq_item.unit }}</li>
-                                        {% endfor %}
-                                        </ul>
-                                        {% if report.total_cost is number %}
-                                            <p class="mb-1"><strong>รวมค่าใช้จ่ายอุปกรณ์:</strong> ฿{{ "{:,.2f}".format(report.total_cost) }}</p>
-                                        {% else %}
-                                            <p class="mb-1"><strong>รวมค่าใช้จ่ายอุปกรณ์:</strong> N/A</p>
-                                        {% endif %}
-                                    {% else %}
-                                        <p class="mb-1"><strong>รายการอุปกรณ์ที่ใช้:</strong> N/A</p>
-                                    {% endif %}
-                                    
+                                    {# Changed equipment_used to display multi-line #}
+                                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong><br>{{ (report.equipment_used or 'N/A') | replace('\n', '<br>') | safe }}</p>
                                     {% if report.next_appointment %}
                                     <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment | format_datetime_iso_to_thai }}</p>
                                     {% endif %}
@@ -151,10 +150,9 @@
                     </div>
 
                     <div class="mb-3">
-                        {# Changed input to textarea for multi-line equipment with instruction #}
+                        {# Changed input to textarea for multi-line equipment #}
                         <label for="equipment_used" class="form-label"><strong>รายการอุปกรณ์ที่ใช้:</strong></label>
-                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="เช่น สายไฟ: 10 เมตร; กล่องควบคุม: 2 ชิ้น; ค่าบริการ: 1.5 ชั่วโมง"></textarea>
-                        <small class="form-text text-muted">กรอกชื่ออุปกรณ์: จำนวน หน่วย (เช่น สายไฟ: 10 เมตร; กล่องควบคุม: 2 ชิ้น)</small>
+                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="2"></textarea>
                     </div>
 
                     <div class="mb-3">
@@ -195,17 +193,26 @@
                 </form>
 
                 <hr class="my-4">
-                {# New section for QR Code #}
-                <div class="card mt-4">
+
+                <!-- [START qrcode_display_section] -->
+                <div class="card mb-4">
                     <div class="card-header">
-                        <h5><i class="fas fa-qrcode me-2"></i>รายงานค่าใช้จ่ายสำหรับลูกค้า (QR Code)</h5>
+                        <h5 class="mb-0">
+                            <i class="fas fa-qrcode me-2"></i>สแกนเพื่อรายงานสำหรับลูกค้านี้
+                        </h5>
                     </div>
-                    <div class="card-body text-center">
-                        <p class="text-muted">สแกน QR Code นี้เพื่อให้ลูกค้าดูรายงานสรุปงานและค่าใช้จ่าย.</p>
-                        <img src="{{ url_for('generate_qrcode', task_id=task.id) }}" alt="QR Code for Public Report" style="width: 200px; height: 200px; border: 1px solid #ddd; padding: 5px;">
-                        <p class="mt-2"><a href="{{ url_for('public_task_report', task_id=task.id, _external=True) }}" target="_blank">เปิดรายงานในเบราว์เซอร์</a></p>
+                    <div class="card-body qr-code-container">
+                        <p class="text-muted mb-3">ให้ลูกค้าสแกน QR Code นี้เพื่อดูสรุปงานและค่าใช้จ่ายของงานนี้.</p>
+                        {# Use qr_code_base64 directly here #}
+                        {% if qr_code_base64 %}
+                            <img src="{{ qr_code_base64 }}" alt="QR Code for Public Report">
+                            <p class="mt-2"><a href="{{ public_report_url }}" target="_blank">เปิดรายงานในเบราวเซอร์</a></p>
+                        {% else %}
+                            <p class="text-danger">ไม่สามารถสร้าง QR Code ได้สำหรับงานนี้. (ลิงก์รายงานยังไม่พร้อม)</p>
+                        {% endif %}
                     </div>
                 </div>
+                <!-- [END qrcode_display_section] -->
 
                 <!-- Delete Task Section -->
                 <hr class="my-4">
@@ -225,7 +232,6 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Flatpickr initialization for datetime inputs (only for next_appointment_date now)
             flatpickr("#next_appointment_date", { 
                 enableTime: true,
                 dateFormat: "Y-m-dTH:i",
@@ -243,42 +249,37 @@
                 }
             }
 
-            // Initial call and event listener for status radios
-            toggleAppointment(); // Set initial visibility
+            toggleAppointment(); 
             statusRadios.forEach(radio => radio.addEventListener('change', toggleAppointment));
             
-            // Image and file preview logic for new uploads
             const filesInput = document.getElementById('files');
             const imagePreview = document.getElementById('imagePreview');
             filesInput.addEventListener('change', function(event) {
-                imagePreview.innerHTML = ''; // Clear previous previews
+                imagePreview.innerHTML = ''; 
                 for (const file of event.target.files) {
-                    // Only show image previews directly
                     if (file.type.startsWith('image/')) {
                         const reader = new FileReader();
                         reader.onload = e => {
                             const img = document.createElement('img');
                             img.src = e.target.result;
-                            img.alt = file.name; // Add alt text for accessibility
+                            img.alt = file.name; 
                             imagePreview.appendChild(img);
                         };
                         reader.readAsDataURL(file);
                     } else {
-                        // For non-image files, you might show file name or icon
                         const fileDiv = document.createElement('div');
                         fileDiv.textContent = `ไฟล์: ${file.name}`;
-                        fileDiv.classList.add('p-2', 'border', 'rounded', 'm-1'); // Basic styling
+                        fileDiv.classList.add('p-2', 'border', 'rounded', 'm-1'); 
                         imagePreview.appendChild(fileDiv);
                     }
                 }
             });
 
-            // Geolocation logic for "แชร์ที่อยู่ปัจจุบัน" button
             const shareCurrentLocationBtn = document.getElementById('shareCurrentLocationBtn');
             const latitudeLongitudeInput = document.getElementById('latitude_longitude');
             const shareLocationStatus = document.getElementById('shareLocationStatus');
-            const currentLatInput = document.getElementById('current_lat'); // Still useful for tech report
-            const currentLonInput = document.getElementById('current_lon'); // Still useful for tech report
+            const currentLatInput = document.getElementById('current_lat'); 
+            const currentLonInput = document.getElementById('current_lon'); 
 
             if (shareCurrentLocationBtn) {
                 shareCurrentLocationBtn.addEventListener('click', function() {
@@ -288,11 +289,21 @@
                             (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                                // For update_task_details, the public_report_url is passed from Flask.
+                                // We need to construct the URL that the QR code should point to.
+                                // This is usually the summary page with a task_id parameter.
+                                // The URL should be relative to the current domain if _external=False.
+                                // However, for a QR code, an absolute URL is usually better.
+                                // We'll rely on Flask to give us a robust public_report_url from app.py.
                                 
-                                latitudeLongitudeInput.value = googleMapsUrl; // Populate the main input field
-                                currentLatInput.value = lat; // Keep for tech report data
-                                currentLonInput.value = lon; // Keep for tech report data
+                                // The QR code is now generated server-side and its base64 is passed.
+                                // This button's primary function here is to fill the map URL field.
+                                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                                latitudeLongitudeInput.value = googleMapsUrl; 
+
+                                // These hidden fields are for saving the current GPS to the tech report
+                                currentLatInput.value = lat; 
+                                currentLonInput.value = lon; 
 
                                 shareLocationStatus.textContent = `ลิงก์แผนที่สร้างสำเร็จ: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
                                 shareLocationStatus.style.color = 'green';
