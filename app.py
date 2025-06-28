@@ -36,9 +36,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload 
 
-# [START excel_imports]
-import pandas as pd
-# [END excel_imports]
+import pandas as pd 
 
 # --- Initialization & Configurations ---
 app = Flask(__name__)
@@ -81,7 +79,7 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-# [START app_settings_json_persistence]
+# [START app_settings_json_persistence_final]
 SETTINGS_FILE = 'settings.json'
 
 # Default settings structure (used if settings.json is empty or fails)
@@ -102,10 +100,20 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'back_color': '#FFFFFF',
         'custom_url': '' 
     },
-    'common_equipment_items': [ 
-        "สาย LAN", "หัว RJ45", "คีมย้ำ", "ไขควง", "มัลติมิเตอร์", 
-        "สายไฟ VAF 2.5", "ปลั๊กไฟ", "เต้ารับ", "เบรกเกอร์", "Adapter", "ติดตั้งกล้อง"
-    ]
+    'equipment_catalog': [ 
+        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0},
+        {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
+        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0},
+        {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
+        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0},
+        {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
+        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0},
+        {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
+        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0},
+        {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
+        {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
+    ],
+    'common_equipment_items': [] 
 }
 
 # Global variable to hold current settings in memory
@@ -135,42 +143,53 @@ def save_settings_to_file(settings_data):
         return False
 
 def get_app_settings():
-    """Retrieves app settings, preferring from file, then defaults."""
-    global _APP_SETTINGS_STORE # Declare intent to modify global variable
-    if not _APP_SETTINGS_STORE: # Only load from file if in-memory store is empty
+    """Retrieves app settings, preferring from file, then defaults.
+       Ensures common_equipment_items is always derived from equipment_catalog.
+    """
+    global _APP_SETTINGS_STORE 
+    if not _APP_SETTINGS_STORE: 
         loaded_from_file = load_settings_from_file()
         if loaded_from_file:
-            # Merge with default settings to ensure all keys are present
             for key, default_value in _DEFAULT_APP_SETTINGS_STORE.items():
                 if key not in loaded_from_file:
                     loaded_from_file[key] = default_value
                 elif isinstance(default_value, dict) and isinstance(loaded_from_file.get(key), dict):
                     loaded_from_file[key] = {**default_value, **loaded_from_file[key]}
+                elif isinstance(default_value, list) and key == 'equipment_catalog' and not isinstance(loaded_from_file.get(key), list):
+                    app.logger.warning(f"equipment_catalog in settings.json is not a list. Resetting to default. Current type: {type(loaded_from_file.get(key))}")
+                    loaded_from_file[key] = default_value
             _APP_SETTINGS_STORE.update(loaded_from_file)
             app.logger.info("Settings loaded from settings.json.")
         else:
             app.logger.warning("settings.json not found or could not be loaded. Using default settings.")
             _APP_SETTINGS_STORE.update(_DEFAULT_APP_SETTINGS_STORE)
-            # Save defaults to file immediately so it's persistent
             save_settings_to_file(_APP_SETTINGS_STORE)
+    
+    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(
+        list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item))
+    )
     return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
     """Saves updated settings to in-memory store and to file."""
     global _APP_SETTINGS_STORE
-    # Deep merge the incoming settings_data with current in-memory settings
     for key, value in settings_data.items():
         if isinstance(value, dict) and key in _APP_SETTINGS_STORE and isinstance(_APP_SETTINGS_STORE[key], dict):
             _APP_SETTINGS_STORE[key].update(value)
+        elif key == 'equipment_catalog' and isinstance(value, list):
+            _APP_SETTINGS_STORE[key] = value
         else:
             _APP_SETTINGS_STORE[key] = value
+            
+    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(
+        list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item))
+    )
     
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
 # Initial load of settings on app startup
-# This will try to load from settings.json, or use and save defaults
 _APP_SETTINGS_STORE = get_app_settings() 
-# [END app_settings_json_persistence]
+# [END app_settings_json_persistence_final]
 
 
 # --- Google API Helper Functions ---
@@ -490,14 +509,15 @@ def parse_tech_report_from_notes(notes):
     for json_str in report_blocks:
         try:
             report_data = json.loads(json_str)
-            if isinstance(report_data.get('equipment_used'), str): # Handle old string format for display
-                report_data['equipment_used_display'] = _format_equipment_list(
-                    _parse_equipment_string(report_data['equipment_used'], update_common=False) # Don't update common when just displaying history
-                )
-            else: # New format (list) or None, pass directly to formatter
+            # Ensure equipment_used is correctly parsed when retrieving historical reports
+            # Use a safe display version for old string formats
+            if isinstance(report_data.get('equipment_used'), str): 
+                report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
+            else: # New structured format (list of dicts)
+                # Call _format_equipment_list with False for newline replacement (handled in HTML)
                 report_data['equipment_used_display'] = _format_equipment_list(
                     report_data.get('equipment_used', [])
-                )
+                ) 
             history.append(report_data)
         except json.JSONDecodeError as e:
             app.logger.error(f"Error decoding JSON in tech report block: {e}, Content: {json_str[:100]}...")
@@ -537,17 +557,15 @@ def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back
         app.logger.error(f"Error generating QR code for URL {url}: {e}")
         return None
 
-def _parse_equipment_string(text_input, update_common=True):
+def _parse_equipment_string(text_input):
     """
     Parses equipment string like "Item, Quantity Unit\nItem2, Qty2"
     into a list of dicts: [{"item": "Item", "quantity": "Quantity Unit"}].
-    If update_common is True, also updates common_equipment_items in settings.
+    Also updates common_equipment_items in settings based on parsed item_names.
     """
     equipment_list = []
-    
-    # Get current common items set if we are updating it
-    current_settings = get_app_settings() # Ensure settings are fresh
-    common_items_set = set(current_settings.get('common_equipment_items', [])) if update_common else set()
+    current_settings = get_app_settings() 
+    common_items_set = set(current_settings.get('common_equipment_items', []))
     
     if not text_input:
         return equipment_list
@@ -564,13 +582,11 @@ def _parse_equipment_string(text_input, update_common=True):
         
         if item_name: 
             equipment_list.append({"item": item_name, "quantity": quantity})
-            if update_common and item_name not in common_items_set:
+            if item_name not in common_items_set: # Update local in-memory set
                 common_items_set.add(item_name) 
     
-    if update_common:
-        # Update the global _APP_SETTINGS_STORE directly, as save_app_settings will write it to file
-        _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(common_items_set))
-        # No need to call save_app_settings here, it will be called after the POST request.
+    # Update the _APP_SETTINGS_STORE directly, it will be saved to file later by save_app_settings
+    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(common_items_set))
     
     return equipment_list
 
@@ -923,19 +939,23 @@ def summary():
             filtered_by_status_tasks.append(task_item)
 
     final_filtered_tasks = []
+    # [START summary_search_fix]
+    # Fixed the incorrect multiple 'if' statements with 'or' for search_query
     for task in filtered_by_status_tasks:
+        task_title_lower = str(task.get('title', '')).lower()
+        customer_name_lower = str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower()
+        customer_phone_lower = str(parse_customer_info_from_notes(task.get('notes', '')).get('phone', '')).lower()
+        customer_address_lower = str(parse_customer_info_from_notes(task.get('notes', '')).get('address', '')).lower()
+        customer_detail_lower = str(parse_customer_info_from_notes(task.get('notes', '')).get('detail', '')).lower()
+
         if not search_query or \
-           search_query in str(task.get('title', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('phone', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('address', '')).lower() or \
-        if not search_query or \
-           search_query in str(task.get('title', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('phone', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('address', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('detail', '')).lower():
+           search_query in task_title_lower or \
+           search_query in customer_name_lower or \
+           search_query in customer_phone_lower or \
+           search_query in customer_address_lower or \
+           search_query in customer_detail_lower:
             final_filtered_tasks.append(task)
+    # [END summary_search_fix]
 
 
     tasks = []
@@ -1010,10 +1030,10 @@ def update_task_details(task_id):
         task['map_url_initial'] = customer_info_from_task.get('map_url', '')
 
         task['tech_reports_history'] = history
-        if history and history[0].get('equipment_used') is not None: # Check explicitly for None
+        if history and history[0].get('equipment_used') is not None: 
             if isinstance(history[0]['equipment_used'], list):
                 task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used'])
-            else:
+            else: 
                 task['equipment_used_initial'] = history[0]['equipment_used']
         else:
             task['equipment_used_initial'] = ''
@@ -1035,6 +1055,8 @@ def update_task_details(task_id):
         next_appointment_date_str = str(request.form.get('next_appointment_date', '')).strip()
 
         parsed_equipment_used = _parse_equipment_string(equipment_used_input) 
+        save_app_settings({'common_equipment_items': _APP_SETTINGS_STORE['common_equipment_items']})
+
 
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
         updated_customer_phone = str(request.form.get('customer_phone', '')).strip()
@@ -1103,7 +1125,7 @@ def update_task_details(task_id):
             base_notes_lines.extend(updated_detail.split('\n'))
 
         while base_notes_lines and base_notes_lines[-1] == '':
-            base_notes_lines.pop()
+            notes_lines.pop()
 
         updated_base_notes = "\n".join(base_notes_lines)
 
@@ -1200,24 +1222,72 @@ def settings_page():
                 'custom_url': request.form.get('qr_custom_url', '').strip() 
             }
         }
-        # [START import_export_equipment_settings_save]
-        common_eq_input = request.form.get('common_equipment_list_input', '').strip()
-        if common_eq_input:
-            updated_common_items = [item.strip() for item in common_eq_input.split('\n') if item.strip()]
-            settings_data['common_equipment_items'] = sorted(list(set(updated_common_items))) 
-        else:
-            settings_data['common_equipment_items'] = []
-        # [END import_export_equipment_settings_save]
+        # [START import_export_equipment_settings_save_updated]
+        # Update equipment_catalog from import if a file was uploaded, otherwise from textarea
+        if 'excel_file' in request.files and request.files['excel_file'].filename != '':
+            file = request.files['excel_file']
+            if allowed_file(file.filename) and file.filename.endswith(('.xls', '.xlsx')):
+                try:
+                    df = pd.read_excel(file.stream)
+                    # Expected columns (case-insensitive check for robustness)
+                    expected_cols = {
+                        'รหัสสินค้า/barcodeสินค้า': 'barcode', 
+                        'รายการสินค้า': 'item_name', 
+                        'หน่วย': 'unit', 
+                        'ราคา': 'price'
+                    }
+                    df.columns = [col.strip().lower() for col in df.columns] # Normalize column names
 
+                    missing_cols = [th_col for th_col, en_col in expected_cols.items() if en_col not in df.columns]
+                    if missing_cols:
+                        flash(f'ไฟล์ Excel ต้องมีคอลัมน์ที่จำเป็น: {", ".join(missing_cols)}', 'danger')
+                        return redirect(url_for('settings_page'))
+                    
+                    new_catalog_items = []
+                    for index, row in df.iterrows():
+                        item = {}
+                        for th_col, en_col in expected_cols.items():
+                            item[en_col] = row.get(en_col, '').strip()
+                        # Convert price to float, default to 0.0 if invalid
+                        try:
+                            item['price'] = float(item['price'])
+                        except (ValueError, TypeError):
+                            item['price'] = 0.0
+                        
+                        if item['item_name']: # Only add if item name exists
+                            new_catalog_items.append(item)
+                    
+                    settings_data['equipment_catalog'] = new_catalog_items
+                    flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
+
+                except Exception as e:
+                    app.logger.error(f"Error importing equipment catalog: {e}")
+                    flash(f"เกิดข้อผิดพลาดในการนำเข้าไฟล์ Excel: {e}. โปรดตรวจสอบรูปแบบไฟล์.", 'danger')
+                    return redirect(url_for('settings_page'))
+            else:
+                flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้นสำหรับการนำเข้า', 'danger')
+                return redirect(url_for('settings_page'))
+        else:
+            # If no Excel file uploaded, common_equipment_items will be derived from existing catalog.
+            # No manual text area processing here for common_equipment_items, it's auto-derived.
+            pass 
+        # [END import_export_equipment_settings_save_updated]
+
+        # The common_equipment_items in _APP_SETTINGS_STORE will be updated by save_app_settings 
+        # based on equipment_catalog (if new catalog was imported)
+        # or it would remain as it was if no import happened.
+        # So we just ensure save_app_settings is called with the full settings_data
 
         if save_app_settings(settings_data):
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
+            # Clear cache when settings (including catalog) are saved
+            cache.clear()
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
         return redirect(url_for('settings_page'))
 
-    current_settings = get_app_settings()
-    
+    current_settings = get_app_settings() # Reload settings after potential save
+
     general_summary_url = url_for('summary', _external=True)
     
     qr_url_to_use = current_settings.get('qrcode_settings', {}).get('custom_url', '').strip()
@@ -1233,6 +1303,8 @@ def settings_page():
         back_color=qr_settings.get('back_color', '#FFFFFF')
     )
 
+    # Format common_equipment_items for display in textarea
+    # This list is now derived from equipment_catalog's item_names for display
     common_equipment_list_for_display = "\n".join(current_settings.get('common_equipment_items', []))
 
     return render_template('settings_page.html', 
