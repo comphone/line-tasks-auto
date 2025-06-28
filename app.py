@@ -4,45 +4,44 @@ import datetime
 import re
 import json
 import pytz
-import mimetypes # Added for file type detection
-from io import BytesIO # For QR code generation
+import mimetypes 
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response # Added Response for image
+from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify 
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
 
-# Import for QR Code generation
-import qrcode # You might need to add 'qrcode' to your requirements.txt
+# [START qrcode_imports]
+import qrcode
+import base64
+from io import BytesIO
+# [END qrcode_imports]
 
-# Corrected LINE Bot SDK imports for Flex Messages - Merged from app2.py
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest, FlexMessage
 )
 from linebot.models import (
     BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
-    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton # Added PostbackAction, QuickReply, QuickReplyButton
+    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton 
 )
 from linebot.v3 import WebhookHandler
-# Added ImageMessageContent, FileMessageContent, GroupSource, UserSource from app2.py
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent, GroupSource, UserSource
 from linebot.v3.exceptions import InvalidSignatureError
 
-# แก้ไข ModuleNotFoundError: 'google.auth2' เป็น 'google.oauth2'
 from google.oauth2.credentials import Credentials 
-from google.auth.transport.requests import Request # อันนี้ถูกแล้ว
+from google.auth.transport.requests import Request 
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload # Added for Google Drive uploads
+from googleapiclient.http import MediaFileUpload 
 
 # --- Initialization & Configurations ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
-UPLOAD_FOLDER = 'static/uploads' # This folder is now primarily for temporary storage before Drive upload
+UPLOAD_FOLDER = 'static/uploads' 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
 
@@ -55,17 +54,15 @@ LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
-LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') # New variable from app2.py, for future LIFF integration
+LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') 
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
-LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID') # New variable from app2.py, if needed for HR related tasks
+LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID') 
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') # New variable from app2.py for Google Drive uploads
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') 
 
-# Ensure GOOGLE_DRIVE_FOLDER_ID is set if you want to use Drive
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
 
-# Added 'https://www.googleapis.com/auth/drive' scope from app2.py
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -77,13 +74,11 @@ line_api_client = ApiClient(configuration)
 line_messaging_api = MessagingApi(line_api_client)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# --- Technician Mention Mapping (Placeholder) --- - From app2.py
 TECHNICIAN_LINE_IDS = {
     "ช่างเอ": "Uxxxxxxxxxxxxxxxxxxxxxxxxx1",
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-# --- Mock Settings Functions (Placeholders) ---
 def get_app_settings():
     """Mock function to get app settings."""
     app.logger.info("Using MOCK get_app_settings()")
@@ -130,8 +125,6 @@ def get_google_service(api_name, api_version):
                 creds = None
         if not creds:
             if os.path.exists(GOOGLE_CREDENTIALS_FILE_NAME):
-                # Using run_console() instead of run_local_server(port=0) from app2.py
-                # This might change the authentication flow slightly, ensure it's compatible
                 flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
                 creds = flow.run_console()
             else:
@@ -153,12 +146,10 @@ def get_google_calendar_service():
     """Gets the Google Calendar service object."""
     return get_google_service('calendar', 'v3')
 
-# New function from app2.py for Google Drive service
 def get_google_drive_service():
     """Gets the Google Drive service object."""
     return get_google_service('drive', 'v3')
 
-# New function from app2.py for uploading files to Google Drive
 def upload_file_to_google_drive(file_path, file_name, mime_type):
     """
     Uploads a file to Google Drive and makes it publicly accessible.
@@ -184,18 +175,17 @@ def upload_file_to_google_drive(file_path, file_name, mime_type):
         file_obj = service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webViewLink, webContentLink' # Request webContentLink for direct download, webViewLink for browser view
+            fields='id, webViewLink, webContentLink' 
         ).execute()
 
-        # Make the file publicly accessible
         service.permissions().create(
             fileId=file_obj['id'],
-            body={'role': 'reader', 'type': 'anyone'}, # 'type': 'anyone' makes it publicly accessible
+            body={'role': 'reader', 'type': 'anyone'}, 
             fields='id'
         ).execute()
         
         app.logger.info(f"ไฟล์ถูกอัปโหลดไปที่ Google Drive: {file_obj.get('webViewLink')}")
-        return file_obj.get('webViewLink') # Return webViewLink for browser viewing
+        return file_obj.get('webViewLink') 
 
     except HttpError as error:
         app.logger.error(f'เกิดข้อผิดพลาดขณะอัปโหลดไป Google Drive: {error}')
@@ -247,25 +237,24 @@ def delete_google_task(task_id):
         app.logger.error(f"API Error deleting task {task_id}: {err}")
         return False
 
-# Modified update_google_task to allow title update, from app2.py
-def update_google_task(task_id, title=None, notes=None, status=None, due=None): # Added 'due' parameter
+def update_google_task(task_id, title=None, notes=None, status=None, due=None): 
     """Helper to update a specific task."""
     service = get_google_tasks_service()
     if not service: return None
     try:
         task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        if title is not None: task['title'] = title # Update title
+        if title is not None: task['title'] = title 
         if notes is not None: task['notes'] = notes
         if status is not None:
             task['status'] = status
             if status == 'completed': 
                 task['completed'] = datetime.datetime.now(pytz.utc).isoformat()
-                task.pop('due', None) # Remove due date when completed
+                task.pop('due', None) 
             else: 
-                task.pop('completed', None) # Remove completed timestamp if not completed
-                if due is not None: # Update due date if provided and not completed
+                task.pop('completed', None) 
+                if due is not None: 
                     task['due'] = due
-                elif 'due' not in task: # If status is needsAction but no due date, set a default/warn
+                elif 'due' not in task: 
                      app.logger.warning(f"Task {task_id} is needsAction but no due date set. Consider setting one.")
         
         return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
@@ -300,7 +289,6 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
-# New function from app2.py for fetching upcoming calendar events (not directly used but available)
 def get_upcoming_events(time_delta_hours=24):
     """Fetches upcoming Google Calendar events."""
     service = get_google_calendar_service()
@@ -318,19 +306,15 @@ def get_upcoming_events(time_delta_hours=24):
         app.logger.error(f"Error fetching upcoming events: {e}")
         return []
 
-# Modified extract_lat_lon_from_notes to handle Google Maps URLs, from app2.py
 def extract_lat_lon_from_notes(notes):
     """Extracts latitude and longitude from task notes. Also handles Google Maps URLs."""
     if not notes: return None, None
-    # Check for direct coordinates: @-?\d+\.\d+,-?\d+\.\d+
     match = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", notes)
     if match: return (float(match.group(1)), float(match.group(2)))
     
-    # Check for "พิกัด: -?\d+\.\d+,-?\d+\.\d+"
     match = re.search(r"พิกัด:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)", notes)
     if match: return (float(match.group(1)), float(match.group(2)))
 
-    # Check for Google Maps URL with embedded coordinates - new from app2.py
     map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
     map_url_match = re.search(map_url_regex, notes)
     if map_url_match:
@@ -343,7 +327,6 @@ def find_nearby_jobs(completed_task_id, radius_km=5):
     completed_task = get_single_task(completed_task_id)
     if not completed_task: return []
 
-    # Use tuple unpacking for lat, lon from app2.py
     origin_lat, origin_lon = extract_lat_lon_from_notes(completed_task.get('notes', ''))
     if origin_lat is None or origin_lon is None:
         app.logger.info(f"Completed task {completed_task_id} has no location data. Skipping nearby search.")
@@ -356,7 +339,6 @@ def find_nearby_jobs(completed_task_id, radius_km=5):
     nearby_jobs = []
     for task in pending_tasks:
         if task.get('id') == completed_task_id: continue
-        # Use tuple unpacking for lat, lon from app2.py
         task_lat, task_lon = extract_lat_lon_from_notes(task.get('notes', ''))
         if task_lat is not None and task_lon is not None:
             task_coords = (task_lat, task_lon)
@@ -368,7 +350,6 @@ def find_nearby_jobs(completed_task_id, radius_km=5):
     nearby_jobs.sort(key=lambda x: x['distance_km'])
     return nearby_jobs
 
-# Refactored parse_customer_info_from_notes for line-by-line parsing from app2.py
 def parse_customer_info_from_notes(notes):
     """
     Extracts customer name, phone, address, detail, and map_url from notes
@@ -384,42 +365,34 @@ def parse_customer_info_from_notes(notes):
     }
     if not notes: return info
 
-    # Remove tech report blocks first to only parse core customer info
     base_notes_content = re.sub(r"--- TECH_REPORT_START ---\s*.*?\s*--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
     
-    lines = [line.strip() for line in base_notes_content.split('\n') if line.strip()] # Only non-empty lines for parsing
+    lines = [line.strip() for line in base_notes_content.split('\n') if line.strip()] 
 
-    # Line 1: Customer Name
     if len(lines) > 0:
         info['name'] = lines[0]
     
-    # Line 2: Phone Number
     if len(lines) > 1:
         info['phone'] = lines[1]
     
-    # Line 3: Address
     if len(lines) > 2:
         info['address'] = lines[2]
 
-    # Line 4: Map URL or start of Detail
     map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
-    detail_start_line_idx = 3 # Default: detail starts from line 4 (index 3)
+    detail_start_line_idx = 3 
 
     if len(lines) > 3:
         if re.match(map_url_regex, lines[3]):
             info['map_url'] = lines[3]
-            detail_start_line_idx = 4 # Detail starts from line 5 (index 4)
+            detail_start_line_idx = 4 
         else:
-            # Line 4 is not a map URL, so it's part of the detail
             detail_start_line_idx = 3 
     
-    # Remaining lines for Detail
-    if len(lines) > detail_start_line_idx -1: # Adjusted for 0-based indexing
+    if len(lines) > detail_start_line_idx -1: 
         info['detail'] = "\n".join(lines[detail_start_line_idx:])
 
     return info
     
-# Modified parse_google_task_dates to return empty string instead of 'N/A', from app2.py
 def parse_google_task_dates(task_item):
     """Formats dates from a Google Task item."""
     parsed_task = task_item.copy()
@@ -430,123 +403,22 @@ def parse_google_task_dates(task_item):
                 dt_thai = dt_utc.astimezone(THAILAND_TZ)
                 parsed_task[f'{key}_formatted'] = dt_thai.strftime("%d/%m/%y %H:%M" if key == 'due' else "%d/%m/%y %H:%M:%S")
             except (ValueError, TypeError):
-                parsed_task[f'{key}_formatted'] = '' # Change N/A to empty string
+                parsed_task[f'{key}_formatted'] = '' 
         else:
-            parsed_task[f'{key}_formatted'] = '' # Change N/A to empty string
+            parsed_task[f'{key}_formatted'] = '' 
     return parsed_task
 
-# --- NEW: Function to parse equipment string into structured data ---
-def parse_equipment_string(equipment_str):
-    """
-    Parses a multi-line equipment string (e.g., "Item A: 2; Item B: 1.5")
-    into a list of dictionaries.
-    """
-    equipment_list = []
-    if not equipment_str:
-        return equipment_list
-    
-    # Split by lines or semicolons to get individual item entries
-    entries = re.split(r'[;\n]', equipment_str)
-    for entry in entries:
-        entry = entry.strip()
-        if not entry: continue
-
-        match = re.match(r"(.+?):\s*(\d+\.?\d*)\s*(.*)", entry) # Matches "Name: Quantity Unit" or just "Name: Quantity"
-        if match:
-            item_name = match.group(1).strip()
-            quantity_str = match.group(2)
-            unit = match.group(3).strip()
-            try:
-                quantity = float(quantity_str)
-                equipment_list.append({'name': item_name, 'quantity': quantity, 'unit': unit})
-            except ValueError:
-                app.logger.warning(f"Could not parse quantity '{quantity_str}' for item '{item_name}'")
-                equipment_list.append({'name': item_name, 'quantity': entry, 'unit': ''}) # Store raw if quantity invalid
-        else:
-            equipment_list.append({'name': entry, 'quantity': 1.0, 'unit': ''}) # Assume quantity 1 if no number is given
-    return equipment_list
-
-# --- NEW: Hardcoded Equipment Prices (for demonstration) ---
-# In a real application, this should come from a database or configurable settings.
-EQUIPMENT_PRICES = {
-    "สายไฟ": 20.0,  # ราคาต่อเมตร
-    "กล่องควบคุม": 500.0, # ราคาต่อชิ้น
-    "หลอดไฟ": 80.0, # ราคาต่อชิ้น
-    "ท่อ PVC 1/2 นิ้ว": 35.0, # ราคาต่อเมตร
-    "แบตเตอรี่": 300.0, # ราคาต่อชิ้น
-    "ค่าบริการ": 100.0 # ค่าบริการต่อหน่วย เช่น 1 หน่วย = 1 ชั่วโมง
-}
-
-def calculate_equipment_cost(equipment_list):
-    """Calculates the total cost based on the equipment list and prices."""
-    total_cost = 0.0
-    detailed_costs = []
-    for item in equipment_list:
-        item_name = item['name'].lower()
-        quantity = item['quantity']
-        
-        # Simple matching: check if item_name (or part of it) is in EQUIPMENT_PRICES keys
-        matched_price = 0.0
-        found_item_key = None
-        for price_key, price_value in EQUIPMENT_PRICES.items():
-            if price_key.lower() in item_name or item_name in price_key.lower():
-                matched_price = price_value
-                found_item_key = price_key
-                break
-        
-        if found_item_key:
-            cost = matched_price * quantity
-            total_cost += cost
-            detailed_costs.append({
-                'item': item['name'],
-                'quantity': item['quantity'],
-                'unit': item.get('unit', ''),
-                'price_per_unit': matched_price,
-                'subtotal': round(cost, 2)
-            })
-        else:
-            app.logger.warning(f"Price not found for equipment: {item['name']}")
-            detailed_costs.append({
-                'item': item['name'],
-                'quantity': item['quantity'],
-                'unit': item.get('unit', ''),
-                'price_per_unit': 'N/A',
-                'subtotal': 'N/A'
-            })
-    return round(total_cost, 2), detailed_costs
-
-
 def parse_tech_report_from_notes(notes):
-    """
-    Extracts all past technician reports into a history list and the original notes text.
-    Now also parses 'equipment_used' into a structured list and calculates 'total_cost'.
-    """
+    """Extracts all past technician reports into a history list and the original notes text."""
     if not notes: return [], ""
     report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
     history = []
     for json_str in report_blocks:
         try:
-            report_data = json.loads(json_str)
-            
-            # If equipment_used is a raw string, parse it into structured data
-            if isinstance(report_data.get('equipment_used'), str):
-                parsed_equipment = parse_equipment_string(report_data['equipment_used'])
-                report_data['equipment_list'] = parsed_equipment
-            else: # If it's already a list (from previous structured input), just assign
-                report_data['equipment_list'] = report_data.get('equipment_used', [])
-
-            # Recalculate total_cost if not already present or if equipment_list changed
-            # Or ensure detailed_costs are always present for display
-            if 'total_cost' not in report_data or 'detailed_costs' not in report_data:
-                 calculated_total, calculated_details = calculate_equipment_cost(report_data.get('equipment_list', []))
-                 report_data['total_cost'] = calculated_total
-                 report_data['detailed_costs'] = calculated_details
-
-            history.append(report_data)
+            history.append(json.loads(json_str))
         except json.JSONDecodeError as e:
             app.logger.error(f"Error decoding JSON in tech report block: {e}, Content: {json_str[:100]}...")
 
-    # The original notes text is everything outside the TECH_REPORT blocks
     original_notes_text = re.sub(r"--- TECH_REPORT_START ---\s*.*?\s*--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
     
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
@@ -556,11 +428,38 @@ def allowed_file(filename):
     """Checks for allowed file extensions."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# [START qrcode_function]
+def generate_qr_code_base64(url):
+    """Generates a QR code for the given URL and returns it as a Base64 encoded string."""
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Save image to a BytesIO object
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        
+        # Encode to Base64
+        base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{base64_img}"
+    except Exception as e:
+        app.logger.error(f"Error generating QR code for URL {url}: {e}")
+        return None
+# [END qrcode_function]
+
 # --- Flex Message Creation Functions ---
 def create_task_flex_message(task):
     """
     Creates a LINE Flex Message for a given task.
-    Includes robust checks for URIAction validity and improved formatting.
+    Includes robust checks for URIAction validity.
     """
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     parsed_dates = parse_google_task_dates(task)
@@ -568,86 +467,74 @@ def create_task_flex_message(task):
 
     # --- Robust Phone Action Creation ---
     phone_action = None
-    # Ensure phone_display_text is always a string and stripped
     phone_display_text = str(customer_info.get('phone', '')).strip() 
-    phone_number_cleaned = re.sub(r'\D', '', phone_display_text) # Remove non-digits
+    phone_number_cleaned = re.sub(r'\D', '', phone_display_text) 
     
-    # Only create URIAction if the cleaned phone number is not empty
-    # and the display text is not empty (to avoid empty labels)
     if phone_number_cleaned and phone_display_text: 
         full_phone_uri = f"tel:{phone_number_cleaned}"
         try:
             phone_action = URIAction(label=phone_display_text, uri=full_phone_uri)
         except Exception as e:
             app.logger.error(f"Error creating phone_action URIAction for '{full_phone_uri}': {e}")
-            phone_action = None # Ensure it's None on failure
+            phone_action = None 
     else:
         app.logger.debug(f"Skipping phone_action: phone_display_text='{phone_display_text}', phone_number_cleaned='{phone_number_cleaned}'")
 
 
     # --- Robust Map Action Creation ---
     map_action = None
-    # Ensure map_url is always a string and stripped
     map_url = str(customer_info.get('map_url', '')).strip() 
     
-    # Only create URIAction if map_url is not empty and starts with http/https
     if map_url and (map_url.startswith('http://') or map_url.startswith('https://')):
         try:
             map_action = URIAction(label="📍 เปิด Google Maps", uri=map_url)
         except Exception as e:
             app.logger.error(f"Error creating map_action URIAction for '{map_url}': {e}")
-            map_action = None # Ensure it's None on failure
+            map_action = None 
     else:
-        if map_url: # Log if it exists but is invalid
+        if map_url: 
             app.logger.debug(f"Invalid map URL format for URIAction: '{map_url}'")
 
 
     # --- Body Contents Construction with explicit string casting and new highlight style ---
-    # Using TextComponents for labels and values, with separators for readability
     body_contents = [
         TextComponent(text=str(task.get('title', 'ไม่มีหัวข้อ')), weight='bold', size='xl', wrap=True),
-        SeparatorComponent(margin='md'), # Separator after title
+        SeparatorComponent(margin='md'), 
 
         BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
-            # Customer Name
             BoxComponent(layout='baseline', spacing='sm', contents=[
-                TextComponent(text='ลูกค้า:', color='#007BFF', size='sm', flex=2, weight='bold'), # Highlighted label
+                TextComponent(text='ลูกค้า:', color='#007BFF', size='sm', flex=2, weight='bold'), 
                 TextComponent(text=str(customer_info.get('name', '') or '-'), wrap=True, color='#666666', size='sm', flex=5) 
             ]),
-            # Phone Number
             BoxComponent(layout='baseline', spacing='sm', contents=[
-                TextComponent(text='โทร:', color='#007BFF', size='sm', flex=2, weight='bold'), # Highlighted label
-                # Pass phone_action only if it's not None
+                TextComponent(text='โทร:', color='#007BFF', size='sm', flex=2, weight='bold'), 
                 TextComponent(text=str(phone_display_text or '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action if phone_action else None, decoration='underline' if phone_action else 'none') 
             ]),
-            # Appointment Date
             BoxComponent(layout='baseline', spacing='sm', contents=[
-                TextComponent(text='นัดหมาย:', color='#007BFF', size='sm', flex=2, weight='bold'), # Highlighted label
+                TextComponent(text='นัดหมาย:', color='#007BFF', size='sm', flex=2, weight='bold'), 
                 TextComponent(text=str(parsed_dates.get('due_formatted', '') or '-'), wrap=True, color='#666666', size='sm', flex=5) 
             ])
         ]),
-        SeparatorComponent(margin='md'), # Separator before detail
+        SeparatorComponent(margin='md'), 
 
-        # Detail Section - potentially multi-line
-        TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'), # Highlighted label
+        TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'), 
         TextComponent(text=str(customer_info.get('detail', '') or '-'), wrap=True, margin='sm', color='#666666')
     ]
 
     # --- Footer Contents Construction ---
     footer_contents_list = []
-    if map_action: # Only add button if map_action is valid
+    if map_action: 
         footer_contents_list.append(ButtonComponent(style='link', height='sm', action=map_action))
         footer_contents_list.append(SeparatorComponent(margin='md'))
     
-    # Always add the update button
     footer_contents_list.append(ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url)))
 
     # --- Bubble Container and Flex Message Creation ---
     bubble = BubbleContainer(direction='ltr',
         header=BoxComponent(layout='vertical', contents=[TextComponent(text='📢 แจ้งเตือนงาน', weight='bold', color='#ffffff')], background_color='#007BFF', padding_all='12px'),
         body=BoxComponent(layout='vertical', contents=body_contents),
-        footer=BoxComponent(layout='vertical', spacing='sm', contents=footer_contents_list, flex=0), # Use the carefully constructed list
-        action=URIAction(uri=update_url) # Main bubble action
+        footer=BoxComponent(layout='vertical', spacing='sm', contents=footer_contents_list, flex=0), 
+        action=URIAction(uri=update_url) 
     )
     return FlexMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
 
@@ -675,8 +562,8 @@ def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
             header=BoxComponent(layout='vertical', background_color='#FFDDC2', contents=[TextComponent(text='💡 แนะนำงานใกล้เคียง!', weight='bold', color='#BF5A00', size='md')]),
             body=BoxComponent(layout='vertical', spacing='md', contents=[
                 TextComponent(text=f"ห่างไป {task['distance_km']} กม.", size='sm', color='#555555'),
-                TextComponent(text=str(customer_info.get('name', '') or 'N/A'), weight='bold', size='lg', wrap=True), # Ensure string cast
-                TextComponent(text=str(task.get('title', '-')), wrap=True, size='sm', color='#666666') # Ensure string cast
+                TextComponent(text=str(customer_info.get('name', '') or 'N/A'), weight='bold', size='lg', wrap=True), 
+                TextComponent(text=str(task.get('title', '-')), wrap=True, size='sm', color='#666666') 
             ]),
             footer=BoxComponent(layout='vertical', spacing='sm', contents=([phone_action] if phone_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด/แผนที่', uri=update_url))])
         )
@@ -708,7 +595,7 @@ def create_customer_history_carousel(tasks, customer_name):
         
         bubble = BubbleContainer(direction='ltr',
             body=BoxComponent(layout='vertical', spacing='md', contents=[
-                TextComponent(text=str(task.get('title', 'N/A')), weight='bold', size='lg', wrap=True), # Ensure string cast
+                TextComponent(text=str(task.get('title', 'N/A')), weight='bold', size='lg', wrap=True), 
                 SeparatorComponent(margin='md'),
                 BoxComponent(layout='vertical', margin='md', spacing='sm', contents=[
                     BoxComponent(layout='baseline', spacing='sm', contents=[
@@ -732,7 +619,6 @@ def create_customer_history_carousel(tasks, customer_name):
 @app.route("/", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
-        # Ensure all form data is treated as string, defaulting to empty string if not present
         customer_name = str(request.form.get('customer', '')).strip()
         customer_phone = str(request.form.get('phone', '')).strip()
         address = str(request.form.get('address', '')).strip()
@@ -740,11 +626,10 @@ def form_page():
         appointment_str = str(request.form.get('appointment', '')).strip()
         map_url_from_form = str(request.form.get('latitude_longitude', '')).strip()
 
-        # Added validation for essential fields (customer_name, detail)
         if not customer_name:
             flash('กรุณากรอกชื่อลูกค้า', 'danger')
             return redirect(url_for('form_page'))
-        if not detail: # If detail is also considered essential
+        if not detail: 
             flash('กรุณากรอกรายละเอียดงาน', 'danger')
             return redirect(url_for('form_page'))
 
@@ -752,7 +637,6 @@ def form_page():
         today_str = datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')
         title = f"งานลูกค้า: {customer_name or 'ไม่ระบุชื่อลูกค้า'} ({today_str})" 
         
-        # Construct notes based on line-by-line format
         notes_lines = []
         notes_lines.append(customer_name or '') 
         notes_lines.append(customer_phone or '') 
@@ -795,7 +679,7 @@ def form_page():
             messages_to_send_line = []
             if flex_message:
                 messages_to_send_line.append(flex_message)
-            else: # Fallback to a simple text message if Flex Message failed
+            else: 
                 messages_to_send_line.append(TextMessage(text=f"งานใหม่ถูกสร้างแล้ว:\nหัวข้อ: {title}\nลูกค้า: {customer_name or '-'}\nเบอร์โทร: {customer_phone or '-'}\nรายละเอียด: {detail or '-'} \n\nดูรายละเอียด/อัปเดต: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}"))
                 flash('สร้างงานเรียบร้อยแล้ว, ส่งข้อความแจ้งเตือน LINE แบบข้อความธรรมดาแทน.', 'info')
 
@@ -825,47 +709,41 @@ def form_page():
 # New Endpoint to lookup customer data
 @app.route("/lookup_customer", methods=['GET'])
 def lookup_customer():
-    customer_name_query = str(request.args.get('customer_name', '')).strip().lower() # Ensure string and strip
+    customer_name_query = str(request.args.get('customer_name', '')).strip().lower() 
     
     if not customer_name_query:
-        return jsonify({}) # Return empty if no query
+        return jsonify({}) 
 
-    tasks_raw = get_google_tasks_for_report(show_completed=True)
+    tasks_raw = get_google_tasks_for_report(show_completed=False) 
+    
     if tasks_raw is None:
         return jsonify({"error": "Failed to retrieve tasks from Google API"}), 500
 
     found_customer_info = {}
-    # Iterate through tasks in reverse to find the most recent matching customer info
     for task_item in reversed(tasks_raw): 
         customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
         
-        # Check if the customer name matches (case-insensitive, partial match)
-        if customer_name_query in str(customer_info.get('name', '')).strip().lower(): # Ensure string cast
-            # Populate found_customer_info with available data from this task
-            # Only update if the field is not empty in the task and not yet found from a newer task
-            if customer_info.get('phone') and str(customer_info.get('phone')).strip(): # Ensure value is not just whitespace
+        if customer_name_query in str(customer_info.get('name', '')).strip().lower(): 
+            if customer_info.get('phone'):
                 found_customer_info['phone'] = str(customer_info['phone']).strip() 
-            if customer_info.get('address') and str(customer_info.get('address')).strip():
+            if customer_info.get('address'):
                 found_customer_info['address'] = str(customer_info['address']).strip() 
-            if customer_info.get('detail') and str(customer_info.get('detail')).strip():
+            if customer_info.get('detail'):
                 found_customer_info['detail'] = str(customer_info['detail']).strip() 
-            if customer_info.get('map_url') and str(customer_info.get('map_url')).strip():
+            if customer_info.get('map_url'):
                 found_customer_info['map_url'] = str(customer_info['map_url']).strip() 
 
-            # If all key fields are found (phone, address, detail), we can stop searching.
-            # map_url is optional so not included in the 'all' check for early exit.
             if all(key in found_customer_info and found_customer_info[key] for key in ['phone', 'address', 'detail']):
                 break
     
-    # Return the found information
     return jsonify(found_customer_info)
 
 
 @app.route('/summary')
 def summary():
     """Displays the task summary page with search functionality and status filtering. - Modified from app2.py"""
-    search_query = str(request.args.get('search_query', '')).strip().lower() # Ensure string and strip
-    status_filter = str(request.args.get('status_filter', 'all')).strip() # 'all', 'needsAction', 'overdue', 'completed'
+    search_query = str(request.args.get('search_query', '')).strip().lower() 
+    status_filter = str(request.args.get('status_filter', 'all')).strip() 
 
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
@@ -875,18 +753,17 @@ def summary():
 
     current_time_utc = datetime.datetime.now(pytz.utc)
 
-    # First, apply status filter
     filtered_by_status_tasks = []
     for task_item in tasks_raw:
         task_status = task_item.get('status')
         is_overdue_check = False
-        if task_status == 'needsAction' and 'due' in task_item and task_item.get('due'):
+        if task_status == 'needsAction' and task_item.get('due'):
             try:
                 due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                 if due_dt_utc < current_time_utc:
                     is_overdue_check = True
             except (ValueError, TypeError):
-                pass # Ignore invalid date formats
+                pass 
 
         if status_filter == 'all':
             filtered_by_status_tasks.append(task_item)
@@ -897,10 +774,8 @@ def summary():
         elif status_filter == 'overdue' and is_overdue_check:
             filtered_by_status_tasks.append(task_item)
 
-    # Then, apply search query filter to the results from status filter
     final_filtered_tasks = []
     for task in filtered_by_status_tasks:
-        # Expanded search fields from app2.py
         if not search_query or \
            search_query in str(task.get('title', '')).lower() or \
            search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower() or \
@@ -911,13 +786,11 @@ def summary():
 
 
     tasks = []
-    # Re-calculate summary stats based on ALL tasks (tasks_raw) to show overall status counts - from app2.py
-    # This ensures the counts in the cards remain consistent regardless of current filter
     total_summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
     for task_item in tasks_raw:
         task_status = task_item.get('status')
         is_overdue_check = False
-        if task_status == 'needsAction' and 'due' in task_item and task_item.get('due'):
+        if task_status == 'needsAction' and task_item.get('due'):
             try:
                 due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                 if due_dt_utc < current_time_utc:
@@ -932,7 +805,7 @@ def summary():
                 total_summary_stats['overdue'] += 1
 
 
-    for task_item in final_filtered_tasks: # Iterate over the final filtered tasks for display
+    for task_item in final_filtered_tasks: 
         parsed_task = parse_google_task_dates(task_item)
         parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
         
@@ -945,7 +818,7 @@ def summary():
             parsed_task['display_status'] = 'เสร็จสิ้น'
         elif status == 'needsAction':
             is_overdue = False
-            if 'due' in task_item and task_item.get('due'):
+            if task_item.get('due'):
                 try:
                     due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                     if due_dt_utc < current_time_utc:
@@ -958,9 +831,9 @@ def summary():
     
     return render_template("tasks_summary.html", 
                            tasks=tasks, 
-                           summary=total_summary_stats, # Pass total stats for the cards
+                           summary=total_summary_stats, 
                            search_query=search_query,
-                           status_filter=status_filter) # Pass active filter for highlighting
+                           status_filter=status_filter) 
 
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
@@ -977,7 +850,6 @@ def update_task_details(task_id):
         history, original_notes_text_removed_tech_reports = parse_tech_report_from_notes(task.get('notes', ''))
         
         # Populate for GET request with initial values from task notes
-        # Ensure values are empty string if not found, instead of 'N/A' - from app2.py
         task['customer_name_initial'] = customer_info_from_task.get('name', '')
         task['customer_phone_initial'] = customer_info_from_task.get('phone', '')
         task['customer_address_initial'] = customer_info_from_task.get('address', '')
@@ -985,7 +857,6 @@ def update_task_details(task_id):
         task['map_url_initial'] = customer_info_from_task.get('map_url', '')
 
         task['tech_reports_history'] = history
-        # The notes_display is not directly used for parsing anymore, but can be for debugging/fallback display
         task['notes_display'] = original_notes_text_removed_tech_reports 
         
         if history and 'next_appointment' in history[0] and history[0]['next_appointment']:
@@ -1000,21 +871,17 @@ def update_task_details(task_id):
     if request.method == 'POST':
         original_status = task.get('status')
         new_status = request.form.get('status')
-        work_summary = str(request.form.get('work_summary', '')).strip() # Ensure string and strip
-        equipment_used_str = str(request.form.get('equipment_used', '')).strip() # Multi-line string from form
+        work_summary = str(request.form.get('work_summary', '')).strip() 
+        equipment_used = str(request.form.get('equipment_used', '')).strip() 
         next_appointment_date_str = str(request.form.get('next_appointment_date', '')).strip()
 
-        # New fields for task details update - from app2.py
-        # Get values, defaulting to empty string if not provided
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
         updated_customer_phone = str(request.form.get('customer_phone', '')).strip()
         updated_address = str(request.form.get('address', '')).strip()
         updated_detail = str(request.form.get('detail', '')).strip()
-        updated_map_url = str(request.form.get('latitude_longitude', '')).strip() # From the map URL input
+        updated_map_url = str(request.form.get('latitude_longitude', '')).strip() 
 
-        # --- Handle File Uploads from web form to Google Drive --- - from app2.py
         all_attachment_urls = []
-        # Add existing attachments from all historical tech reports
         for report in task.get('tech_reports_history', []):
             all_attachment_urls.extend(report.get('attachment_urls', []))
         
@@ -1024,9 +891,8 @@ def update_task_details(task_id):
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
                     temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    file.save(temp_filepath) # Save temporarily
+                    file.save(temp_filepath) 
 
-                    # Guess MIME type if not provided by browser (e.g., for very old browsers)
                     mime_type = file.mimetype if file.mimetype else mimetypes.guess_type(filename)[0] or 'application/octet-stream'
                     
                     drive_url = upload_file_to_google_drive(temp_filepath, filename, mime_type)
@@ -1036,103 +902,77 @@ def update_task_details(task_id):
                     else:
                         app.logger.error(f"Failed to upload {filename} to Google Drive.")
                     
-                    os.remove(temp_filepath) # Clean up temporary file
+                    os.remove(temp_filepath) 
 
-        all_attachment_urls = list(set(all_attachment_urls)) # Remove duplicates
+        all_attachment_urls = list(set(all_attachment_urls)) 
 
-        # --- Prepare new tech report data ---
         next_appointment_gmt = None
-        if next_appointment_date_str: # Only parse if date string is provided
+        if next_appointment_date_str: 
             try:
                 next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
                 next_appointment_gmt = next_app_dt_local.astimezone(pytz.utc).isoformat()
             except ValueError: app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
         
-        # Include current location in tech report if available (from JS) - from app2.py
         current_lat = request.form.get('current_lat')
         current_lon = request.form.get('current_lon')
         current_location_url = None
         if current_lat and current_lon:
             current_location_url = f"https://www.google.com/maps/search/?api=1&query={current_lat},{current_lon}"
 
-        # Parse equipment used string into structured data
-        parsed_equipment_list = parse_equipment_string(equipment_used_str)
-        total_equipment_cost, detailed_equipment_costs = calculate_equipment_cost(parsed_equipment_list)
-
-
         new_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             'work_summary': work_summary,
-            'equipment_used': equipment_used_str, # Store raw string for historical reference/editability
-            'equipment_list': parsed_equipment_list, # Store parsed list for calculation/structured display
-            'total_cost': total_equipment_cost, # Store calculated total cost
-            'detailed_costs': detailed_equipment_costs, # Store detailed costs
-            'next_appointment': next_appointment_gmt, # Store this in tech report history
+            'equipment_used': equipment_used, 
+            'next_appointment': next_appointment_gmt, 
             'attachment_urls': all_attachment_urls,
-            'location_url': current_location_url # Add location to this report
+            'location_url': current_location_url 
         }
         
-        # --- Reconstruct Task Notes for main details and tech reports (line-by-line) --- - from app2.py
-        # Get existing tech reports and the base notes content (without previous tech report blocks)
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         
-        # Reconstruct the "static" part of notes with updated customer info, address, detail, and map URL
-        # based on the new line-by-line format
         base_notes_lines = []
-        base_notes_lines.append(updated_customer_name or '') # Line 1: Customer Name
-        base_notes_lines.append(updated_customer_phone or '') # Line 2: Phone
-        base_notes_lines.append(updated_address or '') # Line 3: Address
+        base_notes_lines.append(updated_customer_name or '') 
+        base_notes_lines.append(updated_customer_phone or '') 
+        base_notes_lines.append(updated_address or '') 
         
-        if updated_map_url: # Line 4: Map URL (if present)
+        if updated_map_url: 
             base_notes_lines.append(updated_map_url)
         
-        # Line 5 (or Line 4 if no map URL): Detail
         if updated_detail:
             base_notes_lines.extend(updated_detail.split('\n'))
 
-        # Remove trailing empty strings
         while base_notes_lines and base_notes_lines[-1] == '':
             base_notes_lines.pop()
 
         updated_base_notes = "\n".join(base_notes_lines)
 
-        # Append the new tech report to the history
         all_reports_list = sorted(history + [new_tech_report_data], key=lambda x: x.get('summary_date'))
         
         all_reports_text = ""
         for report in all_reports_list:
-            # Ensure all new fields are included when dumping JSON
             report_to_dump = report.copy()
-            report_to_dump['equipment_list'] = report_to_dump.get('equipment_list', [])
-            report_to_dump['total_cost'] = report_to_dump.get('total_cost', 0.0)
-            report_to_dump['detailed_costs'] = report_to_dump.get('detailed_costs', [])
             report_to_dump['attachment_urls'] = report_to_dump.get('attachment_urls', [])
             report_to_dump['location_url'] = report_to_dump.get('location_url', None)
 
             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report_to_dump, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
-        # Combine base notes with all tech reports
         final_updated_notes = updated_base_notes + all_reports_text
 
-        # Determine the due date to pass to update_google_task
-        # If status is needsAction and a next_appointment_gmt is set, use that as the new due date for the main task
         new_due_for_main_task = None
         if new_status == 'needsAction' and next_appointment_gmt:
             new_due_for_main_task = next_appointment_gmt
         elif new_status == 'needsAction' and not next_appointment_gmt and task_raw.get('due'):
-            # If needsAction but no new appointment date, retain existing due date if any
             new_due_for_main_task = task_raw.get('due')
         elif new_status == 'completed':
-            new_due_for_main_task = None # Due date should be removed when completed
+            new_due_for_main_task = None 
 
 
-        # Update Google Task with potentially new title, and the full reconstructed notes
         updated_task = update_google_task(
             task_id, 
-            title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'} ({datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')})", # Use 'ไม่ระบุชื่อลูกค้า' if name is empty
+            title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'} ({datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')})", 
             notes=final_updated_notes, 
             status=new_status,
-            due=new_due_for_main_task # Pass the new due date to the update function
+            due=new_due_for_main_task 
         )
 
         if updated_task:
@@ -1140,9 +980,7 @@ def update_task_details(task_id):
             if new_status == 'completed' and original_status != 'completed':
                 settings = get_app_settings()
                 tech_group_id = settings['line_recipients'].get('technician_group_id')
-                # Send notification only if technician_group_id is set
                 if tech_group_id:
-                    # Construct a message for completion
                     completed_message = TextMessage(text=f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n\nดูรายละเอียด: {url_for('update_task_details', task_id=task_id, _external=True)}")
                     try:
                         line_messaging_api.push_message(PushMessageRequest(to=tech_group_id, messages=[completed_message]))
@@ -1150,14 +988,18 @@ def update_task_details(task_id):
                     except Exception as e:
                         app.logger.error(f"Failed to send completion notification to LINE: {e}")
 
-                # check_for_nearby_jobs_and_notify is also called, will work if tech_group_id is valid
                 check_for_nearby_jobs_and_notify(task_id, tech_group_id) 
         else:
             flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
 
         return redirect(url_for('summary'))
 
-    return render_template('update_task_details.html', task=task)
+    # [START qrcode_render]
+    public_report_url = url_for('summary', _external=True, task_id=task_id) 
+    qr_code_base64 = generate_qr_code_base64(public_report_url)
+    # [END qrcode_render]
+
+    return render_template('update_task_details.html', task=task, qr_code_base64=qr_code_base64)
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -1186,23 +1028,24 @@ def settings_page():
         return redirect(url_for('settings_page'))
 
     current_settings = get_app_settings()
-    return render_template('settings_page.html', settings=current_settings)
+    # [START qrcode_settings_render]
+    # Generate QR code for the main summary page to be shared from settings
+    public_summary_url = url_for('summary', _external=True)
+    settings_qr_code_base64 = generate_qr_code_base64(public_summary_url)
+    # [END qrcode_settings_render]
+    return render_template('settings_page.html', settings=current_settings, settings_qr_code_base64=settings_qr_code_base64, public_summary_url=public_summary_url)
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
     """Handles the deletion of a task."""
     if delete_google_task(task_id):
-        # Clear the cache for tasks after a successful deletion
-        # This forces get_google_tasks_for_report to fetch fresh data next time
-        cache.clear() # Clears all entries in the cache
+        cache.clear() 
         flash('ลบรายการงานเรียบร้อยแล้ว', 'success')
     else:
         flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
     return redirect(url_for('summary'))
 
 # --- LINE Webhook and Command Handlers ---
-# (No changes to the core webhook handling setup, preserving original app.py's integrity)
-
 @app.route("/callback", methods=['POST'])
 def callback():
     """Endpoint for receiving data from LINE Webhook"""
@@ -1247,7 +1090,7 @@ def handle_outstanding_tasks_command(event):
         
     message_lines = ["--- 📋 รายการงานค้าง ---"]
     tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
-    for i, task in enumerate(tasks[:15]): # Limit to 15 to avoid long messages
+    for i, task in enumerate(tasks[:15]): 
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n(ID: {task.get('id')})")
     reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
 
@@ -1309,7 +1152,6 @@ def handle_complete_task_command(event, task_id):
     """Handles 'เสร็จงาน <ID>' command."""
     updated_task = update_google_task(task_id, status='completed')
     if updated_task:
-        # Clear cache after task completion as well, to ensure summary page is fresh
         cache.clear()
         reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")])
         source_id = event.source.group_id if event.source.type == 'group' else event.source.user_id
@@ -1326,7 +1168,7 @@ def handle_customer_search_command(event, customer_name):
     found_tasks = []
     for task in all_tasks:
         info = parse_customer_info_from_notes(task.get('notes', ''))
-        if customer_name.lower() in str(info.get('name', '')).strip().lower(): # Ensure string cast
+        if customer_name.lower() in str(info.get('name', '')).strip().lower(): 
             found_tasks.append(task)
     
     if not found_tasks:
@@ -1338,7 +1180,6 @@ def handle_customer_search_command(event, customer_name):
     
     reply_to_line(event.reply_token, [flex_message])
 
-# New command handler for "เปิดงานใหม่"
 def handle_open_new_task_command(event):
     """Handles the 'เปิดงานใหม่' command by providing a link to the new task form."""
     new_task_url = url_for('form_page', _external=True)
@@ -1347,13 +1188,12 @@ def handle_open_new_task_command(event):
     )
     reply_to_line(event.reply_token, [reply_message])
 
-# New command handler for "เริ่มลงงาน"
 def handle_start_work_command(event):
     """
     Handles the 'เริ่มลงงาน' command.
     Lists pending tasks and provides quick reply buttons to update them.
     """
-    tasks = get_google_tasks_for_report(show_completed=False) # Get only pending tasks
+    tasks = get_google_tasks_for_report(show_completed=False) 
     if tasks is None:
         return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     if not tasks:
@@ -1362,19 +1202,16 @@ def handle_start_work_command(event):
     message_text = "เลือกงานที่ต้องการเริ่มลงงาน (สูงสุด 8 งาน):\n\n"
     quick_reply_buttons = []
     
-    # Sort by due date for more relevant options
     tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
 
-    # Limit to top 8 tasks for quick reply buttons
     for i, task in enumerate(tasks[:8]): 
         customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-        # Ensure task title is a string before splitting
         task_title_raw = str(task.get('title', 'ไม่มีหัวข้อ'))
-        task_title = task_title_raw.split('\n')[0] # Take first line of title
-        customer_name = str(customer_info.get('name', 'ไม่ระบุชื่อ')) # Ensure customer name is string
+        task_title = task_title_raw.split('\n')[0] 
+        customer_name = str(customer_info.get('name', 'ไม่ระบุชื่อ')) 
 
         button_label = f"{task_title} ({customer_name})"
-        if len(button_label) > 20: # LINE Quick Reply label max length is 20 chars
+        if len(button_label) > 20: 
             button_label = button_label[:17] + "..."
 
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
@@ -1384,7 +1221,6 @@ def handle_start_work_command(event):
                 action=URIAction(label=button_label, uri=update_url)
             )
         )
-        # Also add to message text for overview
         message_text += f"{i+1}. {task_title} (ลูกค้า: {customer_name})\n"
 
 
@@ -1401,8 +1237,8 @@ COMMANDS = {
     'งานค้าง': handle_outstanding_tasks_command,
     'งานเสร็จ': handle_completed_tasks_command,
     'สรุปรายงาน': handle_summary_command,
-    'เปิดงานใหม่': handle_open_new_task_command, # New command
-    'เริ่มลงงาน': handle_start_work_command,     # New command
+    'เปิดงานใหม่': handle_open_new_task_command, 
+    'เริ่มลงงาน': handle_start_work_command,     
 }
 
 @handler.add(MessageEvent, message=TextMessageContent)
@@ -1411,12 +1247,10 @@ def handle_message(event):
     text = event.message.text.strip()
     text_lower = text.lower()
 
-    # Check for specific commands first
     if text_lower in COMMANDS:
         COMMANDS[text_lower](event)
-        return # Important: return after handling a command
+        return 
 
-    # Handle commands with arguments
     if text_lower.startswith('c '):
         parts = text.split(maxsplit=1)
         if len(parts) > 1: handle_customer_search_command(event, parts[1])
@@ -1432,7 +1266,6 @@ def handle_message(event):
         if len(parts) > 1: handle_complete_task_command(event, parts[1])
         return
     
-    # If no command matches, reply with a general message or help
     reply_to_line(event.reply_token, [TextMessage(text="ฉันไม่เข้าใจคำสั่งของคุณ ลองพิมพ์ 'comphone' เพื่อดูวิธีใช้งานนะครับ")])
 
 
@@ -1455,7 +1288,6 @@ def trigger_daily_reports():
     messages_to_send = []
     recipients = []
     
-    # Check for morning appointment reminders
     if current_hour == appointment_hour:
         app.logger.info("Processing daily APPOINTMENT reminders.")
         today_appointments = []
@@ -1477,11 +1309,9 @@ def trigger_daily_reports():
                     messages_to_send.append(flex_msg)
                 except Exception as e:
                     app.logger.error(f"Failed to create Flex Message for daily reminder task {task.get('id')}: {e}")
-                    # Fallback to simple text message for daily reminders
                     messages_to_send.append(TextMessage(text=f"แจ้งเตือนงานวันนี้:\nหัวข้อ: {task.get('title', '-')}\nลูกค้า: {parse_customer_info_from_notes(task.get('notes', '')).get('name', '-')}\nเวลา: {parse_google_task_dates(task).get('due_formatted', '-')}\n\nดูรายละเอียด/อัปเดต: {url_for('update_task_details', task_id=task.get('id'), _external=True)}"))
             recipients = [id for id in [settings['line_recipients'].get('technician_group_id'), settings['line_recipients'].get('admin_group_id')] if id]
 
-    # Check for evening outstanding summary
     elif current_hour == summary_hour:
         app.logger.info("Processing daily OUTSTANDING tasks summary.")
         if tasks_to_process:
@@ -1489,21 +1319,17 @@ def trigger_daily_reports():
             message_lines = ["--- 🌙 สรุปงานค้าง ---"]
             for task in tasks_to_process:
                 info = parse_customer_info_from_notes(task.get('notes', ''))
-                # Changed to use info.get() with empty string and then 'or -' for display 
                 message_lines.append(f"ลูกค้า: {info.get('name', '') or '-'}\nโทร: {info.get('phone', '') or '-'}\nงาน: {task.get('title')}") 
             messages_to_send = [TextMessage(text="\n\n".join(message_lines))]
             recipients = [id for id in [settings['line_recipients'].get('manager_user_id'), settings['line_recipients'].get('admin_group_id')] if id]
 
     if messages_to_send and recipients:
-        # Push up to 5 messages at a time
-        # Handle multiple recipients if recipients is a list 
         if isinstance(recipients, list):
             for recipient_id in recipients:
                 for i in range(0, len(messages_to_send), 5):
                     line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=messages_to_send[i:i+5]))
-        else: # Single recipient
-            for i in range(0, len(messages_to_send), 5):
-                line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5]) ) 
+        else: 
+            line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5]) ) 
         
         return f"{len(messages_to_send)} messages sent to {len(recipients)} recipients.", 200
 
@@ -1514,8 +1340,6 @@ def format_datetime_iso_to_thai(dt_iso_str):
     if not dt_iso_str:
         return '-'
     try:
-        # Handle both 'Z' and explicit timezone offsets
-        # If 'Z' is present, replace it with '+00:00' for consistent parsing
         if dt_iso_str.endswith('Z'):
             dt_iso_str = dt_iso_str.replace('Z', '+00:00')
         
@@ -1528,66 +1352,11 @@ def format_datetime_iso_to_thai(dt_iso_str):
 
 app.jinja_env.filters['format_datetime_iso_to_thai'] = format_datetime_iso_to_thai
 
-# --- New Route for Public Task Report (QR Code Target) ---
-@app.route('/public_task_report/<task_id>')
-def public_task_report(task_id):
-    service = get_google_tasks_service()
-    if not service: abort(503, "Google Tasks service is unavailable.")
-
-    try:
-        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        task = parse_google_task_dates(task_raw)
-        
-        customer_info_from_task = parse_customer_info_from_notes(task.get('notes', ''))
-        history, _ = parse_tech_report_from_notes(task.get('notes', '')) # Parse history to get equipment list and costs
-
-        # Get the latest report for cost summary
-        latest_report = history[0] if history else {}
-        
-        # Pass required data to the template
-        return render_template('public_task_report.html', 
-                               task=task,
-                               customer_info=customer_info_from_task,
-                               latest_report=latest_report,
-                               total_cost=latest_report.get('total_cost', 0.0),
-                               detailed_costs=latest_report.get('detailed_costs', []))
-    except HttpError: abort(404, "Task not found.")
-    except Exception as e:
-        app.logger.error(f"Error rendering public report for task {task_id}: {e}")
-        abort(500, "Internal Server Error")
-
-# --- New Route for QR Code Image Generation ---
-@app.route('/qrcode/<task_id>')
-def generate_qrcode(task_id):
-    # Construct the URL for the public report
-    public_report_url = url_for('public_task_report', task_id=task_id, _external=True)
-    
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(public_report_url)
-    qr.make(fit=True)
-
-    img = qr.make_image(fill_color="black", back_color="white")
-    
-    # Save QR code to a byte stream
-    byte_io = BytesIO()
-    img.save(byte_io, 'PNG')
-    byte_io.seek(0) # Rewind to the beginning of the stream
-
-    return Response(byte_io.getvalue(), mimetype='image/png')
-
 
 # --- Main Execution ---
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
-    # The port Render.com expects your app to listen on
-    # It will set an environment variable PORT, so we should use it.
-    # Default to 8080 if not set (e.g., when running locally) 
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
 
