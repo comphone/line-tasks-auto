@@ -5,14 +5,18 @@ import re
 import json
 import pytz
 import mimetypes # Added for file type detection
+from io import BytesIO # For QR code generation
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify # Added jsonify for potential API responses
+from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response # Added Response for image
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
+
+# Import for QR Code generation
+import qrcode # You might need to add 'qrcode' to your requirements.txt
 
 # Corrected LINE Bot SDK imports for Flex Messages - Merged from app2.py
 from linebot.v3.messaging import (
@@ -431,15 +435,114 @@ def parse_google_task_dates(task_item):
             parsed_task[f'{key}_formatted'] = '' # Change N/A to empty string
     return parsed_task
 
-# Modified parse_tech_report_from_notes to extract original notes text more reliably, from app2.py
+# --- NEW: Function to parse equipment string into structured data ---
+def parse_equipment_string(equipment_str):
+    """
+    Parses a multi-line equipment string (e.g., "Item A: 2; Item B: 1.5")
+    into a list of dictionaries.
+    """
+    equipment_list = []
+    if not equipment_str:
+        return equipment_list
+    
+    # Split by lines or semicolons to get individual item entries
+    entries = re.split(r'[;\n]', equipment_str)
+    for entry in entries:
+        entry = entry.strip()
+        if not entry: continue
+
+        match = re.match(r"(.+?):\s*(\d+\.?\d*)\s*(.*)", entry) # Matches "Name: Quantity Unit" or just "Name: Quantity"
+        if match:
+            item_name = match.group(1).strip()
+            quantity_str = match.group(2)
+            unit = match.group(3).strip()
+            try:
+                quantity = float(quantity_str)
+                equipment_list.append({'name': item_name, 'quantity': quantity, 'unit': unit})
+            except ValueError:
+                app.logger.warning(f"Could not parse quantity '{quantity_str}' for item '{item_name}'")
+                equipment_list.append({'name': item_name, 'quantity': entry, 'unit': ''}) # Store raw if quantity invalid
+        else:
+            equipment_list.append({'name': entry, 'quantity': 1.0, 'unit': ''}) # Assume quantity 1 if no number is given
+    return equipment_list
+
+# --- NEW: Hardcoded Equipment Prices (for demonstration) ---
+# In a real application, this should come from a database or configurable settings.
+EQUIPMENT_PRICES = {
+    "สายไฟ": 20.0,  # ราคาต่อเมตร
+    "กล่องควบคุม": 500.0, # ราคาต่อชิ้น
+    "หลอดไฟ": 80.0, # ราคาต่อชิ้น
+    "ท่อ PVC 1/2 นิ้ว": 35.0, # ราคาต่อเมตร
+    "แบตเตอรี่": 300.0, # ราคาต่อชิ้น
+    "ค่าบริการ": 100.0 # ค่าบริการต่อหน่วย เช่น 1 หน่วย = 1 ชั่วโมง
+}
+
+def calculate_equipment_cost(equipment_list):
+    """Calculates the total cost based on the equipment list and prices."""
+    total_cost = 0.0
+    detailed_costs = []
+    for item in equipment_list:
+        item_name = item['name'].lower()
+        quantity = item['quantity']
+        
+        # Simple matching: check if item_name (or part of it) is in EQUIPMENT_PRICES keys
+        matched_price = 0.0
+        found_item_key = None
+        for price_key, price_value in EQUIPMENT_PRICES.items():
+            if price_key.lower() in item_name or item_name in price_key.lower():
+                matched_price = price_value
+                found_item_key = price_key
+                break
+        
+        if found_item_key:
+            cost = matched_price * quantity
+            total_cost += cost
+            detailed_costs.append({
+                'item': item['name'],
+                'quantity': item['quantity'],
+                'unit': item.get('unit', ''),
+                'price_per_unit': matched_price,
+                'subtotal': round(cost, 2)
+            })
+        else:
+            app.logger.warning(f"Price not found for equipment: {item['name']}")
+            detailed_costs.append({
+                'item': item['name'],
+                'quantity': item['quantity'],
+                'unit': item.get('unit', ''),
+                'price_per_unit': 'N/A',
+                'subtotal': 'N/A'
+            })
+    return round(total_cost, 2), detailed_costs
+
+
 def parse_tech_report_from_notes(notes):
-    """Extracts all past technician reports into a history list and the original notes text."""
+    """
+    Extracts all past technician reports into a history list and the original notes text.
+    Now also parses 'equipment_used' into a structured list and calculates 'total_cost'.
+    """
     if not notes: return [], ""
     report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
     history = []
     for json_str in report_blocks:
         try:
-            history.append(json.loads(json_str))
+            report_data = json.loads(json_str)
+            
+            # If equipment_used is a raw string, parse it into structured data
+            if isinstance(report_data.get('equipment_used'), str):
+                parsed_equipment = parse_equipment_string(report_data['equipment_used'])
+                report_data['equipment_list'] = parsed_equipment
+            else: # If it's already a list (from previous structured input), just assign
+                report_data['equipment_list'] = report_data.get('equipment_used', [])
+
+            # Recalculate total_cost if not already present or if equipment_list changed
+            # Or ensure detailed_costs are always present for display
+            if 'total_cost' not in report_data or 'detailed_costs' not in report_data:
+                 calculated_total, calculated_details = calculate_equipment_cost(report_data.get('equipment_list', []))
+                 report_data['total_cost'] = calculated_total
+                 report_data['detailed_costs'] = calculated_details
+
+            history.append(report_data)
         except json.JSONDecodeError as e:
             app.logger.error(f"Error decoding JSON in tech report block: {e}, Content: {json_str[:100]}...")
 
@@ -898,7 +1001,7 @@ def update_task_details(task_id):
         original_status = task.get('status')
         new_status = request.form.get('status')
         work_summary = str(request.form.get('work_summary', '')).strip() # Ensure string and strip
-        equipment_used = str(request.form.get('equipment_used', '')).strip() # equipment_used is now multi-line
+        equipment_used_str = str(request.form.get('equipment_used', '')).strip() # Multi-line string from form
         next_appointment_date_str = str(request.form.get('next_appointment_date', '')).strip()
 
         # New fields for task details update - from app2.py
@@ -952,10 +1055,18 @@ def update_task_details(task_id):
         if current_lat and current_lon:
             current_location_url = f"https://www.google.com/maps/search/?api=1&query={current_lat},{current_lon}"
 
+        # Parse equipment used string into structured data
+        parsed_equipment_list = parse_equipment_string(equipment_used_str)
+        total_equipment_cost, detailed_equipment_costs = calculate_equipment_cost(parsed_equipment_list)
+
+
         new_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             'work_summary': work_summary,
-            'equipment_used': equipment_used, # equipment_used is now multi-line
+            'equipment_used': equipment_used_str, # Store raw string for historical reference/editability
+            'equipment_list': parsed_equipment_list, # Store parsed list for calculation/structured display
+            'total_cost': total_equipment_cost, # Store calculated total cost
+            'detailed_costs': detailed_equipment_costs, # Store detailed costs
             'next_appointment': next_appointment_gmt, # Store this in tech report history
             'attachment_urls': all_attachment_urls,
             'location_url': current_location_url # Add location to this report
@@ -990,8 +1101,11 @@ def update_task_details(task_id):
         
         all_reports_text = ""
         for report in all_reports_list:
-            # Ensure attachment_urls and location_url are empty lists/None if not present in report
+            # Ensure all new fields are included when dumping JSON
             report_to_dump = report.copy()
+            report_to_dump['equipment_list'] = report_to_dump.get('equipment_list', [])
+            report_to_dump['total_cost'] = report_to_dump.get('total_cost', 0.0)
+            report_to_dump['detailed_costs'] = report_to_dump.get('detailed_costs', [])
             report_to_dump['attachment_urls'] = report_to_dump.get('attachment_urls', [])
             report_to_dump['location_url'] = report_to_dump.get('location_url', None)
 
@@ -1413,6 +1527,58 @@ def format_datetime_iso_to_thai(dt_iso_str):
         return '-'
 
 app.jinja_env.filters['format_datetime_iso_to_thai'] = format_datetime_iso_to_thai
+
+# --- New Route for Public Task Report (QR Code Target) ---
+@app.route('/public_task_report/<task_id>')
+def public_task_report(task_id):
+    service = get_google_tasks_service()
+    if not service: abort(503, "Google Tasks service is unavailable.")
+
+    try:
+        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        task = parse_google_task_dates(task_raw)
+        
+        customer_info_from_task = parse_customer_info_from_notes(task.get('notes', ''))
+        history, _ = parse_tech_report_from_notes(task.get('notes', '')) # Parse history to get equipment list and costs
+
+        # Get the latest report for cost summary
+        latest_report = history[0] if history else {}
+        
+        # Pass required data to the template
+        return render_template('public_task_report.html', 
+                               task=task,
+                               customer_info=customer_info_from_task,
+                               latest_report=latest_report,
+                               total_cost=latest_report.get('total_cost', 0.0),
+                               detailed_costs=latest_report.get('detailed_costs', []))
+    except HttpError: abort(404, "Task not found.")
+    except Exception as e:
+        app.logger.error(f"Error rendering public report for task {task_id}: {e}")
+        abort(500, "Internal Server Error")
+
+# --- New Route for QR Code Image Generation ---
+@app.route('/qrcode/<task_id>')
+def generate_qrcode(task_id):
+    # Construct the URL for the public report
+    public_report_url = url_for('public_task_report', task_id=task_id, _external=True)
+    
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(public_report_url)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Save QR code to a byte stream
+    byte_io = BytesIO()
+    img.save(byte_io, 'PNG')
+    byte_io.seek(0) # Rewind to the beginning of the stream
+
+    return Response(byte_io.getvalue(), mimetype='image/png')
 
 
 # --- Main Execution ---
