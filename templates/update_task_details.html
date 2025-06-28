@@ -46,6 +46,27 @@
             border: 5px solid #fff; /* White border around QR */
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
+        .common-equipment-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+            padding: 5px;
+            border: 1px dashed #ccc;
+            border-radius: 5px;
+        }
+        .common-equipment-item {
+            background-color: #e9e9e9;
+            padding: 3px 8px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.85em;
+            color: #333;
+            transition: background-color 0.2s;
+        }
+        .common-equipment-item:hover {
+            background-color: #d0d0d0;
+        }
     </style>
 </head>
 <body>
@@ -88,15 +109,10 @@
                                     {# Display structured equipment list #}
                                     <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong></p>
                                     <ul>
-                                    {% if report.equipment_used is string %}
-                                        {# Old format: raw string, display as is #}
-                                        <li>{{ report.equipment_used | replace('\n', '<br>') | safe }}</li>
-                                    {% elif report.equipment_used is iterable and report.equipment_used is not none %}
-                                        {# New format: list of dicts #}
-                                        {% for item in report.equipment_used %}
-                                            {% if item.item %}
-                                                <li>{{ item.item }}{% if item.quantity %}: {{ item.quantity }}{% endif %}</li>
-                                            {% endif %}
+                                    {% if report.equipment_used_display %} {# Use the formatted display variable #}
+                                        {# Split by newline to display each item on a new line within <li> #}
+                                        {% for item_line in report.equipment_used_display.split('\n') %}
+                                            <li>{{ item_line | safe }}</li>
                                         {% endfor %}
                                     {% else %}
                                         <li>N/A</li>
@@ -167,12 +183,21 @@
                     </div>
 
                     <div class="mb-3">
-                        {# Changed input to textarea for multi-line equipment #}
                         <label for="equipment_used" class="form-label"><strong>รายการอุปกรณ์ที่ใช้:</strong></label>
                         <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" 
-                            placeholder="พิมพ์ชื่ออุปกรณ์, จำนวน และหน่วย เช่น&#10;คีม, 1 ชิ้น&#10;ไขควงปากแบน, 2 อัน&#10;มัลติมิเตอร์, 1 เครื่อง&#10;สายไฟ VAF 2.5, 5 เมตร"
+                            placeholder="ตัวอย่าง:&#10;สาย LAN, 10 เมตร&#10;หัว RJ45, 2 ชิ้น&#10;คีมย้ำ, 1 อัน&#10;หรือพิมพ์แค่ชื่ออุปกรณ์ เช่น&#10;ไขควง"
                         >{{ task.equipment_used_initial or '' }}</textarea>
-                        <small class="form-text text-muted">พิมพ์อุปกรณ์แต่ละชิ้นในบรรทัดใหม่ แยกด้วยคอมม่า (,) ระหว่างชื่ออุปกรณ์กับจำนวน/หน่วย</small>
+                        <small class="form-text text-muted">พิมพ์อุปกรณ์แต่ละรายการในบรรทัดใหม่ โดยคั่นด้วยคอมม่า (,) ระหว่างชื่ออุปกรณ์กับจำนวน/หน่วย (ถ้ามี)</small>
+                        
+                        {# Display common equipment items here #}
+                        {% if common_equipment_items %}
+                        <div class="common-equipment-list">
+                            <span class="text-muted" style="margin-right: 5px;">อุปกรณ์ที่ใช้บ่อย:</span>
+                            {% for item in common_equipment_items %}
+                                <span class="badge bg-secondary common-equipment-item" onclick="insertEquipment('{{ item | e }}')">{{ item }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
 
                     <div class="mb-3">
@@ -329,6 +354,18 @@
                     }
                 });
             }
+
+            // Function to insert equipment item into the textarea
+            window.insertEquipment = function(itemText) {
+                const equipmentUsedTextarea = document.getElementById('equipment_used');
+                let currentValue = equipmentUsedTextarea.value.trim();
+                if (currentValue) {
+                    equipmentUsedTextarea.value = currentValue + '\n' + itemText;
+                } else {
+                    equipmentUsedTextarea.value = itemText;
+                }
+                equipmentUsedTextarea.focus();
+            };
         });
     </script>
 </body>
