@@ -465,7 +465,8 @@ def create_task_flex_message(task):
 
     # --- Robust Phone Action Creation ---
     phone_action = None
-    phone_display_text = str(customer_info.get('phone', '')).strip() # Ensure it's a string, then strip
+    # Ensure phone_display_text is always a string and stripped
+    phone_display_text = str(customer_info.get('phone', '')).strip() 
     phone_number_cleaned = re.sub(r'\D', '', phone_display_text) # Remove non-digits
     
     # Only create URIAction if the cleaned phone number is not empty
@@ -483,7 +484,8 @@ def create_task_flex_message(task):
 
     # --- Robust Map Action Creation ---
     map_action = None
-    map_url = str(customer_info.get('map_url', '')).strip() # Ensure it's a string, then strip
+    # Ensure map_url is always a string and stripped
+    map_url = str(customer_info.get('map_url', '')).strip() 
     
     # Only create URIAction if map_url is not empty and starts with http/https
     if map_url and (map_url.startswith('http://') or map_url.startswith('https://')):
@@ -719,15 +721,14 @@ def lookup_customer():
         return jsonify({"error": "Failed to retrieve tasks from Google API"}), 500
 
     found_customer_info = {}
-    # Iterate through tasks to find a match and get the latest info
-    # We iterate in reverse to prioritize more recent tasks for data extraction
+    # Iterate through tasks in reverse to find the most recent matching customer info
     for task_item in reversed(tasks_raw): 
         customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
         
         # Check if the customer name matches (case-insensitive, partial match)
         if customer_name_query in str(customer_info.get('name', '')).strip().lower():
             # Populate found_customer_info with available data from this task
-            # Only update if the field is not empty in the task (prioritize non-empty values from newer tasks)
+            # Only update if the field is not empty in the task and not yet found from a newer task
             if customer_info.get('phone') and not found_customer_info.get('phone'):
                 found_customer_info['phone'] = customer_info['phone']
             if customer_info.get('address') and not found_customer_info.get('address'):
@@ -737,10 +738,8 @@ def lookup_customer():
             if customer_info.get('map_url') and not found_customer_info.get('map_url'):
                 found_customer_info['map_url'] = customer_info['map_url']
 
-            # If we have found phone, address, and detail, we can break early
-            # (or continue to find more complete info from older tasks if desired)
-            # For this implementation, we prioritize latest available complete data.
-            # If all key fields are found, we can stop searching.
+            # If all key fields are found (phone, address, detail), we can stop searching.
+            # map_url is optional so not included in the 'all' check for early exit.
             if all(key in found_customer_info and found_customer_info[key] for key in ['phone', 'address', 'detail']):
                 break
     
@@ -789,11 +788,11 @@ def summary():
     for task in filtered_by_status_tasks:
         # Expanded search fields from app2.py
         if not search_query or \
-           search_query in task.get('title', '').lower() or \
-           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('name', '').lower() or \
-           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('phone', '') or \
-           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('address', '').lower() or \
-           search_query in parse_customer_info_from_notes(task.get('notes', '')).get('detail', '').lower():
+           search_query in str(task.get('title', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('phone', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('address', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('detail', '')).lower():
             final_filtered_tasks.append(task)
 
 
@@ -1202,7 +1201,7 @@ def handle_customer_search_command(event, customer_name):
     found_tasks = []
     for task in all_tasks:
         info = parse_customer_info_from_notes(task.get('notes', ''))
-        if customer_name.lower() in info.get('name', '').lower():
+        if customer_name.lower() in str(info.get('name', '')).strip().lower(): # Ensure string cast
             found_tasks.append(task)
     
     if not found_tasks:
@@ -1214,12 +1213,71 @@ def handle_customer_search_command(event, customer_name):
     
     reply_to_line(event.reply_token, [flex_message])
 
+# New command handler for "เปิดงานใหม่"
+def handle_open_new_task_command(event):
+    """Handles the 'เปิดงานใหม่' command by providing a link to the new task form."""
+    new_task_url = url_for('form_page', _external=True)
+    reply_message = TextMessage(
+        text=f"คลิกที่ลิงก์นี้เพื่อบันทึกงานใหม่:\n{new_task_url}"
+    )
+    reply_to_line(event.reply_token, [reply_message])
+
+# New command handler for "เริ่มลงงาน"
+def handle_start_work_command(event):
+    """
+    Handles the 'เริ่มลงงาน' command.
+    Lists pending tasks and provides quick reply buttons to update them.
+    """
+    tasks = get_google_tasks_for_report(show_completed=False) # Get only pending tasks
+    if tasks is None:
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
+    if not tasks:
+        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างให้เริ่มลงงานในขณะนี้")])
+
+    message_text = "เลือกงานที่ต้องการเริ่มลงงาน (สูงสุด 8 งาน):\n\n"
+    quick_reply_buttons = []
+    
+    # Sort by due date for more relevant options
+    tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
+
+    # Limit to top 8 tasks for quick reply buttons
+    for i, task in enumerate(tasks[:8]): 
+        customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+        # Ensure task title is a string before splitting
+        task_title_raw = str(task.get('title', 'ไม่มีหัวข้อ'))
+        task_title = task_title_raw.split('\n')[0] # Take first line of title
+        customer_name = str(customer_info.get('name', 'ไม่ระบุชื่อ')) # Ensure customer name is string
+
+        button_label = f"{task_title} ({customer_name})"
+        if len(button_label) > 20: # LINE Quick Reply label max length is 20 chars
+            button_label = button_label[:17] + "..."
+
+        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+        
+        quick_reply_buttons.append(
+            QuickReplyButton(
+                action=URIAction(label=button_label, uri=update_url)
+            )
+        )
+        # Also add to message text for overview
+        message_text += f"{i+1}. {task_title} (ลูกค้า: {customer_name})\n"
+
+
+    reply_message = TextMessage(
+        text=message_text,
+        quick_reply=QuickReply(items=quick_reply_buttons)
+    )
+    reply_to_line(event.reply_token, [reply_message])
+
+
 # Command Dispatcher Dictionary
 COMMANDS = {
     'comphone': handle_help_command,
     'งานค้าง': handle_outstanding_tasks_command,
     'งานเสร็จ': handle_completed_tasks_command,
     'สรุปรายงาน': handle_summary_command,
+    'เปิดงานใหม่': handle_open_new_task_command, # New command
+    'เริ่มลงงาน': handle_start_work_command,     # New command
 }
 
 @handler.add(MessageEvent, message=TextMessageContent)
@@ -1228,6 +1286,12 @@ def handle_message(event):
     text = event.message.text.strip()
     text_lower = text.lower()
 
+    # Check for specific commands first
+    if text_lower in COMMANDS:
+        COMMANDS[text_lower](event)
+        return # Important: return after handling a command
+
+    # Handle commands with arguments
     if text_lower.startswith('c '):
         parts = text.split(maxsplit=1)
         if len(parts) > 1: handle_customer_search_command(event, parts[1])
@@ -1242,9 +1306,10 @@ def handle_message(event):
         parts = text.split()
         if len(parts) > 1: handle_complete_task_command(event, parts[1])
         return
+    
+    # If no command matches, reply with a general message or help
+    reply_to_line(event.reply_token, [TextMessage(text="ฉันไม่เข้าใจคำสั่งของคุณ ลองพิมพ์ 'comphone' เพื่อดูวิธีใช้งานนะครับ")])
 
-    if text_lower in COMMANDS:
-        COMMANDS[text_lower](event)
 
 # --- Cron Job Endpoint ---
 @app.route('/trigger_daily_reports')
