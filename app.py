@@ -945,7 +945,7 @@ def summary():
 
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
-    if tasks_raw is None: 
+    if tasks_raw is None: # FIXED: Removed '\'
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้ในขณะนี้', 'danger')
         tasks_raw = []
 
