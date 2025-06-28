@@ -920,7 +920,7 @@ def lookup_equipment():
                 'price': item.get('price', 0.0),
                 'barcode': item.get('barcode', '')
             })
-        elif barcode and query in barcode: # Fallback to barcode if item_name not matched
+        elif barcode and query in barcode: 
             results.append({
                 'item_name': item.get('item_name', ''),
                 'unit': item.get('unit', ''),
@@ -933,7 +933,7 @@ def lookup_equipment():
         str(x['item_name']).lower() 
     ))
     
-    return jsonify(results[:10])
+    return jsonify(results[:10]) 
 # [END lookup_equipment_route_by_name]
 
 
@@ -1254,20 +1254,12 @@ def settings_page():
             }
         }
         # [START import_export_equipment_settings_save_updated]
-        # Update equipment_catalog from import if a file was uploaded, otherwise from textarea
         # This part of logic is within the POST handling for settings_page
-        
-        # First, process non-file inputs
-        # settings_data for non-equipment parts is already structured above
         
         # Now handle equipment_catalog. It's only updated by explicit import, not via general form submit.
         # So we preserve existing equipment_catalog unless an excel_file is uploaded.
-        current_settings_on_post = get_app_settings() # Get current settings to preserve catalog
+        current_settings_on_post = get_app_settings() 
         settings_data['equipment_catalog'] = current_settings_on_post.get('equipment_catalog', [])
-
-        # The common_equipment_items will be derived from equipment_catalog before save_app_settings.
-        # No manual text area processing here for common_equipment_items, it's auto-derived.
-        # This part of logic happens inside save_app_settings, so it's correct.
 
         if save_app_settings(settings_data): 
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
@@ -1276,7 +1268,7 @@ def settings_page():
             flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
         return redirect(url_for('settings_page'))
 
-    current_settings = get_app_settings() # Reload settings for GET request
+    current_settings = get_app_settings() 
 
     general_summary_url = url_for('summary', _external=True)
     
@@ -1294,7 +1286,6 @@ def settings_page():
     )
 
     # Format common_equipment_items for display in textarea
-    # This list is now derived from equipment_catalog's item_names for display
     common_equipment_list_for_display = "\n".join(current_settings.get('common_equipment_items', []))
 
     return render_template('settings_page.html', 
