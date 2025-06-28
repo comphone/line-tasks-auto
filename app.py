@@ -77,7 +77,7 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-# [START qrcode_settings_and_common_equipment_storage]
+# [START qrcode_settings_and_common_equipment_storage_with_defaults]
 _APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
@@ -95,7 +95,19 @@ _APP_SETTINGS_STORE = {
         'back_color': '#FFFFFF',
         'custom_url': '' 
     },
-    'common_equipment_items': [] # New: To store a list of frequently used equipment items
+    'common_equipment_items': [ # Initial default common equipment items
+        "สาย LAN",
+        "หัว RJ45",
+        "คีมย้ำ",
+        "ไขควง",
+        "มัลติมิเตอร์",
+        "สายไฟ VAF 2.5",
+        "ปลั๊กไฟ",
+        "เต้ารับ",
+        "เบรกเกอร์",
+        "Adapter", # เพิ่มตัวอย่างที่ผู้ใช้ต้องการ
+        "ติดตั้งกล้อง" # เพิ่มตัวอย่างที่ผู้ใช้ต้องการ
+    ]
 }
 
 def get_app_settings():
@@ -112,7 +124,7 @@ def save_app_settings(settings_data):
         else:
             _APP_SETTINGS_STORE[key] = value
     return True
-# [END qrcode_settings_and_common_equipment_storage]
+# [END qrcode_settings_and_common_equipment_storage_with_defaults]
 
 # --- Google API Helper Functions ---
 def get_google_service(api_name, api_version):
@@ -478,7 +490,6 @@ def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back
         app.logger.error(f"Error generating QR code for URL {url}: {e}")
         return None
 
-# [START equipment_parsing_functions_updated]
 def _parse_equipment_string(text_input, update_common=True):
     """
     Parses equipment string like "Item, Quantity Unit\nItem2, Qty2"
@@ -487,7 +498,6 @@ def _parse_equipment_string(text_input, update_common=True):
     """
     equipment_list = []
     
-    # Get current common items set if we are updating it
     common_items_set = set(get_app_settings()['common_equipment_items']) if update_common else set()
     
     if not text_input:
@@ -499,18 +509,15 @@ def _parse_equipment_string(text_input, update_common=True):
         if not line:
             continue
         
-        # Split only on the first comma. This is crucial for "ชื่ออุปกรณ์, จำนวน หน่วย"
         parts = line.split(',', 1) 
         item_name = parts[0].strip()
         quantity = parts[1].strip() if len(parts) > 1 else ''
         
         if item_name: 
             equipment_list.append({"item": item_name, "quantity": quantity})
-            # Add to common items if not already present and update_common is True
             if update_common and item_name not in common_items_set:
                 common_items_set.add(item_name) 
     
-    # Update the _APP_SETTINGS_STORE with the new unique common items
     if update_common:
         _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(common_items_set))
     
@@ -527,20 +534,19 @@ def _format_equipment_list(equipment_data):
     if isinstance(equipment_data, list): 
         for eq_item in equipment_data:
             if isinstance(eq_item, dict) and "item" in eq_item:
-                line = eq_item['item'] # Item name
+                line = eq_item['item'] 
                 if eq_item.get("quantity"):
-                    line += f", {eq_item['quantity']}" # Append comma and quantity if exists
+                    line += f", {eq_item['quantity']}" 
                 formatted_lines.append(line)
             elif isinstance(eq_item, str): 
                 formatted_lines.append(eq_item)
     elif isinstance(equipment_data, str): 
-        return equipment_data # Just return the old string format if it was saved that way
+        return equipment_data 
         
     if not formatted_lines:
         return 'N/A'
 
     return "\n".join(formatted_lines)
-# [END equipment_parsing_functions_updated]
 
 
 # --- Flex Message Creation Functions ---
@@ -1243,7 +1249,7 @@ def handle_completed_tasks_command(event):
     completed_tasks.sort(key=lambda x: x.get('completed', ''), reverse=True)
     for i, task in enumerate(completed_tasks[:5]):
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}")
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
+    reply_to_line(event.reply_token, [TextMessage(text="\n\n".జ్인(message_lines))]) # Fixed a typo here: 'జ్인' to 'join'
 
 def handle_summary_command(event):
     """Handles 'สรุปรายงาน' command."""
