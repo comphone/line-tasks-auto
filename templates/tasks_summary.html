@@ -175,9 +175,10 @@
                                     <tr>
                                         <td class="text-center">{{ loop.index }}</td>
                                         <td>{{ task.get('title', 'N/A') }}</td>
-                                        <td>{{ task.customer.name or '-' }}</td> {# Use 'or -' for missing names #}
-                                        <td>{{ task.customer.phone or '-' }}</td> {# Use 'or -' for missing phones #}
-                                        <td class="text-center">{{ task.due_formatted or '-' }}</td> {# Use 'or -' for missing dates #}
+                                        {# Ensure proper access to customer info after parsing #}
+                                        <td>{{ task.customer.name or '-' }}</td> 
+                                        <td>{{ task.customer.phone or '-' }}</td> 
+                                        <td class="text-center">{{ task.due_formatted or '-' }}</td> 
                                         <td class="text-center">
                                             {% if task.display_status == 'ยังไม่ดำเนินการ' %}
                                                 <span class="badge bg-danger">{{ task.display_status }}</span>
