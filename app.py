@@ -243,7 +243,7 @@ def delete_google_task(task_id):
         return False
 
 # Modified update_google_task to allow title update, from app2.py
-def update_google_task(task_id, title=None, notes=None, status=None): 
+def update_google_task(task_id, title=None, notes=None, status=None, due=None): # Added 'due' parameter
     """Helper to update a specific task."""
     service = get_google_tasks_service()
     if not service: return None
@@ -253,8 +253,16 @@ def update_google_task(task_id, title=None, notes=None, status=None):
         if notes is not None: task['notes'] = notes
         if status is not None:
             task['status'] = status
-            if status == 'completed': task['completed'] = datetime.datetime.now(pytz.utc).isoformat()
-            else: task.pop('completed', None) # Remove completed timestamp if not completed
+            if status == 'completed': 
+                task['completed'] = datetime.datetime.now(pytz.utc).isoformat()
+                task.pop('due', None) # Remove due date when completed
+            else: 
+                task.pop('completed', None) # Remove completed timestamp if not completed
+                if due is not None: # Update due date if provided and not completed
+                    task['due'] = due
+                elif 'due' not in task: # If status is needsAction but no due date, set a default/warn
+                     app.logger.warning(f"Task {task_id} is needsAction but no due date set. Consider setting one.")
+        
         return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
     except HttpError as e:
         app.logger.error(f"Failed to update task {task_id}: {e}")
@@ -446,40 +454,67 @@ def allowed_file(filename):
 
 # --- Flex Message Creation Functions ---
 def create_task_flex_message(task):
-    """Creates a LINE Flex Message for a given task."""
+    """
+    Creates a LINE Flex Message for a given task.
+    Includes robust checks for URIAction validity.
+    """
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     parsed_dates = parse_google_task_dates(task)
     update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
 
+    # --- Robust Phone Action Creation ---
     phone_action = None
-    if customer_info.get('phone'): # Check for non-empty string - from app2.py
-        phone_number = re.sub(r'\D', '', customer_info['phone'])
-        phone_action = URIAction(label=customer_info['phone'], uri=f"tel:{phone_number}")
-    
-    map_action = None
-    # Use map_url directly from parsed customer_info if available, else try to extract - from app2.py
-    map_url = customer_info.get('map_url')
-    if map_url: # No fallback needed since parse_customer_info_from_notes is now line-by-line
-        map_action = URIAction(label="📍 เปิด Google Maps", uri=map_url)
+    phone_display_text = customer_info.get('phone', '').strip()
+    # Check if phone_display_text is not empty and contains at least one digit
+    if phone_display_text and re.search(r'\d', phone_display_text):
+        phone_number_cleaned = re.sub(r'\D', '', phone_display_text)
+        if phone_number_cleaned: # Ensure we have a cleaned number to form a URI
+            full_phone_uri = f"tel:{phone_number_cleaned}"
+            try:
+                phone_action = URIAction(label=phone_display_text, uri=full_phone_uri)
+            except Exception as e:
+                app.logger.error(f"Error creating phone_action URIAction for '{phone_display_text}': {e}")
+                phone_action = None # Ensure it's None on failure
+        else:
+            app.logger.debug(f"Phone number cleaned to empty: '{phone_display_text}'")
+    else:
+        app.logger.debug(f"Phone display text is empty or has no digits: '{phone_display_text}'")
 
+    # --- Robust Map Action Creation ---
+    map_action = None
+    map_url = customer_info.get('map_url', '').strip()
+    # Simple check for a valid-looking URL scheme and some content
+    if map_url and (map_url.startswith('http://') or map_url.startswith('https://')) and len(map_url) > 8: # min length to avoid "http://" only
+        try:
+            map_action = URIAction(label="📍 เปิด Google Maps", uri=map_url)
+        except Exception as e:
+            app.logger.error(f"Error creating map_action URIAction for '{map_url}': {e}")
+            map_action = None # Ensure it's None on failure
+    else:
+        if map_url: # Log if it exists but is invalid
+            app.logger.debug(f"Invalid map URL format for URIAction: '{map_url}'")
+
+    # --- Body Contents Construction with explicit string casting ---
     body_contents = [
-        TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True),
+        TextComponent(text=str(task.get('title', 'ไม่มีหัวข้อ')), weight='bold', size='xl', wrap=True),
         BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='ลูกค้า', color='#aaaaaa', size='sm', flex=2),
-                TextComponent(text=customer_info.get('name', '') or '-', wrap=True, color='#666666', size='sm', flex=5) # Display empty string as '-' - from app2.py
+                TextComponent(text=str(customer_info.get('name', '') or '-'), wrap=True, color='#666666', size='sm', flex=5) 
             ]),
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='โทร', color='#aaaaaa', size='sm', flex=2),
-                TextComponent(text=customer_info.get('phone', '') or '-', wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none') # Display empty string as '-' - from app2.py
+                # Pass phone_action only if it's not None
+                TextComponent(text=str(phone_display_text or '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action if phone_action else None, decoration='underline' if phone_action else 'none') 
             ]),
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='นัดหมาย', color='#aaaaaa', size='sm', flex=2),
-                TextComponent(text=parsed_dates.get('due_formatted', '') or '-', wrap=True, color='#666666', size='sm', flex=5) # Display empty string as '-' - from app2.py
+                TextComponent(text=str(parsed_dates.get('due_formatted', '') or '-'), wrap=True, color='#666666', size='sm', flex=5) 
             ])
         ])
     ]
 
+    # --- Footer Contents Construction ---
     footer_contents = [
         ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url))
     ]
@@ -487,11 +522,12 @@ def create_task_flex_message(task):
         footer_contents.insert(0, ButtonComponent(style='link', height='sm', action=map_action))
         footer_contents.insert(1, SeparatorComponent(margin='md'))
 
+    # --- Bubble Container and Flex Message Creation ---
     bubble = BubbleContainer(direction='ltr',
         header=BoxComponent(layout='vertical', contents=[TextComponent(text='📢 แจ้งเตือนงาน', weight='bold', color='#ffffff')], background_color='#007BFF', padding_all='12px'),
         body=BoxComponent(layout='vertical', contents=body_contents),
         footer=BoxComponent(layout='vertical', spacing='sm', contents=footer_contents, flex=0),
-        action=URIAction(uri=update_url)
+        action=URIAction(uri=update_url) # Main bubble action
     )
     return FlexMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
 
@@ -505,16 +541,22 @@ def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
         
         phone_action = None
-        if customer_info.get('phone'): # Check for non-empty string - from app2.py
-            phone_number = re.sub(r'\D', '', customer_info['phone'])
-            phone_action = URIAction(label=f"📞 โทร: {customer_info['phone']}", uri=f"tel:{phone_number}")
+        phone_display_text = customer_info.get('phone', '').strip()
+        phone_number_cleaned = re.sub(r'\D', '', phone_display_text)
+        if phone_display_text and phone_number_cleaned and re.match(r'^\d+$', phone_number_cleaned):
+            full_phone_uri = f"tel:{phone_number_cleaned}"
+            try:
+                phone_action = URIAction(label=f"📞 โทร: {phone_display_text}", uri=full_phone_uri)
+            except Exception as e:
+                app.logger.error(f"Error creating phone_action for nearby job: {e}")
+                phone_action = None
 
         bubble = BubbleContainer(direction='ltr',
             header=BoxComponent(layout='vertical', background_color='#FFDDC2', contents=[TextComponent(text='💡 แนะนำงานใกล้เคียง!', weight='bold', color='#BF5A00', size='md')]),
             body=BoxComponent(layout='vertical', spacing='md', contents=[
                 TextComponent(text=f"ห่างไป {task['distance_km']} กม.", size='sm', color='#555555'),
-                TextComponent(text=f"ลูกค้า: {customer_info.get('name', '') or 'N/A'}", weight='bold', size='lg', wrap=True), # Display empty string as 'N/A' - from app2.py
-                TextComponent(text=task.get('title', '-'), wrap=True, size='sm', color='#666666')
+                TextComponent(text=str(customer_info.get('name', '') or 'N/A'), weight='bold', size='lg', wrap=True), # Ensure string cast
+                TextComponent(text=str(task.get('title', '-')), wrap=True, size='sm', color='#666666') # Ensure string cast
             ]),
             footer=BoxComponent(layout='vertical', spacing='sm', contents=([phone_action] if phone_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด/แผนที่', uri=update_url))])
         )
@@ -546,7 +588,7 @@ def create_customer_history_carousel(tasks, customer_name):
         
         bubble = BubbleContainer(direction='ltr',
             body=BoxComponent(layout='vertical', spacing='md', contents=[
-                TextComponent(text=task.get('title', 'N/A'), weight='bold', size='lg', wrap=True),
+                TextComponent(text=str(task.get('title', 'N/A')), weight='bold', size='lg', wrap=True), # Ensure string cast
                 SeparatorComponent(margin='md'),
                 BoxComponent(layout='vertical', margin='md', spacing='sm', contents=[
                     BoxComponent(layout='baseline', spacing='sm', contents=[
@@ -555,7 +597,7 @@ def create_customer_history_carousel(tasks, customer_name):
                     ]),
                     BoxComponent(layout='baseline', spacing='sm', contents=[
                         TextComponent(text='วันที่สร้าง', color='#aaaaaa', size='sm', flex=2),
-                        TextComponent(text=parsed.get('created_formatted', '') or '-', wrap=True, color='#666666', size='sm', flex=5) # Display empty string as '-' - from app2.py
+                        TextComponent(text=str(parsed.get('created_formatted', '') or '-'), wrap=True, color='#666666', size='sm', flex=5) 
                     ])
                 ])
             ]),
@@ -613,15 +655,20 @@ def form_page():
 
         created_task = create_google_task(title, notes=notes, due=due_date_gmt)
 
-        if created_task and start_time_iso:
-            app.logger.info("Creating Google Calendar event...")
-            create_google_calendar_event(summary=title, location=address or '', description=notes, start_time=start_time_iso, end_time=end_time_iso)
-        
-        if created_task:
-            flex_message = create_task_flex_message(created_task)
+        if created_task: # Check if task was successfully created
+            # Try to create Flex Message, but handle potential errors gracefully
+            flex_message = None
+            try:
+                flex_message = create_task_flex_message(created_task)
+            except Exception as e:
+                app.logger.error(f"Failed to create Flex Message for new task {created_task.get('id')}: {e}")
+                # Fallback to simple text message if Flex Message creation fails
+                flash('สร้างงานเรียบร้อยแล้ว แต่ไม่สามารถส่ง Flex Message ได้เนื่องจากข้อผิดพลาด.', 'warning')
+                return redirect(url_for('summary'))
+
             settings = get_app_settings()
             recipients = [id for id in [settings['line_recipients'].get('admin_group_id'), settings['line_recipients'].get('technician_group_id')] if id]
-            if recipients:
+            if recipients and flex_message: # Only try to push if recipients and a valid flex_message exist
                 try:
                     # Push messages individually if recipients is a list of multiple IDs - from app2.py
                     if isinstance(recipients, list):
@@ -629,9 +676,13 @@ def form_page():
                              line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=[flex_message]))
                     else: # Single recipient
                         line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=[flex_message]))
+                    flash('สร้างงานและส่งแจ้งเตือนเรียบร้อยแล้ว!', 'success')
                 except Exception as e:
-                    app.logger.error(f"Failed to push Flex Message: {e}")
-            flash('สร้างงานและส่งแจ้งเตือนเรียบร้อยแล้ว!', 'success')
+                    app.logger.error(f"Failed to push Flex Message to LINE: {e}")
+                    flash('สร้างงานเรียบร้อยแล้ว แต่ไม่สามารถส่งแจ้งเตือน LINE ได้.', 'warning')
+            else:
+                 flash('สร้างงานเรียบร้อยแล้ว (ไม่มีผู้รับแจ้งเตือน LINE หรือ Flex Message ไม่ถูกสร้าง).', 'success')
+            
             return redirect(url_for('summary'))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
@@ -782,8 +833,6 @@ def update_task_details(task_id):
         equipment_used = request.form.get('equipment_used', '').strip() # equipment_used is now multi-line
         next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
 
-        # Removed start_time_actual_str and end_time_actual_str processing
-
         # New fields for task details update - from app2.py
         # Get values, defaulting to empty string if not provided
         updated_customer_name = request.form.get('customer_name', '').strip()
@@ -822,7 +871,7 @@ def update_task_details(task_id):
 
         # --- Prepare new tech report data ---
         next_appointment_gmt = None
-        if new_status == 'needsAction' and next_appointment_date_str:
+        if next_appointment_date_str: # Only parse if date string is provided
             try:
                 next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
                 next_appointment_gmt = next_app_dt_local.astimezone(pytz.utc).isoformat()
@@ -839,8 +888,7 @@ def update_task_details(task_id):
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             'work_summary': work_summary,
             'equipment_used': equipment_used, # equipment_used is now multi-line
-            # Removed start_time_actual and end_time_actual from new_tech_report_data
-            'next_appointment': next_appointment_gmt,
+            'next_appointment': next_appointment_gmt, # Store this in tech report history
             'attachment_urls': all_attachment_urls,
             'location_url': current_location_url # Add location to this report
         }
@@ -874,25 +922,35 @@ def update_task_details(task_id):
         
         all_reports_text = ""
         for report in all_reports_list:
-            # Ensure attachment_urls, start_time_actual, end_time_actual, and location_url are empty lists/None if not present in report
+            # Ensure attachment_urls and location_url are empty lists/None if not present in report
             report_to_dump = report.copy()
             report_to_dump['attachment_urls'] = report_to_dump.get('attachment_urls', [])
             report_to_dump['location_url'] = report_to_dump.get('location_url', None)
-            # Removed start_time_actual and end_time_actual from report_to_dump handling
-            if 'start_time_actual' in report_to_dump: del report_to_dump['start_time_actual']
-            if 'end_time_actual' in report_to_dump: del report_to_dump['end_time_actual']
 
             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report_to_dump, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
         # Combine base notes with all tech reports
         final_updated_notes = updated_base_notes + all_reports_text
 
+        # Determine the due date to pass to update_google_task
+        # If status is needsAction and a next_appointment_gmt is set, use that as the new due date for the main task
+        new_due_for_main_task = None
+        if new_status == 'needsAction' and next_appointment_gmt:
+            new_due_for_main_task = next_appointment_gmt
+        elif new_status == 'needsAction' and not next_appointment_gmt and task_raw.get('due'):
+            # If needsAction but no new appointment date, retain existing due date if any
+            new_due_for_main_task = task_raw.get('due')
+        elif new_status == 'completed':
+            new_due_for_main_task = None # Due date should be removed when completed
+
+
         # Update Google Task with potentially new title, and the full reconstructed notes
         updated_task = update_google_task(
             task_id, 
             title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'} ({datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')})", # Use 'ไม่ระบุชื่อลูกค้า' if name is empty
             notes=final_updated_notes, 
-            status=new_status
+            status=new_status,
+            due=new_due_for_main_task # Pass the new due date to the update function
         )
 
         if updated_task:
