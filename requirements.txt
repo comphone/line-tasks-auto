@@ -13,3 +13,4 @@ google-auth-oauthlib
 cachetools
 geopy
 qrcode
+Pillow

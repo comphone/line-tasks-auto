@@ -995,11 +995,11 @@ def update_task_details(task_id):
         return redirect(url_for('summary'))
 
     # [START qrcode_render]
-    public_report_url = url_for('summary', _external=True, task_id=task_id) 
+    public_report_url = url_for('summary', _external=True, task_id=task_id) # หรือ URL สำหรับรายงานเฉพาะงานนี้
     qr_code_base64 = generate_qr_code_base64(public_report_url)
     # [END qrcode_render]
 
-    return render_template('update_task_details.html', task=task, qr_code_base64=qr_code_base64)
+    return render_template('update_task_details.html', task=task, qr_code_base64=qr_code_base64, public_report_url=public_report_url)
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
