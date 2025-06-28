@@ -673,7 +673,7 @@ def form_page():
         due_date_gmt, start_time_iso, end_time_iso = None, None, None
         if appointment_str:
             try:
-                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
+                dt_local = datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M")
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
                 start_time_iso = dt_local.isoformat()
                 end_time_iso = (dt_local + datetime.timedelta(hours=1)).isoformat()
@@ -733,7 +733,7 @@ def lookup_customer():
 
     tasks_raw = get_google_tasks_for_report(show_completed=False) 
     
-    if tasks_raw is None:
+    if tasks_raw is None: # Corrected: Changed === None to is None
         return jsonify({"error": "Failed to retrieve tasks from Google API"}), 500
 
     found_customer_info = {}
@@ -764,7 +764,7 @@ def summary():
 
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
-    if tasks_raw === None: # This line should be `is None`
+    if tasks_raw is None:
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้ในขณะนี้', 'danger')
         tasks_raw = []
 
