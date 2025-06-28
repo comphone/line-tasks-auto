@@ -364,17 +364,17 @@
             }
 
             // Function to insert equipment item into the textarea
+            // fromCommonList flag indicates if the item comes from the common list (needs a comma)
             window.insertEquipment = function(itemText, fromCommonList = false) {
                 const equipmentUsedTextarea = document.getElementById('equipment_used');
                 let currentValue = equipmentUsedTextarea.value.trim();
                 
                 let textToInsert = itemText;
-                if (fromCommonList) { // If from common list, add comma and space
-                    textToInsert = itemText + ', '; 
+                if (fromCommonList) {
+                    textToInsert = itemText + ', '; // Add comma and space if from common list
                 }
 
                 if (currentValue) {
-                    // Check if the current value already ends with a newline to avoid double newlines
                     if (!currentValue.endsWith('\n')) {
                         equipmentUsedTextarea.value = currentValue + '\n' + textToInsert;
                     } else {
@@ -397,11 +397,11 @@
             equipmentSearchInput.addEventListener('input', function() {
                 clearTimeout(searchTimeout);
                 const query = this.value.trim();
-                if (query.length < 2) { // Minimum characters to trigger search
+                if (query.length < 2) { 
                     equipmentSearchResults.innerHTML = '';
                     return;
                 }
-                searchTimeout = setTimeout(() => searchEquipment(query), 300); // Debounce search
+                searchTimeout = setTimeout(() => searchEquipment(query), 300); 
             });
 
             async function searchEquipment(query) {
@@ -410,7 +410,7 @@
                     const response = await fetch(`/lookup_equipment?q=${encodeURIComponent(query)}`);
                     const results = await response.json();
 
-                    equipmentSearchResults.innerHTML = ''; // Clear previous results
+                    equipmentSearchResults.innerHTML = ''; 
                     if (results.length > 0) {
                         results.forEach(item => {
                             const itemSpan = document.createElement('span');
@@ -423,8 +423,8 @@
                                     insertValue += `, ${item.unit}`; // Add unit if available
                                 }
                                 window.insertEquipment(insertValue, true); // Use true to add newline if current content
-                                equipmentSearchResults.innerHTML = ''; // Clear search results after selection
-                                equipmentSearchInput.value = ''; // Clear search input
+                                equipmentSearchResults.innerHTML = ''; 
+                                equipmentSearchInput.value = ''; 
                             };
                             equipmentSearchResults.appendChild(itemSpan);
                         });
