@@ -267,6 +267,8 @@
 
                 <!-- Delete Task Section -->
                 <hr class="my-4">
+                {# Conditionally render delete form only if task.id exists #}
+                {% if task.id %}
                 <div class="text-end">
                     <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้? การกระทำนี้ไม่สามารถย้อนกลับได้');">
                         <button type="submit" class="btn btn-danger">
@@ -274,6 +276,7 @@
                         </button>
                     </form>
                 </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -364,7 +367,7 @@
             }
 
             // Function to insert equipment item into the textarea
-            // fromCommonList flag indicates if the item comes from the common list (needs a comma)
+            // fromCommonList flag indicates if the item comes from the common list (needs a comma and space)
             window.insertEquipment = function(itemText, fromCommonList = false) {
                 const equipmentUsedTextarea = document.getElementById('equipment_used');
                 let currentValue = equipmentUsedTextarea.value.trim();
@@ -375,10 +378,11 @@
                 }
 
                 if (currentValue) {
+                    // Check if the current value already ends with a newline to avoid double newlines
                     if (!currentValue.endsWith('\n')) {
                         equipmentUsedTextarea.value = currentValue + '\n' + textToInsert;
                     } else {
-                        equipmentUsedTextarea.value = currentValue + textToInsert;
+                        equipmentUsedTextarea.value = currentValue + textToInsert; // Directly append if empty or ends with newline
                     }
                 } else {
                     equipmentUsedTextarea.value = textToInsert;
@@ -397,11 +401,11 @@
             equipmentSearchInput.addEventListener('input', function() {
                 clearTimeout(searchTimeout);
                 const query = this.value.trim();
-                if (query.length < 2) { 
+                if (query.length < 2) { // Minimum characters to trigger search
                     equipmentSearchResults.innerHTML = '';
                     return;
                 }
-                searchTimeout = setTimeout(() => searchEquipment(query), 300); 
+                searchTimeout = setTimeout(() => searchEquipment(query), 300); // Debounce search
             });
 
             async function searchEquipment(query) {
@@ -410,7 +414,7 @@
                     const response = await fetch(`/lookup_equipment?q=${encodeURIComponent(query)}`);
                     const results = await response.json();
 
-                    equipmentSearchResults.innerHTML = ''; 
+                    equipmentSearchResults.innerHTML = ''; // Clear previous results
                     if (results.length > 0) {
                         results.forEach(item => {
                             const itemSpan = document.createElement('span');
@@ -423,8 +427,8 @@
                                     insertValue += `, ${item.unit}`; // Add unit if available
                                 }
                                 window.insertEquipment(insertValue, true); // Use true to add newline if current content
-                                equipmentSearchResults.innerHTML = ''; 
-                                equipmentSearchInput.value = ''; 
+                                equipmentSearchResults.innerHTML = ''; // Clear search results after selection
+                                equipmentSearchInput.value = ''; // Clear search input
                             };
                             equipmentSearchResults.appendChild(itemSpan);
                         });
