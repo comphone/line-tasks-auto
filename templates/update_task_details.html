@@ -185,16 +185,16 @@
                     <div class="mb-3">
                         <label for="equipment_used" class="form-label"><strong>รายการอุปกรณ์ที่ใช้:</strong></label>
                         <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" 
-                            placeholder="ตัวอย่าง:&#10;สาย LAN, 10 เมตร&#10;หัว RJ45, 2 ชิ้น&#10;คีมย้ำ, 1 อัน&#10;หรือพิมพ์แค่ชื่ออุปกรณ์ เช่น&#10;ไขควง"
+                            placeholder="ตัวอย่าง:&#10;ชื่ออุปกรณ์, จำนวน หน่วย&#10;สาย LAN, 10 เมตร&#10;หัว RJ45, 2 ชิ้น"
                         >{{ task.equipment_used_initial or '' }}</textarea>
-                        <small class="form-text text-muted">พิมพ์อุปกรณ์แต่ละรายการในบรรทัดใหม่ โดยคั่นด้วยคอมม่า (,) ระหว่างชื่ออุปกรณ์กับจำนวน/หน่วย (ถ้ามี)</small>
+                        <small class="form-text text-muted">พิมพ์อุปกรณ์แต่ละรายการในบรรทัดใหม่ คั่นด้วยคอมม่า (,) ระหว่างชื่ออุปกรณ์กับจำนวน/หน่วย (ถ้ามี)</small>
                         
                         {# Display common equipment items here #}
                         {% if common_equipment_items %}
                         <div class="common-equipment-list">
                             <span class="text-muted" style="margin-right: 5px;">อุปกรณ์ที่ใช้บ่อย:</span>
                             {% for item in common_equipment_items %}
-                                <span class="badge bg-secondary common-equipment-item" onclick="insertEquipment('{{ item | e }}')">{{ item }}</span>
+                                <span class="badge bg-secondary common-equipment-item" onclick="insertEquipment('{{ item | e }}, ')">{{ item }}</span>
                             {% endfor %}
                         </div>
                         {% endif %}
@@ -359,10 +359,11 @@
             window.insertEquipment = function(itemText) {
                 const equipmentUsedTextarea = document.getElementById('equipment_used');
                 let currentValue = equipmentUsedTextarea.value.trim();
-                if (currentValue) {
+                // Add a newline only if there's already content and it doesn't end with a newline
+                if (currentValue && !currentValue.endsWith('\n')) {
                     equipmentUsedTextarea.value = currentValue + '\n' + itemText;
                 } else {
-                    equipmentUsedTextarea.value = itemText;
+                    equipmentUsedTextarea.value = currentValue + itemText; // Directly append if empty or ends with newline
                 }
                 equipmentUsedTextarea.focus();
             };
