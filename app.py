@@ -28,7 +28,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent,
 from linebot.v3.exceptions import InvalidSignatureError
 
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+from google.auth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -464,27 +464,28 @@ def create_task_flex_message(task):
 
     # --- Robust Phone Action Creation ---
     phone_action = None
-    phone_display_text = customer_info.get('phone', '').strip()
-    # Check if phone_display_text is not empty and contains at least one digit
-    if phone_display_text and re.search(r'\d', phone_display_text):
-        phone_number_cleaned = re.sub(r'\D', '', phone_display_text)
-        if phone_number_cleaned: # Ensure we have a cleaned number to form a URI
-            full_phone_uri = f"tel:{phone_number_cleaned}"
-            try:
-                phone_action = URIAction(label=phone_display_text, uri=full_phone_uri)
-            except Exception as e:
-                app.logger.error(f"Error creating phone_action URIAction for '{phone_display_text}': {e}")
-                phone_action = None # Ensure it's None on failure
-        else:
-            app.logger.debug(f"Phone number cleaned to empty: '{phone_display_text}'")
+    phone_display_text = str(customer_info.get('phone', '')).strip() # Ensure it's a string, then strip
+    phone_number_cleaned = re.sub(r'\D', '', phone_display_text) # Remove non-digits
+    
+    # Only create URIAction if the cleaned phone number is not empty
+    # and the display text is not empty (to avoid empty labels)
+    if phone_number_cleaned and phone_display_text: 
+        full_phone_uri = f"tel:{phone_number_cleaned}"
+        try:
+            phone_action = URIAction(label=phone_display_text, uri=full_phone_uri)
+        except Exception as e:
+            app.logger.error(f"Error creating phone_action URIAction for '{full_phone_uri}': {e}")
+            phone_action = None # Ensure it's None on failure
     else:
-        app.logger.debug(f"Phone display text is empty or has no digits: '{phone_display_text}'")
+        app.logger.debug(f"Skipping phone_action: phone_display_text='{phone_display_text}', phone_number_cleaned='{phone_number_cleaned}'")
+
 
     # --- Robust Map Action Creation ---
     map_action = None
-    map_url = customer_info.get('map_url', '').strip()
-    # Simple check for a valid-looking URL scheme and some content
-    if map_url and (map_url.startswith('http://') or map_url.startswith('https://')) and len(map_url) > 8: # min length to avoid "http://" only
+    map_url = str(customer_info.get('map_url', '')).strip() # Ensure it's a string, then strip
+    
+    # Only create URIAction if map_url is not empty and starts with http/https
+    if map_url and (map_url.startswith('http://') or map_url.startswith('https://')):
         try:
             map_action = URIAction(label="📍 เปิด Google Maps", uri=map_url)
         except Exception as e:
@@ -493,6 +494,7 @@ def create_task_flex_message(task):
     else:
         if map_url: # Log if it exists but is invalid
             app.logger.debug(f"Invalid map URL format for URIAction: '{map_url}'")
+
 
     # --- Body Contents Construction with explicit string casting ---
     body_contents = [
@@ -515,18 +517,19 @@ def create_task_flex_message(task):
     ]
 
     # --- Footer Contents Construction ---
-    footer_contents = [
-        ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url))
-    ]
-    if map_action:
-        footer_contents.insert(0, ButtonComponent(style='link', height='sm', action=map_action))
-        footer_contents.insert(1, SeparatorComponent(margin='md'))
+    footer_contents_list = []
+    if map_action: # Only add button if map_action is valid
+        footer_contents_list.append(ButtonComponent(style='link', height='sm', action=map_action))
+        footer_contents_list.append(SeparatorComponent(margin='md'))
+    
+    # Always add the update button
+    footer_contents_list.append(ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url)))
 
     # --- Bubble Container and Flex Message Creation ---
     bubble = BubbleContainer(direction='ltr',
         header=BoxComponent(layout='vertical', contents=[TextComponent(text='📢 แจ้งเตือนงาน', weight='bold', color='#ffffff')], background_color='#007BFF', padding_all='12px'),
         body=BoxComponent(layout='vertical', contents=body_contents),
-        footer=BoxComponent(layout='vertical', spacing='sm', contents=footer_contents, flex=0),
+        footer=BoxComponent(layout='vertical', spacing='sm', contents=footer_contents_list, flex=0), # Use the carefully constructed list
         action=URIAction(uri=update_url) # Main bubble action
     )
     return FlexMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
@@ -541,9 +544,9 @@ def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
         
         phone_action = None
-        phone_display_text = customer_info.get('phone', '').strip()
+        phone_display_text = str(customer_info.get('phone', '')).strip()
         phone_number_cleaned = re.sub(r'\D', '', phone_display_text)
-        if phone_display_text and phone_number_cleaned and re.match(r'^\d+$', phone_number_cleaned):
+        if phone_number_cleaned and phone_display_text and re.match(r'^\d+$', phone_number_cleaned):
             full_phone_uri = f"tel:{phone_number_cleaned}"
             try:
                 phone_action = URIAction(label=f"📞 โทร: {phone_display_text}", uri=full_phone_uri)
@@ -612,32 +615,29 @@ def create_customer_history_carousel(tasks, customer_name):
 @app.route("/", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
-        customer_name = request.form.get('customer')
-        customer_phone = request.form.get('phone')
-        address = request.form.get('address')
-        detail = request.form.get('detail')
-        appointment_str = request.form.get('appointment')
-        map_url_from_form = request.form.get('latitude_longitude') # This is now the full Google Maps URL input - from app2.py
+        # Ensure all form data is treated as string, defaulting to empty string if not present
+        customer_name = str(request.form.get('customer', '')).strip()
+        customer_phone = str(request.form.get('phone', '')).strip()
+        address = str(request.form.get('address', '')).strip()
+        detail = str(request.form.get('detail', '')).strip()
+        appointment_str = str(request.form.get('appointment', '')).strip()
+        map_url_from_form = str(request.form.get('latitude_longitude', '')).strip()
 
         today_str = datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')
-        title = f"งานลูกค้า: {customer_name or 'ไม่ระบุชื่อลูกค้า'} ({today_str})" # Use 'ไม่ระบุชื่อลูกค้า' if name is empty - from app2.py
+        title = f"งานลูกค้า: {customer_name or 'ไม่ระบุชื่อลูกค้า'} ({today_str})" 
         
-        # Construct notes based on line-by-line format - from app2.py
+        # Construct notes based on line-by-line format
         notes_lines = []
-        notes_lines.append(customer_name or '') # Line 1: Customer Name
-        notes_lines.append(customer_phone or '') # Line 2: Phone
-        notes_lines.append(address or '') # Line 3: Address
+        notes_lines.append(customer_name or '') 
+        notes_lines.append(customer_phone or '') 
+        notes_lines.append(address or '') 
         
-        if map_url_from_form: # Line 4: Map URL (if present)
+        if map_url_from_form: 
             notes_lines.append(map_url_from_form)
         
-        # Line 5 (or Line 4 if no map URL): Detail
-        # Ensure detail is the last part and handles multiple lines correctly
         if detail:
-            # Append detail lines individually if it contains newlines, or as a single entry
             notes_lines.extend(detail.split('\n'))
 
-        # Remove trailing empty strings if any, to keep notes concise
         while notes_lines and notes_lines[-1] == '':
             notes_lines.pop()
 
@@ -655,33 +655,39 @@ def form_page():
 
         created_task = create_google_task(title, notes=notes, due=due_date_gmt)
 
-        if created_task: # Check if task was successfully created
-            # Try to create Flex Message, but handle potential errors gracefully
+        if created_task: 
             flex_message = None
             try:
                 flex_message = create_task_flex_message(created_task)
             except Exception as e:
                 app.logger.error(f"Failed to create Flex Message for new task {created_task.get('id')}: {e}")
-                # Fallback to simple text message if Flex Message creation fails
-                flash('สร้างงานเรียบร้อยแล้ว แต่ไม่สามารถส่ง Flex Message ได้เนื่องจากข้อผิดพลาด.', 'warning')
-                return redirect(url_for('summary'))
+                flash('สร้างงานเรียบร้อยแล้ว แต่ไม่สามารถส่ง Flex Message ได้เนื่องจากข้อผิดพลาดภายในระบบ.', 'warning')
 
             settings = get_app_settings()
             recipients = [id for id in [settings['line_recipients'].get('admin_group_id'), settings['line_recipients'].get('technician_group_id')] if id]
-            if recipients and flex_message: # Only try to push if recipients and a valid flex_message exist
+            
+            messages_to_send_line = []
+            if flex_message:
+                messages_to_send_line.append(flex_message)
+            else: # Fallback to a simple text message if Flex Message failed
+                messages_to_send_line.append(TextMessage(text=f"งานใหม่ถูกสร้างแล้ว:\nหัวข้อ: {title}\nลูกค้า: {customer_name or '-'}\nเบอร์โทร: {customer_phone or '-'}\nรายละเอียด: {detail or '-'} \n\nดูรายละเอียด/อัปเดต: {url_for('update_task_details', task_id=created_task.get('id'), _external=True)}"))
+                flash('สร้างงานเรียบร้อยแล้ว, ส่งข้อความแจ้งเตือน LINE แบบข้อความธรรมดาแทน.', 'info')
+
+
+            if recipients and messages_to_send_line: 
                 try:
-                    # Push messages individually if recipients is a list of multiple IDs - from app2.py
                     if isinstance(recipients, list):
                         for recipient_id in recipients:
-                             line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=[flex_message]))
-                    else: # Single recipient
-                        line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=[flex_message]))
-                    flash('สร้างงานและส่งแจ้งเตือนเรียบร้อยแล้ว!', 'success')
+                             line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=messages_to_send_line))
+                    else: 
+                        line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send_line) ) 
+                    if flex_message: 
+                        flash('สร้างงานและส่งแจ้งเตือน LINE เรียบร้อยแล้ว!', 'success')
                 except Exception as e:
-                    app.logger.error(f"Failed to push Flex Message to LINE: {e}")
+                    app.logger.error(f"Failed to push message to LINE: {e}")
                     flash('สร้างงานเรียบร้อยแล้ว แต่ไม่สามารถส่งแจ้งเตือน LINE ได้.', 'warning')
             else:
-                 flash('สร้างงานเรียบร้อยแล้ว (ไม่มีผู้รับแจ้งเตือน LINE หรือ Flex Message ไม่ถูกสร้าง).', 'success')
+                 flash('สร้างงานเรียบร้อยแล้ว (ไม่มีผู้รับแจ้งเตือน LINE).', 'info')
             
             return redirect(url_for('summary'))
         else:
@@ -829,17 +835,17 @@ def update_task_details(task_id):
     if request.method == 'POST':
         original_status = task.get('status')
         new_status = request.form.get('status')
-        work_summary = request.form.get('work_summary', '').strip()
-        equipment_used = request.form.get('equipment_used', '').strip() # equipment_used is now multi-line
-        next_appointment_date_str = request.form.get('next_appointment_date', '').strip()
+        work_summary = str(request.form.get('work_summary', '')).strip() # Ensure string and strip
+        equipment_used = str(request.form.get('equipment_used', '')).strip() # equipment_used is now multi-line
+        next_appointment_date_str = str(request.form.get('next_appointment_date', '')).strip()
 
         # New fields for task details update - from app2.py
         # Get values, defaulting to empty string if not provided
-        updated_customer_name = request.form.get('customer_name', '').strip()
-        updated_customer_phone = request.form.get('customer_phone', '').strip()
-        updated_address = request.form.get('address', '').strip()
-        updated_detail = request.form.get('detail', '').strip()
-        updated_map_url = request.form.get('latitude_longitude', '').strip() # From the map URL input
+        updated_customer_name = str(request.form.get('customer_name', '')).strip()
+        updated_customer_phone = str(request.form.get('customer_phone', '')).strip()
+        updated_address = str(request.form.get('address', '')).strip()
+        updated_detail = str(request.form.get('detail', '')).strip()
+        updated_map_url = str(request.form.get('latitude_longitude', '')).strip() # From the map URL input
 
         # --- Handle File Uploads from web form to Google Drive --- - from app2.py
         all_attachment_urls = []
@@ -1000,6 +1006,9 @@ def settings_page():
 def delete_task(task_id):
     """Handles the deletion of a task."""
     if delete_google_task(task_id):
+        # Clear the cache for tasks after a successful deletion
+        # This forces get_google_tasks_for_report to fetch fresh data next time
+        cache.clear() # Clears all entries in the cache
         flash('ลบรายการงานเรียบร้อยแล้ว', 'success')
     else:
         flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
@@ -1114,6 +1123,8 @@ def handle_complete_task_command(event, task_id):
     """Handles 'เสร็จงาน <ID>' command."""
     updated_task = update_google_task(task_id, status='completed')
     if updated_task:
+        # Clear cache after task completion as well, to ensure summary page is fresh
+        cache.clear()
         reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")])
         source_id = event.source.group_id if event.source.type == 'group' else event.source.user_id
         check_for_nearby_jobs_and_notify(task_id, source_id)
@@ -1200,14 +1211,22 @@ def trigger_daily_reports():
             if 'due' in task and task['due']:
                  try:
                     due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                    dt_thai = due_dt_utc.astimezone(THAILAND_TZ) 
+                    dt_thai = dt_utc.astimezone(THAILAND_TZ) 
                     if dt_thai.date() == now_thai.date(): 
                         today_appointments.append(task)
                  except (ValueError, TypeError): continue
         
         if today_appointments:
             today_appointments.sort(key=lambda x: x.get('due', ''))
-            messages_to_send = [create_task_flex_message(task) for task in today_appointments]
+            messages_to_send = []
+            for task in today_appointments:
+                try:
+                    flex_msg = create_task_flex_message(task)
+                    messages_to_send.append(flex_msg)
+                except Exception as e:
+                    app.logger.error(f"Failed to create Flex Message for daily reminder task {task.get('id')}: {e}")
+                    # Fallback to simple text message for daily reminders
+                    messages_to_send.append(TextMessage(text=f"แจ้งเตือนงานวันนี้:\nหัวข้อ: {task.get('title', '-')}\nลูกค้า: {parse_customer_info_from_notes(task.get('notes', '')).get('name', '-')}\nเวลา: {parse_google_task_dates(task).get('due_formatted', '-')}\n\nดูรายละเอียด/อัปเดต: {url_for('update_task_details', task_id=task.get('id'), _external=True)}"))
             recipients = [id for id in [settings['line_recipients'].get('technician_group_id'), settings['line_recipients'].get('admin_group_id')] if id]
 
     # Check for evening outstanding summary
@@ -1232,7 +1251,7 @@ def trigger_daily_reports():
                     line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=messages_to_send[i:i+5]))
         else: # Single recipient
             for i in range(0, len(messages_to_send), 5):
-                line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5]))
+                line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5]) ) 
         
         return f"{len(messages_to_send)} messages sent to {len(recipients)} recipients.", 200
 
