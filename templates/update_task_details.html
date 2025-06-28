@@ -46,7 +46,7 @@
             border: 5px solid #fff; /* White border around QR */
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
-        .common-equipment-list {
+        .common-equipment-list, .equipment-search-results {
             display: flex;
             flex-wrap: wrap;
             gap: 5px;
@@ -55,7 +55,7 @@
             border: 1px dashed #ccc;
             border-radius: 5px;
         }
-        .common-equipment-item {
+        .common-equipment-item, .search-result-item {
             background-color: #e9e9e9;
             padding: 3px 8px;
             border-radius: 15px;
@@ -64,7 +64,7 @@
             color: #333;
             transition: background-color 0.2s;
         }
-        .common-equipment-item:hover {
+        .common-equipment-item:hover, .search-result-item:hover {
             background-color: #d0d0d0;
         }
     </style>
@@ -189,12 +189,20 @@
                         >{{ task.equipment_used_initial or '' }}</textarea>
                         <small class="form-text text-muted">พิมพ์อุปกรณ์แต่ละรายการในบรรทัดใหม่ คั่นด้วยคอมม่า (,) ระหว่างชื่ออุปกรณ์กับจำนวนและหน่วย (ถ้ามี)</small>
                         
+                        {# Search input and results for equipment #}
+                        <div class="mt-2">
+                            <input type="text" id="equipment_search_input" class="form-control form-control-sm" placeholder="ค้นหาอุปกรณ์...">
+                            <div id="equipment_search_results" class="equipment-search-results">
+                                <!-- Search results will be displayed here -->
+                            </div>
+                        </div>
+
                         {# Display common equipment items here #}
                         {% if common_equipment_items %}
                         <div class="common-equipment-list">
                             <span class="text-muted" style="margin-right: 5px;">อุปกรณ์ที่ใช้บ่อย:</span>
                             {% for item_name in common_equipment_items %}
-                                <span class="badge bg-secondary common-equipment-item" onclick="insertEquipment('{{ item_name | e }}, ')">{{ item_name }}</span>
+                                <span class="badge bg-secondary common-equipment-item" onclick="insertEquipment('{{ item_name | e }}', true)">{{ item_name }}</span>
                             {% endfor %}
                         </div>
                         {% endif %}
@@ -356,17 +364,78 @@
             }
 
             // Function to insert equipment item into the textarea
-            window.insertEquipment = function(itemText) {
+            window.insertEquipment = function(itemText, fromCommonList = false) {
                 const equipmentUsedTextarea = document.getElementById('equipment_used');
                 let currentValue = equipmentUsedTextarea.value.trim();
-                // Add a newline only if there's already content and it doesn't end with a newline
-                if (currentValue && !currentValue.endsWith('\n')) {
-                    equipmentUsedTextarea.value = currentValue + '\n' + itemText;
+                
+                let textToInsert = itemText;
+                if (fromCommonList) { // If from common list, add comma and space
+                    textToInsert = itemText + ', '; 
+                }
+
+                if (currentValue) {
+                    // Check if the current value already ends with a newline to avoid double newlines
+                    if (!currentValue.endsWith('\n')) {
+                        equipmentUsedTextarea.value = currentValue + '\n' + textToInsert;
+                    } else {
+                        equipmentUsedTextarea.value = currentValue + textToInsert;
+                    }
                 } else {
-                    equipmentUsedTextarea.value = currentValue + itemText; // Directly append if empty or ends with newline
+                    equipmentUsedTextarea.value = textToInsert;
                 }
                 equipmentUsedTextarea.focus();
+
+                // Move cursor to the end of the textarea
+                equipmentUsedTextarea.setSelectionRange(equipmentUsedTextarea.value.length, equipmentUsedTextarea.value.length);
             };
+
+            // Equipment Search Logic
+            const equipmentSearchInput = document.getElementById('equipment_search_input');
+            const equipmentSearchResults = document.getElementById('equipment_search_results');
+            let searchTimeout;
+
+            equipmentSearchInput.addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                const query = this.value.trim();
+                if (query.length < 2) { // Minimum characters to trigger search
+                    equipmentSearchResults.innerHTML = '';
+                    return;
+                }
+                searchTimeout = setTimeout(() => searchEquipment(query), 300); // Debounce search
+            });
+
+            async function searchEquipment(query) {
+                equipmentSearchResults.innerHTML = '<span class="text-muted">กำลังค้นหา...</span>';
+                try {
+                    const response = await fetch(`/lookup_equipment?q=${encodeURIComponent(query)}`);
+                    const results = await response.json();
+
+                    equipmentSearchResults.innerHTML = ''; // Clear previous results
+                    if (results.length > 0) {
+                        results.forEach(item => {
+                            const itemSpan = document.createElement('span');
+                            itemSpan.classList.add('badge', 'bg-info', 'search-result-item', 'me-1', 'mb-1');
+                            itemSpan.textContent = item.item_name;
+                            // When clicked, insert name, comma, space, unit (if available) into textarea
+                            itemSpan.onclick = () => {
+                                let insertValue = item.item_name;
+                                if (item.unit) {
+                                    insertValue += `, ${item.unit}`; // Add unit if available
+                                }
+                                window.insertEquipment(insertValue, true); // Use true to add newline if current content
+                                equipmentSearchResults.innerHTML = ''; // Clear search results after selection
+                                equipmentSearchInput.value = ''; // Clear search input
+                            };
+                            equipmentSearchResults.appendChild(itemSpan);
+                        });
+                    } else {
+                        equipmentSearchResults.innerHTML = '<span class="text-muted">ไม่พบอุปกรณ์</span>';
+                    }
+                } catch (error) {
+                    console.error('Error searching equipment:', error);
+                    equipmentSearchResults.innerHTML = '<span class="text-danger">ข้อผิดพลาดในการค้นหา</span>';
+                }
+            }
         });
     </script>
 </body>
