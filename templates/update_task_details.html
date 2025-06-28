@@ -31,6 +31,21 @@
             border-radius: 4px;
             object-fit: cover;
         }
+        /* Style for read-only fields */
+        .readonly-field {
+            background-color: #e9ecef;
+            padding: 0.375rem 0.75rem;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            min-height: calc(1.5em + 0.75rem + 2px); /* Match input height */
+            display: flex;
+            align-items: center;
+        }
+        textarea.readonly-field {
+            display: block;
+            min-height: calc(3.5em + 0.75rem + 2px); /* Adjust for textarea */
+            align-items: flex-start;
+        }
     </style>
 </head>
 <body>
@@ -46,14 +61,37 @@
                     <p class="mb-1"><strong>ID งาน:</strong> {{ task.id }}</p>
                     <p class="mb-1"><strong>สถานะปัจจุบัน:</strong> {{ task.display_status }}</p>
                     <hr>
-                    <!-- Display parsed customer info -->
-                    <p class="mb-1"><strong>ลูกค้า:</strong> {{ task.customer_name_initial or '-' }}</p>
-                    <p class="mb-1"><strong>เบอร์โทร:</strong> {{ task.customer_phone_initial or '-' }}</p>
-                    <p class="mb-1"><strong>ที่อยู่:</strong> {{ task.customer_address_initial or '-' }}</p>
-                    {% if task.map_url_initial %}
-                        <p class="mb-1"><strong>ลิงก์แผนที่:</strong> <a href="{{ task.map_url_initial }}" target="_blank">{{ task.map_url_initial }}</a></p>
-                    {% endif %}
-                    <p class="mb-0"><strong>รายละเอียดงาน:</strong><br>{{ task.customer_detail_initial | replace('\n', '<br>') | safe }}</p>
+                    <!-- Display parsed customer info as READ-ONLY TEXT -->
+                    <div class="mb-2">
+                        <label class="form-label"><strong>ชื่อลูกค้า:</strong></label>
+                        <div class="readonly-field">{{ task.customer_name_initial or '-' }}</div>
+                        <input type="hidden" name="customer_name_display" value="{{ task.customer_name_initial or '' }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label"><strong>เบอร์โทรศัพท์:</strong></label>
+                        <div class="readonly-field">{{ task.customer_phone_initial or '-' }}</div>
+                        <input type="hidden" name="customer_phone_display" value="{{ task.customer_phone_initial or '' }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label"><strong>ที่อยู่ลูกค้า:</strong></label>
+                        <div class="readonly-field">{{ task.customer_address_initial or '-' }}</div>
+                        <input type="hidden" name="address_display" value="{{ task.customer_address_initial or '' }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label"><strong>ลิงก์แผนที่ (Google Maps URL):</strong></label>
+                        {% if task.map_url_initial %}
+                            <div class="readonly-field"><a href="{{ task.map_url_initial }}" target="_blank">{{ task.map_url_initial }}</a></div>
+                        {% else %}
+                            <div class="readonly-field">-</div>
+                        {% endif %}
+                        <input type="hidden" name="latitude_longitude_display" value="{{ task.map_url_initial or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label"><strong>รายละเอียดงาน:</strong></label>
+                        <div class="readonly-field" style="white-space: pre-wrap;">{{ task.customer_detail_initial or '-' }}</div>
+                        <input type="hidden" name="detail_display" value="{{ task.customer_detail_initial or '' }}">
+                    </div>
+
                 </div>
 
                 {% if task.tech_reports_history %}
@@ -72,7 +110,6 @@
                                     <p class="mb-1"><strong>สรุปผล:</strong> {{ report.work_summary or 'N/A' }}</p>
                                     {# Changed equipment_used to display multi-line #}
                                     <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong><br>{{ (report.equipment_used or 'N/A') | replace('\n', '<br>') | safe }}</p>
-                                    {# Removed display for start_time_actual and end_time_actual from previous version #}
                                     {% if report.next_appointment %}
                                     <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment | format_datetime_iso_to_thai }}</p>
                                     {% endif %}
@@ -104,32 +141,16 @@
                 <hr>
                 <h5 class="mb-3">กรอกข้อมูลอัปเดตครั้งล่าสุด</h5>
                 <form method="POST" enctype="multipart/form-data">
-                    <!-- New fields for updating task details from app2.py -->
-                    <div class="mb-3">
-                        <label for="customer_name" class="form-label"><strong>ชื่อลูกค้า:</strong></label>
-                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer_name_initial or '' }}" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="customer_phone" class="form-label"><strong>เบอร์โทรศัพท์:</strong></label>
-                        <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer_phone_initial or '' }}">
-                    </div>
-                    <div class="mb-3">
-                        <label for="address" class="form-label"><strong>ที่อยู่ลูกค้า:</strong></label>
-                        <textarea class="form-control" id="address" name="address" rows="2">{{ task.customer_address_initial or '' }}</textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label for="latitude_longitude" class="form-label"><strong>ลิงก์แผนที่ (Google Maps URL):</strong></label>
-                        <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.map_url_initial or '' }}" placeholder="เช่น https://maps.app.goo.gl/...">
-                        {# Changed button text and functionality #}
-                        <button type="button" class="btn btn-info btn-sm mt-2" id="shareCurrentLocationBtn"><i class="fas fa-location-arrow me-2"></i>แชร์ที่อยู่ปัจจุบัน</button>
-                        <small class="form-text text-muted" id="shareLocationStatus">กดเพื่อใส่ลิงก์แผนที่ Google Maps ของตำแหน่งคุณ</small>
-                    </div>
-                    <div class="mb-3">
-                        <label for="detail" class="form-label"><strong>รายละเอียดงาน:</strong></label>
-                        <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer_detail_initial or '' }}</textarea>
-                    </div>
+                    <!-- These fields are now read-only, their values are captured via hidden inputs above -->
+                    {# Keeping these as hidden inputs is generally preferred to ensure their values are passed back on POST,
+                       even though they are displayed via div.readonly-field.
+                       Alternatively, just pass task.customer_name_initial etc. directly in app.py's POST handler from task_raw #}
+                    <input type="hidden" name="customer_name" value="{{ task.customer_name_initial or '' }}">
+                    <input type="hidden" name="customer_phone" value="{{ task.customer_phone_initial or '' }}">
+                    <input type="hidden" name="address" value="{{ task.customer_address_initial or '' }}">
+                    <input type="hidden" name="latitude_longitude" value="{{ task.map_url_initial or '' }}">
+                    <input type="hidden" name="detail" value="{{ task.customer_detail_initial or '' }}">
 
-                    <hr class="my-4">
 
                     <div class="mb-3">
                         <label for="work_summary" class="form-label"><strong>สรุปผลการทำงาน:</strong></label>
@@ -142,8 +163,6 @@
                         <textarea class="form-control" id="equipment_used" name="equipment_used" rows="2"></textarea>
                     </div>
 
-                    {# Completely removed the div for start_time_actual and end_time_actual fields #}
-
                     <div class="mb-3">
                         <label for="files" class="form-label"><strong>เพิ่มรูปภาพ/ไฟล์ (สำหรับครั้งนี้):</strong></label>
                         <input type="file" class="form-control" id="files" name="files[]" multiple accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation">
@@ -151,9 +170,10 @@
                     </div>
 
                     {# The current_lat/lon hidden inputs are still useful for recording *actual* work location in tech report #}
-                    {# The shareCurrentLocationBtn above now fills the main latitude_longitude field directly for user convenience #}
                     <input type="hidden" id="current_lat" name="current_lat">
                     <input type="hidden" id="current_lon" name="current_lon">
+                    <button type="button" class="btn btn-info btn-sm" id="getLocationBtn"><i class="fas fa-map-marker-alt me-2"></i>บันทึกพิกัดปัจจุบัน</button>
+                    <small class="form-text text-muted" id="locationStatus">คลิกเพื่อบันทึกพิกัดสถานที่ทำงานในรายงานนี้</small>
 
 
                     <hr class="my-4">
@@ -247,43 +267,44 @@
                 }
             });
 
-            // Geolocation logic for "แชร์ที่อยู่ปัจจุบัน" button
-            const shareCurrentLocationBtn = document.getElementById('shareCurrentLocationBtn');
-            const latitudeLongitudeInput = document.getElementById('latitude_longitude');
-            const shareLocationStatus = document.getElementById('shareLocationStatus');
-            const currentLatInput = document.getElementById('current_lat'); // Still useful for tech report
-            const currentLonInput = document.getElementById('current_lon'); // Still useful for tech report
+            // Geolocation logic for "บันทึกพิกัดปัจจุบัน" button
+            const getLocationBtn = document.getElementById('getLocationBtn');
+            const currentLatInput = document.getElementById('current_lat');
+            const currentLonInput = document.getElementById('current_lon');
+            const locationStatus = document.getElementById('locationStatus');
 
-            if (shareCurrentLocationBtn) {
-                shareCurrentLocationBtn.addEventListener('click', function() {
-                    shareLocationStatus.textContent = 'กำลังค้นหาที่อยู่ปัจจุบัน...';
+            if (getLocationBtn) {
+                getLocationBtn.addEventListener('click', function() {
+                    locationStatus.textContent = 'กำลังค้นหาพิกัด...';
                     if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
                             (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
-                                
-                                latitudeLongitudeInput.value = googleMapsUrl; // Populate the main input field
-                                currentLatInput.value = lat; // Keep for tech report data
-                                currentLonInput.value = lon; // Keep for tech report data
+                                // This button fills hidden inputs for tech report data
+                                currentLatInput.value = lat; 
+                                currentLonInput.value = lon; 
 
-                                shareLocationStatus.textContent = `ลิงก์แผนที่สร้างสำเร็จ: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                                shareLocationStatus.style.color = 'green';
+                                locationStatus.textContent = `บันทึกพิกัด: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                                locationStatus.style.color = 'green';
                             },
                             (error) => {
                                 console.error("Error getting location: ", error);
-                                shareLocationStatus.textContent = 'ไม่สามารถดึงที่อยู่ได้ (โปรดอนุญาตการเข้าถึงตำแหน่ง)';
-                                shareLocationStatus.style.color = 'red';
+                                locationStatus.textContent = 'ไม่สามารถดึงพิกัดได้ (โปรดอนุญาตการเข้าถึงตำแหน่ง)';
+                                locationStatus.style.color = 'red';
                             },
                             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                         );
                     } else {
-                        shareLocationStatus.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation';
-                        shareLocationStatus.style.color = 'red';
+                        locationStatus.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation';
+                        locationStatus.style.color = 'red';
                     }
                 });
             }
+
+            // This script is for "แชร์ที่อยู่ปัจจุบัน" button on NEW TASK FORM (form.html)
+            // Not directly used on update_task_details.html, but keeping the comment here for clarity
+            // if (shareCurrentLocationBtn) { ... }
         });
     </script>
 </body>
