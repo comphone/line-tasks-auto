@@ -77,7 +77,6 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-# [START qrcode_settings_storage_updated]
 _APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
@@ -88,12 +87,12 @@ _APP_SETTINGS_STORE = {
         'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
         'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
     },
-    'qrcode_settings': { # Default QR code settings
+    'qrcode_settings': { 
         'box_size': 8,
         'border': 4,
         'fill_color': '#28a745', 
         'back_color': '#FFFFFF',
-        'custom_url': '' # New: Custom URL for general QR code
+        'custom_url': '' 
     }
 }
 
@@ -105,14 +104,12 @@ def get_app_settings():
 def save_app_settings(settings_data):
     """Saves app settings to a placeholder store."""
     app.logger.info(f"Saving app settings to mock store: {settings_data}")
-    # Update nested dictionaries carefully
     for key, value in settings_data.items():
         if isinstance(value, dict) and key in _APP_SETTINGS_STORE and isinstance(_APP_SETTINGS_STORE[key], dict):
             _APP_SETTINGS_STORE[key].update(value)
         else:
             _APP_SETTINGS_STORE[key] = value
     return True
-# [END qrcode_settings_storage_updated]
 
 # --- Google API Helper Functions ---
 def get_google_service(api_name, api_version):
@@ -423,6 +420,7 @@ def parse_google_task_dates(task_item):
             parsed_task[f'{key}_formatted'] = '' 
     return parsed_task
 
+# [START parse_tech_report_from_notes_with_equipment_structure]
 def parse_tech_report_from_notes(notes):
     """Extracts all past technician reports into a history list and the original notes text."""
     if not notes: return [], ""
@@ -430,7 +428,18 @@ def parse_tech_report_from_notes(notes):
     history = []
     for json_str in report_blocks:
         try:
-            history.append(json.loads(json_str))
+            report_data = json.loads(json_str)
+            # Ensure equipment_used is correctly parsed when retrieving historical reports
+            # If equipment_used is a list (new format), it's fine. If it's a string (old format), keep as is.
+            if isinstance(report_data.get('equipment_used'), str):
+                report_data['equipment_used_display'] = _format_equipment_list(
+                    _parse_equipment_string(report_data['equipment_used'])
+                )
+            else: # Already a list or None
+                report_data['equipment_used_display'] = _format_equipment_list(
+                    report_data.get('equipment_used', [])
+                )
+            history.append(report_data)
         except json.JSONDecodeError as e:
             app.logger.error(f"Error decoding JSON in tech report block: {e}, Content: {json_str[:100]}...")
 
@@ -438,6 +447,7 @@ def parse_tech_report_from_notes(notes):
     
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
+# [END parse_tech_report_from_notes_with_equipment_structure]
 
 def allowed_file(filename):
     """Checks for allowed file extensions."""
@@ -468,6 +478,57 @@ def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back
     except Exception as e:
         app.logger.error(f"Error generating QR code for URL {url}: {e}")
         return None
+
+# [START equipment_parsing_functions]
+def _parse_equipment_string(text_input):
+    """
+    Parses equipment string like "Item, Quantity Unit\nItem2, Qty2"
+    into a list of dicts: [{"item": "Item", "quantity": "Quantity Unit"}]
+    """
+    equipment_list = []
+    if not text_input:
+        return equipment_list
+    
+    lines = text_input.strip().split('\n')
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        parts = line.split(',', 1) # Split only on the first comma
+        item_name = parts[0].strip()
+        quantity = parts[1].strip() if len(parts) > 1 else ''
+        
+        if item_name: # Only add if item name exists
+            equipment_list.append({"item": item_name, "quantity": quantity})
+            
+    return equipment_list
+
+def _format_equipment_list(equipment_list):
+    """
+    Formats a list of equipment dicts into a multi-line string for textarea display.
+    Also used for display in history.
+    """
+    if not equipment_list:
+        return ''
+    
+    formatted_lines = []
+    # Ensure equipment_list is actually a list, in case old data is just a string
+    if isinstance(equipment_list, list):
+        for eq in equipment_list:
+            if isinstance(eq, dict) and "item" in eq:
+                line = f"- {eq['item']}"
+                if eq.get("quantity"):
+                    line += f", {eq['quantity']}"
+                formatted_lines.append(line)
+            elif isinstance(eq, str): # Fallback for old string format if mixed data
+                formatted_lines.append(eq)
+    elif isinstance(equipment_list, str): # Handle old string data being passed directly
+        return equipment_list.replace('\n', '<br>') # For displaying in history
+        
+    return "\n".join(formatted_lines)
+# [END equipment_parsing_functions]
+
 
 # --- Flex Message Creation Functions ---
 def create_task_flex_message(task):
@@ -673,7 +734,7 @@ def form_page():
         due_date_gmt, start_time_iso, end_time_iso = None, None, None
         if appointment_str:
             try:
-                dt_local = datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M")
+                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
                 start_time_iso = dt_local.isoformat()
                 end_time_iso = (dt_local + datetime.timedelta(hours=1)).isoformat()
@@ -874,7 +935,18 @@ def update_task_details(task_id):
         task['map_url_initial'] = customer_info_from_task.get('map_url', '')
 
         task['tech_reports_history'] = history
-        task['notes_display'] = original_notes_text_removed_tech_reports 
+        # [START equipment_used_prefill]
+        # When displaying the form for editing, try to format equipment_used back into string
+        # for the textarea, assuming the most recent report's equipment is what's being edited.
+        if history and history[0].get('equipment_used'):
+            # If the stored equipment_used is a list (new format), format it back to string for textarea
+            if isinstance(history[0]['equipment_used'], list):
+                task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used']).replace('<br>', '\n')
+            else: # If it's an old string format, just use it directly
+                task['equipment_used_initial'] = history[0]['equipment_used']
+        else:
+            task['equipment_used_initial'] = ''
+        # [END equipment_used_prefill]
         
         if history and 'next_appointment' in history[0] and history[0]['next_appointment']:
             try:
@@ -889,8 +961,11 @@ def update_task_details(task_id):
         original_status = task.get('status')
         new_status = request.form.get('status')
         work_summary = str(request.form.get('work_summary', '')).strip() 
-        equipment_used = str(request.form.get('equipment_used', '')).strip() 
+        equipment_used_input = str(request.form.get('equipment_used', '')).strip() # Get raw input string
         next_appointment_date_str = str(request.form.get('next_appointment_date', '')).strip()
+
+        # Parse equipment_used_input into structured format
+        parsed_equipment_used = _parse_equipment_string(equipment_used_input)
 
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
         updated_customer_phone = str(request.form.get('customer_phone', '')).strip()
@@ -939,7 +1014,7 @@ def update_task_details(task_id):
         new_tech_report_data = {
             'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             'work_summary': work_summary,
-            'equipment_used': equipment_used, 
+            'equipment_used': parsed_equipment_used, # Store the parsed structured data
             'next_appointment': next_appointment_gmt, 
             'attachment_urls': all_attachment_urls,
             'location_url': current_location_url 
@@ -1011,23 +1086,10 @@ def update_task_details(task_id):
 
         return redirect(url_for('summary'))
 
-    # [START qrcode_render_update_task_flexible]
-    # ดึงการตั้งค่า QR code จาก settings
+    public_report_url_for_task = url_for('summary', _external=True, search_query=task.get('id', ''), status_filter='all') 
+    
     qr_settings = get_app_settings().get('qrcode_settings', {})
-    
-    # 1. ตรวจสอบว่ามี custom_url กำหนดไว้ใน settings หรือไม่
-    custom_qr_url_from_settings = qr_settings.get('custom_url', '').strip()
 
-    public_report_url_for_task = None
-    if custom_qr_url_from_settings and (custom_qr_url_from_settings.startswith('http://') or custom_qr_url_from_settings.startswith('https://')):
-        # 2. ถ้ามีและถูกต้อง ให้ใช้ custom_url สำหรับ QR code ของหน้านี้
-        public_report_url_for_task = custom_qr_url_from_settings
-    else:
-        # 3. ถ้าไม่มี custom_url หรือไม่ถูกต้อง ให้ใช้ URL ของรายงานงานเฉพาะ (แบบเดิม)
-        # เราจะใช้ Task ID เป็น search_query เพื่อให้กรองเฉพาะงานนี้
-        public_report_url_for_task = url_for('summary', _external=True, search_query=task_id, status_filter='all') 
-    
-    # Generate QR code for this specific task's public report URL
     qr_code_base64_for_task = generate_qr_code_base64(
         public_report_url_for_task, 
         box_size=qr_settings.get('box_size', 6),    
@@ -1035,7 +1097,6 @@ def update_task_details(task_id):
         fill_color=qr_settings.get('fill_color', '#0056b3'), 
         back_color=qr_settings.get('back_color', '#FFFFFF') 
     )
-    # [END qrcode_render_update_task_flexible]
 
     return render_template('update_task_details.html', 
                            task=task, 
