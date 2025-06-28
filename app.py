@@ -858,7 +858,9 @@ def summary():
             total_summary_stats['needsAction'] += 1
 
 
-    for task_item in filtered_by_status_tasks: # Iterate over the filtered tasks for display
+    # Re-filter tasks based on final_filtered_tasks (after search query applied)
+    tasks = [] # Initialize tasks list for rendering
+    for task_item in filtered_by_status_tasks: # Iterate over the results of status filter
         parsed_task = parse_google_task_dates(task_item)
         parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
         
@@ -1050,22 +1052,15 @@ def update_task_details(task_id):
                 settings = get_app_settings()
                 tech_group_id = settings['line_recipients'].get('technician_group_id')
                 
-                # Check if the update came from a user (private chat) or group/room
-                # and send notification to group only if it was a private update or group is primary recipient
-                if tech_group_id: # Only push if group ID is configured
-                    customer_info = parse_customer_info_from_notes(updated_task.get('notes', ''))
-                    completed_group_message = TextMessage(
-                        text=(f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n"
-                            f"ลูกค้า: {customer_info.get('name', '-')}\n"
-                            f"โทร: {customer_info.get('phone', '-')}\n"
-                            f"รายละเอียด: {customer_info.get('detail', '-')}\n\n"
-                            f"ดูรายละเอียด: {url_for('update_task_details', task_id=task_id, _external=True)}")
-                    )
+                # Send notification only if technician_group_id is set
+                if tech_group_id:
+                    # Construct a message for completion
+                    completed_message = TextMessage(text=f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n\nดูรายละเอียด: {url_for('update_task_details', task_id=task_id, _external=True)}")
                     try:
-                        line_messaging_api.push_message(PushMessageRequest(to=tech_group_id, messages=[completed_group_message]))
-                        app.logger.info(f"Sent completion notification for task {task_id} to technician group: {tech_group_id}.")
+                        line_messaging_api.push_message(PushMessageRequest(to=tech_group_id, messages=[completed_message]))
+                        app.logger.info(f"Sent completion notification for task {task_id} to technician group.")
                     except Exception as e:
-                        app.logger.error(f"Failed to send completion notification to LINE group: {e}")
+                        app.logger.error(f"Failed to send completion notification to LINE: {e}")
 
                 # check_for_nearby_jobs_and_notify is also called, will work if tech_group_id is valid
                 check_for_nearby_jobs_and_notify(task_id, tech_group_id) 
@@ -1127,27 +1122,23 @@ def callback():
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
     try:
-        # Pass event.source.type and event.source.group_id/user_id to reply_to_line
-        # to differentiate between private and group chats for reply logic
-        if isinstance(event.source, GroupSource):
-            reply_to_line(event.reply_token, [], source_type='group', group_id=event.source.group_id) # Empty messages to just pass context
-        elif isinstance(event.source, UserSource):
-            reply_to_line(event.reply_token, [], source_type='user', user_id=event.source.user_id) # Empty messages to just pass context
-
-        handler.handle(body, signature) # Process the actual message
+        # The event object should already contain source information
+        handler.handle(body, signature) 
     except InvalidSignatureError:
         abort(400)
     return 'OK'
 
 # Helper function to reply to LINE, handles private vs group replies
-def reply_to_line(reply_token, messages, source_type=None, group_id=None, user_id=None):
+# This function is called from specific command handlers, which already have event.source information
+# So, we pass event.reply_token directly and let the handlers manage the source context.
+def reply_to_line(reply_token, messages):
     """Central function for sending reply messages."""
     try:
-        # Using reply_message for both user and group replies for immediate response
         line_messaging_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=messages))
-        app.logger.info(f"Successfully replied/sent messages to {source_type} (ID: {group_id or user_id}).")
+        # No need to log source_type, group_id, user_id here as it's passed from calling handler
+        app.logger.info(f"Successfully replied/sent messages via reply_token.")
     except Exception as e:
-        app.logger.error(f"Failed to reply to LINE (source_type: {source_type}, group_id: {group_id}, user_id: {user_id}): {e}")
+        app.logger.error(f"Failed to reply to LINE: {e}")
 
 def handle_help_command(event):
     """Handles the 'comphone' command."""
@@ -1164,29 +1155,29 @@ def handle_help_command(event):
         "➡️ `ดูงาน [คำค้นหา]`\nดูรายละเอียดงาน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n\n" 
         "➡️ `ปิดงาน [คำค้นหา]`\nปิดงานด่วน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n" 
     ))
-    # Pass source type to reply_to_line
-    reply_to_line(event.reply_token, [reply_message], source_type=event.source.type)
+    # Pass event.reply_token directly to reply_to_line
+    reply_to_line(event.reply_token, [reply_message])
 
 def handle_outstanding_tasks_command(event):
     """Handles 'งานค้าง' or 'งานค้างทั้งหมด' command."""
     tasks = get_google_tasks_for_report(show_completed=False)
     if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     if not tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างในขณะนี้")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างในขณะนี้")])
         
     message_lines = ["--- 📋 รายการงานค้างทั้งหมด ---"] # Updated title
     tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
     for i, task in enumerate(tasks[:15]): # Limit to 15 to avoid long messages
         customer_info = parse_customer_info_from_notes(task.get('notes', ''))
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n   ลูกค้า: {customer_info.get('name', '-')}\n   โทร: {customer_info.get('phone', '-')}\n   รายละเอียด: {customer_info.get('detail', '-')}\n   (ID: {task.get('id')})") # Added more details
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))], source_type=event.source.type)
+    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
 
 def handle_tasks_today_command(event):
     """Handles 'งานวันนี้' command."""
     tasks = get_google_tasks_for_report(show_completed=False) # Get all outstanding tasks
     if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     
     today_tasks = []
     now_thai_date = datetime.datetime.now(THAILAND_TZ).date()
@@ -1203,7 +1194,7 @@ def handle_tasks_today_command(event):
                 continue
     
     if not today_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="✅ วันนี้ไม่มีงานที่ต้องทำ หรือไม่มีงานค้างที่ถึงกำหนดวันนี้")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="✅ วันนี้ไม่มีงานที่ต้องทำ หรือไม่มีงานค้างที่ถึงกำหนดวันนี้")])
 
     message_lines = ["--- 🗓️ งานวันนี้ ---"]
     today_tasks.sort(key=lambda x: x.get('due', '')) # Sort by due time for today's tasks
@@ -1212,14 +1203,14 @@ def handle_tasks_today_command(event):
         parsed_dates = parse_google_task_dates(task)
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n   ลูกค้า: {customer_info.get('name', '-')}\n   โทร: {customer_info.get('phone', '-')}\n   รายละเอียด: {customer_info.get('detail', '-')}\n   นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n   (ID: {task.get('id')})")
     
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))], source_type=event.source.type)
+    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
 
 
 def handle_overdue_2_days_command(event):
     """Handles 'งานค้างเกิน 2 วัน' command."""
     tasks = get_google_tasks_for_report(show_completed=False)
     if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     
     overdue_tasks = []
     now_utc = datetime.datetime.now(pytz.utc)
@@ -1238,7 +1229,7 @@ def handle_overdue_2_days_command(event):
                 continue
     
     if not overdue_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="✅ ไม่มีงานค้างที่เลยกำหนดส่งเกิน 2 วัน")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="✅ ไม่มีงานค้างที่เลยกำหนดส่งเกิน 2 วัน")])
 
     message_lines = ["--- 🔴 งานค้างเกิน 2 วัน ---"]
     overdue_tasks.sort(key=lambda x: x.get('due', '')) # Sort by oldest overdue first
@@ -1247,31 +1238,31 @@ def handle_overdue_2_days_command(event):
         parsed_dates = parse_google_task_dates(task)
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n   ลูกค้า: {customer_info.get('name', '-')}\n   โทร: {customer_info.get('phone', '-')}\n   รายละเอียด: {customer_info.get('detail', '-')}\n   กำหนดส่ง: {parsed_dates.get('due_formatted', '-')}\n   (ID: {task.get('id')})")
     
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))], source_type=event.source.type)
+    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
 
 
 def handle_completed_tasks_command(event):
     """Handles 'งานเสร็จ' command."""
     tasks = get_google_tasks_for_report(show_completed=True)
     if tasks is None: 
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     
     completed_tasks = [t for t in tasks if t.get('status') == 'completed']
     if not completed_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="ยังไม่มีงานที่ทำเสร็จ")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="ยังไม่มีงานที่ทำเสร็จ")])
 
     message_lines = ["--- ✅ 5 รายการงานที่เสร็จล่าสุด ---"]
     completed_tasks.sort(key=lambda x: x.get('completed', ''), reverse=True)
     for i, task in enumerate(completed_tasks[:5]):
         customer_info = parse_customer_info_from_notes(task.get('notes', ''))
         message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n   ลูกค้า: {customer_info.get('name', '-')}\n   โทร: {customer_info.get('phone', '-')}\n   รายละเอียด: {customer_info.get('detail', '-')}\n   (ID: {task.get('id')})") # Added details
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))], source_type=event.source.type)
+    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
 
 def handle_summary_command(event):
     """Handles 'สรุปรายงาน' command."""
     tasks = get_google_tasks_for_report(show_completed=True)
     if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
 
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0}
     current_time_utc = datetime.datetime.now(pytz.utc)
@@ -1294,7 +1285,7 @@ def handle_summary_command(event):
         f"⏳ รอดำเนินการ: {stats['needsAction']}\n"
         f"❗️ ยังไม่ดำเนินการ: {stats['overdue']}"
     ))
-    reply_to_line(event.reply_token, [reply_message], source_type=event.source.type)
+    reply_to_line(event.reply_token, [reply_message])
 
 # Helper function to find tasks by customer name, phone, or ID
 def find_tasks_by_customer_query(query):
@@ -1331,33 +1322,33 @@ def handle_view_task_command_flexible(event, query_string):
     matching_tasks = find_tasks_by_customer_query(query_string)
 
     if not matching_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบงานสำหรับ '{query_string}'")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบงานสำหรับ '{query_string}'")])
     
     if len(matching_tasks) == 1:
         task = matching_tasks[0]
         flex_message = create_task_flex_message(task)
-        reply_to_line(event.reply_token, [flex_message], source_type=event.source.type)
+        reply_to_line(event.reply_token, [flex_message])
     else:
         message_lines = [f"พบหลายงานสำหรับ '{query_string}' โปรดระบุ ID เพื่อดูรายละเอียด:"]
         for i, task in enumerate(matching_tasks[:10]): # Limit to 10 for display
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n   ลูกค้า: {customer_info.get('name', '-')}\n   (ID: {task.get('id')})\n")
         message_lines.append("พิมพ์ 'ดูงาน <ID>' เพื่อดูรายละเอียดเฉพาะ")
-        reply_to_line(event.reply_token, [TextMessage(text="\n".join(message_lines))], source_type=event.source.type)
+        reply_to_line(event.reply_token, [TextMessage(text="\n".join(message_lines))])
 
 def handle_complete_task_command_flexible(event, query_string):
     """Handles 'ปิดงาน [คำค้นหา]' command."""
     matching_tasks = find_tasks_by_customer_query(query_string)
 
     if not matching_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบงานสำหรับ '{query_string}' ที่จะปิดได้")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบงานสำหรับ '{query_string}' ที่จะปิดได้")])
     
     if len(matching_tasks) == 1:
         task_to_complete = matching_tasks[0]
         updated_task = update_google_task(task_to_complete.get('id'), status='completed')
         if updated_task:
             cache.clear() # Clear cache after task completion
-            reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")], source_type=event.source.type)
+            reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")])
             
             # --- Send notification to GROUP if command came from private chat ---
             settings = get_app_settings()
@@ -1385,14 +1376,14 @@ def handle_complete_task_command_flexible(event, query_string):
 
             check_for_nearby_jobs_and_notify(task_to_complete.get('id'), tech_group_id) 
         else:
-            reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน '{query_string}' ได้")], source_type=event.source.type)
+            reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน '{query_string}' ได้")])
     else:
         message_lines = [f"พบหลายงานสำหรับ '{query_string}' โปรดระบุ ID เพื่อปิดงาน:"]
         for i, task in enumerate(matching_tasks[:10]): # Limit to 10 for display
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n   ลูกค้า: {customer_info.get('name', '-')}\n   (ID: {task.get('id')})\n")
         message_lines.append("พิมพ์ 'ปิดงาน <ID>' เพื่อปิดงานเฉพาะ")
-        reply_to_line(event.reply_token, [TextMessage(text="\n".join(message_lines))], source_type=event.source.type)
+        reply_to_line(event.reply_token, [TextMessage(text="\n".join(message_lines))])
 
 
 # New command handler for "เปิดงานใหม่"
@@ -1402,7 +1393,7 @@ def handle_open_new_task_command(event):
     reply_message = TextMessage(
         text=f"คลิกที่ลิงก์นี้เพื่อบันทึกงานใหม่:\n{new_task_url}"
     )
-    reply_to_line(event.reply_token, [reply_message], source_type=event.source.type)
+    reply_to_line(event.reply_token, [reply_message])
 
 # New command handler for "เริ่มลงงาน"
 def handle_start_work_command(event):
@@ -1412,9 +1403,9 @@ def handle_start_work_command(event):
     """
     tasks = get_google_tasks_for_report(show_completed=False) # Get only pending tasks
     if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
     if not tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างให้เริ่มลงงานในขณะนี้")], source_type=event.source.type)
+        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างให้เริ่มลงงานในขณะนี้")])
 
     message_text = "เลือกงานที่ต้องการเริ่มลงงาน (สูงสุด 8 งาน):\n\n"
     quick_reply_buttons = []
@@ -1449,7 +1440,7 @@ def handle_start_work_command(event):
         text=message_text,
         quick_reply=QuickReply(items=quick_reply_buttons)
     )
-    reply_to_line(event.reply_token, [reply_message], source_type=event.source.type)
+    reply_to_line(event.reply_token, [reply_message])
 
 
 # Command Dispatcher Dictionary
@@ -1473,14 +1464,13 @@ def handle_message(event):
     text_lower = text.lower()
 
     # Pass source type and IDs to reply_to_line based on event source
-    source_type = event.source.type
-    group_id = event.source.group_id if isinstance(event.source, GroupSource) else None
-    user_id = event.source.user_id if isinstance(event.source, UserSource) else None
+    # No need to explicitly pass to reply_to_line here, as it's not a parameter of reply_to_line now.
+    # The reply_token handles direct reply, and push_message for group notifications.
 
     # Handle commands with arguments that might be IDs or customer names/phones
     if text_lower.startswith('c '):
         query_arg = text[len('c '):].strip()
-        handle_customer_search_command(event, query_arg) # Handlers will now use source_type for reply
+        handle_customer_search_command(event, query_arg) 
         return
 
     if text_lower.startswith('ดูงาน '):
@@ -1500,11 +1490,11 @@ def handle_message(event):
 
     # Handle direct commands without arguments
     if text_lower in COMMANDS:
-        COMMANDS[text_lower](event) # Handlers will now use source_type for reply
+        COMMANDS[text_lower](event)
         return 
     
     # If no command matches, reply with a general message or help
-    reply_to_line(event.reply_token, [TextMessage(text="ฉันไม่เข้าใจคำสั่งของคุณ ลองพิมพ์ 'comphone' เพื่อดูวิธีใช้งานนะครับ")], source_type=source_type)
+    reply_to_line(event.reply_token, [TextMessage(text="ฉันไม่เข้าใจคำสั่งของคุณ ลองพิมพ์ 'comphone' เพื่อดูวิธีใช้งานนะครับ")])
 
 
 # --- Cron Job Endpoint ---
