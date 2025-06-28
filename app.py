@@ -427,35 +427,41 @@ def parse_customer_info_from_notes(notes):
 
     # Fallback for old/unstructured notes for customer_name, phone, address if not found by prefix
     # This ensures older data is still parsed reasonably well.
+    # This section attempts to parse from line order if explicit prefixes are missing.
     if not info['name'] and len(lines) > 0:
+        # Avoid treating lines that look like other fields as name if not prefixed
         if not re.match(r"^(เบอร์โทร|ที่อยู่|ลิงก์แผนที่|รายละเอียดงาน):", lines[0].strip()):
             info['name'] = lines[0].strip()
             
     if not info['phone'] and len(lines) > 1:
+        # Check if it looks like a phone number or is not a known prefix
         if not re.match(r"^(ที่อยู่|ลิงก์แผนที่|รายละเอียดงาน):", lines[1].strip()):
             if re.search(r'\d', lines[1]): # Only consider as phone if it has digits
                 info['phone'] = lines[1].strip()
 
     if not info['address'] and len(lines) > 2:
+        # Check if it looks like an address or is not a known prefix
         if not re.match(r"^(ลิงก์แผนที่|รายละเอียดงาน):", lines[2].strip()):
             info['address'] = lines[2].strip()
 
     # Final check for detail if still empty and no marker was found
+    # This is critical to ensure detail doesn't get lost
     if not info['detail'] and not found_detail_marker:
-        # Reconstruct detail from remaining content after parsing known fields
-        processed_lines_count = 0
-        if info['name']: processed_lines_count += 1
-        if info['phone']: processed_lines_count += 1
-        if info['address']: processed_lines_count += 1
-        # Map URL might be embedded or not, and can be on different lines
-        # This part becomes complex quickly without strict adherence.
-        # For new data, the prefixing will ensure accuracy. For old, it's best effort.
-        
-        # A simpler fallback for detail if not found by marker:
-        # Assume all lines after the first few (that might be name, phone, address) are detail
-        # This will depend heavily on original data format.
-        # For now, rely on the prefixing for new data and best effort for old.
-        pass # Detail will be empty if not explicitly marked or in first few lines without proper format
+        # Attempt to capture all remaining non-prefixed lines as detail if detail marker was absent
+        current_line_idx = 0
+        if info['name']: current_line_idx += 1
+        if info['phone']: current_line_idx += 1
+        if info['address']: current_line_idx += 1
+
+        potential_detail_lines = []
+        for i in range(current_line_idx, len(lines)):
+            line_to_check = lines[i].strip()
+            # If map_url was not matched by prefix, it might be here.
+            # Avoid putting map_url into detail if it's explicitly a map URL.
+            if not re.match(patterns['map_url_pattern'], line_to_check) and \
+               not re.match(r"^(ลูกค้า|เบอร์โทร|ที่อยู่|รายละเอียดงาน):", line_to_check):
+                potential_detail_lines.append(line_to_check)
+        info['detail'] = "\n".join(potential_detail_lines).strip()
 
 
     return info
@@ -1138,14 +1144,14 @@ def handle_help_command(event):
         "🤖 **วิธีใช้งานบอท** 🤖\n\n"
         "➡️ `งานค้างทั้งหมด`\nดูรายการงานที่ยังไม่เสร็จทั้งหมด\n\n"
         "➡️ `งานวันนี้`\nดูรายการงานที่ต้องทำวันนี้\n\n"
-        "➡️ `งานค้างเกิน 2 วัน`\nดูรายการงานที่เลยกำหนดส่งเกิน 2 วัน\n\n" # New help text
+        "➡️ `งานค้างเกิน 2 วัน`\nดูรายการงานที่เลยกำหนดส่งเกิน 2 วัน\n\n" 
         "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
         "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
         "➡️ `เปิดงานใหม่`\nรับลิงก์สำหรับบันทึกงานใหม่\n\n"
         "➡️ `เริ่มลงงาน`\nเลือกงานค้างเพื่ออัปเดตทันที\n\n"
         "➡️ `c [ชื่อลูกค้า]`\nค้นหาประวัติงานของลูกค้า (เช่น: c สมศรี)\n\n" 
-        "➡️ `ดูงาน [คำค้นหา]`\nดูรายละเอียดงาน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n\n" # Updated help text
-        "➡️ `ปิดงาน [คำค้นหา]`\nปิดงานด่วน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n" # Updated help text
+        "➡️ `ดูงาน [คำค้นหา]`\nดูรายละเอียดงาน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n\n" 
+        "➡️ `ปิดงาน [คำค้นหา]`\nปิดงานด่วน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n" 
     ))
     reply_to_line(event.reply_token, [reply_message])
 
@@ -1377,7 +1383,8 @@ def handle_complete_task_command_flexible(event, query_string):
         reply_to_line(event.reply_token, [TextMessage(text="\n".join(message_lines))])
 
 
-# Command Dispatcher Dictionary - *** MUST BE DECLARED AFTER ALL HANDLER FUNCTIONS ***
+# Command Dispatcher Dictionary
+# *** IMPORTANT: ALL HANDLER FUNCTIONS MUST BE DECLARED BEFORE THIS DICTIONARY ***
 COMMANDS = {
     'comphone': handle_help_command,
     'งานค้างทั้งหมด': handle_outstanding_tasks_command, 
