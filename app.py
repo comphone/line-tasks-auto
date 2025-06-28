@@ -837,6 +837,9 @@ def summary():
 
     current_time_utc = datetime.datetime.now(pytz.utc)
 
+    # Initialize total_summary_stats before using it
+    total_summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)} 
+
     # First, apply status filter
     filtered_by_status_tasks = []
     for task_item in tasks_raw:
@@ -846,7 +849,7 @@ def summary():
             try:
                 due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                 if due_dt_utc < current_time_utc:
-                    stats['overdue'] += 1 # Count as overdue for summary stats
+                    total_summary_stats['overdue'] += 1 # Count as overdue for summary stats
             except (ValueError, TypeError): pass
         
         if task_status == 'completed':
@@ -855,7 +858,7 @@ def summary():
             total_summary_stats['needsAction'] += 1
 
 
-    for task_item in final_filtered_tasks: # Iterate over the final filtered tasks for display
+    for task_item in filtered_by_status_tasks: # Iterate over the filtered tasks for display
         parsed_task = parse_google_task_dates(task_item)
         parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
         
@@ -1124,28 +1127,27 @@ def callback():
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
     try:
-        handler.handle(body, signature)
+        # Pass event.source.type and event.source.group_id/user_id to reply_to_line
+        # to differentiate between private and group chats for reply logic
+        if isinstance(event.source, GroupSource):
+            reply_to_line(event.reply_token, [], source_type='group', group_id=event.source.group_id) # Empty messages to just pass context
+        elif isinstance(event.source, UserSource):
+            reply_to_line(event.reply_token, [], source_type='user', user_id=event.source.user_id) # Empty messages to just pass context
+
+        handler.handle(body, signature) # Process the actual message
     except InvalidSignatureError:
         abort(400)
     return 'OK'
 
 # Helper function to reply to LINE, handles private vs group replies
-def reply_to_line(reply_token, messages, source_type=None, group_id=None):
+def reply_to_line(reply_token, messages, source_type=None, group_id=None, user_id=None):
     """Central function for sending reply messages."""
     try:
-        # If it's a private chat, use reply_message
-        if source_type == 'user':
-            line_messaging_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=messages))
-        # If it's a group/room chat, and you want to reply directly in the chat, use reply_message
-        # For this setup, we usually want to reply in the same chat
-        elif source_type in ['group', 'room']:
-             line_messaging_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=messages))
-        # For cron jobs or other pushes not initiated by a reply, use push_message
-        # This is already handled by individual push_message calls in trigger_daily_reports,
-        # handle_complete_task_command_flexible etc.
-        app.logger.info(f"Successfully replied/sent messages.")
+        # Using reply_message for both user and group replies for immediate response
+        line_messaging_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=messages))
+        app.logger.info(f"Successfully replied/sent messages to {source_type} (ID: {group_id or user_id}).")
     except Exception as e:
-        app.logger.error(f"Failed to reply to LINE (source_type: {source_type}, group_id: {group_id}): {e}")
+        app.logger.error(f"Failed to reply to LINE (source_type: {source_type}, group_id: {group_id}, user_id: {user_id}): {e}")
 
 def handle_help_command(event):
     """Handles the 'comphone' command."""
@@ -1470,10 +1472,15 @@ def handle_message(event):
     text = event.message.text.strip()
     text_lower = text.lower()
 
+    # Pass source type and IDs to reply_to_line based on event source
+    source_type = event.source.type
+    group_id = event.source.group_id if isinstance(event.source, GroupSource) else None
+    user_id = event.source.user_id if isinstance(event.source, UserSource) else None
+
     # Handle commands with arguments that might be IDs or customer names/phones
     if text_lower.startswith('c '):
         query_arg = text[len('c '):].strip()
-        handle_customer_search_command(event, query_arg)
+        handle_customer_search_command(event, query_arg) # Handlers will now use source_type for reply
         return
 
     if text_lower.startswith('ดูงาน '):
@@ -1493,11 +1500,11 @@ def handle_message(event):
 
     # Handle direct commands without arguments
     if text_lower in COMMANDS:
-        COMMANDS[text_lower](event)
+        COMMANDS[text_lower](event) # Handlers will now use source_type for reply
         return 
     
     # If no command matches, reply with a general message or help
-    reply_to_line(event.reply_token, [TextMessage(text="ฉันไม่เข้าใจคำสั่งของคุณ ลองพิมพ์ 'comphone' เพื่อดูวิธีใช้งานนะครับ")], source_type=event.source.type)
+    reply_to_line(event.reply_token, [TextMessage(text="ฉันไม่เข้าใจคำสั่งของคุณ ลองพิมพ์ 'comphone' เพื่อดูวิธีใช้งานนะครับ")], source_type=source_type)
 
 
 # --- Cron Job Endpoint ---
@@ -1518,7 +1525,7 @@ def trigger_daily_reports():
         return "Failed to get tasks from Google API", 500
 
     messages_to_send = []
-    recipients = []
+    recipients = [] # This list will be used for push_message (to groups/users)
     
     # Check for morning appointment reminders
     if current_hour == appointment_hour:
@@ -1535,11 +1542,11 @@ def trigger_daily_reports():
         
         if today_appointments:
             today_appointments.sort(key=lambda x: x.get('due', ''))
-            messages_to_send = []
+            messages_for_push = [] # Collect messages for push
             for task in today_appointments:
                 try:
                     flex_msg = create_task_flex_message(task)
-                    messages_to_send.append(flex_msg)
+                    messages_for_push.append(flex_msg)
                 except Exception as e:
                     app.logger.error(f"Failed to create Flex Message for daily reminder task {task.get('id')}: {e}")
                     # Fallback to simple text message for daily reminders - Removed bold Markdown
@@ -1553,7 +1560,9 @@ def trigger_daily_reports():
                         f"เวลา: {parse_google_task_dates(task).get('due_formatted', '-')}\n\n"
                         f"ดูรายละเอียด/อัปเดต: {url_for('update_task_details', task_id=task.get('id'), _external=True)}"
                     )
-                    messages_to_send.append(TextMessage(text=fallback_text))
+                    messages_for_push.append(TextMessage(text=fallback_text))
+            
+            messages_to_send.extend(messages_for_push) # Add collected messages
             recipients = [id for id in [settings['line_recipients'].get('technician_group_id'), settings['line_recipients'].get('admin_group_id')] if id]
 
     # Check for overdue tasks older than 2 days
