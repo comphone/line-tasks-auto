@@ -14,11 +14,9 @@ from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
 
-# [START qrcode_imports]
 import qrcode
 import base64
 from io import BytesIO
-# [END qrcode_imports]
 
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest, FlexMessage
@@ -79,25 +77,37 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-def get_app_settings():
-    """Mock function to get app settings."""
-    app.logger.info("Using MOCK get_app_settings()")
-    return {
-        'report_times': {
-            'appointment_reminder_hour_thai': 7,
-            'outstanding_report_hour_thai': 20
-        },
-        'line_recipients': {
-            'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
-            'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
-            'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
-        }
+# [START qrcode_settings_storage]
+# Placeholder for app settings, normally would be loaded from a database or file
+_APP_SETTINGS_STORE = {
+    'report_times': {
+        'appointment_reminder_hour_thai': 7,
+        'outstanding_report_hour_thai': 20
+    },
+    'line_recipients': {
+        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+        'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
+        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
+    },
+    'qrcode_settings': { # Default QR code settings
+        'box_size': 8,
+        'border': 4,
+        'fill_color': '#28a745', # Green for general summary
+        'back_color': '#FFFFFF'
     }
+}
+
+def get_app_settings():
+    """Retrieves app settings from a placeholder store."""
+    app.logger.info("Retrieving app settings from mock store.")
+    return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
-    """Mock function to save app settings."""
-    app.logger.info(f"Using MOCK save_app_settings() with data: {settings_data}")
+    """Saves app settings to a placeholder store."""
+    app.logger.info(f"Saving app settings to mock store: {settings_data}")
+    _APP_SETTINGS_STORE.update(settings_data) # Update existing settings
     return True
+# [END qrcode_settings_storage]
 
 # --- Google API Helper Functions ---
 def get_google_service(api_name, api_version):
@@ -428,32 +438,33 @@ def allowed_file(filename):
     """Checks for allowed file extensions."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# [START qrcode_function]
-def generate_qr_code_base64(url):
-    """Generates a QR code for the given URL and returns it as a Base64 encoded string."""
+# [START qrcode_function_configurable]
+def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back_color="white"):
+    """
+    Generates a QR code for the given URL and returns it as a Base64 encoded string.
+    Configurable: box_size, border, fill_color, back_color.
+    """
     try:
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=10,
-            border=4,
+            box_size=box_size,
+            border=border,
         )
         qr.add_data(url)
         qr.make(fit=True)
 
-        img = qr.make_image(fill_color="black", back_color="white")
+        img = qr.make_image(fill_color=fill_color, back_color=back_color)
         
-        # Save image to a BytesIO object
         buffer = BytesIO()
         img.save(buffer, format="PNG")
         
-        # Encode to Base64
         base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
         return f"data:image/png;base64,{base64_img}"
     except Exception as e:
         app.logger.error(f"Error generating QR code for URL {url}: {e}")
         return None
-# [END qrcode_function]
+# [END qrcode_function_configurable]
 
 # --- Flex Message Creation Functions ---
 def create_task_flex_message(task):
@@ -498,18 +509,22 @@ def create_task_flex_message(task):
 
     # --- Body Contents Construction with explicit string casting and new highlight style ---
     body_contents = [
+        # Highlighted Title
         TextComponent(text=str(task.get('title', 'ไม่มีหัวข้อ')), weight='bold', size='xl', wrap=True),
         SeparatorComponent(margin='md'), 
 
         BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
+            # Customer Name
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='ลูกค้า:', color='#007BFF', size='sm', flex=2, weight='bold'), 
                 TextComponent(text=str(customer_info.get('name', '') or '-'), wrap=True, color='#666666', size='sm', flex=5) 
             ]),
+            # Phone Number
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='โทร:', color='#007BFF', size='sm', flex=2, weight='bold'), 
                 TextComponent(text=str(phone_display_text or '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action if phone_action else None, decoration='underline' if phone_action else 'none') 
             ]),
+            # Appointment Date
             BoxComponent(layout='baseline', spacing='sm', contents=[
                 TextComponent(text='นัดหมาย:', color='#007BFF', size='sm', flex=2, weight='bold'), 
                 TextComponent(text=str(parsed_dates.get('due_formatted', '') or '-'), wrap=True, color='#666666', size='sm', flex=5) 
@@ -517,8 +532,9 @@ def create_task_flex_message(task):
         ]),
         SeparatorComponent(margin='md'), 
 
+        # Detail Section - potentially multi-line
         TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'), 
-        TextComponent(text=str(customer_info.get('detail', '') or '-'), wrap=True, margin='sm', color='#666666')
+        TextComponent(text=str(customer_info.get('detail', '') or '-'), wrap=true, margin='sm', color='#666666')
     ]
 
     # --- Footer Contents Construction ---
@@ -543,7 +559,7 @@ def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
     if not nearby_tasks: return None
     
     bubbles = []
-    for task in nearby_tasks[:12]:
+    for task in tasks[:12]:
         customer_info = parse_customer_info_from_notes(task.get('notes', ''))
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
         
@@ -577,8 +593,6 @@ def create_customer_history_carousel(tasks, customer_name):
     if not tasks: return None
 
     bubbles = []
-    tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
-    
     for task in tasks[:12]:
         parsed = parse_google_task_dates(task)
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
@@ -942,7 +956,7 @@ def update_task_details(task_id):
             base_notes_lines.extend(updated_detail.split('\n'))
 
         while base_notes_lines and base_notes_lines[-1] == '':
-            base_notes_lines.pop()
+            notes_lines.pop()
 
         updated_base_notes = "\n".join(base_notes_lines)
 
@@ -994,12 +1008,26 @@ def update_task_details(task_id):
 
         return redirect(url_for('summary'))
 
-    # [START qrcode_render]
-    public_report_url = url_for('summary', _external=True, task_id=task_id) # หรือ URL สำหรับรายงานเฉพาะงานนี้
-    qr_code_base64 = generate_qr_code_base64(public_report_url)
-    # [END qrcode_render]
+    # [START qrcode_render_update_task]
+    # URL ที่ QR Code จะชี้ไป (รายงานสรุปงานสำหรับลูกค้าของงานนี้)
+    # เราจะกรองด้วย task_id และ status เป็น 'all' เพื่อให้เห็นทั้งประวัติของงานนั้นๆ (ถ้ามี)
+    public_report_url_for_task = url_for('summary', _external=True, search_query=task.get('title', ''), status_filter='all') 
+    
+    # Generate QR code for this specific task's public report URL
+    # ใช้ค่า default หรือปรับแต่งตามต้องการ
+    qr_code_base64_for_task = generate_qr_code_base64(
+        public_report_url_for_task, 
+        box_size=6,    # ขนาดของแต่ละบล็อก (ยิ่งมากยิ่งใหญ่)
+        border=2,      # ขนาดขอบสีขาวรอบ QR Code
+        fill_color="#0056b3", # สีของ QR Code (เช่น สีน้ำเงินเข้ม)
+        back_color="#FFFFFF" # สีพื้นหลัง (เช่น สีขาว)
+    )
+    # [END qrcode_render_update_task]
 
-    return render_template('update_task_details.html', task=task, qr_code_base64=qr_code_base64, public_report_url=public_report_url)
+    return render_template('update_task_details.html', 
+                           task=task, 
+                           qr_code_base64=qr_code_base64_for_task, 
+                           public_report_url=public_report_url_for_task) # ส่ง URL ไปยัง template ด้วย
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -1019,7 +1047,15 @@ def settings_page():
                 'admin_group_id': request.form.get('admin_group_id', '').strip(),
                 'manager_user_id': request.form.get('manager_user_id', '').strip(),
                 'technician_group_id': request.form.get('technician_group_id', '').strip()
+            },
+            # [START qrcode_settings_post]
+            'qrcode_settings': {
+                'box_size': int(request.form.get('qr_box_size', 8)),
+                'border': int(request.form.get('qr_border', 4)),
+                'fill_color': request.form.get('qr_fill_color', '#28a745'),
+                'back_color': request.form.get('qr_back_color', '#FFFFFF')
             }
+            # [END qrcode_settings_post]
         }
         if save_app_settings(settings_data):
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
@@ -1028,12 +1064,26 @@ def settings_page():
         return redirect(url_for('settings_page'))
 
     current_settings = get_app_settings()
-    # [START qrcode_settings_render]
-    # Generate QR code for the main summary page to be shared from settings
-    public_summary_url = url_for('summary', _external=True)
-    settings_qr_code_base64 = generate_qr_code_base64(public_summary_url)
-    # [END qrcode_settings_render]
-    return render_template('settings_page.html', settings=current_settings, settings_qr_code_base64=settings_qr_code_base64, public_summary_url=public_summary_url)
+    
+    # [START qrcode_render_settings]
+    # URL ที่ QR Code จะชี้ไป (สรุปงานทั่วไป)
+    general_summary_url = url_for('summary', _external=True)
+    
+    # ใช้การตั้งค่าจาก _APP_SETTINGS_STORE ในการสร้าง QR Code
+    qr_settings = current_settings.get('qrcode_settings', {})
+    qr_code_base64_general = generate_qr_code_base64(
+        general_summary_url,
+        box_size=qr_settings.get('box_size', 8),   
+        border=qr_settings.get('border', 4),
+        fill_color=qr_settings.get('fill_color', '#28a745'), 
+        back_color=qr_settings.get('back_color', '#FFFFFF')
+    )
+    # [END qrcode_render_settings]
+
+    return render_template('settings_page.html', 
+                           settings=current_settings,
+                           qr_code_base64_general=qr_code_base64_general, 
+                           general_summary_url=general_summary_url) 
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
