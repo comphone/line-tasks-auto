@@ -34,7 +34,8 @@
                 <form method="POST" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="customer" class="form-label"><strong>ชื่อลูกค้า</strong> <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="customer" name="customer" required>
+                        <input type="text" class="form-control" id="customer" name="customer" required onkeyup="lookupCustomerDelayed()">
+                        <small class="form-text text-muted" id="customerLookupStatus">พิมพ์ชื่อลูกค้าเพื่อค้นหาข้อมูลเก่า</small>
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
@@ -51,17 +52,16 @@
                         <textarea class="form-control" id="address" name="address" rows="2"></textarea>
                     </div>
                     <div class="mb-3">
-                        <!-- Changed name from 'coord' to 'latitude_longitude' to directly match app.py expectation for full URL -->
-                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (วาง URL จาก Google Maps)</label>
+                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
                         <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" placeholder="เช่น https://maps.app.goo.gl/...">
-                        <!-- Removed hidden lat/lon inputs as app.py now expects the full URL -->
+                        <button type="button" class="btn btn-info btn-sm mt-2" id="shareCurrentLocationBtn"><i class="fas fa-location-arrow me-2"></i>แชร์ที่อยู่ปัจจุบัน</button>
+                        <small class="form-text text-muted" id="shareLocationStatus">กดเพื่อใส่ลิงก์แผนที่ Google Maps ของตำแหน่งคุณ</small>
                     </div>
                     <div class="mb-3">
                         <label for="detail" class="form-label">รายละเอียดงาน</label>
                         <textarea class="form-control" id="detail" name="detail" rows="4"></textarea>
                     </div>
                     <div class="mb-3">
-                        <!-- Renamed 'attachments' to 'files[]' to match update_task_details and app.py's file handling for multiple files -->
                         <label for="files" class="form-label">แนบรูปภาพ/ไฟล์ (ได้หลายไฟล์)</label>
                         <input class="form-control" type="file" id="files" name="files[]" multiple>
                     </div>
@@ -84,21 +84,92 @@
                 dateFormat: "Y-m-d H:i",
                 locale: "th",
             });
-        });
 
-        // The extractCoords function is no longer needed since the full URL is now passed
-        // However, if you want to keep some client-side validation or processing for the URL,
-        // you might adjust it. For now, removing it as app.py handles the full URL.
-        // function extractCoords(input) {
-        //     let latInput = document.getElementById('latitude');
-        //     let lngInput = document.getElementById('longitude');
-        //     const mapUrlRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-        //     const match = input.match(mapUrlRegex);
-        //     if (match) {
-        //         latInput.value = match[1];
-        //         lngInput.value = match[2];
-        //     }
-        // }
+            // Geolocation for "แชร์ที่อยู่ปัจจุบัน"
+            const shareCurrentLocationBtn = document.getElementById('shareCurrentLocationBtn');
+            const latitudeLongitudeInput = document.getElementById('latitude_longitude');
+            const shareLocationStatus = document.getElementById('shareLocationStatus');
+
+            if (shareCurrentLocationBtn) {
+                shareCurrentLocationBtn.addEventListener('click', function() {
+                    shareLocationStatus.textContent = 'กำลังค้นหาที่อยู่ปัจจุบัน...';
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                const lat = position.coords.latitude;
+                                const lon = position.coords.longitude;
+                                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                                
+                                latitudeLongitudeInput.value = googleMapsUrl;
+                                shareLocationStatus.textContent = `ลิงก์แผนที่สร้างสำเร็จ: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                                shareLocationStatus.style.color = 'green';
+                            },
+                            (error) => {
+                                console.error("Error getting location: ", error);
+                                shareLocationStatus.textContent = 'ไม่สามารถดึงที่อยู่ได้ (โปรดอนุญาตการเข้าถึงตำแหน่ง)';
+                                shareLocationStatus.style.color = 'red';
+                            },
+                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                        );
+                    } else {
+                        shareLocationStatus.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation';
+                        shareLocationStatus.style.color = 'red';
+                    }
+                });
+            }
+
+            // Customer Lookup (Auto-fill) Logic
+            const customerInput = document.getElementById('customer');
+            const phoneInput = document.getElementById('phone');
+            const addressInput = document.getElementById('address');
+            const detailInput = document.getElementById('detail');
+            const mapUrlInput = document.getElementById('latitude_longitude');
+            const customerLookupStatus = document.getElementById('customerLookupStatus');
+
+            let lookupTimeout;
+
+            window.lookupCustomerDelayed = function() {
+                clearTimeout(lookupTimeout);
+                lookupTimeout = setTimeout(lookupCustomer, 500); // Delay lookup by 500ms
+            };
+
+            async function lookupCustomer() {
+                const queryName = customerInput.value.trim();
+                if (queryName.length < 2) { // Only search if at least 2 characters are typed
+                    customerLookupStatus.textContent = 'พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหา';
+                    customerLookupStatus.style.color = 'gray';
+                    return;
+                }
+
+                customerLookupStatus.textContent = 'กำลังค้นหาข้อมูลลูกค้า...';
+                customerLookupStatus.style.color = 'blue';
+
+                try {
+                    const response = await fetch(`/lookup_customer?customer_name=${encodeURIComponent(queryName)}`);
+                    const data = await response.json();
+
+                    if (response.ok && Object.keys(data).length > 0) {
+                        // Fill fields only if they are currently empty or user wants to overwrite
+                        // For simplicity, we'll auto-fill if data is found.
+                        // You could add a confirmation dialog here if overwriting existing data.
+                        phoneInput.value = data.phone || '';
+                        addressInput.value = data.address || '';
+                        detailInput.value = data.detail || '';
+                        mapUrlInput.value = data.map_url || '';
+
+                        customerLookupStatus.textContent = `พบข้อมูลลูกค้า "${queryName}"`;
+                        customerLookupStatus.style.color = 'green';
+                    } else {
+                        customerLookupStatus.textContent = `ไม่พบข้อมูลสำหรับ "${queryName}"`;
+                        customerLookupStatus.style.color = 'orange';
+                    }
+                } catch (error) {
+                    console.error('Error fetching customer data:', error);
+                    customerLookupStatus.textContent = 'เกิดข้อผิดพลาดในการค้นหาข้อมูล';
+                    customerLookupStatus.style.color = 'red';
+                }
+            }
+        });
     </script>
 </body>
 </html>
