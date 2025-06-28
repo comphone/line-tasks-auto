@@ -55,6 +55,7 @@
             {% endif %}
         {% endwith %}
 
+        {# Main form for saving settings (excluding file upload which needs separate form) #}
         <form method="POST" action="{{ url_for('settings_page') }}">
             <div class="card shadow-sm">
                 <div class="card-header">
@@ -134,44 +135,47 @@
                 </div>
             </div>
 
-            <!-- New: Common Equipment Management Section -->
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <i class="fas fa-tools me-2"></i>จัดการอุปกรณ์ที่ใช้บ่อย
-                </div>
-                <div class="card-body">
-                    <p class="text-muted">รายการอุปกรณ์ที่ใช้บ่อยจะปรากฏเป็นตัวเลือกในหน้าอัปเดตงาน.</p>
-                    <div class="mb-3">
-                        <label for="common_equipment_list_input" class="form-label">แก้ไขรายการอุปกรณ์ที่ใช้บ่อย</label>
-                        <textarea class="form-control" id="common_equipment_list_input" name="common_equipment_list_input" rows="5"
-                            placeholder="พิมพ์ชื่ออุปกรณ์แต่ละรายการในบรรทัดใหม่ เช่น&#10;คีม&#10;ไขควง&#10;มัลติมิเตอร์"
-                        >{{ common_equipment_list_for_display }}</textarea>
-                        <div class="form-text">เพิ่ม/ลบชื่ออุปกรณ์ (1 รายการต่อ 1 บรรทัด)</div>
-                    </div>
-                    <div class="d-flex justify-content-between mt-3">
-                        <button type="button" class="btn btn-outline-info" onclick="location.href='{{ url_for('export_equipment') }}'">
-                            <i class="fas fa-download me-2"></i>ส่งออก Excel
-                        </button>
-                        <label for="import_file_input" class="btn btn-outline-success mb-0">
-                            <i class="fas fa-upload me-2"></i>นำเข้า Excel
-                            <input type="file" id="import_file_input" name="file" style="display: none;" onchange="document.getElementById('importForm').submit()">
-                        </label>
-                    </div>
-                </div>
-            </div>
-            <!-- Hidden form for file import -->
-            <form id="importForm" action="{{ url_for('import_equipment') }}" method="POST" enctype="multipart/form-data" style="display: none;">
-                <input type="file" name="file" accept=".xls,.xlsx" />
-            </form>
-
-
             <div class="text-center mt-4">
                 <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่า</button>
                 <a href="{{ url_for('summary') }}" class="btn btn-secondary btn-lg">กลับไปหน้าสรุป</a>
             </div>
         </form>
 
-        <!-- QR Code for general summary page (added to settings page) -->
+        <!-- New: Equipment Catalog Management Section (with its own form for file upload) -->
+        <div class="card shadow-sm mt-4"> {# Added mt-4 for spacing #}
+            <div class="card-header">
+                <i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์
+            </div>
+            <div class="card-body">
+                <p class="text-muted">ใช้สำหรับกำหนดรายการอุปกรณ์และคุณสมบัติ (ราคา, หน่วย) สำหรับการใช้งานในระบบ.</p>
+                <div class="mb-3">
+                    <label for="common_equipment_list_input" class="form-label">รายการอุปกรณ์ที่ใช้บ่อยปัจจุบัน</label>
+                    <textarea class="form-control" id="common_equipment_list_input" rows="5" readonly 
+                        title="รายการนี้จะอัปเดตจากการนำเข้า Excel หรือเมื่อคุณบันทึกอุปกรณ์ใหม่ในหน้าอัปเดตงาน"
+                    >{{ common_equipment_list_for_display }}</textarea>
+                    <div class="form-text">รายการนี้ถูกสร้างจาก "รายการสินค้า" ในแคตตาล็อกอุปกรณ์. **ไม่สามารถแก้ไขโดยตรงที่นี่ได้.**.</div>
+                </div>
+                
+                <div class="d-flex justify-content-between mt-3">
+                    <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-info">
+                        <i class="fas fa-download me-2"></i>ส่งออก Excel Template
+                    </a>
+                    {# This form is specifically for importing Excel #}
+                    <form id="importForm" action="{{ url_for('import_equipment_catalog') }}" method="POST" enctype="multipart/form-data" class="d-inline-block">
+                        <label for="excel_file_input" class="btn btn-outline-success mb-0">
+                            <i class="fas fa-upload me-2"></i>นำเข้า Excel
+                            <input type="file" id="excel_file_input" name="excel_file" accept=".xls,.xlsx" style="display: none;" onchange="document.getElementById('importForm').submit()">
+                        </label>
+                    </form>
+                </div>
+                <div class="form-text mt-2 text-info">
+                    เมื่อนำเข้า Excel โปรดใช้ Template ที่ส่งออกไป. ข้อมูลจะถูกเขียนทับแคตตาล็อกอุปกรณ์เดิม.
+                </div>
+            </div>
+        </div>
+
+
+        <!-- QR Code for general summary page -->
         {% if qr_code_base64_general %}
             <div class="qr-code-container">
                 <h5 class="mb-0">
