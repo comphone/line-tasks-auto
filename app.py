@@ -1155,7 +1155,7 @@ def update_task_details(task_id):
         if updated_detail:
             base_notes_lines.extend(updated_detail.split('\n'))
 
-        while notes_lines and notes_lines[-1] == '':
+        while base_notes_lines and base_notes_lines[-1] == '':
             notes_lines.pop()
 
         updated_base_notes = "\n".join(base_notes_lines)
