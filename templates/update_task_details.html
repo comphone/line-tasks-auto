@@ -38,6 +38,7 @@
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             background-color: #fff;
+            margin-top: 20px; /* Added margin for spacing */
         }
         .qr-code-container img {
             max-width: 200px; /* Adjust size as needed */
@@ -84,8 +85,24 @@
                             <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#techHistoryAccordion">
                                 <div class="accordion-body">
                                     <p class="mb-1"><strong>สรุปผล:</strong> {{ report.work_summary or 'N/A' }}</p>
-                                    {# Changed equipment_used to display multi-line #}
-                                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong><br>{{ (report.equipment_used or 'N/A') | replace('\n', '<br>') | safe }}</p>
+                                    {# Display structured equipment list #}
+                                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong></p>
+                                    <ul>
+                                    {% if report.equipment_used is string %}
+                                        {# Old format: raw string, display as is #}
+                                        <li>{{ report.equipment_used | replace('\n', '<br>') | safe }}</li>
+                                    {% elif report.equipment_used is iterable and report.equipment_used is not none %}
+                                        {# New format: list of dicts #}
+                                        {% for item in report.equipment_used %}
+                                            {% if item.item %}
+                                                <li>{{ item.item }}{% if item.quantity %}: {{ item.quantity }}{% endif %}</li>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <li>N/A</li>
+                                    {% endif %}
+                                    </ul>
+
                                     {% if report.next_appointment %}
                                     <p class="mb-1"><strong>นัดหมายครั้งถัดไป:</strong> {{ report.next_appointment | format_datetime_iso_to_thai }}</p>
                                     {% endif %}
@@ -152,7 +169,10 @@
                     <div class="mb-3">
                         {# Changed input to textarea for multi-line equipment #}
                         <label for="equipment_used" class="form-label"><strong>รายการอุปกรณ์ที่ใช้:</strong></label>
-                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="2"></textarea>
+                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" 
+                            placeholder="พิมพ์ชื่ออุปกรณ์, จำนวน และหน่วย เช่น&#10;คีม, 1 ชิ้น&#10;ไขควงปากแบน, 2 อัน&#10;มัลติมิเตอร์, 1 เครื่อง&#10;สายไฟ VAF 2.5, 5 เมตร"
+                        >{{ task.equipment_used_initial or '' }}</textarea>
+                        <small class="form-text text-muted">พิมพ์อุปกรณ์แต่ละชิ้นในบรรทัดใหม่ แยกด้วยคอมม่า (,) ระหว่างชื่ออุปกรณ์กับจำนวน/หน่วย</small>
                     </div>
 
                     <div class="mb-3">
@@ -194,25 +214,23 @@
 
                 <hr class="my-4">
 
-                <!-- [START qrcode_display_section] -->
+                <!-- QR code section (updated) -->
                 <div class="card mb-4">
                     <div class="card-header">
                         <h5 class="mb-0">
-                            <i class="fas fa-qrcode me-2"></i>สแกนเพื่อรายงานสำหรับลูกค้านี้
+                            <i class="fas fa-qrcode me-2"></i>สแกนเพื่อรายงานสำหรับลูกค้า
                         </h5>
                     </div>
                     <div class="card-body qr-code-container">
                         <p class="text-muted mb-3">ให้ลูกค้าสแกน QR Code นี้เพื่อดูสรุปงานและค่าใช้จ่ายของงานนี้.</p>
-                        {# Use qr_code_base64 directly here #}
                         {% if qr_code_base64 %}
-                            <img src="{{ qr_code_base64 }}" alt="QR Code for Public Report">
+                            <img src="{{ qr_code_base64 }}" alt="QR Code for Customer Report">
                             <p class="mt-2"><a href="{{ public_report_url }}" target="_blank">เปิดรายงานในเบราวเซอร์</a></p>
                         {% else %}
-                            <p class="text-danger">ไม่สามารถสร้าง QR Code ได้สำหรับงานนี้. (ลิงก์รายงานยังไม่พร้อม)</p>
+                            <p class="text-danger">ไม่สามารถสร้าง QR Code ได้. โปรดตรวจสอบการตั้งค่า URL.</p>
                         {% endif %}
                     </div>
                 </div>
-                <!-- [END qrcode_display_section] -->
 
                 <!-- Delete Task Section -->
                 <hr class="my-4">
@@ -289,19 +307,9 @@
                             (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                // For update_task_details, the public_report_url is passed from Flask.
-                                // We need to construct the URL that the QR code should point to.
-                                // This is usually the summary page with a task_id parameter.
-                                // The URL should be relative to the current domain if _external=False.
-                                // However, for a QR code, an absolute URL is usually better.
-                                // We'll rely on Flask to give us a robust public_report_url from app.py.
-                                
-                                // The QR code is now generated server-side and its base64 is passed.
-                                // This button's primary function here is to fill the map URL field.
                                 const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                                
                                 latitudeLongitudeInput.value = googleMapsUrl; 
-
-                                // These hidden fields are for saving the current GPS to the tech report
                                 currentLatInput.value = lat; 
                                 currentLonInput.value = lon; 
 
