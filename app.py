@@ -364,12 +364,12 @@ def find_nearby_jobs(completed_task_id, radius_km=5):
     nearby_jobs.sort(key=lambda x: x['distance_km'])
     return nearby_jobs
 
-# Refactored parse_customer_info_from_notes for line-by-line parsing from app2.py
+# *** IMPORTANT REVISION HERE ***
+# Refactored parse_customer_info_from_notes for more robust parsing using regex patterns
 def parse_customer_info_from_notes(notes):
     """
     Extracts customer name, phone, address, detail, and map_url from notes
-    based on line-by-line parsing.
-    Returns empty string "" for missing fields.
+    using regex patterns for robustness, returning empty string for missing fields.
     """
     info = {
         'name': '', 
@@ -380,42 +380,85 @@ def parse_customer_info_from_notes(notes):
     }
     if not notes: return info
 
-    # Remove tech report blocks first to only parse core customer info
+    # Remove tech report blocks first
     base_notes_content = re.sub(r"--- TECH_REPORT_START ---\s*.*?\s*--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
     
-    lines = [line.strip() for line in base_notes_content.split('\n') if line.strip()] # Only non-empty lines for parsing
+    # Define patterns to extract specific fields
+    patterns = {
+        'customer_name_pattern': r"ลูกค้า:\s*(.+)",
+        'phone_pattern': r"เบอร์โทร:\s*(.+)",
+        'address_pattern': r"ที่อยู่:\s*(.+)",
+        'map_url_pattern': r"ลิงก์แผนที่:\s*(https?://(?:www\.)?(?:google\.com/maps|maps\.app\.goo\.gl)\S+)",
+        'detail_marker': r"รายละเอียดงาน:",
+    }
 
-    # Line 1: Customer Name
-    if len(lines) > 0:
-        info['name'] = lines[0]
+    lines = base_notes_content.split('\n')
     
-    # Line 2: Phone Number
-    if len(lines) > 1:
-        info['phone'] = lines[1]
-    
-    # Line 3: Address
-    if len(lines) > 2:
-        info['address'] = lines[2]
+    detail_started = False
+    detail_lines = []
 
-    # Line 4: Map URL or start of Detail
-    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
-    detail_start_line_idx = 3 # Default: detail starts from line 4 (index 3)
+    # First pass: try to extract explicitly marked fields and identify where detail starts
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
 
-    if len(lines) > 3:
-        if re.match(map_url_regex, lines[3]):
-            info['map_url'] = lines[3]
-            detail_start_line_idx = 4 # Detail starts from line 5 (index 4)
-        else:
-            # Line 4 is not a map URL, so it's part of the detail
-            detail_start_line_idx = 3 
+        if re.match(patterns['customer_name_pattern'], line_stripped):
+            info['name'] = re.match(patterns['customer_name_pattern'], line_stripped).group(1).strip()
+        elif re.match(patterns['phone_pattern'], line_stripped):
+            info['phone'] = re.match(patterns['phone_pattern'], line_stripped).group(1).strip()
+        elif re.match(patterns['address_pattern'], line_stripped):
+            info['address'] = re.match(patterns['address_pattern'], line_stripped).group(1).strip()
+        elif re.match(patterns['map_url_pattern'], line_stripped):
+            info['map_url'] = re.match(patterns['map_url_pattern'], line_stripped).group(1).strip()
+        elif line_stripped == patterns['detail_marker'].strip(): # Check for exact marker
+            detail_started = True
+        elif detail_started: # All subsequent lines after detail marker are part of detail
+            detail_lines.append(line_stripped)
+        # Handle cases where customer name, phone, address are NOT prefixed (from older formats)
+        # This part requires careful thought if older data without prefixes needs to be supported perfectly.
+        # For now, let's assume new data uses prefixes or the original line-by-line fallback if no prefix.
+        # The prompt implies new entries.
     
-    # Remaining lines for Detail
-    if len(lines) > detail_start_line_idx -1: # Adjusted for 0-based indexing
-        info['detail'] = "\n".join(lines[detail_start_line_idx:])
+    info['detail'] = "\n".join(detail_lines).strip()
+
+    # Fallback for old/unstructured notes:
+    # If basic info is still empty, try to parse from the very first few lines
+    # This might override if there are un-prefixed lines before marked ones.
+    # This logic is complex because of potentially mixed formats.
+    # The most robust solution is to enforce a strict saving format and convert old data.
+    
+    # For now, let's simplify and make form_page save notes with prefixes to avoid ambiguity
+    # and adjust this parsing to strictly rely on prefixes.
+
+    # Re-evaluate parsing for cases where customer_name, phone, address are just the first few lines without markers
+    if not info['name'] and len(lines) > 0:
+        info['name'] = lines[0].strip()
+    if not info['phone'] and len(lines) > 1 and re.search(r'\d', lines[1]):
+        info['phone'] = lines[1].strip()
+    if not info['address'] and len(lines) > 2 and not re.match(patterns['map_url_pattern'], lines[2]):
+        info['address'] = lines[2].strip()
+    
+    # If detail was not found by marker, assume everything after explicit fields (or first 3 lines) is detail
+    if not info['detail'] and not detail_started:
+        potential_detail_start_idx = 0
+        if info['name']: potential_detail_start_idx += 1
+        if info['phone']: potential_detail_start_idx += 1
+        if info['address']: potential_detail_start_idx += 1
+        if info['map_url'] and potential_detail_start_idx < len(lines) and info['map_url'] in lines[potential_detail_start_idx]:
+             potential_detail_start_idx += 1 # skip map url line if it was after address/phone
+
+        if len(lines) > potential_detail_start_idx:
+            # Reconstruct detail from what's left after all known fields
+            reconstructed_detail_lines = []
+            for i in range(potential_detail_start_idx, len(lines)):
+                if not re.match(patterns['map_url_pattern'], lines[i].strip()): # Skip map_url if found here
+                    reconstructed_detail_lines.append(lines[i].strip())
+            info['detail'] = "\n".join(reconstructed_detail_lines).strip()
+
 
     return info
     
-# Modified parse_google_task_dates to return empty string instead of 'N/A', from app2.py
 def parse_google_task_dates(task_item):
     """Formats dates from a Google Task item."""
     parsed_task = task_item.copy()
@@ -638,22 +681,28 @@ def form_page():
         today_str = datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')
         title = f"งานลูกค้า: {customer_name or 'ไม่ระบุชื่อลูกค้า'} ({today_str})" 
         
-        # Construct notes based on line-by-line format
+        # --- REVISED NOTES CONSTRUCTION FOR CONSISTENT PARSING ---
+        # Explicitly prefix fields in notes to make parse_customer_info_from_notes robust
         notes_lines = []
-        notes_lines.append(customer_name or '') 
-        notes_lines.append(customer_phone or '') 
-        notes_lines.append(address or '') 
+        notes_lines.append(f"ลูกค้า: {customer_name}") 
+        notes_lines.append(f"เบอร์โทร: {customer_phone}") 
+        notes_lines.append(f"ที่อยู่: {address}") 
         
         if map_url_from_form: 
-            notes_lines.append(map_url_from_form)
+            notes_lines.append(f"ลิงก์แผนที่: {map_url_from_form}")
         
+        notes_lines.append(f"รายละเอียดงาน:") # Marker for detail
         if detail:
+            # Add detail lines as is after the marker
             notes_lines.extend(detail.split('\n'))
 
-        while notes_lines and notes_lines[-1] == '':
+        # Remove trailing empty lines if any, to keep notes concise
+        while notes_lines and not notes_lines[-1].strip():
             notes_lines.pop()
 
         notes = "\n".join(notes_lines)
+        # --- END REVISED NOTES CONSTRUCTION ---
+
 
         due_date_gmt, start_time_iso, end_time_iso = None, None, None
         if appointment_str:
@@ -892,11 +941,14 @@ def update_task_details(task_id):
 
         # New fields for task details update - from app2.py
         # Get values, defaulting to empty string if not provided
-        updated_customer_name = str(request.form.get('customer_name', '')).strip()
-        updated_customer_phone = str(request.form.get('customer_phone', '')).strip()
-        updated_address = str(request.form.get('address', '')).strip()
-        updated_detail = str(request.form.get('detail', '')).strip()
-        updated_map_url = str(request.form.get('latitude_longitude', '')).strip() # From the map URL input
+        # These fields are now read-only on the form, but their values are still passed via hidden inputs or initial display
+        # We will re-read the original values from task_raw.get('notes', '') for reconstruction
+        updated_customer_name = str(request.form.get('customer_name_display', customer_info_from_task.get('name', ''))).strip()
+        updated_customer_phone = str(request.form.get('customer_phone_display', customer_info_from_task.get('phone', ''))).strip()
+        updated_address = str(request.form.get('address_display', customer_info_from_task.get('address', ''))).strip()
+        updated_detail = str(request.form.get('detail_display', customer_info_from_task.get('detail', ''))).strip()
+        updated_map_url = str(request.form.get('latitude_longitude_display', customer_info_from_task.get('map_url', ''))).strip()
+
 
         # --- Handle File Uploads from web form to Google Drive --- - from app2.py
         all_attachment_urls = []
@@ -950,29 +1002,28 @@ def update_task_details(task_id):
             'location_url': current_location_url # Add location to this report
         }
         
-        # --- Reconstruct Task Notes for main details and tech reports (line-by-line) --- - from app2.py
+        # --- Reconstruct Task Notes for main details and tech reports (line-by-line) --- 
         # Get existing tech reports and the base notes content (without previous tech report blocks)
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         
-        # Reconstruct the "static" part of notes with updated customer info, address, detail, and map URL
-        # based on the new line-by-line format
-        base_notes_lines = []
-        base_notes_lines.append(updated_customer_name or '') # Line 1: Customer Name
-        base_notes_lines.append(updated_customer_phone or '') # Line 2: Phone
-        base_notes_lines.append(updated_address or '') # Line 3: Address
+        # Reconstruct the "static" part of notes with the values from GET request
+        # (which are the original values, as fields are now readonly)
+        reconstructed_base_notes_lines = []
+        reconstructed_base_notes_lines.append(f"ลูกค้า: {updated_customer_name}")
+        reconstructed_base_notes_lines.append(f"เบอร์โทร: {updated_customer_phone}")
+        reconstructed_base_notes_lines.append(f"ที่อยู่: {updated_address}")
+        if updated_map_url:
+            reconstructed_base_notes_lines.append(f"ลิงก์แผนที่: {updated_map_url}")
         
-        if updated_map_url: # Line 4: Map URL (if present)
-            base_notes_lines.append(updated_map_url)
-        
-        # Line 5 (or Line 4 if no map URL): Detail
+        reconstructed_base_notes_lines.append(f"รายละเอียดงาน:") # Marker for detail
         if updated_detail:
-            base_notes_lines.extend(updated_detail.split('\n'))
+            reconstructed_base_notes_lines.extend(updated_detail.split('\n')) # Add detail lines as is
 
-        # Remove trailing empty strings
-        while base_notes_lines and base_notes_lines[-1] == '':
-            base_notes_lines.pop()
+        # Remove trailing empty lines
+        while reconstructed_base_notes_lines and not reconstructed_base_notes_lines[-1].strip():
+            reconstructed_base_notes_lines.pop()
 
-        updated_base_notes = "\n".join(base_notes_lines)
+        updated_base_notes = "\n".join(reconstructed_base_notes_lines)
 
         # Append the new tech report to the history
         all_reports_list = sorted(history + [new_tech_report_data], key=lambda x: x.get('summary_date'))
