@@ -433,7 +433,7 @@ def parse_tech_report_from_notes(notes):
             report_data = json.loads(json_str)
             if isinstance(report_data.get('equipment_used'), str): # Handle old string format for display
                 report_data['equipment_used_display'] = _format_equipment_list(
-                    _parse_equipment_string(report_data['equipment_used'])
+                    _parse_equipment_string(report_data['equipment_used'], update_common=False) # Don't update common when just displaying history
                 )
             else: # New format (list) or None, pass directly to formatter
                 report_data['equipment_used_display'] = _format_equipment_list(
@@ -479,14 +479,16 @@ def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back
         return None
 
 # [START equipment_parsing_functions_updated]
-def _parse_equipment_string(text_input):
+def _parse_equipment_string(text_input, update_common=True):
     """
     Parses equipment string like "Item, Quantity Unit\nItem2, Qty2"
     into a list of dicts: [{"item": "Item", "quantity": "Quantity Unit"}].
-    Also updates common_equipment_items in settings.
+    If update_common is True, also updates common_equipment_items in settings.
     """
     equipment_list = []
-    common_items_set = set(get_app_settings()['common_equipment_items']) # Get current common items as set for quick lookup
+    
+    # Get current common items set if we are updating it
+    common_items_set = set(get_app_settings()['common_equipment_items']) if update_common else set()
     
     if not text_input:
         return equipment_list
@@ -497,19 +499,20 @@ def _parse_equipment_string(text_input):
         if not line:
             continue
         
+        # Split only on the first comma. This is crucial for "ชื่ออุปกรณ์, จำนวน หน่วย"
         parts = line.split(',', 1) 
         item_name = parts[0].strip()
         quantity = parts[1].strip() if len(parts) > 1 else ''
         
-        if item_name:
+        if item_name: 
             equipment_list.append({"item": item_name, "quantity": quantity})
-            # Add to common items if not already present
-            if item_name not in common_items_set:
-                common_items_set.add(item_name) # Add to the set
+            # Add to common items if not already present and update_common is True
+            if update_common and item_name not in common_items_set:
+                common_items_set.add(item_name) 
     
     # Update the _APP_SETTINGS_STORE with the new unique common items
-    # Sort for consistent display
-    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(common_items_set))
+    if update_common:
+        _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(common_items_set))
     
     return equipment_list
 
@@ -518,23 +521,21 @@ def _format_equipment_list(equipment_data):
     Formats equipment data (list of dicts or old string) into a multi-line string for display.
     """
     if not equipment_data:
-        return 'N/A' # Default display if no data
+        return 'N/A' 
     
     formatted_lines = []
-    if isinstance(equipment_data, list): # New format: list of dicts
+    if isinstance(equipment_data, list): 
         for eq_item in equipment_data:
             if isinstance(eq_item, dict) and "item" in eq_item:
-                line = f"{eq_item['item']}"
+                line = eq_item['item'] # Item name
                 if eq_item.get("quantity"):
-                    line += f", {eq_item['quantity']}"
+                    line += f", {eq_item['quantity']}" # Append comma and quantity if exists
                 formatted_lines.append(line)
-            # Handle potential malformed dicts if any
-            elif isinstance(eq_item, str): # Fallback if a string somehow gets into the list
+            elif isinstance(eq_item, str): 
                 formatted_lines.append(eq_item)
-    elif isinstance(equipment_data, str): # Old format: raw string
-        return equipment_data.replace('\n', '<br>') # For displaying multi-line in history
-
-    # If list is empty after processing, return N/A
+    elif isinstance(equipment_data, str): 
+        return equipment_data # Just return the old string format if it was saved that way
+        
     if not formatted_lines:
         return 'N/A'
 
@@ -952,7 +953,7 @@ def update_task_details(task_id):
         if history and history[0].get('equipment_used'):
             # If the stored equipment_used is a list (new format), format it back to string for textarea
             if isinstance(history[0]['equipment_used'], list):
-                task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used']).replace('<br>', '\n')
+                task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used']).replace('\n', '\n') # No <br> here, just newline
             else: # If it's an old string format, just use it directly
                 task['equipment_used_initial'] = history[0]['equipment_used']
         else:
@@ -975,7 +976,7 @@ def update_task_details(task_id):
         next_appointment_date_str = str(request.form.get('next_appointment_date', '')).strip()
 
         # Parse equipment_used_input into structured format
-        parsed_equipment_used = _parse_equipment_string(equipment_used_input)
+        parsed_equipment_used = _parse_equipment_string(equipment_used_input) # This will also update common_equipment_items
 
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
         updated_customer_phone = str(request.form.get('customer_phone', '')).strip()
@@ -1112,7 +1113,7 @@ def update_task_details(task_id):
                            task=task, 
                            qr_code_base64=qr_code_base64_for_task, 
                            public_report_url=public_report_url_for_task,
-                           common_equipment_items=get_app_settings().get('common_equipment_items', [])) # Pass common equipment items
+                           common_equipment_items=get_app_settings().get('common_equipment_items', [])) 
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -1496,4 +1497,3 @@ if __name__ == '__main__':
         os.makedirs(UPLOAD_FOLDER)
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
-
