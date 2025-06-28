@@ -909,19 +909,18 @@ def lookup_equipment():
     equipment_catalog = current_settings.get('equipment_catalog', [])
     
     results = []
-    # Search by item_name as primary, fallback to barcode
     for item in equipment_catalog:
         item_name = str(item.get('item_name', '')).strip().lower()
         barcode = str(item.get('barcode', '')).strip().lower()
         
-        if query in item_name: # Prioritize searching by item name
+        if query in item_name: 
             results.append({
                 'item_name': item.get('item_name', ''),
                 'unit': item.get('unit', ''),
                 'price': item.get('price', 0.0),
                 'barcode': item.get('barcode', '')
             })
-        elif query and barcode and query in barcode: # Fallback to barcode if item_name not matched
+        elif barcode and query in barcode: # Fallback to barcode if item_name not matched
             results.append({
                 'item_name': item.get('item_name', ''),
                 'unit': item.get('unit', ''),
@@ -929,13 +928,12 @@ def lookup_equipment():
                 'barcode': item.get('barcode', '')
             })
             
-    # Sort results for better display
     results.sort(key=lambda x: (
-        not str(x['item_name']).lower().startswith(query), # prioritize items starting with query
-        str(x['item_name']).lower() # then alphabetical
+        not str(x['item_name']).lower().startswith(query), 
+        str(x['item_name']).lower() 
     ))
     
-    return jsonify(results[:10]) # Limit results to 10 for performance/UI
+    return jsonify(results[:10])
 # [END lookup_equipment_route_by_name]
 
 
@@ -947,7 +945,7 @@ def summary():
 
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
-    if tasks_raw is None: 
+    if tasks_raw is None: # FIXED: Removed '\'
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้ในขณะนี้', 'danger')
         tasks_raw = []
 
@@ -1268,11 +1266,12 @@ def settings_page():
         settings_data['equipment_catalog'] = current_settings_on_post.get('equipment_catalog', [])
 
         # The common_equipment_items will be derived from equipment_catalog before save_app_settings.
-        # No direct text area processing for common_equipment_items in this POST handler.
+        # No manual text area processing here for common_equipment_items, it's auto-derived.
+        # This part of logic happens inside save_app_settings, so it's correct.
 
-        if save_app_settings(settings_data): # Save all settings, including current_settings['equipment_catalog']
+        if save_app_settings(settings_data): 
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
-            cache.clear() # Clear cache when settings (including catalog) are saved
+            cache.clear() 
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
         return redirect(url_for('settings_page'))
@@ -1295,6 +1294,7 @@ def settings_page():
     )
 
     # Format common_equipment_items for display in textarea
+    # This list is now derived from equipment_catalog's item_names for display
     common_equipment_list_for_display = "\n".join(current_settings.get('common_equipment_items', []))
 
     return render_template('settings_page.html', 
