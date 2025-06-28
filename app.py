@@ -909,11 +909,12 @@ def lookup_equipment():
     equipment_catalog = current_settings.get('equipment_catalog', [])
     
     results = []
+    # Search by item_name as primary, fallback to barcode
     for item in equipment_catalog:
         item_name = str(item.get('item_name', '')).strip().lower()
         barcode = str(item.get('barcode', '')).strip().lower()
         
-        if query in item_name: 
+        if query in item_name: # Prioritize searching by item name
             results.append({
                 'item_name': item.get('item_name', ''),
                 'unit': item.get('unit', ''),
