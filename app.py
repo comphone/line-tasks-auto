@@ -509,12 +509,9 @@ def parse_tech_report_from_notes(notes):
     for json_str in report_blocks:
         try:
             report_data = json.loads(json_str)
-            # Ensure equipment_used is correctly parsed when retrieving historical reports
-            # Use a safe display version for old string formats
             if isinstance(report_data.get('equipment_used'), str): 
                 report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
-            else: # New structured format (list of dicts)
-                # Call _format_equipment_list with False for newline replacement (handled in HTML)
+            else: 
                 report_data['equipment_used_display'] = _format_equipment_list(
                     report_data.get('equipment_used', [])
                 ) 
@@ -582,10 +579,9 @@ def _parse_equipment_string(text_input):
         
         if item_name: 
             equipment_list.append({"item": item_name, "quantity": quantity})
-            if item_name not in common_items_set: # Update local in-memory set
+            if item_name not in common_items_set: 
                 common_items_set.add(item_name) 
     
-    # Update the _APP_SETTINGS_STORE directly, it will be saved to file later by save_app_settings
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(common_items_set))
     
     return equipment_list
@@ -902,6 +898,40 @@ def lookup_customer():
     
     return jsonify(found_customer_info)
 
+# [START lookup_equipment_route]
+@app.route("/lookup_equipment", methods=['GET'])
+def lookup_equipment():
+    query = request.args.get('q', '').strip().lower()
+    if not query:
+        return jsonify([])
+    
+    current_settings = get_app_settings()
+    equipment_catalog = current_settings.get('equipment_catalog', [])
+    
+    results = []
+    # Search by item_name or barcode
+    for item in equipment_catalog:
+        item_name_lower = str(item.get('item_name', '')).lower()
+        barcode_lower = str(item.get('barcode', '')).lower()
+        
+        if query in item_name_lower or query in barcode_lower:
+            results.append({
+                'item_name': item.get('item_name', ''),
+                'unit': item.get('unit', ''),
+                'price': item.get('price', 0.0),
+                'barcode': item.get('barcode', '')
+            })
+            
+    # Sort results by relevance (e.g., items starting with query first)
+    results.sort(key=lambda x: (
+        not str(x['item_name']).lower().startswith(query), # prioritize items starting with query
+        str(x['item_name']).lower() # then alphabetical
+    ))
+    
+    # Limit results to, say, 10 for performance
+    return jsonify(results[:10])
+# [END lookup_equipment_route]
+
 
 @app.route('/summary')
 def summary():
@@ -911,7 +941,7 @@ def summary():
 
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
-    if tasks_raw is None:
+    if tasks_raw is None: # Corrected: 'is None' is Pythonic
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้ในขณะนี้', 'danger')
         tasks_raw = []
 
@@ -939,8 +969,6 @@ def summary():
             filtered_by_status_tasks.append(task_item)
 
     final_filtered_tasks = []
-    # [START summary_search_fix]
-    # Fixed the incorrect multiple 'if' statements with 'or' for search_query
     for task in filtered_by_status_tasks:
         task_title_lower = str(task.get('title', '')).lower()
         customer_name_lower = str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower()
@@ -955,7 +983,6 @@ def summary():
            search_query in customer_address_lower or \
            search_query in customer_detail_lower:
             final_filtered_tasks.append(task)
-    # [END summary_search_fix]
 
 
     tasks = []
@@ -1032,7 +1059,7 @@ def update_task_details(task_id):
         task['tech_reports_history'] = history
         if history and history[0].get('equipment_used') is not None: 
             if isinstance(history[0]['equipment_used'], list):
-                task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used'])
+                task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used']) 
             else: 
                 task['equipment_used_initial'] = history[0]['equipment_used']
         else:
