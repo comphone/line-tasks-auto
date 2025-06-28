@@ -77,37 +77,32 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-# [START qrcode_settings_storage]
-# Placeholder for app settings, normally would be loaded from a database or file
-_APP_SETTINGS_STORE = {
-    'report_times': {
-        'appointment_reminder_hour_thai': 7,
-        'outstanding_report_hour_thai': 20
-    },
-    'line_recipients': {
-        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
-        'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
-        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
-    },
-    'qrcode_settings': { # Default QR code settings
-        'box_size': 8,
-        'border': 4,
-        'fill_color': '#28a745', # Green for general summary
-        'back_color': '#FFFFFF'
-    }
-}
-
 def get_app_settings():
-    """Retrieves app settings from a placeholder store."""
-    app.logger.info("Retrieving app settings from mock store.")
-    return _APP_SETTINGS_STORE
+    """Mock function to get app settings."""
+    app.logger.info("Using MOCK get_app_settings()")
+    return {
+        'report_times': {
+            'appointment_reminder_hour_thai': 7,
+            'outstanding_report_hour_thai': 20
+        },
+        'line_recipients': {
+            'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+            'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
+            'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
+        },
+        'qrcode_settings': { # Default QR code settings
+            'box_size': 8,
+            'border': 4,
+            'fill_color': '#28a745', # Green for general summary
+            'back_color': '#FFFFFF'
+        }
+    }
 
 def save_app_settings(settings_data):
     """Saves app settings to a placeholder store."""
     app.logger.info(f"Saving app settings to mock store: {settings_data}")
     _APP_SETTINGS_STORE.update(settings_data) # Update existing settings
     return True
-# [END qrcode_settings_storage]
 
 # --- Google API Helper Functions ---
 def get_google_service(api_name, api_version):
@@ -438,7 +433,6 @@ def allowed_file(filename):
     """Checks for allowed file extensions."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# [START qrcode_function_configurable]
 def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back_color="white"):
     """
     Generates a QR code for the given URL and returns it as a Base64 encoded string.
@@ -464,7 +458,6 @@ def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back
     except Exception as e:
         app.logger.error(f"Error generating QR code for URL {url}: {e}")
         return None
-# [END qrcode_function_configurable]
 
 # --- Flex Message Creation Functions ---
 def create_task_flex_message(task):
@@ -1011,23 +1004,26 @@ def update_task_details(task_id):
     # [START qrcode_render_update_task]
     # URL ที่ QR Code จะชี้ไป (รายงานสรุปงานสำหรับลูกค้าของงานนี้)
     # เราจะกรองด้วย task_id และ status เป็น 'all' เพื่อให้เห็นทั้งประวัติของงานนั้นๆ (ถ้ามี)
-    public_report_url_for_task = url_for('summary', _external=True, search_query=task.get('title', ''), status_filter='all') 
+    # เพิ่มการส่ง public_report_url_for_task ไปยัง template ด้วย
+    public_report_url_for_task = url_for('summary', _external=True, search_query=task.get('id', ''), status_filter='all') 
     
+    # ดึงการตั้งค่า QR code จาก settings
+    qr_settings = get_app_settings().get('qrcode_settings', {})
+
     # Generate QR code for this specific task's public report URL
-    # ใช้ค่า default หรือปรับแต่งตามต้องการ
     qr_code_base64_for_task = generate_qr_code_base64(
         public_report_url_for_task, 
-        box_size=6,    # ขนาดของแต่ละบล็อก (ยิ่งมากยิ่งใหญ่)
-        border=2,      # ขนาดขอบสีขาวรอบ QR Code
-        fill_color="#0056b3", # สีของ QR Code (เช่น สีน้ำเงินเข้ม)
-        back_color="#FFFFFF" # สีพื้นหลัง (เช่น สีขาว)
+        box_size=qr_settings.get('box_size', 6),    
+        border=qr_settings.get('border', 2),      
+        fill_color=qr_settings.get('fill_color', '#0056b3'), 
+        back_color=qr_settings.get('back_color', '#FFFFFF') 
     )
     # [END qrcode_render_update_task]
 
     return render_template('update_task_details.html', 
                            task=task, 
                            qr_code_base64=qr_code_base64_for_task, 
-                           public_report_url=public_report_url_for_task) # ส่ง URL ไปยัง template ด้วย
+                           public_report_url=public_report_url_for_task) 
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -1293,7 +1289,9 @@ COMMANDS = {
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
-    """Handles incoming messages and calls the correct function."""
+    """
+    Handles incoming messages. Bot will be silent for non-command messages.
+    """
     text = event.message.text.strip()
     text_lower = text.lower()
 
@@ -1316,7 +1314,10 @@ def handle_message(event):
         if len(parts) > 1: handle_complete_task_command(event, parts[1])
         return
     
-    reply_to_line(event.reply_token, [TextMessage(text="ฉันไม่เข้าใจคำสั่งของคุณ ลองพิมพ์ 'comphone' เพื่อดูวิธีใช้งานนะครับ")])
+    # [START silent_on_non_command]
+    # Removed the default reply_to_line for non-matching commands.
+    # The bot will now be silent if the message is not a recognized command.
+    # [END silent_on_non_command]
 
 
 # --- Cron Job Endpoint ---
