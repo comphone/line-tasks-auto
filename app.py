@@ -27,8 +27,9 @@ from linebot.v3 import WebhookHandler
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent, GroupSource, UserSource
 from linebot.v3.exceptions import InvalidSignatureError
 
-from google.auth.transport.requests import Request
-from google.auth2.credentials import Credentials
+# แก้ไข ModuleNotFoundError: 'google.auth2' เป็น 'google.oauth2'
+from google.oauth2.credentials import Credentials 
+from google.auth.transport.requests import Request # อันนี้ถูกแล้ว
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -623,6 +624,15 @@ def form_page():
         appointment_str = str(request.form.get('appointment', '')).strip()
         map_url_from_form = str(request.form.get('latitude_longitude', '')).strip()
 
+        # Added validation for essential fields (customer_name, detail)
+        if not customer_name:
+            flash('กรุณากรอกชื่อลูกค้า', 'danger')
+            return redirect(url_for('form_page'))
+        if not detail: # If detail is also considered essential
+            flash('กรุณากรอกรายละเอียดงาน', 'danger')
+            return redirect(url_for('form_page'))
+
+
         today_str = datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')
         title = f"งานลูกค้า: {customer_name or 'ไม่ระบุชื่อลูกค้า'} ({today_str})" 
         
@@ -964,8 +974,17 @@ def update_task_details(task_id):
             if new_status == 'completed' and original_status != 'completed':
                 settings = get_app_settings()
                 tech_group_id = settings['line_recipients'].get('technician_group_id')
+                # Send notification only if technician_group_id is set
                 if tech_group_id:
-                    check_for_nearby_jobs_and_notify(task_id, tech_group_id)
+                    # Construct a message for completion
+                    completed_message = TextMessage(text=f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n\nดูรายละเอียด: {url_for('update_task_details', task_id=task_id, _external=True)}")
+                    try:
+                        line_messaging_api.push_message(PushMessageRequest(to=tech_group_id, messages=[completed_message]))
+                        app.logger.info(f"Sent completion notification for task {task_id} to technician group.")
+                    except Exception as e:
+                        app.logger.error(f"Failed to send completion notification to LINE: {e}")
+
+                check_for_nearby_jobs_and_notify(task_id, tech_group_id) # tech_group_id might be None, handled in check_for_nearby_jobs_and_notify
         else:
             flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
 
