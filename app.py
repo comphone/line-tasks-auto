@@ -840,43 +840,6 @@ def summary():
             try:
                 due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                 if due_dt_utc < current_time_utc:
-                    is_overdue_check = True
-            except (ValueError, TypeError):
-                pass # Ignore invalid date formats
-
-        if status_filter == 'all':
-            filtered_by_status_tasks.append(task_item)
-        elif status_filter == 'completed' and task_status == 'completed':
-            filtered_by_status_tasks.append(task_item)
-        elif status_filter == 'needsAction' and task_status == 'needsAction' and not is_overdue_check:
-            filtered_by_status_tasks.append(task_item)
-        elif status_filter == 'overdue' and is_overdue_check:
-            filtered_by_status_tasks.append(task_item)
-
-    # Then, apply search query filter to the results from status filter
-    final_filtered_tasks = []
-    for task in filtered_by_status_tasks:
-        # Expanded search fields from app2.py
-        if not search_query or \
-           search_query in str(task.get('title', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('phone', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('address', '')).lower() or \
-           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('detail', '')).lower():
-            final_filtered_tasks.append(task)
-
-
-    tasks = []
-    # Re-calculate summary stats based on ALL tasks (tasks_raw) to show overall status counts - from app2.py
-    # This ensures the counts in the cards remain consistent regardless of current filter
-    total_summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
-    for task_item in tasks_raw:
-        task_status = task_item.get('status')
-        is_overdue_check = False
-        if task_status == 'needsAction' and 'due' in task_item and task_item.get('due'):
-            try:
-                due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
-                if due_dt_utc < current_time_utc:
                     stats['overdue'] += 1 # Count as overdue for summary stats
             except (ValueError, TypeError): pass
         
@@ -1077,15 +1040,23 @@ def update_task_details(task_id):
             if new_status == 'completed' and original_status != 'completed':
                 settings = get_app_settings()
                 tech_group_id = settings['line_recipients'].get('technician_group_id')
-                # Send notification only if technician_group_id is set
-                if tech_group_id:
-                    # Construct a message for completion
-                    completed_message = TextMessage(text=f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n\nดูรายละเอียด: {url_for('update_task_details', task_id=task_id, _external=True)}")
+                
+                # Check if the update came from a user (private chat) or group/room
+                # and send notification to group only if it was a private update or group is primary recipient
+                if tech_group_id: # Only push if group ID is configured
+                    customer_info = parse_customer_info_from_notes(updated_task.get('notes', ''))
+                    completed_group_message = TextMessage(
+                        text=(f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n"
+                            f"ลูกค้า: {customer_info.get('name', '-')}\n"
+                            f"โทร: {customer_info.get('phone', '-')}\n"
+                            f"รายละเอียด: {customer_info.get('detail', '-')}\n\n"
+                            f"ดูรายละเอียด: {url_for('update_task_details', task_id=task_id, _external=True)}")
+                    )
                     try:
-                        line_messaging_api.push_message(PushMessageRequest(to=tech_group_id, messages=[completed_message]))
-                        app.logger.info(f"Sent completion notification for task {task_id} to technician group.")
+                        line_messaging_api.push_message(PushMessageRequest(to=tech_group_id, messages=[completed_group_message]))
+                        app.logger.info(f"Sent completion notification for task {task_id} to technician group: {tech_group_id}.")
                     except Exception as e:
-                        app.logger.error(f"Failed to send completion notification to LINE: {e}")
+                        app.logger.error(f"Failed to send completion notification to LINE group: {e}")
 
                 # check_for_nearby_jobs_and_notify is also called, will work if tech_group_id is valid
                 check_for_nearby_jobs_and_notify(task_id, tech_group_id) 
@@ -1167,14 +1138,14 @@ def handle_help_command(event):
         "🤖 **วิธีใช้งานบอท** 🤖\n\n"
         "➡️ `งานค้างทั้งหมด`\nดูรายการงานที่ยังไม่เสร็จทั้งหมด\n\n"
         "➡️ `งานวันนี้`\nดูรายการงานที่ต้องทำวันนี้\n\n"
-        "➡️ `งานค้างเกิน 2 วัน`\nดูรายการงานที่เลยกำหนดส่งเกิน 2 วัน\n\n" 
+        "➡️ `งานค้างเกิน 2 วัน`\nดูรายการงานที่เลยกำหนดส่งเกิน 2 วัน\n\n" # New help text
         "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
         "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
         "➡️ `เปิดงานใหม่`\nรับลิงก์สำหรับบันทึกงานใหม่\n\n"
         "➡️ `เริ่มลงงาน`\nเลือกงานค้างเพื่ออัปเดตทันที\n\n"
         "➡️ `c [ชื่อลูกค้า]`\nค้นหาประวัติงานของลูกค้า (เช่น: c สมศรี)\n\n" 
-        "➡️ `ดูงาน [ชื่อลูกค้า/เบอร์โทร/ID]`\nดูรายละเอียดงาน (เช่น: ดูงาน สมศรี, ดูงาน 081xxxxxxx, ดูงาน TASK_ID)\n\n" 
-        "➡️ `ปิดงาน [ชื่อลูกค้า/เบอร์โทร/ID]`\nปิดงานด่วน (เช่น: ปิดงาน สมศรี, ปิดงาน 081xxxxxxx, ปิดงาน TASK_ID)\n" 
+        "➡️ `ดูงาน [คำค้นหา]`\nดูรายละเอียดงาน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n\n" # Updated help text
+        "➡️ `ปิดงาน [คำค้นหา]`\nปิดงานด่วน (คำค้นหาคือ ชื่อลูกค้า, เบอร์โทร, หรือ ID งาน)\n" # Updated help text
     ))
     reply_to_line(event.reply_token, [reply_message])
 
@@ -1319,15 +1290,26 @@ def find_tasks_by_customer_query(query):
     for task in all_tasks:
         customer_info = parse_customer_info_from_notes(task.get('notes', ''))
         # Check against task title, customer name, phone, or task ID
-        if query_lower in str(task.get('title', '')).lower() or \
-           query_lower in str(customer_info.get('name', '')).lower() or \
-           query_lower in str(customer_info.get('phone', '')).lower() or \
-           query_lower == str(task.get('id', '')).lower(): # Exact match for ID
+        # Prioritize exact ID match, then partial matches for other fields
+        if query_lower == str(task.get('id', '')).lower(): # Exact match for ID
+            matching_tasks.insert(0, task) # Add to front if ID matches exactly
+        elif query_lower in str(task.get('title', '')).lower() or \
+             query_lower in str(customer_info.get('name', '')).lower() or \
+             query_lower in str(customer_info.get('phone', '')).lower():
             matching_tasks.append(task)
-    return matching_tasks
+    
+    # Remove duplicates while preserving order
+    seen_ids = set()
+    unique_matching_tasks = []
+    for task in matching_tasks:
+        if task.get('id') not in seen_ids:
+            unique_matching_tasks.append(task)
+            seen_ids.add(task.get('id'))
+
+    return unique_matching_tasks
 
 def handle_view_task_command_flexible(event, query_string):
-    """Handles 'ดูงาน [ชื่อลูกค้า/เบอร์โทร/ID]' command."""
+    """Handles 'ดูงาน [คำค้นหา]' command."""
     matching_tasks = find_tasks_by_customer_query(query_string)
 
     if not matching_tasks:
@@ -1346,7 +1328,7 @@ def handle_view_task_command_flexible(event, query_string):
         reply_to_line(event.reply_token, [TextMessage(text="\n".join(message_lines))])
 
 def handle_complete_task_command_flexible(event, query_string):
-    """Handles 'ปิดงาน [ชื่อลูกค้า/เบอร์โทร/ID]' command."""
+    """Handles 'ปิดงาน [คำค้นหา]' command."""
     matching_tasks = find_tasks_by_customer_query(query_string)
 
     if not matching_tasks:
@@ -1362,7 +1344,11 @@ def handle_complete_task_command_flexible(event, query_string):
             # --- Send notification to GROUP if command came from private chat ---
             settings = get_app_settings()
             tech_group_id = settings['line_recipients'].get('technician_group_id')
-            if event.source.type == 'user' and tech_group_id: # Only push if private chat and group ID is configured
+            
+            # Check if the message came from a user (private chat) or a group/room
+            is_private_chat = event.source.type == 'user' 
+            
+            if is_private_chat and tech_group_id: # If from private chat, push to group
                 customer_info = parse_customer_info_from_notes(updated_task.get('notes', ''))
                 completed_group_message = TextMessage(
                     text=(f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n"
@@ -1376,7 +1362,9 @@ def handle_complete_task_command_flexible(event, query_string):
                     app.logger.info(f"Sent completion notification for task {task_to_complete.get('id')} to technician group: {tech_group_id}.")
                 except Exception as e:
                     app.logger.error(f"Failed to send completion notification to LINE group: {e}")
-            
+            elif not is_private_chat: # If from group chat, just log and don't push again
+                 app.logger.info(f"Task {task_to_complete.get('id')} completed from group chat. Not pushing duplicate notification to group.")
+
             check_for_nearby_jobs_and_notify(task_to_complete.get('id'), tech_group_id) 
         else:
             reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน '{query_string}' ได้")])
@@ -1389,7 +1377,7 @@ def handle_complete_task_command_flexible(event, query_string):
         reply_to_line(event.reply_token, [TextMessage(text="\n".join(message_lines))])
 
 
-# Command Dispatcher Dictionary
+# Command Dispatcher Dictionary - *** MUST BE DECLARED AFTER ALL HANDLER FUNCTIONS ***
 COMMANDS = {
     'comphone': handle_help_command,
     'งานค้างทั้งหมด': handle_outstanding_tasks_command, 
@@ -1505,7 +1493,6 @@ def trigger_daily_reports():
             if task.get('status') == 'needsAction' and 'due' in task and task['due']:
                 try:
                     due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                    # If due date is before 2 days ago (i.e., overdue by more than 2 full days)
                     if due_dt_utc < two_days_ago_utc:
                         overdue_tasks_2_days.append(task)
                 except (ValueError, TypeError):
