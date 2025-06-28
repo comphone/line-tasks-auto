@@ -706,6 +706,48 @@ def form_page():
 
     return render_template('form.html')
 
+# New Endpoint to lookup customer data
+@app.route("/lookup_customer", methods=['GET'])
+def lookup_customer():
+    customer_name_query = request.args.get('customer_name', '').strip().lower()
+    
+    if not customer_name_query:
+        return jsonify({}) # Return empty if no query
+
+    tasks_raw = get_google_tasks_for_report(show_completed=True)
+    if tasks_raw is None:
+        return jsonify({"error": "Failed to retrieve tasks from Google API"}), 500
+
+    found_customer_info = {}
+    # Iterate through tasks to find a match and get the latest info
+    # We iterate in reverse to prioritize more recent tasks for data extraction
+    for task_item in reversed(tasks_raw): 
+        customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
+        
+        # Check if the customer name matches (case-insensitive, partial match)
+        if customer_name_query in str(customer_info.get('name', '')).strip().lower():
+            # Populate found_customer_info with available data from this task
+            # Only update if the field is not empty in the task (prioritize non-empty values from newer tasks)
+            if customer_info.get('phone') and not found_customer_info.get('phone'):
+                found_customer_info['phone'] = customer_info['phone']
+            if customer_info.get('address') and not found_customer_info.get('address'):
+                found_customer_info['address'] = customer_info['address']
+            if customer_info.get('detail') and not found_customer_info.get('detail'):
+                found_customer_info['detail'] = customer_info['detail']
+            if customer_info.get('map_url') and not found_customer_info.get('map_url'):
+                found_customer_info['map_url'] = customer_info['map_url']
+
+            # If we have found phone, address, and detail, we can break early
+            # (or continue to find more complete info from older tasks if desired)
+            # For this implementation, we prioritize latest available complete data.
+            # If all key fields are found, we can stop searching.
+            if all(key in found_customer_info and found_customer_info[key] for key in ['phone', 'address', 'detail']):
+                break
+    
+    # Return the found information
+    return jsonify(found_customer_info)
+
+
 @app.route('/summary')
 def summary():
     """Displays the task summary page with search functionality and status filtering. - Modified from app2.py"""
@@ -984,7 +1026,8 @@ def update_task_details(task_id):
                     except Exception as e:
                         app.logger.error(f"Failed to send completion notification to LINE: {e}")
 
-                check_for_nearby_jobs_and_notify(task_id, tech_group_id) # tech_group_id might be None, handled in check_for_nearby_jobs_and_notify
+                # check_for_nearby_jobs_and_notify is also called, will work if tech_group_id is valid
+                check_for_nearby_jobs_and_notify(task_id, tech_group_id) 
         else:
             flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
 
