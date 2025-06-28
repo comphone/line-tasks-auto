@@ -395,6 +395,7 @@
 
             // Equipment Search Logic
             const equipmentSearchInput = document.getElementById('equipment_search_input');
+            const equipmentUsedTextarea = document.getElementById('equipment_used'); // Reference to the textarea
             const equipmentSearchResults = document.getElementById('equipment_search_results');
             let searchTimeout;
 
@@ -419,16 +420,16 @@
                         results.forEach(item => {
                             const itemSpan = document.createElement('span');
                             itemSpan.classList.add('badge', 'bg-info', 'search-result-item', 'me-1', 'mb-1');
-                            itemSpan.textContent = item.item_name;
+                            itemSpan.textContent = item.item_name; // Display only item name for search results
                             // When clicked, insert name, comma, space, unit (if available) into textarea
                             itemSpan.onclick = () => {
                                 let insertValue = item.item_name;
                                 if (item.unit) {
                                     insertValue += `, ${item.unit}`; // Add unit if available
                                 }
-                                window.insertEquipment(insertValue, true); // Use true to add newline if current content
-                                equipmentSearchResults.innerHTML = ''; // Clear search results after selection
-                                equipmentSearchInput.value = ''; // Clear search input
+                                window.insertEquipment(insertValue, true); 
+                                equipmentSearchResults.innerHTML = ''; 
+                                equipmentSearchInput.value = ''; 
                             };
                             equipmentSearchResults.appendChild(itemSpan);
                         });
