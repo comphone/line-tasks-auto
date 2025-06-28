@@ -909,12 +909,11 @@ def lookup_equipment():
     equipment_catalog = current_settings.get('equipment_catalog', [])
     
     results = []
-    # Search by item_name as primary, fallback to barcode
     for item in equipment_catalog:
         item_name = str(item.get('item_name', '')).strip().lower()
         barcode = str(item.get('barcode', '')).strip().lower()
         
-        if query in item_name: # Prioritize searching by item name
+        if query in item_name: 
             results.append({
                 'item_name': item.get('item_name', ''),
                 'unit': item.get('unit', ''),
@@ -946,7 +945,7 @@ def summary():
 
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     
-    if tasks_raw is None: # FIXED: Removed '\'
+    if tasks_raw is None: 
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้ในขณะนี้', 'danger')
         tasks_raw = []
 
@@ -1336,6 +1335,7 @@ def export_equipment_catalog():
 @app.route('/import_equipment_catalog', methods=['POST'])
 def import_equipment_catalog():
     """Imports equipment catalog from an Excel file."""
+    # Note: this route uses its own request.files context, separate from settings_page POST
     if 'excel_file' not in request.files: 
         flash('ไม่พบไฟล์ที่อัปโหลด', 'danger')
         return redirect(url_for('settings_page'))
@@ -1379,11 +1379,11 @@ def import_equipment_catalog():
                     new_catalog_items.append(item)
             
             # Update settings with the new catalog
-            updated_settings_data = {
-                'equipment_catalog': new_catalog_items
-            }
+            # Need to get current settings first to merge, or replace entirely
+            current_settings_for_import = get_app_settings().copy() # Get a copy
+            current_settings_for_import['equipment_catalog'] = new_catalog_items
             
-            if save_app_settings(updated_settings_data):
+            if save_app_settings(current_settings_for_import): # Save the updated settings
                 flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
                 cache.clear() 
             else:
