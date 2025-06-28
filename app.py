@@ -77,32 +77,42 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-def get_app_settings():
-    """Mock function to get app settings."""
-    app.logger.info("Using MOCK get_app_settings()")
-    return {
-        'report_times': {
-            'appointment_reminder_hour_thai': 7,
-            'outstanding_report_hour_thai': 20
-        },
-        'line_recipients': {
-            'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
-            'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
-            'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
-        },
-        'qrcode_settings': { # Default QR code settings
-            'box_size': 8,
-            'border': 4,
-            'fill_color': '#28a745', # Green for general summary
-            'back_color': '#FFFFFF'
-        }
+# [START qrcode_settings_storage_updated]
+_APP_SETTINGS_STORE = {
+    'report_times': {
+        'appointment_reminder_hour_thai': 7,
+        'outstanding_report_hour_thai': 20
+    },
+    'line_recipients': {
+        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+        'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
+        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
+    },
+    'qrcode_settings': { # Default QR code settings
+        'box_size': 8,
+        'border': 4,
+        'fill_color': '#28a745', 
+        'back_color': '#FFFFFF',
+        'custom_url': '' # New: Custom URL for general QR code
     }
+}
+
+def get_app_settings():
+    """Retrieves app settings from a placeholder store."""
+    app.logger.info("Retrieving app settings from mock store.")
+    return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
     """Saves app settings to a placeholder store."""
     app.logger.info(f"Saving app settings to mock store: {settings_data}")
-    _APP_SETTINGS_STORE.update(settings_data) # Update existing settings
+    # Update nested dictionaries carefully
+    for key, value in settings_data.items():
+        if isinstance(value, dict) and key in _APP_SETTINGS_STORE and isinstance(_APP_SETTINGS_STORE[key], dict):
+            _APP_SETTINGS_STORE[key].update(value)
+        else:
+            _APP_SETTINGS_STORE[key] = value
     return True
+# [END qrcode_settings_storage_updated]
 
 # --- Google API Helper Functions ---
 def get_google_service(api_name, api_version):
@@ -1003,9 +1013,8 @@ def update_task_details(task_id):
 
     # [START qrcode_render_update_task]
     # URL ที่ QR Code จะชี้ไป (รายงานสรุปงานสำหรับลูกค้าของงานนี้)
-    # เราจะกรองด้วย task_id และ status เป็น 'all' เพื่อให้เห็นทั้งประวัติของงานนั้นๆ (ถ้ามี)
-    # เพิ่มการส่ง public_report_url_for_task ไปยัง template ด้วย
-    public_report_url_for_task = url_for('summary', _external=True, search_query=task.get('id', ''), status_filter='all') 
+    # เราจะใช้ Task ID เป็น search_query เพื่อให้กรองเฉพาะงานนี้
+    public_report_url_for_task = url_for('summary', _external=True, search_query=task_id, status_filter='all') 
     
     # ดึงการตั้งค่า QR code จาก settings
     qr_settings = get_app_settings().get('qrcode_settings', {})
@@ -1049,7 +1058,8 @@ def settings_page():
                 'box_size': int(request.form.get('qr_box_size', 8)),
                 'border': int(request.form.get('qr_border', 4)),
                 'fill_color': request.form.get('qr_fill_color', '#28a745'),
-                'back_color': request.form.get('qr_back_color', '#FFFFFF')
+                'back_color': request.form.get('qr_back_color', '#FFFFFF'),
+                'custom_url': request.form.get('qr_custom_url', '').strip() # Get custom URL from form
             }
             # [END qrcode_settings_post]
         }
@@ -1065,10 +1075,15 @@ def settings_page():
     # URL ที่ QR Code จะชี้ไป (สรุปงานทั่วไป)
     general_summary_url = url_for('summary', _external=True)
     
+    # ใช้ custom_url ถ้ามี, ไม่งั้นใช้ general_summary_url
+    qr_url_to_use = current_settings.get('qrcode_settings', {}).get('custom_url', '').strip()
+    if not qr_url_to_use: # ถ้า custom_url ว่าง ให้ใช้ default
+        qr_url_to_use = general_summary_url
+
     # ใช้การตั้งค่าจาก _APP_SETTINGS_STORE ในการสร้าง QR Code
     qr_settings = current_settings.get('qrcode_settings', {})
     qr_code_base64_general = generate_qr_code_base64(
-        general_summary_url,
+        qr_url_to_use, # ใช้ URL ที่ตัดสินใจแล้ว
         box_size=qr_settings.get('box_size', 8),   
         border=qr_settings.get('border', 4),
         fill_color=qr_settings.get('fill_color', '#28a745'), 
@@ -1314,10 +1329,8 @@ def handle_message(event):
         if len(parts) > 1: handle_complete_task_command(event, parts[1])
         return
     
-    # [START silent_on_non_command]
     # Removed the default reply_to_line for non-matching commands.
     # The bot will now be silent if the message is not a recognized command.
-    # [END silent_on_non_command]
 
 
 # --- Cron Job Endpoint ---
