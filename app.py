@@ -9,7 +9,7 @@ import mimetypes
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify 
+from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response # Added Response
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
@@ -35,6 +35,15 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload 
+
+# [START firebase_imports]
+import firebase_admin
+from firebase_admin import credentials, firestore
+# [END firebase_imports]
+
+# [START excel_imports]
+import pandas as pd
+# [END excel_imports]
 
 # --- Initialization & Configurations ---
 app = Flask(__name__)
@@ -77,8 +86,34 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
-# [START qrcode_settings_and_common_equipment_storage_with_defaults]
-_APP_SETTINGS_STORE = {
+# [START firebase_init]
+# Firebase initialization for Firestore
+try:
+    # Use service account key from environment variable (preferred for Render.com)
+    firebase_service_account_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT_KEY')
+    if firebase_service_account_json:
+        cred_dict = json.loads(firebase_service_account_json)
+        cred = credentials.Certificate(cred_dict)
+    else:
+        # Fallback to local file for development if env var not set
+        # This path needs to be correct if you are using a local file!
+        cred = credentials.Certificate("path/to/your/serviceAccountKey.json") 
+
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    app.logger.info("Firebase initialized successfully.")
+except Exception as e:
+    app.logger.error(f"Error initializing Firebase: {e}")
+    db = None # Set db to None if initialization fails
+# [END firebase_init]
+
+# [START app_settings_firestore_integration]
+SETTINGS_COLLECTION_NAME = 'app_settings'
+GLOBAL_SETTINGS_DOC_ID = 'global_settings'
+SETTINGS_DOC_REF = db.collection(SETTINGS_COLLECTION_NAME).document(GLOBAL_SETTINGS_DOC_ID) if db else None
+
+# Default settings structure (used if Firestore is empty or fails)
+_DEFAULT_APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
         'outstanding_report_hour_thai': 20
@@ -95,36 +130,65 @@ _APP_SETTINGS_STORE = {
         'back_color': '#FFFFFF',
         'custom_url': '' 
     },
-    'common_equipment_items': [ # Initial default common equipment items
-        "สาย LAN",
-        "หัว RJ45",
-        "คีมย้ำ",
-        "ไขควง",
-        "มัลติมิเตอร์",
-        "สายไฟ VAF 2.5",
-        "ปลั๊กไฟ",
-        "เต้ารับ",
-        "เบรกเกอร์",
-        "Adapter", # เพิ่มตัวอย่างที่ผู้ใช้ต้องการ
-        "ติดตั้งกล้อง" # เพิ่มตัวอย่างที่ผู้ใช้ต้องการ
+    # New: Placeholder for a proper equipment catalog with prices (for future phase)
+    'equipment_catalog': {}, # Format: {'Item Name': {'price': 100.0, 'unit': 'ชิ้น'}}
+    # common_equipment_items will be stored as a simple list of strings for quick access
+    'common_equipment_items': [ 
+        "สาย LAN", "หัว RJ45", "คีมย้ำ", "ไขควง", "มัลติมิเตอร์", 
+        "สายไฟ VAF 2.5", "ปลั๊กไฟ", "เต้ารับ", "เบรกเกอร์", "Adapter", "ติดตั้งกล้อง"
     ]
 }
 
 def get_app_settings():
-    """Retrieves app settings from a placeholder store."""
-    app.logger.info("Retrieving app settings from mock store.")
-    return _APP_SETTINGS_STORE
+    """Retrieves app settings from Firestore or uses defaults if Firestore fails."""
+    if SETTINGS_DOC_REF:
+        try:
+            settings_doc = SETTINGS_DOC_REF.get()
+            if settings_doc.exists:
+                loaded_settings = settings_doc.to_dict()
+                # Deep merge with default settings to ensure all keys are present
+                for key, default_value in _DEFAULT_APP_SETTINGS_STORE.items():
+                    if key not in loaded_settings:
+                        loaded_settings[key] = default_value
+                    elif isinstance(default_value, dict) and isinstance(loaded_settings.get(key), dict):
+                        loaded_settings[key] = {**default_value, **loaded_settings[key]}
+                return loaded_settings
+            else:
+                app.logger.warning("Global settings document not found in Firestore. Using default settings.")
+                # Also try to save defaults to Firestore if not found initially
+                SETTINGS_DOC_REF.set(_DEFAULT_APP_SETTINGS_STORE)
+                return _DEFAULT_APP_SETTINGS_STORE
+        except Exception as e:
+            app.logger.error(f"Error reading settings from Firestore: {e}. Using default settings.")
+            return _DEFAULT_APP_SETTINGS_STORE
+    else:
+        app.logger.warning("Firestore client not initialized. Using default settings.")
+        return _DEFAULT_APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
-    """Saves app settings to a placeholder store."""
-    app.logger.info(f"Saving app settings to mock store: {settings_data}")
-    for key, value in settings_data.items():
-        if isinstance(value, dict) and key in _APP_SETTINGS_STORE and isinstance(_APP_SETTINGS_STORE[key], dict):
-            _APP_SETTINGS_STORE[key].update(value)
-        else:
-            _APP_SETTINGS_STORE[key] = value
-    return True
-# [END qrcode_settings_and_common_equipment_storage_with_defaults]
+    """Saves app settings to Firestore."""
+    if SETTINGS_DOC_REF:
+        try:
+            # When saving, only update the top-level keys passed in settings_data
+            # For nested dicts like qrcode_settings or report_times, the entire sub-dict is replaced.
+            # For common_equipment_items and equipment_catalog, the full list/dict is replaced.
+            SETTINGS_DOC_REF.set(settings_data, merge=True) # Use merge=True to update fields without overwriting the whole document
+            app.logger.info("Settings saved to Firestore successfully.")
+            # Update local store after successful save to keep it consistent
+            _APP_SETTINGS_STORE.update(settings_data) 
+            return True
+        except Exception as e:
+            app.logger.error(f"Error saving settings to Firestore: {e}")
+            return False
+    else:
+        app.logger.error("Firestore client not initialized. Cannot save settings.")
+        return False
+
+# Load initial settings on app startup
+# This will try to load from Firestore, or use and save defaults
+_APP_SETTINGS_STORE = get_app_settings() 
+# [END app_settings_firestore_integration]
+
 
 # --- Google API Helper Functions ---
 def get_google_service(api_name, api_version):
@@ -959,7 +1023,7 @@ def update_task_details(task_id):
         if history and history[0].get('equipment_used'):
             # If the stored equipment_used is a list (new format), format it back to string for textarea
             if isinstance(history[0]['equipment_used'], list):
-                task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used']).replace('\n', '\n') # No <br> here, just newline
+                task['equipment_used_initial'] = _format_equipment_list(history[0]['equipment_used']) # No replace('\n', '\n') here, just the formatted list
             else: # If it's an old string format, just use it directly
                 task['equipment_used_initial'] = history[0]['equipment_used']
         else:
@@ -1051,7 +1115,7 @@ def update_task_details(task_id):
             base_notes_lines.extend(updated_detail.split('\n'))
 
         while base_notes_lines and base_notes_lines[-1] == '':
-            base_notes_lines.pop()
+            notes_lines.pop()
 
         updated_base_notes = "\n".join(base_notes_lines)
 
@@ -1148,6 +1212,18 @@ def settings_page():
                 'custom_url': request.form.get('qr_custom_url', '').strip() 
             }
         }
+        # [START import_export_equipment_settings_save]
+        # Handle common equipment items update from form
+        common_eq_input = request.form.get('common_equipment_list_input', '').strip()
+        if common_eq_input:
+            # Split by newline and strip each item, filter out empty strings
+            updated_common_items = [item.strip() for item in common_eq_input.split('\n') if item.strip()]
+            settings_data['common_equipment_items'] = sorted(list(set(updated_common_items))) # Store unique and sorted
+        else:
+            settings_data['common_equipment_items'] = []
+        # [END import_export_equipment_settings_save]
+
+
         if save_app_settings(settings_data):
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
         else:
@@ -1171,335 +1247,106 @@ def settings_page():
         back_color=qr_settings.get('back_color', '#FFFFFF')
     )
 
+    # [START common_equipment_for_template]
+    # Format common_equipment_items for display in textarea
+    common_equipment_list_for_display = "\n".join(current_settings.get('common_equipment_items', []))
+    # [END common_equipment_for_template]
+
     return render_template('settings_page.html', 
                            settings=current_settings,
                            qr_code_base64_general=qr_code_base64_general, 
-                           general_summary_url=general_summary_url) 
+                           general_summary_url=general_summary_url,
+                           common_equipment_list_for_display=common_equipment_list_for_display) # Pass to template
 
-@app.route('/delete_task/<task_id>', methods=['POST'])
-def delete_task(task_id):
-    """Handles the deletion of a task."""
-    if delete_google_task(task_id):
-        cache.clear() 
-        flash('ลบรายการงานเรียบร้อยแล้ว', 'success')
-    else:
-        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
-    return redirect(url_for('summary'))
-
-# --- LINE Webhook and Command Handlers ---
-@app.route("/callback", methods=['POST'])
-def callback():
-    """Endpoint for receiving data from LINE Webhook"""
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
+# [START export_equipment_route]
+@app.route('/export_equipment', methods=['GET'])
+def export_equipment():
+    """Exports common equipment items to an Excel file."""
     try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return 'OK'
-
-def reply_to_line(reply_token, messages):
-    """Central function for sending reply messages."""
-    try:
-        line_messaging_api.reply_message(
-            ReplyMessageRequest(reply_token=reply_token, messages=messages)
+        common_items = get_app_settings().get('common_equipment_items', [])
+        
+        # Create a DataFrame from the list of common items
+        df = pd.DataFrame(common_items, columns=['ชื่ออุปกรณ์'])
+        
+        # Create an in-memory Excel file
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Common Equipment')
+        output.seek(0) # Rewind to the beginning of the stream
+        
+        return Response(
+            output.getvalue(),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment;filename=common_equipment.xlsx"}
         )
     except Exception as e:
-        app.logger.error(f"Failed to reply to LINE: {e}")
+        app.logger.error(f"Error exporting equipment: {e}")
+        flash(f"เกิดข้อผิดพลาดในการส่งออกอุปกรณ์: {e}", 'danger')
+        return redirect(url_for('settings_page'))
+# [END export_equipment_route]
 
-def handle_help_command(event):
-    """Handles the 'comphone' command."""
-    reply_message = TextMessage(text=(
-        "🤖 **วิธีใช้งานบอท** 🤖\n\n"
-        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
-        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
-        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า\n(เช่น: c สมศรี)\n\n"
-        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
-        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE"
-    ))
-    reply_to_line(event.reply_token, [reply_message])
-
-def handle_outstanding_tasks_command(event):
-    """Handles 'งานค้าง' command."""
-    tasks = get_google_tasks_for_report(show_completed=False)
-    if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
-    if not tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างในขณะนี้")])
-        
-    message_lines = ["--- 📋 รายการงานค้าง ---"]
-    tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
-    for i, task in enumerate(tasks[:15]): 
-        message_lines.append(f"{i+1}. {task.get('title', 'N/A')}\n(ID: {task.get('id')})")
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".join(message_lines))])
-
-def handle_completed_tasks_command(event):
-    """Handles 'งานเสร็จ' command."""
-    tasks = get_google_tasks_for_report(show_completed=True)
-    if tasks is None: 
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
+# [START import_equipment_route]
+@app.route('/import_equipment', methods=['POST'])
+def import_equipment():
+    """Imports common equipment items from an Excel file."""
+    if 'file' not in request.files:
+        flash('ไม่พบไฟล์ที่อัปโหลด', 'danger')
+        return redirect(url_for('settings_page'))
     
-    completed_tasks = [t for t in tasks if t.get('status') == 'completed']
-    if not completed_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="ยังไม่มีงานที่ทำเสร็จ")])
-
-    message_lines = ["--- ✅ 5 รายการงานที่เสร็จล่าสุด ---"]
-    completed_tasks.sort(key=lambda x: x.get('completed', ''), reverse=True)
-    for i, task in enumerate(completed_tasks[:5]):
-        message_lines.append(f"{i+1}. {task.get('title', 'N/A')}")
-    reply_to_line(event.reply_token, [TextMessage(text="\n\n".జ్인(message_lines))]) # Fixed a typo here: 'జ్인' to 'join'
-
-def handle_summary_command(event):
-    """Handles 'สรุปรายงาน' command."""
-    tasks = get_google_tasks_for_report(show_completed=True)
-    if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
-
-    stats = {'needsAction': 0, 'completed': 0, 'overdue': 0}
-    current_time_utc = datetime.datetime.now(pytz.utc)
-    for task in tasks:
-        if task.get('status') == 'completed':
-            stats['completed'] += 1
-        elif task.get('status') == 'needsAction':
-            stats['needsAction'] += 1
-            if task.get('due'):
-                try:
-                    due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                    if due_dt_utc < current_time_utc:
-                        stats['overdue'] += 1
-                except (ValueError, TypeError): pass
+    file = request.files['file']
+    if file.filename == '':
+        flash('กรุณาเลือกไฟล์', 'danger')
+        return redirect(url_for('settings_page'))
     
-    reply_message = TextMessage(text=(
-        f"--- 📊 สรุปรายงาน ---\n"
-        f"งานทั้งหมด: {len(tasks)}\n"
-        f"✅ เสร็จสิ้น: {stats['completed']}\n"
-        f"⏳ รอดำเนินการ: {stats['needsAction']}\n"
-        f"❗️ ยังไม่ดำเนินการ: {stats['overdue']}"
-    ))
-    reply_to_line(event.reply_token, [reply_message])
+    if file and allowed_file(file.filename) and file.filename.endswith(('.xls', '.xlsx')):
+        try:
+            # Read the Excel file into a pandas DataFrame
+            df = pd.read_excel(file.stream)
+            
+            # Assuming the first column contains the equipment names
+            # You might need to adjust 'ชื่ออุปกรณ์' if your Excel column name is different
+            if 'ชื่ออุปกรณ์' not in df.columns:
+                flash('ไฟล์ Excel ต้องมีคอลัมน์ "ชื่ออุปกรณ์"', 'danger')
+                return redirect(url_for('settings_page'))
+                
+            new_common_items = df['ชื่ออุปกรณ์'].dropna().astype(str).tolist()
+            
+            # Get current settings
+            current_settings = get_app_settings()
+            existing_common_items_set = set(current_settings.get('common_equipment_items', []))
+            
+            # Add new unique items
+            for item in new_common_items:
+                if item.strip() and item.strip() not in existing_common_items_set:
+                    existing_common_items_set.add(item.strip())
+            
+            # Update settings with the new combined list
+            updated_settings_data = {
+                'common_equipment_items': sorted(list(existing_common_items_set))
+            }
+            
+            if save_app_settings(updated_settings_data):
+                flash('นำเข้าอุปกรณ์เรียบร้อยแล้ว!', 'success')
+            else:
+                flash('เกิดข้อผิดพลาดในการบันทึกอุปกรณ์ที่นำเข้า', 'danger')
 
-def handle_view_task_command(event, task_id):
-    """Handles 'ดูงาน <ID>' command by replying with a Flex Message."""
-    task = get_single_task(task_id)
-    if not task:
-        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบงาน ID: {task_id}")])
-    
-    flex_message = create_task_flex_message(task)
-    reply_to_line(event.reply_token, [flex_message])
-
-def handle_complete_task_command(event, task_id):
-    """Handles 'เสร็จงาน <ID>' command."""
-    updated_task = update_google_task(task_id, status='completed')
-    if updated_task:
-        cache.clear()
-        reply_to_line(event.reply_token, [TextMessage(text=f"✅ ปิดงาน '{updated_task.get('title')}' เรียบร้อยแล้ว")])
-        source_id = event.source.group_id if event.source.type == 'group' else event.source.user_id
-        check_for_nearby_jobs_and_notify(task_id, source_id)
+        except Exception as e:
+            app.logger.error(f"Error importing equipment: {e}")
+            flash(f"เกิดข้อผิดพลาดในการนำเข้าไฟล์: {e}", 'danger')
     else:
-        reply_to_line(event.reply_token, [TextMessage(text=f"❌ ไม่สามารถปิดงาน ID: {task_id} ได้")])
-
-def handle_customer_search_command(event, customer_name):
-    """Handles customer history search command."""
-    all_tasks = get_google_tasks_for_report(show_completed=True)
-    if all_tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล")])
-
-    found_tasks = []
-    for task in all_tasks:
-        info = parse_customer_info_from_notes(task.get('notes', ''))
-        if customer_name.lower() in str(info.get('name', '')).strip().lower(): 
-            found_tasks.append(task)
-    
-    if not found_tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text=f"ไม่พบประวัติงานสำหรับลูกค้าชื่อ '{customer_name}'")])
-
-    carousel = create_customer_history_carousel(found_tasks, customer_name)
-    alt_text = f"ประวัติงานของลูกค้า: {customer_name}"
-    flex_message = FlexMessage(alt_text=alt_text, contents=carousel)
-    
-    reply_to_line(event.reply_token, [flex_message])
-
-def handle_open_new_task_command(event):
-    """Handles the 'เปิดงานใหม่' command by providing a link to the new task form."""
-    new_task_url = url_for('form_page', _external=True)
-    reply_message = TextMessage(
-        text=f"คลิกที่ลิงก์นี้เพื่อบันทึกงานใหม่:\n{new_task_url}"
-    )
-    reply_to_line(event.reply_token, [reply_message])
-
-def handle_start_work_command(event):
-    """
-    Handles the 'เริ่มลงงาน' command.
-    Lists pending tasks and provides quick reply buttons to update them.
-    """
-    tasks = get_google_tasks_for_report(show_completed=False) 
-    if tasks is None:
-        return reply_to_line(event.reply_token, [TextMessage(text="⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลงาน")])
-    if not tasks:
-        return reply_to_line(event.reply_token, [TextMessage(text="✅ ยอดเยี่ยม! ไม่มีงานค้างให้เริ่มลงงานในขณะนี้")])
-
-    message_text = "เลือกงานที่ต้องการเริ่มลงงาน (สูงสุด 8 งาน):\n\n"
-    quick_reply_buttons = []
-    
-    tasks.sort(key=lambda x: x.get('due', '9999-99-99'))
-
-    for i, task in enumerate(tasks[:8]): 
-        customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-        task_title_raw = str(task.get('title', 'ไม่มีหัวข้อ'))
-        task_title = task_title_raw.split('\n')[0] 
-        customer_name = str(customer_info.get('name', 'ไม่ระบุชื่อ')) 
-
-        button_label = f"{task_title} ({customer_name})"
-        if len(button_label) > 20: 
-            button_label = button_label[:17] + "..."
-
-        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+        flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
         
-        quick_reply_buttons.append(
-            QuickReplyButton(
-                action=URIAction(label=button_label, uri=update_url)
-            )
-        )
-        message_text += f"{i+1}. {task_title} (ลูกค้า: {customer_name})\n"
-
-
-    reply_message = TextMessage(
-        text=message_text,
-        quick_reply=QuickReply(items=quick_reply_buttons)
-    )
-    reply_to_line(event.reply_token, [reply_message])
-
-
-# Command Dispatcher Dictionary
-COMMANDS = {
-    'comphone': handle_help_command,
-    'งานค้าง': handle_outstanding_tasks_command,
-    'งานเสร็จ': handle_completed_tasks_command,
-    'สรุปรายงาน': handle_summary_command,
-    'เปิดงานใหม่': handle_open_new_task_command, 
-    'เริ่มลงงาน': handle_start_work_command,     
-}
-
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_message(event):
-    """
-    Handles incoming messages. Bot will be silent for non-command messages.
-    """
-    text = event.message.text.strip()
-    text_lower = text.lower()
-
-    if text_lower in COMMANDS:
-        COMMANDS[text_lower](event)
-        return 
-
-    if text_lower.startswith('c '):
-        parts = text.split(maxsplit=1)
-        if len(parts) > 1: handle_customer_search_command(event, parts[1])
-        return
-
-    if text_lower.startswith('ดูงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_view_task_command(event, parts[1])
-        return
-
-    if text_lower.startswith('เสร็จงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_complete_task_command(event, parts[1])
-        return
-    
-    # Removed the default reply_to_line for non-matching commands.
-    # The bot will now be silent if the message is not a recognized command.
-
-
-# --- Cron Job Endpoint ---
-@app.route('/trigger_daily_reports')
-def trigger_daily_reports():
-    """Endpoint for Cron Job to send daily reports."""
-    app.logger.info("Cron job triggered for daily reports.")
-    settings = get_app_settings()
-    now_thai = datetime.datetime.now(THAILAND_TZ)
-    current_hour = now_thai.hour
-
-    appointment_hour = settings.get('report_times', {}).get('appointment_reminder_hour_thai', 7)
-    summary_hour = settings.get('report_times', {}).get('outstanding_report_hour_thai', 20)
-
-    tasks_to_process = get_google_tasks_for_report(show_completed=False)
-    if tasks_to_process is None:
-        return "Failed to get tasks from Google API", 500
-
-    messages_to_send = []
-    recipients = []
-    
-    if current_hour == appointment_hour:
-        app.logger.info("Processing daily APPOINTMENT reminders.")
-        today_appointments = []
-        for task in tasks_to_process:
-            if 'due' in task and task['due']:
-                 try:
-                    due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                    dt_thai = dt_utc.astimezone(THAILAND_TZ) 
-                    if dt_thai.date() == now_thai.date(): 
-                        today_appointments.append(task)
-                 except (ValueError, TypeError): continue
-        
-        if today_appointments:
-            today_appointments.sort(key=lambda x: x.get('due', ''))
-            messages_to_send = []
-            for task in today_appointments:
-                try:
-                    flex_msg = create_task_flex_message(task)
-                    messages_to_send.append(flex_msg)
-                except Exception as e:
-                    app.logger.error(f"Failed to create Flex Message for daily reminder task {task.get('id')}: {e}")
-                    messages_to_send.append(TextMessage(text=f"แจ้งเตือนงานวันนี้:\nหัวข้อ: {task.get('title', '-')}\nลูกค้า: {parse_customer_info_from_notes(task.get('notes', '')).get('name', '-')}\nเวลา: {parse_google_task_dates(task).get('due_formatted', '-')}\n\nดูรายละเอียด/อัปเดต: {url_for('update_task_details', task_id=task.get('id'), _external=True)}"))
-            recipients = [id for id in [settings['line_recipients'].get('technician_group_id'), settings['line_recipients'].get('admin_group_id')] if id]
-
-    elif current_hour == summary_hour:
-        app.logger.info("Processing daily OUTSTANDING tasks summary.")
-        if tasks_to_process:
-            tasks_to_process.sort(key=lambda x: x.get('due', '9999-99-99'))
-            message_lines = ["--- 🌙 สรุปงานค้าง ---"]
-            for task in tasks_to_process:
-                info = parse_customer_info_from_notes(task.get('notes', ''))
-                message_lines.append(f"ลูกค้า: {info.get('name', '') or '-'}\nโทร: {info.get('phone', '') or '-'}\nงาน: {task.get('title')}") 
-            messages_to_send = [TextMessage(text="\n\n".join(message_lines))]
-            recipients = [id for id in [settings['line_recipients'].get('manager_user_id'), settings['line_recipients'].get('admin_group_id')] if id]
-
-    if messages_to_send and recipients:
-        if isinstance(recipients, list):
-            for recipient_id in recipients:
-                for i in range(0, len(messages_to_send), 5):
-                    line_messaging_api.push_message(PushMessageRequest(to=recipient_id, messages=messages_to_send[i:i+5]))
-        else: 
-            line_messaging_api.push_message(PushMessageRequest(to=recipients, messages=messages_to_send[i:i+5]) ) 
-        
-        return f"{len(messages_to_send)} messages sent to {len(recipients)} recipients.", 200
-
-    return "No report scheduled or no recipients for this hour.", 200
-
-# Jinja2 filter to format ISO datetime string to Thai local time
-def format_datetime_iso_to_thai(dt_iso_str):
-    if not dt_iso_str:
-        return '-'
-    try:
-        if dt_iso_str.endswith('Z'):
-            dt_iso_str = dt_iso_str.replace('Z', '+00:00')
-        
-        dt_utc = datetime.datetime.fromisoformat(dt_iso_str)
-        dt_thai = dt_utc.astimezone(THAILAND_TZ)
-        return dt_thai.strftime("%d/%m/%y %H:%M:%S")
-    except (ValueError, TypeError) as e:
-        app.logger.error(f"Error formatting date '{dt_iso_str}': {e}")
-        return '-'
-
-app.jinja_env.filters['format_datetime_iso_to_thai'] = format_datetime_iso_to_thai
+    return redirect(url_for('settings_page'))
+# [END import_equipment_route]
 
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
+    # Initial load of settings will populate _APP_SETTINGS_STORE
+    # Ensure this happens only once at app startup
+    app.logger.info("Application starting...")
+    # The port Render.com expects your app to listen on
+    # It will set an environment variable PORT, so we should use it.
+    # Default to 8080 if not set (e.g., when running locally) 
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
