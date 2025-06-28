@@ -77,6 +77,7 @@ TECHNICIAN_LINE_IDS = {
     "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
 }
 
+# [START qrcode_settings_and_common_equipment_storage]
 _APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
@@ -93,7 +94,8 @@ _APP_SETTINGS_STORE = {
         'fill_color': '#28a745', 
         'back_color': '#FFFFFF',
         'custom_url': '' 
-    }
+    },
+    'common_equipment_items': [] # New: To store a list of frequently used equipment items
 }
 
 def get_app_settings():
@@ -110,6 +112,7 @@ def save_app_settings(settings_data):
         else:
             _APP_SETTINGS_STORE[key] = value
     return True
+# [END qrcode_settings_and_common_equipment_storage]
 
 # --- Google API Helper Functions ---
 def get_google_service(api_name, api_version):
@@ -420,7 +423,6 @@ def parse_google_task_dates(task_item):
             parsed_task[f'{key}_formatted'] = '' 
     return parsed_task
 
-# [START parse_tech_report_from_notes_with_equipment_structure]
 def parse_tech_report_from_notes(notes):
     """Extracts all past technician reports into a history list and the original notes text."""
     if not notes: return [], ""
@@ -429,13 +431,11 @@ def parse_tech_report_from_notes(notes):
     for json_str in report_blocks:
         try:
             report_data = json.loads(json_str)
-            # Ensure equipment_used is correctly parsed when retrieving historical reports
-            # If equipment_used is a list (new format), it's fine. If it's a string (old format), keep as is.
-            if isinstance(report_data.get('equipment_used'), str):
+            if isinstance(report_data.get('equipment_used'), str): # Handle old string format for display
                 report_data['equipment_used_display'] = _format_equipment_list(
                     _parse_equipment_string(report_data['equipment_used'])
                 )
-            else: # Already a list or None
+            else: # New format (list) or None, pass directly to formatter
                 report_data['equipment_used_display'] = _format_equipment_list(
                     report_data.get('equipment_used', [])
                 )
@@ -447,7 +447,6 @@ def parse_tech_report_from_notes(notes):
     
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
-# [END parse_tech_report_from_notes_with_equipment_structure]
 
 def allowed_file(filename):
     """Checks for allowed file extensions."""
@@ -479,13 +478,16 @@ def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back
         app.logger.error(f"Error generating QR code for URL {url}: {e}")
         return None
 
-# [START equipment_parsing_functions]
+# [START equipment_parsing_functions_updated]
 def _parse_equipment_string(text_input):
     """
     Parses equipment string like "Item, Quantity Unit\nItem2, Qty2"
-    into a list of dicts: [{"item": "Item", "quantity": "Quantity Unit"}]
+    into a list of dicts: [{"item": "Item", "quantity": "Quantity Unit"}].
+    Also updates common_equipment_items in settings.
     """
     equipment_list = []
+    common_items_set = set(get_app_settings()['common_equipment_items']) # Get current common items as set for quick lookup
+    
     if not text_input:
         return equipment_list
     
@@ -495,39 +497,49 @@ def _parse_equipment_string(text_input):
         if not line:
             continue
         
-        parts = line.split(',', 1) # Split only on the first comma
+        parts = line.split(',', 1) 
         item_name = parts[0].strip()
         quantity = parts[1].strip() if len(parts) > 1 else ''
         
-        if item_name: # Only add if item name exists
+        if item_name:
             equipment_list.append({"item": item_name, "quantity": quantity})
-            
+            # Add to common items if not already present
+            if item_name not in common_items_set:
+                common_items_set.add(item_name) # Add to the set
+    
+    # Update the _APP_SETTINGS_STORE with the new unique common items
+    # Sort for consistent display
+    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(common_items_set))
+    
     return equipment_list
 
-def _format_equipment_list(equipment_list):
+def _format_equipment_list(equipment_data):
     """
-    Formats a list of equipment dicts into a multi-line string for textarea display.
-    Also used for display in history.
+    Formats equipment data (list of dicts or old string) into a multi-line string for display.
     """
-    if not equipment_list:
-        return ''
+    if not equipment_data:
+        return 'N/A' # Default display if no data
     
     formatted_lines = []
-    # Ensure equipment_list is actually a list, in case old data is just a string
-    if isinstance(equipment_list, list):
-        for eq in equipment_list:
-            if isinstance(eq, dict) and "item" in eq:
-                line = f"- {eq['item']}"
-                if eq.get("quantity"):
-                    line += f", {eq['quantity']}"
+    if isinstance(equipment_data, list): # New format: list of dicts
+        for eq_item in equipment_data:
+            if isinstance(eq_item, dict) and "item" in eq_item:
+                line = f"{eq_item['item']}"
+                if eq_item.get("quantity"):
+                    line += f", {eq_item['quantity']}"
                 formatted_lines.append(line)
-            elif isinstance(eq, str): # Fallback for old string format if mixed data
-                formatted_lines.append(eq)
-    elif isinstance(equipment_list, str): # Handle old string data being passed directly
-        return equipment_list.replace('\n', '<br>') # For displaying in history
-        
+            # Handle potential malformed dicts if any
+            elif isinstance(eq_item, str): # Fallback if a string somehow gets into the list
+                formatted_lines.append(eq_item)
+    elif isinstance(equipment_data, str): # Old format: raw string
+        return equipment_data.replace('\n', '<br>') # For displaying multi-line in history
+
+    # If list is empty after processing, return N/A
+    if not formatted_lines:
+        return 'N/A'
+
     return "\n".join(formatted_lines)
-# [END equipment_parsing_functions]
+# [END equipment_parsing_functions_updated]
 
 
 # --- Flex Message Creation Functions ---
@@ -794,7 +806,7 @@ def lookup_customer():
 
     tasks_raw = get_google_tasks_for_report(show_completed=False) 
     
-    if tasks_raw is None: # Corrected: Changed === None to is None
+    if tasks_raw is None: 
         return jsonify({"error": "Failed to retrieve tasks from Google API"}), 500
 
     found_customer_info = {}
@@ -935,7 +947,6 @@ def update_task_details(task_id):
         task['map_url_initial'] = customer_info_from_task.get('map_url', '')
 
         task['tech_reports_history'] = history
-        # [START equipment_used_prefill]
         # When displaying the form for editing, try to format equipment_used back into string
         # for the textarea, assuming the most recent report's equipment is what's being edited.
         if history and history[0].get('equipment_used'):
@@ -946,7 +957,6 @@ def update_task_details(task_id):
                 task['equipment_used_initial'] = history[0]['equipment_used']
         else:
             task['equipment_used_initial'] = ''
-        # [END equipment_used_prefill]
         
         if history and 'next_appointment' in history[0] and history[0]['next_appointment']:
             try:
@@ -1001,8 +1011,8 @@ def update_task_details(task_id):
         next_appointment_gmt = None
         if next_appointment_date_str: 
             try:
-                next_app_dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
-                next_appointment_gmt = next_app_dt_local.astimezone(pytz.utc).isoformat()
+                dt_local = THAILAND_TZ.localize(datetime.datetime.fromisoformat(next_appointment_date_str))
+                next_appointment_gmt = dt_local.astimezone(pytz.utc).isoformat()
             except ValueError: app.logger.error(f"Invalid next appointment date format: {next_appointment_date_str}")
         
         current_lat = request.form.get('current_lat')
@@ -1034,7 +1044,7 @@ def update_task_details(task_id):
             base_notes_lines.extend(updated_detail.split('\n'))
 
         while base_notes_lines and base_notes_lines[-1] == '':
-            notes_lines.pop()
+            base_notes_lines.pop()
 
         updated_base_notes = "\n".join(base_notes_lines)
 
@@ -1101,7 +1111,8 @@ def update_task_details(task_id):
     return render_template('update_task_details.html', 
                            task=task, 
                            qr_code_base64=qr_code_base64_for_task, 
-                           public_report_url=public_report_url_for_task) 
+                           public_report_url=public_report_url_for_task,
+                           common_equipment_items=get_app_settings().get('common_equipment_items', [])) # Pass common equipment items
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
