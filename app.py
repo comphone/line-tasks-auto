@@ -440,7 +440,6 @@ def parse_customer_info_from_notes(notes):
                 info['phone'] = lines[1].strip()
 
     if not info['address'] and len(lines) > 2:
-        # Check if it looks like an address or is not a known prefix
         if not re.match(r"^(ลิงก์แผนที่|รายละเอียดงาน):", lines[2].strip()):
             info['address'] = lines[2].strip()
 
@@ -840,6 +839,21 @@ def summary():
     # Initialize total_summary_stats before using it
     total_summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)} 
 
+    # Calculate summary stats from all raw tasks
+    for task_item in tasks_raw:
+        task_status = task_item.get('status')
+        if task_status == 'completed':
+            total_summary_stats['completed'] += 1
+        elif task_status == 'needsAction':
+            total_summary_stats['needsAction'] += 1
+            if 'due' in task_item and task_item.get('due'):
+                try:
+                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
+                    if due_dt_utc < current_time_utc:
+                        total_summary_stats['overdue'] += 1 
+                except (ValueError, TypeError): 
+                    pass # Ignore invalid date formats
+
     # First, apply status filter
     filtered_by_status_tasks = []
     for task_item in tasks_raw:
@@ -849,18 +863,34 @@ def summary():
             try:
                 due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                 if due_dt_utc < current_time_utc:
-                    total_summary_stats['overdue'] += 1 # Count as overdue for summary stats
-            except (ValueError, TypeError): pass
-        
-        if task_status == 'completed':
-            total_summary_stats['completed'] += 1
-        elif task_status == 'needsAction':
-            total_summary_stats['needsAction'] += 1
+                    is_overdue_check = True
+            except (ValueError, TypeError):
+                pass # Ignore invalid date formats
+
+        if status_filter == 'all':
+            filtered_by_status_tasks.append(task_item)
+        elif status_filter == 'completed' and task_status == 'completed':
+            filtered_by_status_tasks.append(task_item)
+        elif status_filter == 'needsAction' and task_status == 'needsAction' and not is_overdue_check:
+            filtered_by_status_tasks.append(task_item)
+        elif status_filter == 'overdue' and is_overdue_check:
+            filtered_by_status_tasks.append(task_item)
+
+    # Then, apply search query filter to the results from status filter
+    final_filtered_tasks = [] # This variable was missing its initialization in the previous version
+    for task in filtered_by_status_tasks: 
+        # Expanded search fields from app2.py
+        if not search_query or \
+           search_query in str(task.get('title', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('name', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('phone', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('address', '')).lower() or \
+           search_query in str(parse_customer_info_from_notes(task.get('notes', '')).get('detail', '')).lower():
+            final_filtered_tasks.append(task)
 
 
-    # Re-filter tasks based on final_filtered_tasks (after search query applied)
     tasks = [] # Initialize tasks list for rendering
-    for task_item in filtered_by_status_tasks: # Iterate over the results of status filter
+    for task_item in final_filtered_tasks: # Iterate over the final filtered tasks for display
         parsed_task = parse_google_task_dates(task_item)
         parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
         
@@ -1123,6 +1153,8 @@ def callback():
     app.logger.info("Request body: " + body)
     try:
         # The event object should already contain source information
+        # reply_to_line function no longer takes source_type, group_id, user_id
+        # as it simplifies to just using reply_token. Push messages are handled explicitly.
         handler.handle(body, signature) 
     except InvalidSignatureError:
         abort(400)
@@ -1134,6 +1166,7 @@ def callback():
 def reply_to_line(reply_token, messages):
     """Central function for sending reply messages."""
     try:
+        # Using reply_message for both user and group replies for immediate response
         line_messaging_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=messages))
         # No need to log source_type, group_id, user_id here as it's passed from calling handler
         app.logger.info(f"Successfully replied/sent messages via reply_token.")
@@ -1463,9 +1496,11 @@ def handle_message(event):
     text = event.message.text.strip()
     text_lower = text.lower()
 
-    # Pass source type and IDs to reply_to_line based on event source
-    # No need to explicitly pass to reply_to_line here, as it's not a parameter of reply_to_line now.
-    # The reply_token handles direct reply, and push_message for group notifications.
+    # Get source type and IDs for logging/conditional pushing
+    source_type = event.source.type
+    group_id = event.source.group_id if isinstance(event.source, GroupSource) else None
+    user_id = event.source.user_id if isinstance(event.source, UserSource) else None
+
 
     # Handle commands with arguments that might be IDs or customer names/phones
     if text_lower.startswith('c '):
