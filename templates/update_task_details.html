@@ -31,21 +31,6 @@
             border-radius: 4px;
             object-fit: cover;
         }
-        /* Style for read-only fields */
-        .readonly-field {
-            background-color: #e9ecef;
-            padding: 0.375rem 0.75rem;
-            border: 1px solid #ced4da;
-            border-radius: 0.25rem;
-            min-height: calc(1.5em + 0.75rem + 2px); /* Match input height */
-            display: flex;
-            align-items: center;
-        }
-        textarea.readonly-field {
-            display: block;
-            min-height: calc(3.5em + 0.75rem + 2px); /* Adjust for textarea */
-            align-items: flex-start;
-        }
     </style>
 </head>
 <body>
@@ -55,44 +40,39 @@
                 <h3 class="mb-0">อัปเดตรายละเอียดงาน</h3>
             </div>
             <div class="card-body p-4">
-                <!-- Original Task Details Display (slightly adjusted for new parsing) -->
+                <!-- Original Task Details Display -->
                 <div class="p-3 mb-4 task-details">
                     <h5>{{ task.get('title', 'N/A') }}</h5>
                     <p class="mb-1"><strong>ID งาน:</strong> {{ task.id }}</p>
                     <p class="mb-1"><strong>สถานะปัจจุบัน:</strong> {{ task.display_status }}</p>
-                    <hr>
-                    <!-- Display parsed customer info as READ-ONLY TEXT -->
-                    <div class="mb-2">
-                        <label class="form-label"><strong>ชื่อลูกค้า:</strong></label>
-                        <div class="readonly-field">{{ task.customer_name_initial or '-' }}</div>
-                        <input type="hidden" name="customer_name_display" value="{{ task.customer_name_initial or '' }}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label"><strong>เบอร์โทรศัพท์:</strong></label>
-                        <div class="readonly-field">{{ task.customer_phone_initial or '-' }}</div>
-                        <input type="hidden" name="customer_phone_display" value="{{ task.customer_phone_initial or '' }}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label"><strong>ที่อยู่ลูกค้า:</strong></label>
-                        <div class="readonly-field">{{ task.customer_address_initial or '-' }}</div>
-                        <input type="hidden" name="address_display" value="{{ task.customer_address_initial or '' }}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label"><strong>ลิงก์แผนที่ (Google Maps URL):</strong></label>
-                        {% if task.map_url_initial %}
-                            <div class="readonly-field"><a href="{{ task.map_url_initial }}" target="_blank">{{ task.map_url_initial }}</a></div>
-                        {% else %}
-                            <div class="readonly-field">-</div>
-                        {% endif %}
-                        <input type="hidden" name="latitude_longitude_display" value="{{ task.map_url_initial or '' }}">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label"><strong>รายละเอียดงาน:</strong></label>
-                        <div class="readonly-field" style="white-space: pre-wrap;">{{ task.customer_detail_initial or '-' }}</div>
-                        <input type="hidden" name="detail_display" value="{{ task.customer_detail_initial or '' }}">
-                    </div>
-
                 </div>
+                <hr>
+
+                <!-- Customer Info (Now Editable) -->
+                <h5 class="mb-3">ข้อมูลลูกค้า</h5>
+                <div class="mb-3">
+                    <label for="customer_name" class="form-label"><strong>ชื่อลูกค้า:</strong></label>
+                    <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer_name_initial or '' }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="customer_phone" class="form-label"><strong>เบอร์โทรศัพท์:</strong></label>
+                    <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer_phone_initial or '' }}">
+                </div>
+                <div class="mb-3">
+                    <label for="address" class="form-label"><strong>ที่อยู่ลูกค้า:</strong></label>
+                    <textarea class="form-control" id="address" name="address" rows="2">{{ task.customer_address_initial or '' }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="latitude_longitude" class="form-label"><strong>ลิงก์แผนที่ (Google Maps URL):</strong></label>
+                    <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.map_url_initial or '' }}" placeholder="เช่น https://maps.app.goo.gl/...">
+                    <button type="button" class="btn btn-info btn-sm mt-2" id="shareCurrentLocationBtn"><i class="fas fa-location-arrow me-2"></i>แชร์ที่อยู่ปัจจุบัน</button>
+                    <small class="form-text text-muted" id="shareLocationStatus">กดเพื่อใส่ลิงก์แผนที่ Google Maps ของตำแหน่งคุณ</small>
+                </div>
+                <div class="mb-3">
+                    <label for="detail" class="form-label"><strong>รายละเอียดงาน:</strong></label>
+                    <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer_detail_initial or '' }}</textarea>
+                </div>
+                <hr>
 
                 {% if task.tech_reports_history %}
                 <div class="mb-4">
@@ -141,16 +121,7 @@
                 <hr>
                 <h5 class="mb-3">กรอกข้อมูลอัปเดตครั้งล่าสุด</h5>
                 <form method="POST" enctype="multipart/form-data">
-                    <!-- These fields are now read-only, their values are captured via hidden inputs above -->
-                    {# Keeping these as hidden inputs is generally preferred to ensure their values are passed back on POST,
-                       even though they are displayed via div.readonly-field.
-                       Alternatively, just pass task.customer_name_initial etc. directly in app.py's POST handler from task_raw #}
-                    <input type="hidden" name="customer_name" value="{{ task.customer_name_initial or '' }}">
-                    <input type="hidden" name="customer_phone" value="{{ task.customer_phone_initial or '' }}">
-                    <input type="hidden" name="address" value="{{ task.customer_address_initial or '' }}">
-                    <input type="hidden" name="latitude_longitude" value="{{ task.map_url_initial or '' }}">
-                    <input type="hidden" name="detail" value="{{ task.customer_detail_initial or '' }}">
-
+                    {# Hidden inputs are no longer needed here as fields are directly editable #}
 
                     <div class="mb-3">
                         <label for="work_summary" class="form-label"><strong>สรุปผลการทำงาน:</strong></label>
