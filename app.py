@@ -425,16 +425,39 @@ def parse_customer_info_from_notes(notes):
     
     info['detail'] = "\n".join(detail_lines).strip()
 
-    # Fallback for older notes or if markers are missing:
-    # If a field is still empty after pattern matching, try to deduce from line order
-    # This logic assumes a rough order of: Name, Phone, Address, (Map URL), Detail
-    # This is complex and might still be imperfect for truly unstructured notes.
-    # The new saving format in form_page will make this parsing more reliable.
-    
-    # Example for potential fallback (can be refined or removed if strict format is enforced)
-    # This part is highly dependent on how varied your existing "notes" data might be.
-    # For now, we rely on the explicit prefixes set in form_page and update_task_details POST.
-    
+    # Fallback for old/unstructured notes for customer_name, phone, address if not found by prefix
+    # This ensures older data is still parsed reasonably well.
+    if not info['name'] and len(lines) > 0:
+        if not re.match(r"^(เบอร์โทร|ที่อยู่|ลิงก์แผนที่|รายละเอียดงาน):", lines[0].strip()):
+            info['name'] = lines[0].strip()
+            
+    if not info['phone'] and len(lines) > 1:
+        if not re.match(r"^(ที่อยู่|ลิงก์แผนที่|รายละเอียดงาน):", lines[1].strip()):
+            if re.search(r'\d', lines[1]): # Only consider as phone if it has digits
+                info['phone'] = lines[1].strip()
+
+    if not info['address'] and len(lines) > 2:
+        if not re.match(r"^(ลิงก์แผนที่|รายละเอียดงาน):", lines[2].strip()):
+            info['address'] = lines[2].strip()
+
+    # Final check for detail if still empty and no marker was found
+    if not info['detail'] and not found_detail_marker:
+        # Reconstruct detail from remaining content after parsing known fields
+        processed_lines_count = 0
+        if info['name']: processed_lines_count += 1
+        if info['phone']: processed_lines_count += 1
+        if info['address']: processed_lines_count += 1
+        # Map URL might be embedded or not, and can be on different lines
+        # This part becomes complex quickly without strict adherence.
+        # For new data, the prefixing will ensure accuracy. For old, it's best effort.
+        
+        # A simpler fallback for detail if not found by marker:
+        # Assume all lines after the first few (that might be name, phone, address) are detail
+        # This will depend heavily on original data format.
+        # For now, rely on the prefixing for new data and best effort for old.
+        pass # Detail will be empty if not explicitly marked or in first few lines without proper format
+
+
     return info
     
 def parse_google_task_dates(task_item):
@@ -854,15 +877,13 @@ def summary():
             try:
                 due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                 if due_dt_utc < current_time_utc:
-                    is_overdue_check = True
+                    stats['overdue'] += 1 # Count as overdue for summary stats
             except (ValueError, TypeError): pass
         
         if task_status == 'completed':
             total_summary_stats['completed'] += 1
         elif task_status == 'needsAction':
             total_summary_stats['needsAction'] += 1
-            if is_overdue_check:
-                total_summary_stats['overdue'] += 1
 
 
     for task_item in final_filtered_tasks: # Iterate over the final filtered tasks for display
@@ -1058,7 +1079,7 @@ def update_task_details(task_id):
                 tech_group_id = settings['line_recipients'].get('technician_group_id')
                 # Send notification only if technician_group_id is set
                 if tech_group_id:
-                    # Construct a message for completion - Removed bold Markdown
+                    # Construct a message for completion
                     completed_message = TextMessage(text=f"งาน '{updated_task.get('title', 'N/A')}' ได้รับการทำเสร็จแล้ว! ✅\n\nดูรายละเอียด: {url_for('update_task_details', task_id=task_id, _external=True)}")
                     try:
                         line_messaging_api.push_message(PushMessageRequest(to=tech_group_id, messages=[completed_message]))
@@ -1146,14 +1167,14 @@ def handle_help_command(event):
         "🤖 **วิธีใช้งานบอท** 🤖\n\n"
         "➡️ `งานค้างทั้งหมด`\nดูรายการงานที่ยังไม่เสร็จทั้งหมด\n\n"
         "➡️ `งานวันนี้`\nดูรายการงานที่ต้องทำวันนี้\n\n"
-        "➡️ `งานค้างเกิน 2 วัน`\nดูรายการงานที่เลยกำหนดส่งเกิน 2 วัน\n\n" # New help text
+        "➡️ `งานค้างเกิน 2 วัน`\nดูรายการงานที่เลยกำหนดส่งเกิน 2 วัน\n\n" 
         "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
         "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
         "➡️ `เปิดงานใหม่`\nรับลิงก์สำหรับบันทึกงานใหม่\n\n"
         "➡️ `เริ่มลงงาน`\nเลือกงานค้างเพื่ออัปเดตทันที\n\n"
-        "➡️ `c [ชื่อลูกค้า]`\nค้นหาประวัติงานของลูกค้า (เช่น: c สมศรี)\n\n" # Updated help text
-        "➡️ `ดูงาน [ชื่อลูกค้า/เบอร์โทร/ID]`\nดูรายละเอียดงาน (เช่น: ดูงาน สมศรี, ดูงาน 081xxxxxxx, ดูงาน TASK_ID)\n\n" # Updated help text
-        "➡️ `ปิดงาน [ชื่อลูกค้า/เบอร์โทร/ID]`\nปิดงานด่วน (เช่น: ปิดงาน สมศรี, ปิดงาน 081xxxxxxx, ปิดงาน TASK_ID)\n" # Updated help text
+        "➡️ `c [ชื่อลูกค้า]`\nค้นหาประวัติงานของลูกค้า (เช่น: c สมศรี)\n\n" 
+        "➡️ `ดูงาน [ชื่อลูกค้า/เบอร์โทร/ID]`\nดูรายละเอียดงาน (เช่น: ดูงาน สมศรี, ดูงาน 081xxxxxxx, ดูงาน TASK_ID)\n\n" 
+        "➡️ `ปิดงาน [ชื่อลูกค้า/เบอร์โทร/ID]`\nปิดงานด่วน (เช่น: ปิดงาน สมศรี, ปิดงาน 081xxxxxxx, ปิดงาน TASK_ID)\n" 
     ))
     reply_to_line(event.reply_token, [reply_message])
 
@@ -1286,7 +1307,7 @@ def handle_summary_command(event):
     ))
     reply_to_line(event.reply_token, [reply_message])
 
-# Helper function to find tasks by customer name or phone
+# Helper function to find tasks by customer name, phone, or ID
 def find_tasks_by_customer_query(query):
     all_tasks = get_google_tasks_for_report(show_completed=True)
     if all_tasks is None:
@@ -1398,11 +1419,16 @@ def handle_message(event):
         handle_view_task_command_flexible(event, query_arg)
         return
 
-    if text_lower.startswith('เสร็จงาน '):
+    if text_lower.startswith('เสร็จงาน '): # Changed to 'ปิดงาน' below, but keep this check for backwards compatibility if needed
         query_arg = text[len('เสร็จงาน '):].strip()
         handle_complete_task_command_flexible(event, query_arg)
         return
     
+    if text_lower.startswith('ปิดงาน '): # New command 'ปิดงาน'
+        query_arg = text[len('ปิดงาน '):].strip()
+        handle_complete_task_command_flexible(event, query_arg)
+        return
+
     # Handle direct commands without arguments
     if text_lower in COMMANDS:
         COMMANDS[text_lower](event)
@@ -1460,8 +1486,8 @@ def trigger_daily_reports():
                         f"แจ้งเตือนงานวันนี้:\n"
                         f"หัวข้อ: {task.get('title', '-')}\n"
                         f"ลูกค้า: {customer_info.get('name', '-')}\n"
-                        f"โทร: {customer_info.get('phone', '-')}\n" # Added phone for daily reminder
-                        f"รายละเอียด: {customer_info.get('detail', '-')}\n" # Added detail for daily reminder
+                        f"โทร: {customer_info.get('phone', '-')}\n" 
+                        f"รายละเอียด: {customer_info.get('detail', '-')}\n" 
                         f"เวลา: {parse_google_task_dates(task).get('due_formatted', '-')}\n\n"
                         f"ดูรายละเอียด/อัปเดต: {url_for('update_task_details', task_id=task.get('id'), _external=True)}"
                     )
@@ -1479,6 +1505,7 @@ def trigger_daily_reports():
             if task.get('status') == 'needsAction' and 'due' in task and task['due']:
                 try:
                     due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                    # If due date is before 2 days ago (i.e., overdue by more than 2 full days)
                     if due_dt_utc < two_days_ago_utc:
                         overdue_tasks_2_days.append(task)
                 except (ValueError, TypeError):
@@ -1486,7 +1513,7 @@ def trigger_daily_reports():
         
         if overdue_tasks_2_days:
             overdue_tasks_2_days.sort(key=lambda x: x.get('due', ''))
-            message_lines = ["--- ❗ งานค้างเกิน 2 วัน ---"]
+            message_lines = ["--- 🔴 งานค้างเกิน 2 วัน ---"]
             for task in overdue_tasks_2_days:
                 info = parse_customer_info_from_notes(task.get('notes', ''))
                 parsed_dates = parse_google_task_dates(task)
