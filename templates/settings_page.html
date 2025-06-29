@@ -1,201 +1,118 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ตั้งค่าระบบ</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <style>
-        body { 
-            font-family: 'Sarabun', sans-serif; 
-            background-color: #f8f9fa; 
-        }
-        .container { 
-            max-width: 800px; 
-        }
-        .card { 
-            margin-bottom: 1.5rem; 
-        }
-        .card-header {
-            font-weight: 500;
-        }
-        /* Style for QR code container */
-        .qr-code-container {
-            text-align: center;
-            padding: 15px;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            background-color: #fff;
-            margin-top: 20px; /* Added margin for spacing */
-        }
-        .qr-code-container img {
-            max-width: 200px; /* Adjust size as needed */
-            height: auto;
-            border: 5px solid #fff; /* White border around QR */
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-    </style>
-</head>
-<body>
-    <div class="container py-5">
-        <div class="text-center mb-4">
-            <h1 class="mb-1">ตั้งค่าระบบ</h1>
-            <p class="text-muted">จัดการการแจ้งเตือนและผู้รับข้อความอัตโนมัติ</p>
-        </div>
+{% extends "base.html" %}
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+{% block title %}ตั้งค่าระบบ{% endblock %}
 
-        {# Main form for saving settings (excluding file upload which needs separate form) #}
-        <form method="POST" action="{{ url_for('settings_page') }}">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <i class="fas fa-clock me-2"></i>เวลาแจ้งเตือนอัตโนมัติ (0-23 นาฬิกา)
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label for="appointment_reminder_hour" class="form-label">
-                            <strong>แจ้งเตือนนัดหมายประจำวัน (ตอนเช้า)</strong>
-                        </label>
-                        <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour" min="0" max="23" value="{{ settings.report_times.appointment_reminder_hour_thai }}">
-                        <div class="form-text">ตั้งเวลาสำหรับส่งการแจ้งเตือน "นัดหมายทั้งหมดของวันนี้" (แนะนำ: 7 คือ 7 โมงเช้า)</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="outstanding_report_hour" class="form-label">
-                            <strong>สรุปงานค้างคงเหลือ (ตอนค่ำ)</strong>
-                        </label>
-                        <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour" min="0" max="23" value="{{ settings.report_times.outstanding_report_hour_thai }}">
-                        <div class="form-text">ตั้งเวลาสำหรับส่ง "สรุปงานค้างแบบย่อ" (แนะนำ: 20 คือ 2 ทุ่ม)</div>
-                    </div>
-                </div>
-            </div>
+{% block content %}
+<h1 class="mb-4">ตั้งค่าระบบ</h1>
 
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <i class="fab fa-line me-2"></i>ID ผู้รับข้อความ LINE
+<form action="{{ url_for('settings_page') }}" method="POST">
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white"><i class="fas fa-cogs me-2"></i>การตั้งค่าทั่วไป</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="appointment_reminder_hour" class="form-label">เวลาแจ้งเตือนนัดหมาย (0-23)</label>
+                    <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour" value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23">
                 </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label for="admin_group_id" class="form-label">กลุ่มแอดมิน (สำหรับรับแจ้งเตือนระบบ)</label>
-                        <input type="text" class="form-control" id="admin_group_id" name="admin_group_id" value="{{ settings.line_recipients.admin_group_id or '' }}">
-                    </div>
-                    <div class="mb-3">
-                        <label for="manager_user_id" class="form-label">ผู้จัดการ (สำหรับรับสรุปงานค้าง)</label>
-                        <input type="text" class="form-control" id="manager_user_id" name="manager_user_id" value="{{ settings.line_recipients.manager_user_id or '' }}">
-                    </div>
-                    <div class="mb-3">
-                        <label for="technician_group_id" class="form-label">กลุ่มช่าง (สำหรับรับแจ้งเตือนนัดหมาย)</label>
-                        <input type="text" class="form-control" id="technician_group_id" name="technician_group_id" value="{{ settings.line_recipients.technician_group_id or '' }}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- QR Code Customization Section -->
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <i class="fas fa-qrcode me-2"></i>ตั้งค่า QR Code
-                </div>
-                <div class="card-body">
-                    <p class="text-muted">ปรับแต่งลักษณะของ QR Code ที่แสดงในระบบ.</p>
-                    <div class="mb-3">
-                        <label for="qr_box_size" class="form-label">ขนาดจุด (Box Size)</label>
-                        <input type="number" class="form-control" id="qr_box_size" name="qr_box_size" min="1" max="20" value="{{ settings.qrcode_settings.box_size }}">
-                        <div class="form-text">ขนาดของแต่ละจุดใน QR Code (ยิ่งมากยิ่งใหญ่)</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="qr_border" class="form-label">ขนาดขอบ (Border Size)</label>
-                        <input type="number" class="form-control" id="qr_border" name="qr_border" min="0" max="10" value="{{ settings.qrcode_settings.border }}">
-                        <div class="form-text">ขนาดขอบสีขาวรอบ QR Code</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="qr_fill_color" class="form-label">สีของ QR Code (Fill Color)</label>
-                        <input type="color" class="form-control form-control-color" id="qr_fill_color" name="qr_fill_color" value="{{ settings.qrcode_settings.fill_color }}">
-                        <div class="form-text">เลือกสีสำหรับส่วนที่เป็นจุดของ QR Code</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="qr_back_color" class="form-label">สีพื้นหลัง QR Code (Background Color)</label>
-                        <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color" value="{{ settings.qrcode_settings.back_color }}">
-                        <div class="form-text">เลือกสีสำหรับพื้นหลังของ QR Code</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="qr_custom_url" class="form-label">URL กำหนดเองสำหรับ QR Code ทั่วไป</label>
-                        <input type="url" class="form-control" id="qr_custom_url" name="qr_custom_url" value="{{ settings.qrcode_settings.custom_url or '' }}" placeholder="เช่น https://www.google.com/ หรือเว้นว่างเพื่อใช้หน้าสรุปงาน">
-                        <div class="form-text">ระบุ URL ที่ต้องการให้ QR Code บนหน้านี้ชี้ไป (หากไม่ระบุ จะใช้หน้าสรุปงานทั่วไป)</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="text-center mt-4">
-                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่า</button>
-                <a href="{{ url_for('summary') }}" class="btn btn-secondary btn-lg">กลับไปหน้าสรุป</a>
-            </div>
-        </form>
-
-        <!-- Equipment Catalog Management Section -->
-        <div class="card shadow-sm mt-4">
-            <div class="card-header">
-                <i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์
-            </div>
-            <div class="card-body">
-                <p class="text-muted">ใช้สำหรับกำหนดรายการอุปกรณ์และคุณสมบัติ (ราคา, หน่วย) สำหรับการใช้งานในระบบ.</p>
-                <div class="d-flex justify-content-between mt-3">
-                    <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-info">
-                        <i class="fas fa-download me-2"></i>ส่งออก Excel Template
-                    </a>
-                    <form id="importForm" action="{{ url_for('import_equipment_catalog') }}" method="POST" enctype="multipart/form-data" class="d-inline-block">
-                        <label for="excel_file_input" class="btn btn-outline-success mb-0">
-                            <i class="fas fa-upload me-2"></i>นำเข้า Excel
-                            <input type="file" id="excel_file_input" name="excel_file" accept=".xls,.xlsx" style="display: none;" onchange="document.getElementById('importForm').submit()">
-                        </label>
-                    </form>
-                </div>
-                <div class="form-text mt-2 text-info">
-                    เมื่อนำเข้า Excel โปรดใช้ Template ที่ส่งออกไป. ข้อมูลจะถูกเขียนทับแคตตาล็อกอุปกรณ์เดิม.
+                <div class="col-md-6 mb-3">
+                    <label for="outstanding_report_hour" class="form-label">เวลารายงานงานค้าง (0-23)</label>
+                    <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour" value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23">
                 </div>
             </div>
         </div>
-
-        <!-- ***** โค้ดที่เพิ่มเข้ามา ***** -->
-        <div class="card mt-4 shadow-sm">
-            <div class="card-header">
-                <h5><i class="fas fa-database me-2"></i>การสำรองข้อมูล</h5>
-            </div>
-            <div class="card-body">
-                <p class="card-text">สำรองข้อมูลงานทั้งหมดใน Google Tasks และข้อมูลการตั้งค่าทั้งหมดของระบบออกมาเป็นไฟล์ .zip</p>
-                <a href="{{ url_for('backup_data') }}" class="btn btn-success">
-                    <i class="fas fa-download me-2"></i> สำรองข้อมูลทั้งหมด (.zip)
-                </a>
-            </div>
-        </div>
-        <!-- ***** สิ้นสุดโค้ดที่เพิ่มเข้ามา ***** -->
-
-
-        <!-- QR Code for general summary page -->
-        {% if qr_code_base64_general %}
-            <div class="qr-code-container">
-                <h5 class="mb-0">
-                    <i class="fas fa-qrcode me-2"></i>สแกนเพื่อเข้าถึงหน้าสรุปงาน
-                </h5>
-                <p class="text-muted mb-3">ให้ผู้อื่นสแกน QR Code นี้เพื่อเข้าสู่หน้าสรุปงานโดยตรง.</p>
-                <img src="{{ qr_code_base64_general }}" alt="QR Code for General Summary Report">
-                <p class="mt-2"><a href="{{ general_summary_url }}" target="_blank">เปิดหน้าสรุปงานในเบราวเซอร์</a></p>
-            </div>
-        {% else %}
-            <div class="qr-code-container text-danger">
-                ไม่สามารถสร้าง QR Code สำหรับหน้าสรุปงานทั่วไปได้.
-            </div>
-        {% endif %}
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white"><i class="fab fa-line me-2"></i>ตั้งค่าการแจ้งเตือน LINE</div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="admin_group_id" class="form-label">LINE Admin Group/User ID</label>
+                <input type="text" class="form-control" id="admin_group_id" name="admin_group_id" value="{{ settings.line_recipients.admin_group_id }}">
+            </div>
+            <div class="mb-3">
+                <label for="technician_group_id" class="form-label">LINE Technician Group ID</label>
+                <input type="text" class="form-control" id="technician_group_id" name="technician_group_id" value="{{ settings.line_recipients.technician_group_id }}">
+            </div>
+            <div class="mb-3">
+                <label for="manager_user_id" class="form-label">LINE Manager User ID</label>
+                <input type="text" class="form-control" id="manager_user_id" name="manager_user_id" value="{{ settings.line_recipients.manager_user_id }}">
+            </div>
+        </div>
+    </div>
+
+    <!-- FIX 2: Restored QR Code Settings -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white"><i class="fas fa-qrcode me-2"></i>ตั้งค่า QR Code</div>
+        <div class="card-body">
+             <div class="row">
+                <div class="col-md-8">
+                    <div class="mb-3">
+                        <label for="qr_custom_url" class="form-label">URL ที่กำหนดเอง (ถ้ามี)</label>
+                        <input type="url" class="form-control" id="qr_custom_url" name="qr_custom_url" value="{{ settings.qrcode_settings.custom_url }}" placeholder="{{ general_summary_url }}">
+                    </div>
+                     <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_box_size" class="form-label">ขนาด Box</label>
+                            <input type="number" class="form-control" id="qr_box_size" name="qr_box_size" value="{{ settings.qrcode_settings.box_size }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_border" class="form-label">ขนาดขอบ</label>
+                            <input type="number" class="form-control" id="qr_border" name="qr_border" value="{{ settings.qrcode_settings.border }}">
+                        </div>
+                    </div>
+                     <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_fill_color" class="form-label">สี QR Code</label>
+                            <input type="color" class="form-control form-control-color" id="qr_fill_color" name="qr_fill_color" value="{{ settings.qrcode_settings.fill_color }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_back_color" class="form-label">สีพื้นหลัง</label>
+                            <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color" value="{{ settings.qrcode_settings.back_color }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 text-center">
+                    <p><strong>ตัวอย่าง QR Code</strong></p>
+                    <img src="{{ qr_code_base64_general }}" alt="QR Code" class="img-fluid rounded border">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่า</button>
+</form>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="fas fa-paper-plane me-2"></i>ทดสอบระบบ</div>
+    <div class="card-body">
+        <p>กดปุ่มเพื่อทดสอบส่งข้อความแจ้งเตือนไปยัง LINE Admin Group ID</p>
+        <form action="{{ url_for('test_notification') }}" method="POST">
+            <button type="submit" class="btn btn-info"><i class="fab fa-line me-2"></i>ทดสอบส่งแจ้งเตือน</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-success"><i class="fas fa-file-excel me-2"></i>ส่งออกเป็น Excel</a>
+        </div>
+        <hr>
+        <form action="{{ url_for('import_equipment_catalog') }}" method="post" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="excel_file" class="form-label">นำเข้าไฟล์ Excel (.xlsx)</label>
+                <input type="file" class="form-control" id="excel_file" name="excel_file" required accept=".xlsx, .xls">
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-file-import me-2"></i>นำเข้า</button>
+        </form>
+    </div>
+</div>
+
+<div class="card border-warning">
+    <div class="card-header bg-warning text-dark"><i class="fas fa-archive me-2"></i>สำรองข้อมูลระบบ</div>
+    <div class="card-body">
+        <p>ดาวน์โหลดไฟล์สำรองข้อมูลทั้งหมดของระบบ</p>
+        <a href="{{ url_for('backup_data') }}" class="btn btn-warning"><i class="fas fa-download me-2"></i>ดาวน์โหลด Backup (.zip)</a>
+    </div>
+</div>
+{% endblock %}

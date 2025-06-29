@@ -1,69 +1,89 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>แก้ไขข้อมูลลูกค้า</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-</head>
-<body class="bg-light">
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <h1 class="mb-4 text-center">แก้ไขข้อมูลลูกค้า</h1>
-                
-                <div class="card">
-                    <div class="card-header bg-dark text-white">
-                        <i class="fas fa-user-edit"></i> แก้ไขข้อมูลสำหรับงาน: {{ task.title }}
+{% extends "base.html" %}
+
+{% block title %}แก้ไขข้อมูลลูกค้า{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <h1 class="mb-4 text-center">แก้ไขข้อมูลลูกค้า</h1>
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <i class="fas fa-user-edit me-2"></i>แก้ไขข้อมูลสำหรับงาน: {{ task.title }}
+            </div>
+            <div class="card-body p-4">
+                <form action="{{ url_for('edit_customer_info', task_id=task.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label for="customer_name" class="form-label"><strong><i class="fas fa-user me-2"></i>ชื่อลูกค้า</strong></label>
+                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name or '' }}" required>
                     </div>
-                    <div class="card-body p-4">
-                        <form action="{{ url_for('edit_customer_info', task_id=task.id) }}" method="POST">
-                            <div class="form-group">
-                                <label for="customer_name"><strong><i class="fas fa-user mr-2"></i>ชื่อลูกค้า</strong></label>
-                                <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name or '' }}" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="customer_phone"><strong><i class="fas fa-phone mr-2"></i>เบอร์โทรศัพท์</strong></label>
-                                <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone or '' }}">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="address"><strong><i class="fas fa-home mr-2"></i>ที่อยู่</strong></label>
-                                <textarea class="form-control" id="address" name="address" rows="3">{{ task.customer.address or '' }}</textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="detail"><strong><i class="fas fa-info-circle mr-2"></i>รายละเอียดเบื้องต้น (จากลูกค้า)</strong></label>
-                                <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer.detail or '' }}</textarea>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="latitude_longitude"><strong><i class="fas fa-map-marked-alt mr-2"></i>พิกัดแผนที่ (Google Maps URL)</strong></label>
-                                {% if task.customer.map_url %}
-                                    <div class="mb-2">
-                                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-external-link-alt"></i> เปิดแผนที่ปัจจุบัน</a>
-                                    </div>
-                                {% endif %}
-                                <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}" placeholder="วางลิงก์ Google Maps เพื่ออัปเดต">
-                            </div>
-                            
-                            <hr>
-                            
-                            <div class="d-flex justify-content-between">
-                                <a href="{{ url_for('update_task_details', task_id=task.id) }}" class="btn btn-secondary">
-                                    <i class="fas fa-times mr-1"></i> ยกเลิก
-                                </a>
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-save mr-1"></i> บันทึกข้อมูลลูกค้า
-                                </button>
-                            </div>
-                        </form>
+                    <div class="mb-3">
+                        <label for="customer_phone" class="form-label"><strong><i class="fas fa-phone me-2"></i>เบอร์โทรศัพท์</strong></label>
+                        <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone or '' }}">
                     </div>
-                </div>
+                    <div class="mb-3">
+                        <label for="address" class="form-label"><strong><i class="fas fa-home me-2"></i>ที่อยู่</strong></label>
+                        <textarea class="form-control" id="address" name="address" rows="3">{{ task.customer.address or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="detail" class="form-label"><strong><i class="fas fa-info-circle me-2"></i>รายละเอียดเบื้องต้น</strong></label>
+                        <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer.detail or '' }}</textarea>
+                    </div>
+                    
+                    <!-- FIX 3: Geolocation Button -->
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label"><strong><i class="fas fa-map-marked-alt me-2"></i>พิกัดแผนที่</strong></label>
+                        <div class="input-group">
+                             <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}" placeholder="กดปุ่มเพื่อแชร์ตำแหน่งปัจจุบัน หรือวาง URL">
+                             <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน"><i class="fas fa-location-arrow"></i></button>
+                        </div>
+                        <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
+                    </div>
+
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('update_task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-times me-1"></i>ยกเลิก</a>
+                        <button type="submit" class="btn btn-success"><i class="fas fa-save me-1"></i>บันทึกข้อมูลลูกค้า</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+    <script>
+        // Re-using the same script from form.html for consistency
+        document.addEventListener('DOMContentLoaded', function() {
+            const shareBtn = document.getElementById('shareLocationBtn');
+            const locationInput = document.getElementById('latitude_longitude');
+            const statusText = document.getElementById('shareLocationStatus');
+
+            if (shareBtn) {
+                shareBtn.addEventListener('click', function() {
+                    statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
+                    statusText.classList.remove('text-success', 'text-danger');
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                const lat = position.coords.latitude;
+                                const lon = position.coords.longitude;
+                                locationInput.value = `https://www.google.com/maps?q=${lat},${lon}`;
+                                statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                                statusText.classList.add('text-success');
+                            },
+                            (error) => {
+                                console.error("Geolocation Error: ", error);
+                                statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้ (โปรดอนุญาตการเข้าถึง)';
+                                statusText.classList.add('text-danger');
+                            }
+                        );
+                    } else {
+                        statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                        statusText.classList.add('text-danger');
+                    }
+                });
+            }
+        });
+    </script>
+{% endblock %}

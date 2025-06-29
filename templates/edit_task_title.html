@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}แก้ไขงานด่วน{% endblock %}
+
+{% block head_extra %}
+    <style>
+        .danger-zone {
+            border: 2px solid #dc3545;
+            border-radius: .5rem;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+        .card-header {
+            font-size: 1.1rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">แก้ไขงานด่วน</h1>
+            <a href="{{ url_for('summary') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i> กลับหน้าสรุป
+            </a>
+        </div>
+        
+        <div class="card shadow-sm">
+            <div class="card-header">
+               <strong>ลูกค้า:</strong> {{ task.customer.name or 'ไม่ระบุ' }}
+            </div>
+            <div class="card-body p-4">
+                <form action="{{ url_for('edit_task_title', task_id=task.id) }}" method="POST">
+                    <!-- Edit Task Title -->
+                    <div class="mb-3">
+                        <label for="new_title" class="form-label"><strong><i class="fas fa-briefcase me-2"></i>ชื่องาน</strong></label>
+                        <input type="text" class="form-control" id="new_title" name="new_title" value="{{ task.title }}" required>
+                    </div>
+
+                    <!-- Quick Status Change -->
+                    <div class="mb-3">
+                        <label for="status" class="form-label"><strong><i class="fas fa-check-circle me-2"></i>เปลี่ยนสถานะงาน</strong></label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
+                            <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>งานเสร็จเรียบร้อย</option>
+                        </select>
+                    </div>
+                    <hr>
+                    
+                    <!-- Action Buttons -->
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="fas fa-save me-1"></i> บันทึกการแก้ไข
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- Shortcut to Edit Customer Info -->
+                <div class="text-center mt-4">
+                     <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-info">
+                        <i class="fas fa-user-edit me-1"></i> ไปที่หน้าแก้ไขข้อมูลลูกค้าแบบเต็ม
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Danger Zone for Deleting Task -->
+        <div class="danger-zone">
+            <h5 class="text-danger"><i class="fas fa-exclamation-triangle"></i> โซนอันตราย</h5>
+            <p class="text-muted">การกระทำในส่วนนี้ไม่สามารถย้อนกลับได้</p>
+            <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+                <button type="submit" class="btn btn-danger d-block w-100">
+                    <i class="fas fa-trash-alt"></i> ลบงานนี้ทิ้ง
+                </button>
+            </form>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
