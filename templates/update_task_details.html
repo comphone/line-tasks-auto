@@ -37,12 +37,13 @@
                 <p><strong>ลูกค้า:</strong> {{ task.customer.name or '-' }}</p>
                 <p><strong>โทร:</strong> <a href="tel:{{ task.customer.phone }}">{{ task.customer.phone or '-' }}</a></p>
                 <p><strong>ที่อยู่:</strong> {{ task.customer.address or '-' }}</p>
-                <!-- FIX 1: เพิ่มลิงก์แผนที่ที่กดได้ -->
+                <!-- FIX: เพิ่มลิงก์แผนที่ที่กดได้ -->
                 {% if task.customer.map_url %}
                 <p><strong>พิกัด:</strong> <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-light"><i class="fas fa-map-marked-alt"></i> เปิด Google Maps</a></p>
                 {% endif %}
+                <p><strong>รายละเอียดเบื้องต้น:</strong><br><span class="pl-3 text-muted" style="white-space: pre-wrap;">{{ task.customer.detail or '-' }}</span></p>
                 <hr>
-                <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-light btn-sm">
+                <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">
                     <i class="fas fa-user-edit"></i> แก้ไขข้อมูลลูกค้า
                 </a>
             </div>
@@ -71,15 +72,10 @@
                         <label for="files"><strong>แนบไฟล์ (รูปภาพ, เอกสาร)</strong></label>
                         <input type="file" class="form-control-file" id="files" name="files[]" multiple>
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="latitude_longitude"><strong>อัปเดตพิกัดแผนที่ (Google Maps URL)</strong></label>
-                        <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}" placeholder="วางลิงก์ Google Maps ที่นี่ หากมีการเปลี่ยนแปลง">
-                    </div>
 
                     <div class="form-group">
                         <label for="status"><strong>อัปเดตสถานะงาน</strong></label>
-                        <!-- FIX 2: เปลี่ยนคำใน Dropdown -->
+                        <!-- FIX: เปลี่ยนคำใน Dropdown -->
                         <select class="form-control" id="status" name="status">
                             <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
                             <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>งานเสร็จเรียบร้อย</option>
