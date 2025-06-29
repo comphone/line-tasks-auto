@@ -18,7 +18,7 @@ import qrcode
 import base64
 from io import BytesIO
 
-# --- การแก้ไข: เปลี่ยนไปใช้ line-bot-sdk เวอร์ชัน 2 ---
+# --- ใช้ line-bot-sdk เวอร์ชัน 2.4.2 ---
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -28,10 +28,9 @@ from linebot.exceptions import (
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FlexSendMessage,
     BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
-    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
-    ImageMessage, FileMessage, PostbackEvent
+    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
 )
-# ---------------------------------------------------------
+# ---------------------------------------------
 
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
@@ -72,10 +71,9 @@ GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
-# --- การแก้ไข: เปลี่ยนไปใช้ LineBotApi ของเวอร์ชัน 2 ---
+# Initialize LINE Bot SDK v2
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
-# ----------------------------------------------------
 
 TECHNICIAN_LINE_IDS = {
     "ช่างเอ": "Uxxxxxxxxxxxxxxxxxxxxxxxxx1",
@@ -88,11 +86,16 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [ 
-        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0}, {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
-        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0}, {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
-        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0}, {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
-        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0}, {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
-        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0}, {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
+        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0},
+        {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
+        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0},
+        {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
+        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0},
+        {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
+        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0},
+        {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
+        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0},
+        {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
         {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
     ],
     'common_equipment_items': [] 
@@ -102,13 +105,16 @@ _APP_SETTINGS_STORE = {}
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-        except (json.JSONDecodeError, IOError) as e: app.logger.error(f"Error handling settings.json: {e}")
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            app.logger.error(f"Error handling settings.json: {e}")
     return None
 
 def save_settings_to_file(settings_data):
     try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings_data, f, ensure_ascii=False, indent=4)
         return True
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
@@ -121,19 +127,24 @@ def get_app_settings():
         if loaded:
             _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE.copy()
             for key, default_value in _APP_SETTINGS_STORE.items():
-                if isinstance(default_value, dict): _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
-                elif key in loaded: _APP_SETTINGS_STORE[key] = loaded[key]
+                if isinstance(default_value, dict):
+                    _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
+                elif key in loaded:
+                    _APP_SETTINGS_STORE[key] = loaded[key]
         else:
             _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE
             save_settings_to_file(_APP_SETTINGS_STORE)
+    
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
     global _APP_SETTINGS_STORE
     for key, value in settings_data.items():
-        if isinstance(value, dict) and key in _APP_SETTINGS_STORE: _APP_SETTINGS_STORE[key].update(value)
-        else: _APP_SETTINGS_STORE[key] = value
+        if isinstance(value, dict) and key in _APP_SETTINGS_STORE:
+            _APP_SETTINGS_STORE[key].update(value)
+        else:
+            _APP_SETTINGS_STORE[key] = value
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
@@ -144,13 +155,16 @@ def get_google_service(api_name, api_version):
     token_path = 'token.json'
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
     if google_token_json_str:
-        try: creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-        except Exception as e: app.logger.warning(f"Could not load token from env var: {e}")
+        try:
+            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
+        except Exception as e:
+            app.logger.warning(f"Could not load token from env var: {e}")
     elif os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            try: creds.refresh(Request())
+            try:
+                creds.refresh(Request())
             except Exception as e:
                 app.logger.error(f"Error refreshing token: {e}")
                 creds = None
@@ -158,8 +172,9 @@ def get_google_service(api_name, api_version):
             flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
             creds = flow.run_console()
         if creds:
-            with open(token_path, 'w') as token: token.write(creds.to_json())
-            app.logger.info(f"Token saved to {token_path}. Update GOOGLE_TOKEN_JSON on Render.")
+            with open(token_path, 'w') as token:
+                token.write(creds.to_json())
+            app.logger.info(f"Token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render.")
     return build(api_name, api_version, credentials=creds) if creds else None
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
@@ -192,29 +207,11 @@ def create_google_task(title, notes=None, due=None):
         app.logger.error(f"Error creating Google Task: {e}")
         return None
 
-def create_google_calendar_event(summary, location, description, start_time, end_time, timezone='Asia/Bangkok'):
-    service = get_google_calendar_service()
-    if not service:
-        app.logger.error("Failed to get Google Calendar service.")
-        return None
-    try:
-        event = {
-            'summary': summary, 'location': location, 'description': description,
-            'start': {'dateTime': start_time, 'timeZone': timezone},
-            'end': {'dateTime': end_time, 'timeZone': timezone},
-            'reminders': {'useDefault': True},
-        }
-        return service.events().insert(calendarId='primary', body=event).execute()
-    except HttpError as e:
-        app.logger.error(f"Error creating Google Calendar Event: {e}")
-        return None
-
 def delete_google_task(task_id):
     service = get_google_tasks_service()
     if not service: return False
     try:
         service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        app.logger.info(f"Successfully deleted task ID: {task_id}")
         return True
     except HttpError as err:
         app.logger.error(f"API Error deleting task {task_id}: {err}")
@@ -252,62 +249,6 @@ def get_google_tasks_for_report(show_completed=True):
         app.logger.error(f"API Error getting tasks: {err}")
         return None
 
-def get_single_task(task_id):
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        return service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-    except HttpError as err:
-        app.logger.error(f"Error getting single task {task_id}: {err}")
-        return None
-
-def get_upcoming_events(time_delta_hours=24):
-    service = get_google_calendar_service()
-    if not service: return []
-    try:
-        now_utc = datetime.datetime.utcnow().isoformat() + 'Z'
-        time_max_utc = (datetime.datetime.utcnow() + datetime.timedelta(hours=time_delta_hours)).isoformat() + 'Z'
-        events_result = service.events().list(
-            calendarId='primary', timeMin=now_utc, timeMax=time_max_utc,
-            maxResults=10, singleEvents=True, orderBy='startTime'
-        ).execute()
-        return events_result.get('items', [])
-    except HttpError as e:
-        app.logger.error(f"Error fetching upcoming events: {e}")
-        return []
-
-def extract_lat_lon_from_notes(notes):
-    if not notes: return None, None
-    match = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", notes)
-    if match: return (float(match.group(1)), float(match.group(2)))
-    match = re.search(r"พิกัด:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)", notes)
-    if match: return (float(match.group(1)), float(match.group(2)))
-    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
-    map_url_match = re.search(map_url_regex, notes)
-    if map_url_match:
-        return (float(map_url_match.group(1)), float(map_url_match.group(2)))
-    return None, None
-
-def find_nearby_jobs(completed_task_id, radius_km=5):
-    completed_task = get_single_task(completed_task_id)
-    if not completed_task: return []
-    origin_lat, origin_lon = extract_lat_lon_from_notes(completed_task.get('notes', ''))
-    if origin_lat is None or origin_lon is None: return []
-    origin_coords = (origin_lat, origin_lon)
-    pending_tasks = get_google_tasks_for_report(show_completed=False)
-    if not pending_tasks: return []
-    nearby_jobs = []
-    for task in pending_tasks:
-        if task.get('id') == completed_task_id: continue
-        task_lat, task_lon = extract_lat_lon_from_notes(task.get('notes', ''))
-        if task_lat is not None and task_lon is not None:
-            distance = geodesic(origin_coords, (task_lat, task_lon)).kilometers
-            if distance <= radius_km:
-                task['distance_km'] = round(distance, 1)
-                nearby_jobs.append(task)
-    nearby_jobs.sort(key=lambda x: x['distance_km'])
-    return nearby_jobs
-
 def parse_customer_info_from_notes(notes):
     info = {'name': '', 'phone': '', 'address': '', 'detail': '', 'map_url': None}
     if not notes: return info
@@ -331,65 +272,6 @@ def parse_google_task_dates(task_item):
             except (ValueError, TypeError): parsed[f'{key}_formatted'] = ''
         else: parsed[f'{key}_formatted'] = ''
     return parsed
-
-def parse_tech_report_from_notes(notes):
-    if not notes: return [], ""
-    report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
-    history = []
-    for json_str in report_blocks:
-        try:
-            report_data = json.loads(json_str)
-            if isinstance(report_data.get('equipment_used'), str):
-                report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
-            else:
-                report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
-            history.append(report_data)
-        except json.JSONDecodeError: pass
-    original_notes_text = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
-    history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
-    return history, original_notes_text
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back_color="white"):
-    try:
-        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
-        qr.add_data(url)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color=fill_color, back_color=back_color)
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
-    except Exception as e:
-        app.logger.error(f"Error generating QR code: {e}")
-        return None
-
-def _parse_equipment_string(text_input):
-    equipment_list, common_items = [], set(get_app_settings().get('common_equipment_items', []))
-    if not text_input: return equipment_list
-    for line in text_input.strip().split('\n'):
-        if not line.strip(): continue
-        parts = line.split(',', 1)
-        item_name = parts[0].strip()
-        if item_name:
-            equipment_list.append({"item": item_name, "quantity": parts[1].strip() if len(parts) > 1 else ''})
-            common_items.add(item_name)
-    save_app_settings({'common_equipment_items': sorted(list(common_items))})
-    return equipment_list
-
-def _format_equipment_list(equipment_data):
-    if not equipment_data: return 'N/A'
-    if isinstance(equipment_data, str): return equipment_data
-    lines = []
-    if isinstance(equipment_data, list):
-        for item in equipment_data:
-            if isinstance(item, dict) and "item" in item:
-                line = item['item']
-                if item.get("quantity"): line += f", {item['quantity']}"
-                lines.append(line)
-            elif isinstance(item, str): lines.append(item)
-    return "\n".join(lines) if lines else 'N/A'
 
 def create_task_flex_message(task):
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
@@ -460,37 +342,6 @@ def form_page():
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
     return render_template('form.html')
-
-@app.route("/lookup_customer", methods=['GET'])
-def lookup_customer():
-    customer_name_query = str(request.args.get('customer_name', '')).strip().lower() 
-    if not customer_name_query: return jsonify({}) 
-    tasks_raw = get_google_tasks_for_report(show_completed=False) 
-    if tasks_raw is None: return jsonify({"error": "Failed to retrieve tasks"}), 500
-    found_customer_info = {}
-    for task_item in reversed(tasks_raw): 
-        customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
-        if customer_name_query in str(customer_info.get('name', '')).strip().lower(): 
-            if customer_info.get('phone'): found_customer_info['phone'] = str(customer_info['phone']).strip() 
-            if customer_info.get('address'): found_customer_info['address'] = str(customer_info['address']).strip() 
-            if customer_info.get('detail'): found_customer_info['detail'] = str(customer_info['detail']).strip() 
-            if customer_info.get('map_url'): found_customer_info['map_url'] = str(customer_info['map_url']).strip() 
-            if all(key in found_customer_info and found_customer_info[key] for key in ['phone', 'address', 'detail']): break
-    return jsonify(found_customer_info)
-
-@app.route("/lookup_equipment", methods=['GET'])
-def lookup_equipment():
-    query = request.args.get('q', '').strip().lower()
-    if not query: return jsonify([])
-    equipment_catalog = get_app_settings().get('equipment_catalog', [])
-    results = []
-    for item in equipment_catalog:
-        item_name_lower = str(item.get('item_name', '')).lower()
-        barcode_lower = str(item.get('barcode', '')).lower()
-        if query in item_name_lower or (barcode_lower and query in barcode_lower):
-            results.append(item)
-    results.sort(key=lambda x: (not str(x['item_name']).lower().startswith(query), str(x['item_name']).lower()))
-    return jsonify(results[:10])
 
 @app.route('/summary')
 def summary():
@@ -579,7 +430,7 @@ def update_task_details(task_id):
             cache.clear()
             flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
             if new_status == 'completed' and original_status != 'completed':
-                pass
+                pass 
         else:
             flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
         return redirect(url_for('summary'))
@@ -606,18 +457,13 @@ def uploaded_file(filename):
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
-        settings_data = {
+        save_app_settings({
             'report_times': { 'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')) },
             'line_recipients': { 'admin_group_id': request.form.get('admin_group_id', '').strip(), 'manager_user_id': request.form.get('manager_user_id', '').strip(), 'technician_group_id': request.form.get('technician_group_id', '').strip() },
             'qrcode_settings': { 'box_size': int(request.form.get('qr_box_size', 8)), 'border': int(request.form.get('qr_border', 4)), 'fill_color': request.form.get('qr_fill_color', '#28a745'), 'back_color': request.form.get('qr_back_color', '#FFFFFF'), 'custom_url': request.form.get('qr_custom_url', '').strip() }
-        }
-        current_settings = get_app_settings()
-        settings_data['equipment_catalog'] = current_settings.get('equipment_catalog', [])
-        if save_app_settings(settings_data):
-            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
-            cache.clear()
-        else:
-            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
+        })
+        flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
+        cache.clear()
         return redirect(url_for('settings_page'))
 
     current_settings = get_app_settings()
@@ -658,16 +504,21 @@ def import_equipment_catalog():
         try:
             df = pd.read_excel(file.stream)
             df.columns = [col.strip().lower() for col in df.columns]
-            expected_cols = {'รหัสสินค้า/barcodeสินค้า': 'barcode', 'รายการสินค้า': 'item_name', 'หน่วย': 'unit', 'ราคา': 'price'}
-            if not all(col in df.columns for col in expected_cols):
-                flash(f'ไฟล์ Excel ต้องมีคอลัมน์ที่จำเป็น: {", ".join(expected_cols.keys())}', 'danger')
+            expected_cols_map = {'รหัสสินค้า/barcodeสินค้า': 'barcode', 'รายการสินค้า': 'item_name', 'หน่วย': 'unit', 'ราคา': 'price'}
+            df_renamed = df.rename(columns={k.lower(): v for k, v in expected_cols_map.items()})
+
+            if not all(col in df_renamed.columns for col in expected_cols_map.values()):
+                missing_cols = [k for k, v in expected_cols_map.items() if v not in df_renamed.columns]
+                flash(f'ไฟล์ Excel ต้องมีคอลัมน์ที่จำเป็น: {", ".join(missing_cols)}', 'danger')
                 return redirect(url_for('settings_page'))
-            new_catalog = df.rename(columns=expected_cols)[list(expected_cols.values())].to_dict('records')
+                
+            new_catalog = df_renamed[list(expected_cols_map.values())].to_dict('records')
             for item in new_catalog:
                 try: item['price'] = float(item['price']) if pd.notna(item['price']) else 0.0
                 except (ValueError, TypeError): item['price'] = 0.0
+            
             current_settings = get_app_settings()
-            current_settings['equipment_catalog'] = [item for item in new_catalog if item['item_name']]
+            current_settings['equipment_catalog'] = [item for item in new_catalog if item.get('item_name')]
             if save_app_settings(current_settings):
                 flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
             else:
@@ -678,6 +529,7 @@ def import_equipment_catalog():
     else:
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
+
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -704,3 +556,4 @@ def handle_message(event):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+
