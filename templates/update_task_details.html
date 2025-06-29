@@ -9,28 +9,18 @@
     <style>
         body { background-color: #f4f7f6; }
         .card { margin-bottom: 1.5rem; border: none; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
-        .card-header { background-color: #007bff; color: white; font-weight: bold; }
-        .history-card { background-color: #ffffff; border-left: 5px solid #6c757d; }
-        .customer-card { border-left: 5px solid #17a2b8; }
-        .form-card { border-left: 5px solid #28a745; }
-        .dl-horizontal dt { font-weight: bold; color: #495057; }
-        .dl-horizontal dd { margin-bottom: .5rem; }
-        .btn-secondary {
-            background-color: #6c757d;
-            border-color: #6c757d;
-        }
+        .card-header { font-weight: bold; }
+        #reschedule-container { display: none; } /* ซ่อนส่วนเลื่อนนัดไว้ก่อน */
     </style>
 </head>
 <body>
-    <div class="container mt-4">
+    <div class="container mt-4 mb-5">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
                 <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
                     {{ message }}
-                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
                 </div>
                 {% endfor %}
             {% endif %}
@@ -38,51 +28,28 @@
 
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h1 class="h3">รายละเอียดงาน</h1>
-            <a href="{{ url_for('summary') }}" class="btn btn-sm btn-outline-secondary">
-                <i class="fas fa-arrow-left"></i> กลับไปหน้าสรุป
-            </a>
+            <a href="{{ url_for('summary') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-arrow-left"></i> กลับไปหน้าสรุป</a>
         </div>
 
-        <div class="card customer-card">
-            <div class="card-header bg-info">
-                ข้อมูลลูกค้า: {{ task.customer.name }}
-            </div>
+        <div class="card border-left-info">
+            <div class="card-header bg-info text-white"><i class="fas fa-user-circle"></i> ข้อมูลลูกค้า</div>
             <div class="card-body">
-                <dl class="row dl-horizontal">
-                    <dt class="col-sm-3">ชื่องาน:</dt>
-                    <dd class="col-sm-9">{{ task.title }}</dd>
-
-                    <dt class="col-sm-3">ชื่อลูกค้า:</dt>
-                    <dd class="col-sm-9">{{ task.customer.name or '-' }}</dd>
-                    
-                    <dt class="col-sm-3">เบอร์โทร:</dt>
-                    <dd class="col-sm-9">{{ task.customer.phone or '-' }}</dd>
-
-                    <dt class="col-sm-3">ที่อยู่:</dt>
-                    <dd class="col-sm-9">{{ task.customer.address or '-' }}</dd>
-
-                    <dt class="col-sm-3">รายละเอียดเบื้องต้น:</dt>
-                    <dd class="col-sm-9" style="white-space: pre-wrap;">{{ task.customer.detail or '-' }}</dd>
-
-                    <dt class="col-sm-3">สถานะปัจจุบัน:</dt>
-                    <dd class="col-sm-9">
-                        {% if task.status == 'completed' %}
-                            <span class="badge badge-success">เสร็จสิ้น</span>
-                        {% else %}
-                            <span class="badge badge-warning">รอดำเนินการ</span>
-                        {% endif %}
-                    </dd>
-                </dl>
-                <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-secondary">
-                    <i class="fas fa-user-edit"></i> แก้ไขข้อมูลลูกค้า / พิกัด / วันนัดหมาย
+                <p><strong>ลูกค้า:</strong> {{ task.customer.name or '-' }}</p>
+                <p><strong>โทร:</strong> <a href="tel:{{ task.customer.phone }}">{{ task.customer.phone or '-' }}</a></p>
+                <p><strong>ที่อยู่:</strong> {{ task.customer.address or '-' }}</p>
+                <!-- FIX 1: เพิ่มลิงก์แผนที่ที่กดได้ -->
+                {% if task.customer.map_url %}
+                <p><strong>พิกัด:</strong> <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-light"><i class="fas fa-map-marked-alt"></i> เปิด Google Maps</a></p>
+                {% endif %}
+                <hr>
+                <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-light btn-sm">
+                    <i class="fas fa-user-edit"></i> แก้ไขข้อมูลลูกค้า
                 </a>
             </div>
         </div>
 
-        <div class="card form-card">
-            <div class="card-header bg-success">
-                เพิ่มรายงานการทำงานใหม่
-            </div>
+        <div class="card border-left-success">
+            <div class="card-header bg-success text-white"><i class="fas fa-tools"></i> เพิ่มรายงานและอัปเดตงาน</div>
             <div class="card-body">
                 <form action="{{ url_for('update_task_details', task_id=task.id) }}" method="POST" enctype="multipart/form-data">
                     <div class="form-group">
@@ -92,7 +59,7 @@
 
                     <div class="form-group">
                         <label for="equipment_used"><strong>อุปกรณ์ที่ใช้ (แต่ละรายการขึ้นบรรทัดใหม่)</strong></label>
-                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="5" list="equipment_datalist" placeholder="เช่น สาย LAN, 10 เมตร&#10;หัว RJ45, 2 ชิ้น"></textarea>
+                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="5" list="equipment_datalist" placeholder="เช่น สาย LAN, 10 เมตร"></textarea>
                         <datalist id="equipment_datalist">
                             {% for item in common_equipment_items %}
                                 <option value="{{ item }}">
@@ -104,52 +71,47 @@
                         <label for="files"><strong>แนบไฟล์ (รูปภาพ, เอกสาร)</strong></label>
                         <input type="file" class="form-control-file" id="files" name="files[]" multiple>
                     </div>
+                    
+                    <div class="form-group">
+                        <label for="latitude_longitude"><strong>อัปเดตพิกัดแผนที่ (Google Maps URL)</strong></label>
+                        <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}" placeholder="วางลิงก์ Google Maps ที่นี่ หากมีการเปลี่ยนแปลง">
+                    </div>
 
                     <div class="form-group">
                         <label for="status"><strong>อัปเดตสถานะงาน</strong></label>
+                        <!-- FIX 2: เปลี่ยนคำใน Dropdown -->
                         <select class="form-control" id="status" name="status">
-                            <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>รอดำเนินการ</option>
-                            <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>เสร็จสิ้น</option>
+                            <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
+                            <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>งานเสร็จเรียบร้อย</option>
                         </select>
                     </div>
 
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> บันทึกรายงาน</button>
+                    <div id="reschedule-container" class="form-group bg-light p-3 rounded">
+                        <label for="appointment_due"><strong>เลื่อนวันนัดหมายใหม่</strong></label>
+                        <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
+                        <small class="form-text text-muted">กำหนดวัน-เวลาใหม่ (เฉพาะกรณีที่งานยังไม่เสร็จ)</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-save"></i> บันทึกรายงาน</button>
                 </form>
             </div>
         </div>
-        
-        <h2 class="h4 mt-5">ประวัติการทำงาน</h2>
-        {% if task.tech_reports_history %}
-            {% for report in task.tech_reports_history %}
-            <div class="card history-card">
-                <div class="card-body">
-                    <h5 class="card-title"><strong>สรุปเมื่อ:</strong> {{ report.summary_date }}</h5>
-                    <p><strong>รายละเอียด:</strong></p>
-                    <p style="white-space: pre-wrap;" class="pl-3">{{ report.work_summary or 'ไม่มีรายละเอียดการทำงาน' }}</p>
-                    <p><strong>อุปกรณ์ที่ใช้:</strong></p>
-                    <p class="pl-3">
-                        {% autoescape false %}
-                        {{ report.equipment_used_display|replace('\n', '<br>') or 'ไม่มี' }}
-                        {% endautoescape %}
-                    </p>
-                    {% if report.attachment_urls %}
-                        <p><strong>ไฟล์แนบ:</strong></p>
-                        <ul>
-                        {% for url in report.attachment_urls %}
-                            <li><a href="{{ url }}" target="_blank">ดูไฟล์แนบ</a></li>
-                        {% endfor %}
-                        </ul>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="alert alert-secondary">ยังไม่มีประวัติการทำงาน</div>
-        {% endif %}
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const statusSelect = document.getElementById('status');
+            const rescheduleContainer = document.getElementById('reschedule-container');
+
+            function toggleReschedule() {
+                rescheduleContainer.style.display = (statusSelect.value === 'needsAction') ? 'block' : 'none';
+                if (statusSelect.value === 'completed') {
+                    document.getElementById('appointment_due').value = ''; 
+                }
+            }
+            toggleReschedule();
+            statusSelect.addEventListener('change', toggleReschedule);
+        });
+    </script>
 </body>
 </html>
