@@ -526,6 +526,7 @@ def edit_customer_info(task_id):
 
     if request.method == 'POST':
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
+        
         new_base_notes_lines = [
             updated_customer_name,
             str(request.form.get('customer_phone', '')).strip(),
@@ -534,12 +535,14 @@ def edit_customer_info(task_id):
             str(request.form.get('detail', '')).strip()
         ]
         new_base_notes = "\n".join(filter(None, new_base_notes_lines))
+
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         all_reports_text = ""
         for report in history:
              all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
         final_notes = new_base_notes + all_reports_text
+
         updated_task = update_google_task(task_id, title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'}", notes=final_notes)
 
         if updated_task:
@@ -547,6 +550,7 @@ def edit_customer_info(task_id):
             flash('แก้ไขข้อมูลลูกค้าเรียบร้อยแล้ว!', 'success')
         else:
             flash('เกิดข้อผิดพลาดในการแก้ไขข้อมูลลูกค้า', 'danger')
+
         return redirect(url_for('update_task_details', task_id=task_id))
 
     task = parse_google_task_dates(task_raw)
@@ -745,6 +749,39 @@ def handle_message(event):
         parts = text.split()
         if len(parts) > 1: handle_complete_task_command(event, parts[1])
         return
+
+def handle_help_command(event):
+    help_text = (
+        "🤖 **วิธีใช้งานบอท** 🤖\n\n"
+        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
+        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
+        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
+        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า (เช่น c สมศรี)\n\n"
+        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
+        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
+        "➡️ `เปิดงานใหม่` หรือ `เริ่มลงงาน`\nรับลิงก์สำหรับจัดการงาน"
+    )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
+    
+def handle_outstanding_tasks_command(event):
+    # This is a placeholder. You need to implement the logic.
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ฟังก์ชัน 'งานค้าง' กำลังอยู่ในระหว่างการพัฒนา"))
+
+def handle_completed_tasks_command(event):
+    # This is a placeholder. You need to implement the logic.
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ฟังก์ชัน 'งานเสร็จ' กำลังอยู่ในระหว่างการพัฒนา"))
+
+def handle_customer_search_command(event, customer_name):
+    # This is a placeholder. You need to implement the logic.
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังค้นหางานของลูกค้า: {customer_name}"))
+
+def handle_view_task_command(event, task_id):
+    # This is a placeholder. You need to implement the logic.
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังดูรายละเอียดงาน ID: {task_id}"))
+
+def handle_complete_task_command(event, task_id):
+    # This is a placeholder. You need to implement the logic.
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังปิดงาน ID: {task_id}"))
     
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
