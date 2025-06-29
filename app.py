@@ -19,7 +19,6 @@ from geopy.distance import geodesic
 import qrcode
 import base64
 
-# --- ใช้ line-bot-sdk เวอร์ชัน 2.4.2 ---
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -32,7 +31,6 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
     ImageComponent
 )
-# ---------------------------------------------
 
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
@@ -73,14 +71,8 @@ GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
-# Initialize LINE Bot SDK v2
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-TECHNICIAN_LINE_IDS = {
-    "ช่างเอ": "Uxxxxxxxxxxxxxxxxxxxxxxxxx1",
-    "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
-}
 
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
@@ -95,18 +87,12 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'morning_show_customer': True, 'morning_show_phone': True, 'morning_show_detail': True,
         'evening_show_title': True, 'evening_show_customer': True
     },
-    'equipment_catalog': [ 
-        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0}, {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
-        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0}, {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
-        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0}, {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
-        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0}, {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
-        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0}, {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
-        {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
-    ],
+    'equipment_catalog': [],
     'common_equipment_items': [] 
 }
 _APP_SETTINGS_STORE = {}
 
+#<editor-fold desc="Helper and Utility Functions">
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
         try:
@@ -340,29 +326,44 @@ def _format_equipment_list(equipment_data):
                 lines.append(line)
             elif isinstance(item, str): lines.append(item)
     return "\n".join(lines) if lines else 'N/A'
+#</editor-fold>
 
+#<editor-fold desc="LINE Flex Message Builder">
 def create_task_flex_message(task):
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     parsed_dates = parse_google_task_dates(task)
     update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
     phone_action = URIAction(label=customer_info['phone'], uri=f"tel:{re.sub(r'[^0-9]','', customer_info['phone'])}") if customer_info.get('phone') else None
     map_action = URIAction(label="📍 เปิด Google Maps", uri=customer_info['map_url']) if customer_info.get('map_url') else None
+    
+    status_text = "งานเสร็จเรียบร้อย" if task.get('status') == 'completed' else "งานยังไม่เสร็จ"
+    status_color = "#1DB446" if task.get('status') == 'completed' else "#FFC107"
+
     bubble = BubbleContainer(
         direction='ltr',
-        header=BoxComponent(layout='vertical', contents=[TextComponent(text='📢 แจ้งเตือนงาน', weight='bold', color='#ffffff')], background_color='#007BFF', padding_all='12px'),
-        body=BoxComponent(layout='vertical', contents=[
-            TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True), SeparatorComponent(margin='md'),
-            BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=customer_info.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='โทร:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=customer_info.get('phone', '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')]),
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=parsed_dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
+        header=BoxComponent(layout='vertical', contents=[
+            TextComponent(text='รายละเอียดงาน', weight='bold', color='#ffffff', size='lg')
+        ], background_color='#007BFF', padding_all='12px'),
+        body=BoxComponent(layout='vertical', spacing='md', contents=[
+            TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True),
+            BoxComponent(layout='baseline', contents=[
+                TextComponent(text='สถานะ:', color='#AAAAAA', size='sm', flex=2),
+                TextComponent(text=status_text, wrap=True, color=status_color, size='sm', flex=5, weight='bold')
             ]),
             SeparatorComponent(margin='md'),
-            TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'), TextComponent(text=customer_info.get('detail', '-'), wrap=True, margin='sm', color='#666666')
+            BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
+                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer_info.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
+                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='โทร:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer_info.get('phone', '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')]),
+                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=parsed_dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
+            ]),
+            SeparatorComponent(margin='md'),
+            TextComponent(text='รายละเอียดเบื้องต้น:', weight='bold', size='sm', margin='md'), 
+            TextComponent(text=customer_info.get('detail', '-'), wrap=True, margin='sm', color='#666666', size='sm')
         ]),
-        footer=BoxComponent(layout='vertical', spacing='sm', contents=([ButtonComponent(style='link', height='sm', action=map_action), SeparatorComponent(margin='md')] if map_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url))])
+        footer=BoxComponent(layout='vertical', spacing='sm', contents=([ButtonComponent(style='link', height='sm', action=map_action), SeparatorComponent(margin='md')] if map_action else []) + [ButtonComponent(style='primary', height='sm', action=URIAction(label='📝 เปิด/อัปเดตงาน', uri=update_url), color='#28A745')])
     )
-    return FlexSendMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
+    return bubble
+#</editor-fold>
 
 @app.route("/", methods=['GET'])
 def root_redirect():
@@ -382,7 +383,7 @@ def form_page():
         appointment_str = str(request.form.get('appointment', '')).strip()
         map_url_from_form = str(request.form.get('latitude_longitude', '')).strip()
         
-        title = f"งานลูกค้า: {customer_name} ({datetime.datetime.now(THAILAND_TZ).strftime('%d/%m/%y')})"
+        title = f"งานลูกค้า: {customer_name}"
         notes_lines = [customer_name, customer_phone, address]
         if map_url_from_form: notes_lines.append(map_url_from_form)
         notes_lines.append(detail)
@@ -391,7 +392,7 @@ def form_page():
         due_date_gmt = None
         if appointment_str:
             try:
-                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
+                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%dT%H:%M"))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
             except ValueError: app.logger.error(f"Invalid appointment format: {appointment_str}")
 
@@ -399,7 +400,8 @@ def form_page():
         if created_task:
             cache.clear()
             try:
-                flex_message = create_task_flex_message(created_task)
+                flex_bubble = create_task_flex_message(created_task)
+                flex_message = FlexSendMessage(alt_text=f"สร้างงานใหม่: {created_task.get('title', '')}", contents=flex_bubble)
                 settings = get_app_settings()
                 recipients = [id for id in [settings['line_recipients'].get('admin_group_id'), settings['line_recipients'].get('technician_group_id')] if id]
                 if recipients:
@@ -415,7 +417,6 @@ def form_page():
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
     return render_template('form.html')
 
-# CORRECTED VERSION OF SUMMARY FUNCTION
 @app.route('/summary')
 def summary():
     service = get_google_tasks_service()
@@ -485,8 +486,7 @@ def update_task_details(task_id):
     
     if request.method == 'POST':
         history, original_base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        customer_info = parse_customer_info_from_notes(original_base_notes)
-
+        
         work_summary = str(request.form.get('work_summary', '')).strip()
         files = request.files.getlist('files[]')
         new_attachments_uploaded = any(f and f.filename for f in files)
@@ -594,6 +594,32 @@ def edit_customer_info(task_id):
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('edit_customer_info.html', task=task)
 
+# NEW FEATURE 3: Route to edit task title
+@app.route('/edit_task_title/<task_id>', methods=['GET', 'POST'])
+def edit_task_title(task_id):
+    service = get_google_tasks_service()
+    if not service: abort(503)
+    try:
+        task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+    except HttpError:
+        abort(404)
+        
+    if request.method == 'POST':
+        new_title = request.form.get('new_title', '').strip()
+        if not new_title:
+            flash('กรุณากรอกชื่องานใหม่', 'danger')
+            return redirect(url_for('edit_task_title', task_id=task_id))
+
+        updated_task = update_google_task(task_id, title=new_title)
+        if updated_task:
+            cache.clear()
+            flash('แก้ไขชื่องานเรียบร้อยแล้ว', 'success')
+            return redirect(url_for('summary'))
+        else:
+            flash('เกิดข้อผิดพลาดในการแก้ไขชื่องาน', 'danger')
+
+    return render_template('edit_task_title.html', task=task)
+
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
     if delete_google_task(task_id):
@@ -689,6 +715,24 @@ def settings_page():
     )
     return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
 
+# NEW FEATURE 2: Route to test notification
+@app.route('/test_notification', methods=['POST'])
+def test_notification():
+    settings = get_app_settings()
+    recipient_id = settings.get('line_recipients', {}).get('admin_group_id', '')
+    if not recipient_id:
+        flash('กรุณากำหนด "LINE Admin Group ID" ในการตั้งค่าก่อน', 'danger')
+        return redirect(url_for('settings_page'))
+    try:
+        test_message = TextSendMessage(text="[ทดสอบการแจ้งเตือน]\nสวัสดี! นี่คือข้อความทดสอบจากระบบจัดการงานของคุณ")
+        line_bot_api.push_message(recipient_id, test_message)
+        flash(f'ส่งข้อความทดสอบไปที่ ID: {recipient_id} เรียบร้อยแล้ว!', 'success')
+    except Exception as e:
+        app.logger.error(f"Failed to send test notification: {e}")
+        flash(f'เกิดข้อผิดพลาดในการส่งข้อความทดสอบ: {e}', 'danger')
+
+    return redirect(url_for('settings_page'))
+
 @app.route('/export_equipment_catalog', methods=['GET'])
 def export_equipment_catalog():
     try:
@@ -742,7 +786,6 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
-
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
@@ -761,62 +804,82 @@ def handle_message(event):
     settings = get_app_settings()
     commands = settings.get('line_commands', {})
 
-    command_function_map = {
-        commands.get('help'): handle_help_command,
-        commands.get('outstanding_tasks'): handle_outstanding_tasks_command,
-        commands.get('completed_tasks'): handle_completed_tasks_command,
-        commands.get('summary_report'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
-        commands.get('new_task_form'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}")),
-        commands.get('start_work'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}"))
+    command_map = {
+        commands.get('help', 'comphone'): handle_help_command,
+        commands.get('outstanding_tasks', 'งานค้าง'): handle_outstanding_tasks_command,
+        commands.get('completed_tasks', 'งานเสร็จ'): handle_completed_tasks_command,
+        commands.get('summary_report', 'สรุปรายงาน'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
     }
     
-    if text_lower in command_function_map:
-        command_function_map[text_lower](event)
+    if text_lower in command_map:
+        command_map[text_lower](event)
         return
 
+    # NEW FEATURE 1: Change `ดูงาน` to search by name
+    if text_lower.startswith('ดูงาน '):
+        parts = text.split(maxsplit=1)
+        if len(parts) > 1:
+            handle_view_task_by_name_command(event, parts[1])
+        else:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาพิมพ์ 'ดูงาน' ตามด้วยชื่อลูกค้าที่ต้องการค้นหาครับ"))
+        return
+        
     if text_lower.startswith('c '):
         parts = text.split(maxsplit=1)
-        if len(parts) > 1: handle_customer_search_command(event, parts[1])
+        if len(parts) > 1:
+            handle_view_task_by_name_command(event, parts[1]) # Re-use the same function
         return
 
-    if text_lower.startswith('ดูงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_view_task_command(event, parts[1])
-        return
+def handle_view_task_by_name_command(event, customer_name):
+    try:
+        tasks_raw = get_google_tasks_for_report(show_completed=True)
+        if not tasks_raw:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่พบงานในระบบเลยครับ"))
+            return
 
-    if text_lower.startswith('เสร็จงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_complete_task_command(event, parts[1])
-        return
+        matching_tasks = []
+        for task in tasks_raw:
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            if customer_name.lower() in customer_info.get('name', '').lower():
+                matching_tasks.append(task)
+        
+        if not matching_tasks:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ไม่พบงานของลูกค้าชื่อ: {customer_name}"))
+            return
+
+        if len(matching_tasks) > 10: # LINE carousel limit is 12, but 10 is safer
+            matching_tasks = matching_tasks[:10]
+
+        bubbles = [create_task_flex_message(task) for task in matching_tasks]
+        
+        carousel_contents = CarouselContainer(contents=bubbles)
+        flex_message = FlexSendMessage(alt_text=f"ผลการค้นหางานของ: {customer_name}", contents=carousel_contents)
+        
+        line_bot_api.reply_message(event.reply_token, flex_message)
+
+    except Exception as e:
+        app.logger.error(f"Error in handle_view_task_by_name_command: {e}")
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขออภัย, เกิดข้อผิดพลาดในการค้นหางานครับ"))
+
 
 def handle_help_command(event):
     help_text = (
         "🤖 **วิธีใช้งานบอท** 🤖\n\n"
         "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
         "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
-        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
-        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า (เช่น c สมศรี)\n\n"
-        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
-        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
-        "➡️ `เปิดงานใหม่` หรือ `เริ่มลงงาน`\nรับลิงก์สำหรับจัดการงาน"
+        "➡️ `สรุปรายงาน`\nรับลิงก์สำหรับเปิดหน้าเว็บสรุปงาน\n\n"
+        "➡️ `ดูงาน <ชื่อลูกค้า>` หรือ `c <ชื่อลูกค้า>`\nค้นหาและดูรายละเอียดงานของลูกค้า"
     )
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
     
 def handle_outstanding_tasks_command(event):
+    # This is a placeholder. You need to implement the logic.
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ฟังก์ชัน 'งานค้าง' กำลังอยู่ในระหว่างการพัฒนา"))
 
 def handle_completed_tasks_command(event):
+    # This is a placeholder. You need to implement the logic.
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ฟังก์ชัน 'งานเสร็จ' กำลังอยู่ในระหว่างการพัฒนา"))
 
-def handle_customer_search_command(event, customer_name):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังค้นหางานของลูกค้า: {customer_name}"))
-
-def handle_view_task_command(event, task_id):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังดูรายละเอียดงาน ID: {task_id}"))
-
-def handle_complete_task_command(event, task_id):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังปิดงาน ID: {task_id}"))
-    
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
