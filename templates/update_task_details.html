@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}รายละเอียดงาน: {{ task.title }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    #reschedule-container { display: none; }
+    .report-history-card {
+        border-left: 4px solid #6c757d;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3">รายละเอียดงาน</h1>
+</div>
+
+<div class="row">
+    <div class="col-lg-7">
+        <!-- Add new report form -->
+        <div class="card border-success border-2 mb-4">
+            <div class="card-header bg-success text-white"><i class="fas fa-tools me-2"></i>เพิ่มรายงานและอัปเดตงาน</div>
+            <div class="card-body">
+                <form action="{{ url_for('update_task_details', task_id=task.id) }}" method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="work_summary" class="form-label"><strong>สรุปการทำงาน <span class="text-danger">*</span></strong></label>
+                        <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงาน..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="equipment_used" class="form-label"><strong>อุปกรณ์ที่ใช้ (แต่ละรายการขึ้นบรรทัดใหม่)</strong></label>
+                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="5" list="equipment_datalist" placeholder="เช่น สาย LAN, 10 เมตร"></textarea>
+                        <datalist id="equipment_datalist">
+                            {% for item in common_equipment_items %}<option value="{{ item }}">{% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="mb-3">
+                        <label for="files" class="form-label"><strong>แนบไฟล์ (รูปภาพ, เอกสาร)</strong></label>
+                        <input type="file" class="form-control" id="files" name="files[]" multiple>
+                    </div>
+                    <div class="mb-3">
+                        <label for="status" class="form-label"><strong>อัปเดตสถานะงาน</strong></label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
+                            <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>งานเสร็จเรียบร้อย</option>
+                        </select>
+                    </div>
+                    <div id="reschedule-container" class="mb-3 bg-body-tertiary p-3 rounded">
+                        <label for="appointment_due" class="form-label"><strong>เลื่อนวันนัดหมายใหม่</strong></label>
+                        <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
+                        <small class="form-text text-muted">กำหนดวัน-เวลาใหม่ (เฉพาะกรณีที่งานยังไม่เสร็จ)</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary d-block w-100"><i class="fas fa-save me-2"></i>บันทึกรายงาน</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <!-- Customer and History Info -->
+        <div class="card border-info border-2 mb-4">
+            <div class="card-header bg-info text-white"><i class="fas fa-user-circle me-2"></i>ข้อมูลลูกค้า</div>
+            <div class="card-body">
+                <p><strong>ลูกค้า:</strong> {{ task.customer.name or '-' }}</p>
+                <p><strong>โทร:</strong> <a href="tel:{{ task.customer.phone }}">{{ task.customer.phone or '-' }}</a></p>
+                <p><strong>ที่อยู่:</strong> {{ task.customer.address or '-' }}</p>
+                {% if task.customer.map_url %}
+                <p><strong>พิกัด:</strong> <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-map-marked-alt me-2"></i>เปิด Google Maps</a></p>
+                {% endif %}
+                <p><strong>รายละเอียดเบื้องต้น:</strong><br><span class="ps-3 text-muted" style="white-space: pre-wrap;">{{ task.customer.detail or '-' }}</span></p>
+                <hr>
+                <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-user-edit me-2"></i>แก้ไขข้อมูลลูกค้า
+                </a>
+            </div>
+        </div>
+
+        <h4 class="h5 mt-4">ประวัติการทำงาน</h4>
+        {% if task.tech_reports_history %}
+            {% for report in task.tech_reports_history %}
+            <div class="card report-history-card">
+                <div class="card-body">
+                    <h6 class="card-title"><strong>สรุปเมื่อ:</strong> {{ report.summary_date }}</h6>
+                    <p class="card-text small" style="white-space: pre-wrap;">{{ report.work_summary or '-' }}</p>
+                    {% if report.equipment_used_display %}
+                        <p class="card-text small"><strong>อุปกรณ์:</strong> {{ report.equipment_used_display|replace('\n', ', ') }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-secondary text-center">ยังไม่มีประวัติการทำงาน</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const statusSelect = document.getElementById('status');
+        const rescheduleContainer = document.getElementById('reschedule-container');
+        function toggleReschedule() {
+            rescheduleContainer.style.display = (statusSelect.value === 'needsAction') ? 'block' : 'none';
+            if (statusSelect.value === 'completed') {
+                document.getElementById('appointment_due').value = ''; 
+            }
+        }
+        toggleReschedule();
+        statusSelect.addEventListener('change', toggleReschedule);
+    });
+</script>
+{% endblock %}
