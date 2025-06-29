@@ -8,28 +8,41 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
+    <style>
+        /* Custom style for the logo */
+        .navbar-logo {
+            height: 35px; /* Adjust height as needed */
+            width: auto;
+            margin-right: 10px;
+        }
+    </style>
     {% block head_extra %}{% endblock %}
 </head>
 <body class="bg-light">
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('summary') }}">
-                <i class="fas fa-tasks"></i> Task Manager
+            <!-- CHANGED: Added logo to the navbar -->
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('summary') }}">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="navbar-logo">
+                <span class="d-none d-sm-inline">Task Manager</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-center">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('summary') }}"><i class="fas fa-list-check"></i> สรุปงาน</a>
+                        <a class="nav-link" href="{{ url_for('summary') }}"><i class="fas fa-list-check me-1"></i>สรุปงาน</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('form_page') }}"><i class="fas fa-plus"></i> สร้างงานใหม่</a>
+                        <a class="nav-link" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>
                     </li>
-                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('settings_page') }}"><i class="fas fa-cog"></i> ตั้งค่า</a>
+                    <!-- CHANGED: Made the "Create New Task" link a prominent button -->
+                    <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
+                        <a class="btn btn-success" href="{{ url_for('form_page') }}">
+                            <i class="fas fa-plus-circle me-1"></i>สร้างงานใหม่
+                        </a>
                     </li>
                 </ul>
             </div>
@@ -52,7 +65,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="text-center text-muted py-3 fixed-bottom bg-light border-top">
+    <footer class="text-center text-muted py-3 bg-light border-top">
         <small>Task Management System &copy; {{ now.year }}</small>
     </footer>
 
