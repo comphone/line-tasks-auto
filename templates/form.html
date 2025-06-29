@@ -1,41 +1,23 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>บันทึกงานใหม่</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block title %}บันทึกงานใหม่{% endblock %}
+
+{% block head_extra %}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f8f9fa; }
-        .container { max-width: 700px; }
-        .card-header { background-color: #0d6efd; color: white; }
-    </style>
-</head>
-<body>
-    <div class="container py-4">
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
         <div class="card shadow-sm">
-            <div class="card-header">
-                <h4 class="mb-0">บันทึกงานใหม่</h4>
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-plus-circle me-2"></i>บันทึกงานใหม่</h4>
             </div>
             <div class="card-body p-4">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                  {% if messages %}
-                    {% for category, message in messages %}
-                      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                      </div>
-                    {% endfor %}
-                  {% endif %}
-                {% endwith %}
-
                 <form method="POST" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="customer" class="form-label"><strong>ชื่อลูกค้า</strong> <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="customer" name="customer" required onkeyup="lookupCustomerDelayed()">
-                        <small class="form-text text-muted" id="customerLookupStatus">พิมพ์ชื่อลูกค้าเพื่อค้นหาข้อมูลเก่า</small>
+                        <input type="text" class="form-control" id="customer" name="customer" required>
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
@@ -43,7 +25,7 @@
                             <input type="tel" class="form-control" id="phone" name="phone">
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="appointment" class="form-label">วันเวลานัดหมาย (ถ้ามี)</label>
+                            <label for="appointment" class="form-label">วันเวลานัดหมาย</label>
                             <input type="text" class="form-control datetimepicker" id="appointment" name="appointment" placeholder="เลือกวันและเวลา">
                         </div>
                     </div>
@@ -51,30 +33,38 @@
                         <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
                         <textarea class="form-control" id="address" name="address" rows="2"></textarea>
                     </div>
+                    
+                    <!-- FIX 1: Geolocation Button -->
                     <div class="mb-3">
-                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
-                        <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" placeholder="เช่น https://maps.app.goo.gl/...">
-                        <button type="button" class="btn btn-info btn-sm mt-2" id="shareCurrentLocationBtn"><i class="fas fa-location-arrow me-2"></i>แชร์ที่อยู่ปัจจุบัน</button>
-                        <small class="form-text text-muted" id="shareLocationStatus">กดเพื่อใส่ลิงก์แผนที่ Google Maps ของตำแหน่งคุณ</small>
+                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่</label>
+                        <div class="input-group">
+                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่งปัจจุบัน">
+                            <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
+                                <i class="fas fa-location-arrow"></i>
+                            </button>
+                        </div>
+                        <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
                     </div>
+
                     <div class="mb-3">
                         <label for="detail" class="form-label">รายละเอียดงาน</label>
                         <textarea class="form-control" id="detail" name="detail" rows="4"></textarea>
                     </div>
                     <div class="mb-3">
-                        <label for="files" class="form-label">แนบรูปภาพ/ไฟล์ (ได้หลายไฟล์)</label>
+                        <label for="files" class="form-label">แนบไฟล์</label>
                         <input class="form-control" type="file" id="files" name="files[]" multiple>
                     </div>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                        <a href="{{ url_for('summary') }}" class="btn btn-secondary">ดูสรุปงาน</a>
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block body_extra %}
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
     <script>
@@ -84,92 +74,36 @@
                 dateFormat: "Y-m-d H:i",
                 locale: "th",
             });
+            
+            const shareBtn = document.getElementById('shareLocationBtn');
+            const locationInput = document.getElementById('latitude_longitude');
+            const statusText = document.getElementById('shareLocationStatus');
 
-            // Geolocation for "แชร์ที่อยู่ปัจจุบัน"
-            const shareCurrentLocationBtn = document.getElementById('shareCurrentLocationBtn');
-            const latitudeLongitudeInput = document.getElementById('latitude_longitude');
-            const shareLocationStatus = document.getElementById('shareLocationStatus');
-
-            if (shareCurrentLocationBtn) {
-                shareCurrentLocationBtn.addEventListener('click', function() {
-                    shareLocationStatus.textContent = 'กำลังค้นหาที่อยู่ปัจจุบัน...';
+            if (shareBtn) {
+                shareBtn.addEventListener('click', function() {
+                    statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
+                    statusText.classList.remove('text-success', 'text-danger');
                     if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
                             (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
-                                
-                                latitudeLongitudeInput.value = googleMapsUrl;
-                                shareLocationStatus.textContent = `ลิงก์แผนที่สร้างสำเร็จ: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                                shareLocationStatus.style.color = 'green';
+                                locationInput.value = `https://www.google.com/maps?q=${lat},${lon}`;
+                                statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                                statusText.classList.add('text-success');
                             },
                             (error) => {
-                                console.error("Error getting location: ", error);
-                                shareLocationStatus.textContent = 'ไม่สามารถดึงที่อยู่ได้ (โปรดอนุญาตการเข้าถึงตำแหน่ง)';
-                                shareLocationStatus.style.color = 'red';
-                            },
-                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                                console.error("Geolocation Error: ", error);
+                                statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้ (โปรดอนุญาตการเข้าถึง)';
+                                statusText.classList.add('text-danger');
+                            }
                         );
                     } else {
-                        shareLocationStatus.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation';
-                        shareLocationStatus.style.color = 'red';
+                        statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                        statusText.classList.add('text-danger');
                     }
                 });
             }
-
-            // Customer Lookup (Auto-fill) Logic
-            const customerInput = document.getElementById('customer');
-            const phoneInput = document.getElementById('phone');
-            const addressInput = document.getElementById('address');
-            const detailInput = document.getElementById('detail');
-            const mapUrlInput = document.getElementById('latitude_longitude');
-            const customerLookupStatus = document.getElementById('customerLookupStatus');
-
-            let lookupTimeout;
-
-            window.lookupCustomerDelayed = function() {
-                clearTimeout(lookupTimeout);
-                lookupTimeout = setTimeout(lookupCustomer, 500); // Delay lookup by 500ms
-            };
-
-            async function lookupCustomer() {
-                const queryName = customerInput.value.trim();
-                if (queryName.length < 2) { // Only search if at least 2 characters are typed
-                    customerLookupStatus.textContent = 'พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหา';
-                    customerLookupStatus.style.color = 'gray';
-                    return;
-                }
-
-                customerLookupStatus.textContent = 'กำลังค้นหาข้อมูลลูกค้า...';
-                customerLookupStatus.style.color = 'blue';
-
-                try {
-                    const response = await fetch(`/lookup_customer?customer_name=${encodeURIComponent(queryName)}`);
-                    const data = await response.json();
-
-                    if (response.ok && Object.keys(data).length > 0) {
-                        // Fill fields only if they are currently empty or user wants to overwrite
-                        // For simplicity, we'll auto-fill if data is found.
-                        // You could add a confirmation dialog here if overwriting existing data.
-                        phoneInput.value = data.phone || '';
-                        addressInput.value = data.address || '';
-                        detailInput.value = data.detail || '';
-                        mapUrlInput.value = data.map_url || '';
-
-                        customerLookupStatus.textContent = `พบข้อมูลลูกค้า "${queryName}"`;
-                        customerLookupStatus.style.color = 'green';
-                    } else {
-                        customerLookupStatus.textContent = `ไม่พบข้อมูลสำหรับ "${queryName}"`;
-                        customerLookupStatus.style.color = 'orange';
-                    }
-                } catch (error) {
-                    console.error('Error fetching customer data:', error);
-                    customerLookupStatus.textContent = 'เกิดข้อผิดพลาดในการค้นหาข้อมูล';
-                    customerLookupStatus.style.color = 'red';
-                }
-            }
         });
     </script>
-</body>
-</html>
+{% endblock %}
