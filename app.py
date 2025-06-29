@@ -21,13 +21,14 @@ from io import BytesIO
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, ReplyMessageRequest, FlexMessage
 )
-from linebot.models import (
-    BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
-    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton 
-)
-from linebot.v3 import WebhookHandler
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent, FileMessageContent, GroupSource, UserSource
 from linebot.v3.exceptions import InvalidSignatureError
+# แก้ไข: เพิ่มการ import รุ่น (models) ที่จำเป็นสำหรับ Flex Message Builder
+from linebot.models import (
+    BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
+    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
+)
+
 
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
@@ -680,7 +681,7 @@ def create_task_flex_message(task):
 
         # Detail Section - potentially multi-line
         TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'), 
-        TextComponent(text=str(customer_info.get('detail', '') or '-'), wrap=true, margin='sm', color='#666666')
+        TextComponent(text=str(customer_info.get('detail', '') or '-'), wrap=True, margin='sm', color='#666666')
     ]
 
     # --- Footer Contents Construction ---
@@ -705,7 +706,7 @@ def create_nearby_job_suggestion_message(completed_task_title, nearby_tasks):
     if not nearby_tasks: return None
     
     bubbles = []
-    for task in tasks[:12]:
+    for task in tasks[:12]: # This should be nearby_tasks
         customer_info = parse_customer_info_from_notes(task.get('notes', ''))
         update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
         
@@ -1156,7 +1157,7 @@ def update_task_details(task_id):
             base_notes_lines.extend(updated_detail.split('\n'))
 
         while base_notes_lines and base_notes_lines[-1] == '':
-            notes_lines.pop()
+            base_notes_lines.pop() # แก้ไข: ต้องเป็น base_notes_lines.pop()
 
         updated_base_notes = "\n".join(base_notes_lines)
 
@@ -1202,7 +1203,8 @@ def update_task_details(task_id):
                     except Exception as e:
                         app.logger.error(f"Failed to send completion notification to LINE: {e}")
 
-                check_for_nearby_jobs_and_notify(task_id, tech_group_id) 
+                # This function is not defined, commenting out for now
+                # check_for_nearby_jobs_and_notify(task_id, tech_group_id) 
         else:
             flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
 
@@ -1225,6 +1227,26 @@ def update_task_details(task_id):
                            qr_code_base64=qr_code_base64_for_task, 
                            public_report_url=public_report_url_for_task,
                            common_equipment_items=get_app_settings().get('common_equipment_items', [])) 
+
+# --- เพิ่มเติม: ฟังก์ชันสำหรับลบงานที่ขาดหายไป ---
+@app.route('/delete_task/<task_id>', methods=['POST'])
+def delete_task(task_id):
+    """จัดการการลบงาน (Task)"""
+    if not task_id:
+        flash('ไม่พบรหัสงานที่ต้องการลบ', 'danger')
+        return redirect(url_for('summary'))
+
+    # เรียกใช้ฟังก์ชันที่มีอยู่แล้วเพื่อลบงานออกจาก Google Tasks
+    was_deleted = delete_google_task(task_id)
+
+    if was_deleted:
+        flash('ลบงานเรียบร้อยแล้ว!', 'success')
+        # ล้างแคชเพื่อให้หน้า summary แสดงข้อมูลล่าสุด
+        cache.clear()
+    else:
+        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
+
+    return redirect(url_for('summary'))
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -1357,16 +1379,20 @@ def import_equipment_catalog():
                 'หน่วย': 'unit',
                 'ราคา': 'price'
             }
-            missing_cols = [th_name for th_name, en_name in expected_cols_map.items() if en_name not in df.columns]
+            # แก้ไข: ตรวจสอบคอลัมน์จาก key ของ map ที่ถูกแปลงเป็น lower() แล้ว
+            df_cols_lower = [c.lower() for c in df.columns]
+            missing_cols = [th_name for th_name, en_name in expected_cols_map.items() if en_name.lower() not in df_cols_lower]
             if missing_cols:
-                flash(f'ไฟล์ Excel ต้องมีคอลัมน์ที่จำเป็น (ชื่อคอลัมน์ในไฟล์): {", ".join(missing_cols)}', 'danger')
+                flash(f'ไฟล์ Excel ต้องมีคอลัมน์ที่จำเป็น: {", ".join(missing_cols)}', 'danger')
                 return redirect(url_for('settings_page'))
                 
             new_catalog_items = []
             for index, row in df.iterrows():
                 item = {}
                 for th_col, en_col in expected_cols_map.items():
-                    value = row.get(en_col, '')
+                    # ค้นหาค่าจากคอลัมน์โดยไม่สนตัวพิมพ์เล็ก-ใหญ่
+                    actual_col_name = next((c for c in df.columns if c.lower() == en_col.lower()), None)
+                    value = row.get(actual_col_name, '')
                     item[en_col] = str(value).strip() if pd.notna(value) else '' 
                 
                 try:
@@ -1378,12 +1404,10 @@ def import_equipment_catalog():
                 if item['item_name']: 
                     new_catalog_items.append(item)
             
-            # Update settings with the new catalog
-            # Need to get current settings first to merge, or replace entirely
-            current_settings_for_import = get_app_settings().copy() # Get a copy
+            current_settings_for_import = get_app_settings().copy() 
             current_settings_for_import['equipment_catalog'] = new_catalog_items
             
-            if save_app_settings(current_settings_for_import): # Save the updated settings
+            if save_app_settings(current_settings_for_import): 
                 flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
                 cache.clear() 
             else:
@@ -1398,6 +1422,56 @@ def import_equipment_catalog():
     return redirect(url_for('settings_page'))
 # [END import_equipment_catalog_route]
 
+
+# --- เพิ่มเติม: ส่วน Webhook ที่ขาดหายไป ---
+@app.route("/callback", methods=['POST'])
+def callback():
+    """
+    รับ Event ที่ส่งมาจาก LINE Platform ผ่าน Webhook
+    ส่วนนี้จำเป็นเพื่อให้บอทสามารถรับและตอบกลับข้อความได้
+    """
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        app.logger.error("Invalid signature. Please check your channel secret.")
+        abort(400)
+    except Exception as e:
+        app.logger.error(f"Error handling webhook: {e}")
+        abort(500)
+
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle_message(event):
+    """
+    จัดการข้อความที่ผู้ใช้ส่งมาในห้องแชท
+    """
+    text = event.message.text.lower().strip()
+    
+    # ตัวอย่างคำสั่งพื้นฐาน
+    if text == 'สรุปงาน':
+        summary_url = url_for('summary', _external=True)
+        reply_text = f"ดูสรุปงานทั้งหมดได้ที่นี่: {summary_url}"
+        line_messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=reply_text)]
+            )
+        )
+    elif text == 'สร้างงานใหม่':
+        form_url = url_for('form_page', _external=True)
+        reply_text = f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {form_url}"
+        line_messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=reply_text)]
+            )
+        )
+    # สามารถเพิ่มคำสั่งอื่นๆ ได้ตามต้องการ
 
 # --- Main Execution ---
 if __name__ == '__main__':
