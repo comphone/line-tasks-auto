@@ -4,11 +4,11 @@
 
 {% block head_extra %}
 <style>
-    /* ซ่อนช่องเลื่อนนัดหมายไว้เป็นค่าเริ่มต้น */
+    /* This style hides the reschedule container by default. */
     #reschedule-container { 
         display: none; 
     }
-    /* จัดสไตล์การ์ดประวัติการทำงานให้ดูง่ายขึ้น */
+    /* This style makes the work history cards more readable. */
     .report-history-card {
         border-left: 4px solid #6c757d;
         margin-bottom: 1rem;
@@ -19,6 +19,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
+    <!-- CHANGED: Unify concept of "task name" to "task detail" -->
     <h1 class="h3 mb-0">รายละเอียดงาน</h1>
 </div>
 
@@ -43,18 +44,21 @@
                         </datalist>
                     </div>
                     <div class="mb-3">
-                        <label for="files" class="form-label"><strong>แนบไฟล์ (รูปภาพ, เอกสาร)</strong></label>
+                        <!-- CHANGED: Unify label -->
+                        <label for="files" class="form-label"><strong>แนบไฟล์</strong></label>
                         <input type="file" class="form-control" id="files" name="files[]" multiple>
                     </div>
                     <div class="mb-3">
-                        <label for="status" class="form-label"><strong>อัปเดตสถานะงาน</strong></label>
+                        <!-- CHANGED: Unify label -->
+                        <label for="status" class="form-label"><strong>สถานะงาน</strong></label>
                         <select class="form-select" id="status" name="status">
                             <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
                             <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>งานเสร็จเรียบร้อย</option>
                         </select>
                     </div>
                     <div id="reschedule-container" class="mb-3 bg-body-tertiary p-3 rounded">
-                        <label for="appointment_due" class="form-label"><strong>เลื่อนวันนัดหมายใหม่</strong></label>
+                        <!-- CHANGED: Unify label -->
+                        <label for="appointment_due" class="form-label"><strong>วันเวลานัดหมาย</strong></label>
                         <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
                         <small class="form-text text-muted">กำหนดวัน-เวลาใหม่ (เฉพาะกรณีที่งานยังไม่เสร็จ)</small>
                     </div>
@@ -71,11 +75,12 @@
                 <h5 class="mb-0"><i class="fas fa-user-circle me-2"></i>ข้อมูลลูกค้า</h5>
             </div>
             <div class="card-body">
-                <p><strong>ลูกค้า:</strong> {{ task.customer.name or '-' }}</p>
-                <p><strong>โทร:</strong> <a href="tel:{{ task.customer.phone }}">{{ task.customer.phone or '-' }}</a></p>
-                <p><strong>ที่อยู่:</strong> {{ task.customer.address or '-' }}</p>
+                <!-- CHANGED: Unify all labels with form.html standard -->
+                <p><strong>ชื่อลูกค้า:</strong> {{ task.customer.name or '-' }}</p>
+                <p><strong>เบอร์โทรศัพท์:</strong> <a href="tel:{{ task.customer.phone }}">{{ task.customer.phone or '-' }}</a></p>
+                <p><strong>ที่อยู่ลูกค้า:</strong> {{ task.customer.address or '-' }}</p>
                 {% if task.customer.map_url %}
-                <p><strong>พิกัด:</strong> <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-map-marked-alt me-2"></i>เปิด Google Maps</a></p>
+                <p><strong>พิกัดแผนที่:</strong> <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-map-marked-alt me-2"></i>เปิด Google Maps</a></p>
                 {% endif %}
                 <p><strong>รายละเอียด/อาการเบื้องต้น (จากลูกค้า):</strong><br><span class="ps-3 text-muted" style="white-space: pre-wrap;">{{ task.customer.detail or '-' }}</span></p>
                 <hr>
@@ -107,18 +112,19 @@
 
 {% block body_extra %}
 <script>
+    // This script toggles the visibility of the reschedule date input based on the task status.
     document.addEventListener('DOMContentLoaded', function() {
         const statusSelect = document.getElementById('status');
         const rescheduleContainer = document.getElementById('reschedule-container');
         function toggleReschedule() {
             // Show reschedule container if status is 'needsAction'
             rescheduleContainer.style.display = (statusSelect.value === 'needsAction') ? 'block' : 'none';
-            // Clear the date value if status is 'completed'
+            // Clear the date value if status is 'completed' to avoid accidental updates
             if (statusSelect.value === 'completed') {
                 document.getElementById('appointment_due').value = ''; 
             }
         }
-        // Run on page load
+        // Run on page load to set the initial state
         toggleReschedule();
         // Add event listener for changes
         statusSelect.addEventListener('change', toggleReschedule);

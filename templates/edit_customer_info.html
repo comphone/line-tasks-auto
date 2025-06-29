@@ -21,7 +21,8 @@
                         <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone or '' }}">
                     </div>
                     <div class="mb-3">
-                        <label for="address" class="form-label"><strong><i class="fas fa-home me-2"></i>ที่อยู่</strong></label>
+                        <!-- CHANGED: Unified the label to match the main form -->
+                        <label for="address" class="form-label"><strong><i class="fas fa-home me-2"></i>ที่อยู่ลูกค้า</strong></label>
                         <textarea class="form-control" id="address" name="address" rows="3">{{ task.customer.address or '' }}</textarea>
                     </div>
                     <div class="mb-3">
@@ -50,6 +51,7 @@
 
 {% block body_extra %}
     <script>
+        // This script handles sharing the user's current geolocation.
         document.addEventListener('DOMContentLoaded', function() {
             const shareBtn = document.getElementById('shareLocationBtn');
             const locationInput = document.getElementById('latitude_longitude');
