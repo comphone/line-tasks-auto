@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}รายงานค่าใช้จ่ายงาน: {{ task.get('title', 'N/A') }}{% endblock %}
+
+{% block head_extra %}
+    <style>
+        /* ซ่อนส่วนที่ไม่ต้องการ เมื่อสั่งพิมพ์ */
+        @media print {
+            .no-print, nav, footer {
+                display: none !important;
+            }
+            body {
+                background-color: #fff !important;
+            }
+            .card {
+                box-shadow: none !important;
+                border: 1px solid #dee2e6 !important;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0"><i class="fas fa-file-invoice me-2"></i>รายงานค่าใช้จ่ายและสรุปงาน</h4>
+    </div>
+    <div class="card-body p-4">
+        <div class="row mb-4">
+            <div class="col-md-7">
+                <h5>{{ task.get('title', 'N/A') }}</h5>
+                <p class="text-muted mb-0">ID งาน: {{ task.id }}</p>
+            </div>
+            <div class="col-md-5 text-md-end">
+                <p class="mb-0"><strong>สถานะ:</strong> 
+                    {% if task.status == 'completed' %}
+                        <span class="badge bg-success">งานเสร็จเรียบร้อย</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">งานยังไม่เสร็จ</span>
+                    {% endif %}
+                </p>
+                <p class="mb-0"><strong>วันที่ออกรายงาน:</strong> {{ now.strftime('%d/%m/%Y') }}</p>
+            </div>
+        </div>
+        
+        <hr>
+
+        <div class="row">
+            <div class="col-md-6">
+                <h6><i class="fas fa-user-circle me-2"></i>ข้อมูลลูกค้า</h6>
+                <p class="mb-1"><strong>ชื่อลูกค้า:</strong> {{ customer_info.name or '-' }}</p>
+                <p class="mb-1"><strong>ที่อยู่:</strong> {{ customer_info.address or '-' }}</p>
+                 <p class="mb-1"><strong>เบอร์โทร:</strong> {{ customer_info.phone or '-' }}</p>
+            </div>
+            <div class="col-md-6">
+                 <h6><i class="fas fa-info-circle me-2"></i>รายละเอียดงาน (จากลูกค้า)</h6>
+                 <p class="text-muted" style="white-space: pre-wrap;">{{ customer_info.detail or '-' }}</p>
+            </div>
+        </div>
+
+        <hr>
+
+        <h6><i class="fas fa-wrench me-2"></i>สรุปการทำงานล่าสุด</h6>
+        {% if latest_report %}
+            <div class="bg-light p-3 rounded mb-4">
+                <p><strong>สรุปผลโดยช่าง:</strong> {{ latest_report.work_summary or '-' }}</p>
+                <p class="mb-0"><strong>วันที่สรุป:</strong> {{ latest_report.summary_date or '-' }}</p>
+            </div>
+
+            {% if detailed_costs %}
+                <h6><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h6>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped mt-3">
+                        <thead class="table-light">
+                            <tr>
+                                <th>รายการ</th>
+                                <th class="text-center">จำนวน</th>
+                                <th class="text-center">ราคา/หน่วย</th>
+                                <th class="text-end">ราคารวม</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in detailed_costs %}
+                            <tr>
+                                <td>{{ item.item }}</td>
+                                <td class="text-center">{{ item.quantity }} {{ item.unit }}</td>
+                                <td class="text-center">
+                                    {% if item.price_per_unit != 'N/A' %}
+                                        {{ "฿{:,.2f}".format(item.price_per_unit) }}
+                                    {% else %} N/A {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if item.subtotal != 'N/A' %}
+                                        {{ "฿{:,.2f}".format(item.subtotal) }}
+                                    {% else %} N/A {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-group-divider fw-bold">
+                                <td colspan="3" class="text-end">รวมค่าใช้จ่ายอุปกรณ์:</td>
+                                <td class="text-end h5">{{ "฿{:,.2f}".format(total_cost) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">ยังไม่มีรายการอุปกรณ์ที่ระบุ</p>
+            {% endif %}
+
+        {% else %}
+            <p class="text-muted">ยังไม่มีข้อมูลสรุปการทำงานล่าสุด</p>
+        {% endif %}
+
+        <div class="text-center mt-4 no-print">
+            <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-2"></i>พิมพ์รายงาน</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
