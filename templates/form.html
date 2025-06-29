@@ -11,7 +11,6 @@
     <div class="col-lg-8">
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white">
-                <!-- CHANGED: unify header with page title and navbar link -->
                 <h4 class="mb-0"><i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่</h4>
             </div>
             <div class="card-body p-4">
@@ -22,9 +21,10 @@
                         <input type="text" class="form-control" id="customer" name="customer" required>
                     </div>
 
+                    <!-- CHANGED: Unified the label and the 'name' attribute for the task detail -->
                     <div class="mb-3">
-                        <label for="detail" class="form-label"><strong>รายละเอียด/อาการเบื้องต้น (จากลูกค้า)</strong> <span class="text-danger">*</span></label>
-                        <textarea class="form-control" id="detail" name="detail" rows="4" required></textarea>
+                        <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong> <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="task_title" name="task_title" rows="4" required></textarea>
                     </div>
 
                     <hr class="my-4">
