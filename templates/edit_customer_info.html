@@ -39,10 +39,8 @@
                                 <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer.detail or '' }}</textarea>
                             </div>
 
-                            <!-- FIX 3: เพิ่มเมนูพิกัดแผนที่ในหน้านี้ด้วย -->
                             <div class="form-group">
                                 <label for="latitude_longitude"><strong><i class="fas fa-map-marked-alt mr-2"></i>พิกัดแผนที่ (Google Maps URL)</strong></label>
-                                <!-- แสดงลิงก์ที่กดได้ ถ้ามี URL อยู่แล้ว -->
                                 {% if task.customer.map_url %}
                                     <div class="mb-2">
                                         <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-external-link-alt"></i> เปิดแผนที่ปัจจุบัน</a>
