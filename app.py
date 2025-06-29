@@ -29,8 +29,7 @@ from linebot.exceptions import (
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FlexSendMessage,
     BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
-    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
-    ImageMessage, FileMessage, PostbackEvent
+    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
 )
 # ---------------------------------------------
 
@@ -419,6 +418,37 @@ def create_task_flex_message(task):
     )
     return FlexSendMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
 
+def create_customer_history_carousel(tasks, customer_name):
+    """Creates a Flex Message Carousel Container for a customer's task history."""
+    if not tasks: return None
+    bubbles = []
+    for task in tasks[:12]: # Limit to 12 bubbles
+        parsed = parse_google_task_dates(task)
+        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+        status_text, status_color = ("รอดำเนินการ", "#FFA500")
+        if task.get('status') == 'completed':
+            status_text, status_color = "เสร็จสิ้น", "#28A745"
+        elif 'due' in task and task['due']:
+            try:
+                due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                if due_dt_utc < datetime.datetime.now(pytz.utc):
+                    status_text, status_color = "ยังไม่ดำเนินการ", "#DC3545"
+            except (ValueError, TypeError): pass
+        bubble = BubbleContainer(
+            direction='ltr',
+            body=BoxComponent(layout='vertical', spacing='md', contents=[
+                TextComponent(text=str(task.get('title', 'N/A')), weight='bold', size='lg', wrap=True), 
+                SeparatorComponent(margin='md'),
+                BoxComponent(layout='vertical', margin='md', spacing='sm', contents=[
+                    BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='สถานะ', color='#aaaaaa', size='sm', flex=2), TextComponent(text=status_text, wrap=True, color=status_color, size='sm', flex=5, weight='bold')]),
+                    BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='วันที่สร้าง', color='#aaaaaa', size='sm', flex=2), TextComponent(text=str(parsed.get('created_formatted', '-')), wrap=True, color='#666666', size='sm', flex=5)])
+                ])
+            ]),
+            footer=BoxComponent(layout='vertical', spacing='sm', contents=[ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด / อัปเดต', uri=update_url))])
+        )
+        bubbles.append(bubble)
+    return CarouselContainer(contents=bubbles)
+
 @app.route("/", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
@@ -465,6 +495,37 @@ def form_page():
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
     return render_template('form.html')
+
+@app.route("/lookup_customer", methods=['GET'])
+def lookup_customer():
+    customer_name_query = str(request.args.get('customer_name', '')).strip().lower() 
+    if not customer_name_query: return jsonify({}) 
+    tasks_raw = get_google_tasks_for_report(show_completed=False) 
+    if tasks_raw is None: return jsonify({"error": "Failed to retrieve tasks"}), 500
+    found_customer_info = {}
+    for task_item in reversed(tasks_raw): 
+        customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
+        if customer_name_query in str(customer_info.get('name', '')).strip().lower(): 
+            if customer_info.get('phone'): found_customer_info['phone'] = str(customer_info['phone']).strip() 
+            if customer_info.get('address'): found_customer_info['address'] = str(customer_info['address']).strip() 
+            if customer_info.get('detail'): found_customer_info['detail'] = str(customer_info['detail']).strip() 
+            if customer_info.get('map_url'): found_customer_info['map_url'] = str(customer_info['map_url']).strip() 
+            if all(key in found_customer_info and found_customer_info[key] for key in ['phone', 'address', 'detail']): break
+    return jsonify(found_customer_info)
+
+@app.route("/lookup_equipment", methods=['GET'])
+def lookup_equipment():
+    query = request.args.get('q', '').strip().lower()
+    if not query: return jsonify([])
+    equipment_catalog = get_app_settings().get('equipment_catalog', [])
+    results = []
+    for item in equipment_catalog:
+        item_name_lower = str(item.get('item_name', '')).lower()
+        barcode_lower = str(item.get('barcode', '')).lower()
+        if query in item_name_lower or (barcode_lower and query in barcode_lower):
+            results.append(item)
+    results.sort(key=lambda x: (not str(x['item_name']).lower().startswith(query), str(x['item_name']).lower()))
+    return jsonify(results[:10])
 
 @app.route('/summary')
 def summary():
@@ -520,21 +581,11 @@ def update_task_details(task_id):
         original_status = task_raw.get('status')
         new_status = request.form.get('status')
         
-        updated_customer_name = str(request.form.get('customer_name', '')).strip()
-        base_notes_lines = [
-            updated_customer_name,
-            str(request.form.get('customer_phone', '')).strip(),
-            str(request.form.get('address', '')).strip(),
-            str(request.form.get('latitude_longitude', '')).strip(),
-            str(request.form.get('detail', '')).strip()
-        ]
-        updated_base_notes = "\n".join(filter(None, base_notes_lines))
-        
-        history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
         
         work_summary = str(request.form.get('work_summary', '')).strip()
         files = request.files.getlist('files[]')
-        new_attachments_uploaded = any(f for f in files)
+        new_attachments_uploaded = any(f and f.filename for f in files)
 
         if work_summary or new_attachments_uploaded:
             app.logger.info("New work summary or file found. Creating new tech report.")
@@ -563,22 +614,65 @@ def update_task_details(task_id):
         for report in sorted(history, key=lambda x: x.get('summary_date', '')):
             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
-        final_notes = updated_base_notes + all_reports_text
+        final_notes = base_notes + all_reports_text
         
-        updated_task = update_google_task(task_id, title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'}", notes=final_notes, status=new_status)
+        updated_task = update_google_task(task_id, notes=final_notes, status=new_status)
         
         if updated_task:
             cache.clear()
-            flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
+            flash('บันทึกความคืบหน้าของงานเรียบร้อยแล้ว!', 'success')
         else:
-            flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
-        return redirect(url_for('summary'))
+            flash('เกิดข้อผิดพลาดในการบันทึกความคืบหน้า', 'danger')
+        return redirect(url_for('update_task_details', task_id=task_id))
         
     task = parse_google_task_dates(task_raw)
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     task['tech_reports_history'], _ = parse_tech_report_from_notes(task.get('notes', ''))
     
-    return render_template('update_task_details.html', task=task, common_equipment_items=get_app_settings().get('common_equipment_items', []))
+    return render_template('update_task_details.html', task=task)
+
+
+@app.route('/edit_customer/<task_id>', methods=['GET', 'POST'])
+def edit_customer_info(task_id):
+    service = get_google_tasks_service()
+    if not service: abort(503)
+    try:
+        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+    except HttpError:
+        abort(404)
+
+    if request.method == 'POST':
+        updated_customer_name = str(request.form.get('customer_name', '')).strip()
+        
+        new_base_notes_lines = [
+            updated_customer_name,
+            str(request.form.get('customer_phone', '')).strip(),
+            str(request.form.get('address', '')).strip(),
+            str(request.form.get('latitude_longitude', '')).strip(),
+            str(request.form.get('detail', '')).strip()
+        ]
+        new_base_notes = "\n".join(filter(None, new_base_notes_lines))
+
+        history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        all_reports_text = ""
+        for report in history:
+             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
+        final_notes = new_base_notes + all_reports_text
+
+        updated_task = update_google_task(task_id, title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'}", notes=final_notes)
+
+        if updated_task:
+            cache.clear()
+            flash('แก้ไขข้อมูลลูกค้าเรียบร้อยแล้ว!', 'success')
+        else:
+            flash('เกิดข้อผิดพลาดในการแก้ไขข้อมูลลูกค้า', 'danger')
+
+        return redirect(url_for('update_task_details', task_id=task_id))
+
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    return render_template('edit_customer_info.html', task=task)
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
@@ -738,18 +832,36 @@ def callback():
         abort(400)
     return 'OK'
 
+def handle_help_command(event):
+    help_text = (
+        "🤖 **วิธีใช้งานบอท** 🤖\n\n"
+        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
+        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
+        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
+        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า (เช่น c สมศรี)\n\n"
+        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
+        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
+        "➡️ `เปิดงานใหม่` หรือ `เริ่มลงงาน`\nรับลิงก์สำหรับจัดการงาน"
+    )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    text = event.message.text.strip().lower()
-    
-    if text == 'comphone' or text == 'help':
-        help_text = "🤖 วิธีใช้งานบอท 🤖\n\n➡️ `งานค้าง`\n➡️ `งานเสร็จ`\n➡️ `สรุปรายงาน`\n➡️ `c <ชื่อลูกค้า>`\n➡️ `ดูงาน <ID>`\n➡️ `เสร็จงาน <ID>`\n➡️ `เปิดงานใหม่`"
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
-    elif text == 'สรุปงาน':
+    text = event.message.text.strip()
+    text_lower = text.lower()
+
+    # ตรวจสอบคำสั่งแบบตายตัวก่อน
+    if text_lower == 'comphone' or text_lower == 'help':
+        handle_help_command(event)
+    elif text_lower == 'สรุปงาน':
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ดูสรุปงานทั้งหมดได้ที่: {url_for('summary', _external=True)}"))
-    elif text == 'สร้างงานใหม่' or text == 'เปิดงานใหม่':
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"สร้างงานใหม่ได้ที่: {url_for('form_page', _external=True)}"))
+    elif text_lower == 'สร้างงานใหม่' or text_lower == 'เปิดงานใหม่':
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}"))
+    # --- เพิ่มคำสั่งอื่นๆ ที่นี่ตามต้องการ ---
+    # elif text_lower == 'งานค้าง':
+    #     handle_outstanding_tasks_command(event)
     
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+
