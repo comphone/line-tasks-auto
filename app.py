@@ -256,19 +256,39 @@ def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back
         app.logger.error(f"Error generating QR code: {e}")
         return None
 
+# CHANGED: This function now only parses supplementary customer info. The main detail is the task.title.
 def parse_customer_info_from_notes(notes):
-    info = {'name': '', 'phone': '', 'address': '', 'detail': '', 'map_url': None}
+    info = {'name': '', 'phone': '', 'address': '', 'map_url': None}
     if not notes: return info
-    base_content = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
-    lines = [line.strip() for line in base_content.split('\n') if line.strip()]
-    if lines: info['name'] = lines.pop(0)
-    if lines: info['phone'] = lines.pop(0)
-    if lines: info['address'] = lines.pop(0)
-    map_url_regex = r"https?://(?:www\.)?google\.com/maps.*"
-    if lines and re.match(map_url_regex, lines[0]): info['map_url'] = lines.pop(0)
-    info['detail'] = "\n".join(lines)
-    return info
     
+    # This regular expression now looks for explicitly labeled data
+    # to make parsing more robust and less dependent on line order.
+    # It will find "Key: Value" pairs.
+    info['name'] = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE).group(1).strip() if re.search(r"ลูกค้า:", notes) else ''
+    info['phone'] = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE).group(1).strip() if re.search(r"เบอร์โทรศัพท์:", notes) else ''
+    info['address'] = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE).group(1).strip() if re.search(r"ที่อยู่:", notes) else ''
+    
+    # Map URL is still parsed by its unique format.
+    map_url_match = re.search(r"(https?://(?:www\.)?google\.com/maps.*)", notes)
+    if map_url_match:
+        info['map_url'] = map_url_match.group(1).strip()
+        
+    # A new field 'customer_detail' can be added if needed for other specific notes.
+    # For now, the main "detail" is the task title.
+    
+    # Fallback for old data format (attempt to parse line-by-line)
+    if not any(info.values()): # If no labeled data was found
+        base_content = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
+        lines = [line.strip() for line in base_content.split('\n') if line.strip()]
+        if lines: info['name'] = lines.pop(0)
+        if lines: info['phone'] = lines.pop(0)
+        if lines: info['address'] = lines.pop(0)
+        if lines and re.match(r"https?://(?:www\.)?google\.com/maps.*", lines[0]): info['map_url'] = lines.pop(0)
+        # The rest of the old notes might have been the detail, we ignore it here
+        # as the title is the new source of truth for the task detail.
+
+    return info
+
 def parse_google_task_dates(task_item):
     parsed = task_item.copy()
     for key in ['created', 'due', 'completed']:
@@ -299,6 +319,9 @@ def parse_tech_report_from_notes(notes):
                 report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
             history.append(report_data)
         except json.JSONDecodeError: pass
+    
+    # IMPORTANT: The "original_notes_text" is now defined as anything that is NOT a tech report block.
+    # This preserves all customer contact info.
     original_notes_text = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
@@ -336,6 +359,7 @@ def inject_now():
 #</editor-fold>
 
 #<editor-fold desc="LINE Flex Message Builder">
+# CHANGED: Flex message now uses task.title as the main detail and gets customer info from notes.
 def create_task_flex_message(task):
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     parsed_dates = parse_google_task_dates(task)
@@ -349,10 +373,11 @@ def create_task_flex_message(task):
     bubble = BubbleContainer(
         direction='ltr',
         header=BoxComponent(layout='vertical', contents=[
-            TextComponent(text='รายละเอียดงาน', weight='bold', color='#ffffff', size='lg')
+            TextComponent(text='มีงานใหม่เข้า', weight='bold', color='#ffffff', size='lg')
         ], background_color='#007BFF', padding_all='12px'),
         body=BoxComponent(layout='vertical', spacing='md', contents=[
-            TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True),
+            # This is the main task detail now
+            TextComponent(text=task.get('title', 'ไม่มีรายละเอียด'), weight='bold', size='xl', wrap=True),
             BoxComponent(layout='baseline', contents=[
                 TextComponent(text='สถานะ:', color='#AAAAAA', size='sm', flex=2),
                 TextComponent(text=status_text, wrap=True, color=status_color, size='sm', flex=5, weight='bold')
@@ -363,9 +388,6 @@ def create_task_flex_message(task):
                 BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='โทร:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer_info.get('phone', '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')]),
                 BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=parsed_dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
             ]),
-            SeparatorComponent(margin='md'),
-            TextComponent(text='รายละเอียดเบื้องต้น:', weight='bold', size='sm', margin='md'), 
-            TextComponent(text=customer_info.get('detail', '-'), wrap=True, margin='sm', color='#666666', size='sm')
         ]),
         footer=BoxComponent(layout='vertical', spacing='sm', contents=([ButtonComponent(style='link', height='sm', action=map_action), SeparatorComponent(margin='md')] if map_action else []) + [ButtonComponent(style='primary', height='sm', action=URIAction(label='📝 เปิด/อัปเดตงาน', uri=update_url), color='#28A745')])
     )
@@ -379,9 +401,11 @@ def root_redirect():
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
+        # CHANGED: 'detail' is now the main task 'title'
+        task_title = str(request.form.get('task_title', '')).strip()
         customer_name = str(request.form.get('customer', '')).strip()
-        detail = str(request.form.get('detail', '')).strip()
-        if not customer_name or not detail:
+
+        if not task_title or not customer_name:
             flash('กรุณากรอกชื่อลูกค้าและรายละเอียดงาน', 'danger')
             return redirect(url_for('form_page'))
         
@@ -390,21 +414,25 @@ def form_page():
         appointment_str = str(request.form.get('appointment', '')).strip()
         map_url_from_form = str(request.form.get('latitude_longitude', '')).strip()
         
-        title = f"งานลูกค้า: {customer_name}"
-        notes_lines = [customer_name, customer_phone, address]
+        # CHANGED: The notes are now structured with labels for robust parsing
+        notes_lines = [
+            f"ลูกค้า: {customer_name}",
+            f"เบอร์โทรศัพท์: {customer_phone}",
+            f"ที่อยู่: {address}",
+        ]
         if map_url_from_form: notes_lines.append(map_url_from_form)
-        notes_lines.append(detail)
         notes = "\n".join(filter(None, notes_lines))
         
         due_date_gmt = None
         if appointment_str:
             try:
-                # Use a specific format for parsing
                 dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
             except ValueError: app.logger.error(f"Invalid appointment format: {appointment_str}")
 
-        created_task = create_google_task(title, notes=notes, due=due_date_gmt)
+        # CHANGED: The main task_title is now passed as the Google Task title
+        created_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
+        
         if created_task:
             cache.clear()
             try:
@@ -467,9 +495,13 @@ def summary():
             (status_filter == 'needsAction' and task_status == 'needsAction' and not is_overdue) or
             (status_filter == 'overdue' and is_overdue)):
             
-            if not search_query or (search_query in str(task.get('title', '')).lower() or search_query in str(task.get('notes', '')).lower()):
+            customer_info_for_search = parse_customer_info_from_notes(task.get('notes', ''))
+            searchable_text = f"{task.get('title', '')} {customer_info_for_search.get('name', '')}".lower()
+            
+            if not search_query or search_query in searchable_text:
                 parsed_task = parse_google_task_dates(task)
-                parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
+                # The customer info is now parsed correctly from the structured notes
+                parsed_task['customer'] = customer_info_for_search
                 parsed_task['is_overdue'] = is_overdue
                 final_filtered_tasks.append(parsed_task)
 
@@ -531,6 +563,7 @@ def update_task_details(task_id):
                 app.logger.error(f"Invalid reschedule format: {appointment_str}")
                 flash('รูปแบบวันที่นัดหมายไม่ถูกต้อง', 'warning')
 
+        # The base notes (customer info) remain unchanged unless edited on the customer page.
         new_base_notes = original_base_notes
         
         all_reports_text = ""
@@ -555,6 +588,12 @@ def update_task_details(task_id):
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     task['tech_reports_history'], _ = parse_tech_report_from_notes(task.get('notes', ''))
     
+    # We add a 'customer_detail' field here, but it's now just for display.
+    # The real detail is task['title'].
+    customer_data = parse_customer_info_from_notes(task.get('notes', ''))
+    task['customer'] = customer_data
+    task['customer_detail'] = task.get('title') # The main title is the detail.
+
     return render_template('update_task_details.html', task=task, common_equipment_items=get_app_settings().get('common_equipment_items', []))
 
 @app.route('/edit_customer/<task_id>', methods=['GET', 'POST'])
@@ -569,13 +608,21 @@ def edit_customer_info(task_id):
     if request.method == 'POST':
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         
+        # CHANGED: The main task detail is now handled on its own page. This form only handles customer info.
+        # We retrieve it from the form to rebuild the notes correctly.
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
         phone = str(request.form.get('customer_phone', '')).strip()
         address = str(request.form.get('address', '')).strip()
         map_url = str(request.form.get('latitude_longitude', '')).strip()
-        detail = str(request.form.get('detail', '')).strip()
-
-        new_base_notes_lines = [updated_customer_name, phone, address, map_url, detail]
+        
+        # The main task detail (title) is NOT edited here, so we keep the existing one.
+        # But we now rebuild the notes string with the updated customer info.
+        new_base_notes_lines = [
+            f"ลูกค้า: {updated_customer_name}",
+            f"เบอร์โทรศัพท์: {phone}",
+            f"ที่อยู่: {address}",
+        ]
+        if map_url: new_base_notes_lines.append(map_url)
         new_base_notes = "\n".join(filter(None, new_base_notes_lines))
 
         all_reports_text = ""
@@ -584,11 +631,8 @@ def edit_customer_info(task_id):
         
         final_notes = new_base_notes + all_reports_text
 
-        updated_task = update_google_task(
-            task_id, 
-            title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'}", 
-            notes=final_notes
-        )
+        # We only update the notes field here. The title remains unchanged.
+        updated_task = update_google_task(task_id, notes=final_notes)
 
         if updated_task:
             cache.clear()
@@ -600,6 +644,8 @@ def edit_customer_info(task_id):
 
     task = parse_google_task_dates(task_raw)
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    # This is the new way to pass the main detail to the form.
+    task['task_detail_from_title'] = task.get('title', '')
     return render_template('edit_customer_info.html', task=task)
 
 @app.route('/edit_task_title/<task_id>', methods=['GET', 'POST'])
@@ -612,13 +658,15 @@ def edit_task_title(task_id):
         abort(404)
         
     if request.method == 'POST':
+        # CHANGED: The name 'new_title' now correctly refers to the task detail.
         new_title = request.form.get('new_title', '').strip()
         new_status = request.form.get('status', '').strip()
 
         if not new_title:
-            flash('กรุณากรอกชื่องานใหม่', 'danger')
+            flash('กรุณากรอกรายละเอียดงาน', 'danger')
             return redirect(url_for('edit_task_title', task_id=task_id))
 
+        # This now correctly updates the main title of the task.
         updated_task = update_google_task(task_id, title=new_title, status=new_status) 
         if updated_task:
             cache.clear()
@@ -629,6 +677,8 @@ def edit_task_title(task_id):
 
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('edit_task_title.html', task=task)
+
+# ... (The rest of the file remains the same) ...
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
