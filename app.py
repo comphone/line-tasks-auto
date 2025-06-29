@@ -4,12 +4,12 @@ import datetime
 import re
 import json
 import pytz
-import mimetypes
+import mimetypes 
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response
+from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response 
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
@@ -32,19 +32,19 @@ from linebot.models import (
 )
 # ---------------------------------------------
 
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials 
+from google.auth.transport.requests import Request 
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload 
 
-import pandas as pd
+import pandas as pd 
 
 # --- Initialization & Configurations ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
-UPLOAD_FOLDER = 'static/uploads'
+UPLOAD_FOLDER = 'static/uploads' 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
 
@@ -57,11 +57,11 @@ LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
-LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
+LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') 
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
-LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID')
+LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID') 
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') 
 
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
@@ -82,24 +82,46 @@ TECHNICIAN_LINE_IDS = {
 
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
-    'report_times': { 'appointment_reminder_hour_thai': 7, 'outstanding_report_hour_thai': 20 },
-    'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
-    'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
-    'equipment_catalog': [
-        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0}, {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0}, {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0},
-        {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0}, {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0}, {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
-        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0}, {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0}, {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0},
-        {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0}, {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
+    'report_times': {
+        'appointment_reminder_hour_thai': 7,
+        'outstanding_report_hour_thai': 20
+    },
+    'line_recipients': {
+        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+        'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
+        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
+    },
+    'qrcode_settings': { 
+        'box_size': 8,
+        'border': 4,
+        'fill_color': '#28a745', 
+        'back_color': '#FFFFFF',
+        'custom_url': '' 
+    },
+    'equipment_catalog': [ 
+        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0},
+        {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
+        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0},
+        {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
+        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0},
+        {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
+        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0},
+        {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
+        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0},
+        {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
+        {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
     ],
-    'common_equipment_items': []
+    'common_equipment_items': [] 
 }
 _APP_SETTINGS_STORE = {}
 
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-        except (json.JSONDecodeError, IOError) as e: app.logger.error(f"Error handling settings.json: {e}")
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            app.logger.error(f"Error handling settings.json: {e}")
     return None
 
 def save_settings_to_file(settings_data):
@@ -116,21 +138,26 @@ def get_app_settings():
     if not _APP_SETTINGS_STORE:
         loaded = load_settings_from_file()
         if loaded:
-            _APP_SETTINGS_STORE = {**_DEFAULT_APP_SETTINGS_STORE, **loaded}
-            for key, default_value in _DEFAULT_APP_SETTINGS_STORE.items():
+            _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE.copy()
+            for key, default_value in _APP_SETTINGS_STORE.items():
                 if isinstance(default_value, dict):
-                    _APP_SETTINGS_STORE[key] = {**default_value, **_APP_SETTINGS_STORE.get(key, {})}
+                     _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
+                elif key in loaded:
+                     _APP_SETTINGS_STORE[key] = loaded[key]
         else:
             _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE
             save_settings_to_file(_APP_SETTINGS_STORE)
+    
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
     global _APP_SETTINGS_STORE
     for key, value in settings_data.items():
-        if isinstance(value, dict) and key in _APP_SETTINGS_STORE: _APP_SETTINGS_STORE[key].update(value)
-        else: _APP_SETTINGS_STORE[key] = value
+        if isinstance(value, dict) and key in _APP_SETTINGS_STORE:
+            _APP_SETTINGS_STORE[key].update(value)
+        else:
+            _APP_SETTINGS_STORE[key] = value
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
@@ -143,12 +170,14 @@ def get_google_service(api_name, api_version):
     if google_token_json_str:
         try:
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-        except Exception as e: app.logger.warning(f"Could not load token from env var: {e}")
+        except Exception as e:
+            app.logger.warning(f"Could not load token from env var: {e}")
     elif os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            try: creds.refresh(Request())
+            try:
+                creds.refresh(Request())
             except Exception as e:
                 app.logger.error(f"Error refreshing token: {e}")
                 creds = None
@@ -156,8 +185,9 @@ def get_google_service(api_name, api_version):
             flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
             creds = flow.run_console()
         if creds:
-            with open(token_path, 'w') as token: token.write(creds.to_json())
-            app.logger.info(f"Token saved to {token_path}. Update GOOGLE_TOKEN_JSON.")
+            with open(token_path, 'w') as token:
+                token.write(creds.to_json())
+            app.logger.info(f"Token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render.")
     return build(api_name, api_version, credentials=creds) if creds else None
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
@@ -190,11 +220,29 @@ def create_google_task(title, notes=None, due=None):
         app.logger.error(f"Error creating Google Task: {e}")
         return None
 
+def create_google_calendar_event(summary, location, description, start_time, end_time, timezone='Asia/Bangkok'):
+    service = get_google_calendar_service()
+    if not service:
+        app.logger.error("Failed to get Google Calendar service.")
+        return None
+    try:
+        event = {
+            'summary': summary, 'location': location, 'description': description,
+            'start': {'dateTime': start_time, 'timeZone': timezone},
+            'end': {'dateTime': end_time, 'timeZone': timezone},
+            'reminders': {'useDefault': True},
+        }
+        return service.events().insert(calendarId='primary', body=event).execute()
+    except HttpError as e:
+        app.logger.error(f"Error creating Google Calendar Event: {e}")
+        return None
+
 def delete_google_task(task_id):
     service = get_google_tasks_service()
     if not service: return False
     try:
         service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        app.logger.info(f"Successfully deleted task ID: {task_id}")
         return True
     except HttpError as err:
         app.logger.error(f"API Error deleting task {task_id}: {err}")
@@ -232,6 +280,62 @@ def get_google_tasks_for_report(show_completed=True):
         app.logger.error(f"API Error getting tasks: {err}")
         return None
 
+def get_single_task(task_id):
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        return service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+    except HttpError as err:
+        app.logger.error(f"Error getting single task {task_id}: {err}")
+        return None
+
+def get_upcoming_events(time_delta_hours=24):
+    service = get_google_calendar_service()
+    if not service: return []
+    try:
+        now_utc = datetime.datetime.utcnow().isoformat() + 'Z'
+        time_max_utc = (datetime.datetime.utcnow() + datetime.timedelta(hours=time_delta_hours)).isoformat() + 'Z'
+        events_result = service.events().list(
+            calendarId='primary', timeMin=now_utc, timeMax=time_max_utc,
+            maxResults=10, singleEvents=True, orderBy='startTime'
+        ).execute()
+        return events_result.get('items', [])
+    except HttpError as e:
+        app.logger.error(f"Error fetching upcoming events: {e}")
+        return []
+
+def extract_lat_lon_from_notes(notes):
+    if not notes: return None, None
+    match = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", notes)
+    if match: return (float(match.group(1)), float(match.group(2)))
+    match = re.search(r"พิกัด:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)", notes)
+    if match: return (float(match.group(1)), float(match.group(2)))
+    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
+    map_url_match = re.search(map_url_regex, notes)
+    if map_url_match:
+        return (float(map_url_match.group(1)), float(map_url_match.group(2)))
+    return None, None
+
+def find_nearby_jobs(completed_task_id, radius_km=5):
+    completed_task = get_single_task(completed_task_id)
+    if not completed_task: return []
+    origin_lat, origin_lon = extract_lat_lon_from_notes(completed_task.get('notes', ''))
+    if origin_lat is None or origin_lon is None: return []
+    origin_coords = (origin_lat, origin_lon)
+    pending_tasks = get_google_tasks_for_report(show_completed=False)
+    if not pending_tasks: return []
+    nearby_jobs = []
+    for task in pending_tasks:
+        if task.get('id') == completed_task_id: continue
+        task_lat, task_lon = extract_lat_lon_from_notes(task.get('notes', ''))
+        if task_lat is not None and task_lon is not None:
+            distance = geodesic(origin_coords, (task_lat, task_lon)).kilometers
+            if distance <= radius_km:
+                task['distance_km'] = round(distance, 1)
+                nearby_jobs.append(task)
+    nearby_jobs.sort(key=lambda x: x['distance_km'])
+    return nearby_jobs
+
 def parse_customer_info_from_notes(notes):
     info = {'name': '', 'phone': '', 'address': '', 'detail': '', 'map_url': None}
     if not notes: return info
@@ -256,26 +360,83 @@ def parse_google_task_dates(task_item):
         else: parsed[f'{key}_formatted'] = ''
     return parsed
 
+def parse_tech_report_from_notes(notes):
+    if not notes: return [], ""
+    report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
+    history = []
+    for json_str in report_blocks:
+        try:
+            report_data = json.loads(json_str)
+            if isinstance(report_data.get('equipment_used'), str):
+                report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
+            else:
+                report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
+            history.append(report_data)
+        except json.JSONDecodeError: pass
+    original_notes_text = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
+    history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+    return history, original_notes_text
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back_color="white"):
+    try:
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color=fill_color, back_color=back_color)
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+    except Exception as e:
+        app.logger.error(f"Error generating QR code: {e}")
+        return None
+
+def _parse_equipment_string(text_input):
+    equipment_list, common_items = [], set(get_app_settings().get('common_equipment_items', []))
+    if not text_input: return equipment_list
+    for line in text_input.strip().split('\n'):
+        if not line.strip(): continue
+        parts = line.split(',', 1)
+        item_name = parts[0].strip()
+        if item_name:
+            equipment_list.append({"item": item_name, "quantity": parts[1].strip() if len(parts) > 1 else ''})
+            common_items.add(item_name)
+    save_app_settings({'common_equipment_items': sorted(list(common_items))})
+    return equipment_list
+
+def _format_equipment_list(equipment_data):
+    if not equipment_data: return 'N/A'
+    if isinstance(equipment_data, str): return equipment_data
+    lines = []
+    if isinstance(equipment_data, list):
+        for item in equipment_data:
+            if isinstance(item, dict) and "item" in item:
+                line = item['item']
+                if item.get("quantity"): line += f", {item['quantity']}"
+                lines.append(line)
+            elif isinstance(item, str): lines.append(item)
+    return "\n".join(lines) if lines else 'N/A'
+
 def create_task_flex_message(task):
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     parsed_dates = parse_google_task_dates(task)
     update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
-    phone_action = URIAction(label=customer_info['phone'], uri=f"tel:{re.sub(r'[^0-9]','', customer_info['phone'])}") if customer_info['phone'] else None
-    map_action = URIAction(label="📍 เปิด Google Maps", uri=customer_info['map_url']) if customer_info['map_url'] else None
+    phone_action = URIAction(label=customer_info['phone'], uri=f"tel:{re.sub(r'[^0-9]','', customer_info['phone'])}") if customer_info.get('phone') else None
+    map_action = URIAction(label="📍 เปิด Google Maps", uri=customer_info['map_url']) if customer_info.get('map_url') else None
     bubble = BubbleContainer(
         direction='ltr',
         header=BoxComponent(layout='vertical', contents=[TextComponent(text='📢 แจ้งเตือนงาน', weight='bold', color='#ffffff')], background_color='#007BFF', padding_all='12px'),
         body=BoxComponent(layout='vertical', contents=[
-            TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True),
-            SeparatorComponent(margin='md'),
+            TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True), SeparatorComponent(margin='md'),
             BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
                 BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=customer_info.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
                 BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='โทร:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=customer_info.get('phone', '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')]),
                 BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=parsed_dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
             ]),
             SeparatorComponent(margin='md'),
-            TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'),
-            TextComponent(text=customer_info.get('detail', '-'), wrap=True, margin='sm', color='#666666')
+            TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'), TextComponent(text=customer_info.get('detail', '-'), wrap=True, margin='sm', color='#666666')
         ]),
         footer=BoxComponent(layout='vertical', spacing='sm', contents=([ButtonComponent(style='link', height='sm', action=map_action), SeparatorComponent(margin='md')] if map_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url))])
     )
@@ -335,10 +496,12 @@ def summary():
     tasks_raw = get_google_tasks_for_report(show_completed=True)
     if tasks_raw is None:
         flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้', 'danger')
-        return render_template("tasks_summary.html", tasks=[], search_query=search_query, status_filter=status_filter)
+        return render_template("tasks_summary.html", tasks=[], summary={}, search_query=search_query, status_filter=status_filter)
     
     current_time_utc = datetime.datetime.now(pytz.utc)
-    filtered_tasks = []
+    final_filtered_tasks = []
+    total_summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
+
     for task in tasks_raw:
         task_status = task.get('status', 'needsAction')
         is_overdue = False
@@ -348,6 +511,11 @@ def summary():
                 if due_dt_utc < current_time_utc: is_overdue = True
             except (ValueError, TypeError): pass
         
+        if task_status == 'completed': total_summary_stats['completed'] += 1
+        elif task_status == 'needsAction':
+            total_summary_stats['needsAction'] += 1
+            if is_overdue: total_summary_stats['overdue'] += 1
+
         if (status_filter == 'all' or
             (status_filter == 'completed' and task_status == 'completed') or
             (status_filter == 'needsAction' and task_status == 'needsAction' and not is_overdue) or
@@ -357,10 +525,10 @@ def summary():
                 parsed_task = parse_google_task_dates(task)
                 parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
                 parsed_task['is_overdue'] = is_overdue
-                filtered_tasks.append(parsed_task)
+                final_filtered_tasks.append(parsed_task)
 
-    filtered_tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
-    return render_template("tasks_summary.html", tasks=filtered_tasks, search_query=search_query, status_filter=status_filter)
+    final_filtered_tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
+    return render_template("tasks_summary.html", tasks=final_filtered_tasks, summary=total_summary_stats, search_query=search_query, status_filter=status_filter)
 
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
@@ -371,32 +539,58 @@ def update_task_details(task_id):
     except HttpError: abort(404)
     
     if request.method == 'POST':
-        # โลจิกนี้ซับซ้อนและยาว ควรจะคงเดิมไว้ตามที่คุณเขียน
-        updated_customer_name = str(request.form.get('customer_name', '')).strip()
-        updated_customer_phone = str(request.form.get('customer_phone', '')).strip()
-        updated_address = str(request.form.get('address', '')).strip()
-        updated_detail = str(request.form.get('detail', '')).strip()
-        updated_map_url = str(request.form.get('latitude_longitude', '')).strip()
+        original_status = task_raw.get('status')
         new_status = request.form.get('status')
+        updated_customer_name = str(request.form.get('customer_name', '')).strip()
         
-        base_notes_lines = [updated_customer_name, updated_customer_phone, updated_address]
-        if updated_map_url: base_notes_lines.append(updated_map_url)
-        base_notes_lines.append(updated_detail)
+        # สร้าง base notes จากฟอร์ม
+        base_notes_lines = [
+            updated_customer_name,
+            str(request.form.get('customer_phone', '')).strip(),
+            str(request.form.get('address', '')).strip(),
+            str(request.form.get('latitude_longitude', '')).strip(),
+            str(request.form.get('detail', '')).strip()
+        ]
         updated_base_notes = "\n".join(filter(None, base_notes_lines))
         
-        # คัดลอก report เก่ามาด้วย
-        _, original_tech_reports = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        # ดึง report เก่าทั้งหมดมาต่อท้าย
+        history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        all_reports_text = ""
+        for report in history:
+            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+
+        # เพิ่ม report ใหม่
+        work_summary = str(request.form.get('work_summary', '')).strip()
+        if work_summary: # เพิ่ม report ใหม่เฉพาะเมื่อมีการกรอกข้อมูล
+            new_tech_report_data = {
+                'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+                'work_summary': work_summary,
+                'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
+                'attachment_urls': [] # Logic for attachment needs to be added here if required
+            }
+            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(new_tech_report_data, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
-        final_notes = updated_base_notes + original_tech_reports
+        final_notes = updated_base_notes + all_reports_text
         
-        update_google_task(task_id, title=f"งานลูกค้า: {updated_customer_name}", notes=final_notes, status=new_status)
-        cache.clear()
-        flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
+        updated_task = update_google_task(task_id, title=f"งานลูกค้า: {updated_customer_name}", notes=final_notes, status=new_status)
+        
+        if updated_task:
+            cache.clear()
+            flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
+            if new_status == 'completed' and original_status != 'completed':
+                # แจ้งเตือนเมื่อปิดงาน
+                pass # You can add notification logic here
+        else:
+            flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
+
         return redirect(url_for('summary'))
         
     task = parse_google_task_dates(task_raw)
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('update_task_details.html', task=task)
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(task.get('notes', ''))
+    
+    return render_template('update_task_details.html', task=task, common_equipment_items=get_app_settings().get('common_equipment_items', []))
+
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
