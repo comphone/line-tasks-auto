@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}แก้ไขงานด่วน{% endblock %}
+{% block title %}แก้ไขรายละเอียดงาน{% endblock %}
 
 {% block head_extra %}
     <style>
@@ -19,23 +19,27 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <h1 class="mb-4 text-center">แก้ไขงานด่วน</h1>
+        <!-- CHANGED: unify heading -->
+        <h1 class="mb-4 text-center">แก้ไขรายละเอียดงาน</h1>
         
         <div class="card shadow-sm">
             <div class="card-header">
-               <strong>ลูกค้า:</strong> {{ task.customer.name or 'ไม่ระบุ' }}
+               <!-- CHANGED: unify label -->
+               <strong>ชื่อลูกค้า:</strong> {{ task.customer.name or 'ไม่ระบุ' }}
             </div>
             <div class="card-body p-4">
                 <form action="{{ url_for('edit_task_title', task_id=task.id) }}" method="POST">
                     <!-- Edit Task Title -->
                     <div class="mb-3">
-                        <label for="new_title" class="form-label"><strong><i class="fas fa-briefcase me-2"></i>หัวข้องาน</strong></label>
+                        <!-- CHANGED: unify label -->
+                        <label for="new_title" class="form-label"><strong><i class="fas fa-briefcase me-2"></i>รายละเอียดงาน</strong></label>
                         <input type="text" class="form-control" id="new_title" name="new_title" value="{{ task.title }}" required>
                     </div>
 
                     <!-- Quick Status Change -->
                     <div class="mb-3">
-                        <label for="status" class="form-label"><strong><i class="fas fa-check-circle me-2"></i>เปลี่ยนสถานะงาน</strong></label>
+                        <!-- CHANGED: unify label -->
+                        <label for="status" class="form-label"><strong><i class="fas fa-check-circle me-2"></i>สถานะงาน</strong></label>
                         <select class="form-select" id="status" name="status">
                             <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
                             <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>งานเสร็จเรียบร้อย</option>
