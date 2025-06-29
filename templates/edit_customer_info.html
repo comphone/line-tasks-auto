@@ -6,7 +6,7 @@
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <h1 class="mb-4 text-center">แก้ไขข้อมูลลูกค้า</h1>
-        <div class="card">
+        <div class="card shadow-sm">
             <div class="card-header bg-dark text-white">
                 <i class="fas fa-user-edit me-2"></i>แก้ไขข้อมูลสำหรับงาน: {{ task.title }}
             </div>
@@ -25,7 +25,7 @@
                         <textarea class="form-control" id="address" name="address" rows="3">{{ task.customer.address or '' }}</textarea>
                     </div>
                     <div class="mb-3">
-                        <label for="detail" class="form-label"><strong><i class="fas fa-info-circle me-2"></i>รายละเอียดเบื้องต้น</strong></label>
+                        <label for="detail" class="form-label"><strong><i class="fas fa-info-circle me-2"></i>รายละเอียด/อาการเบื้องต้น (จากลูกค้า)</strong></label>
                         <textarea class="form-control" id="detail" name="detail" rows="4">{{ task.customer.detail or '' }}</textarea>
                     </div>
                     <div class="mb-3">

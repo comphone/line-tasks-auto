@@ -77,7 +77,7 @@
                 {% if task.customer.map_url %}
                 <p><strong>พิกัด:</strong> <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-map-marked-alt me-2"></i>เปิด Google Maps</a></p>
                 {% endif %}
-                <p><strong>รายละเอียดเบื้องต้น (จากลูกค้า):</strong><br><span class="ps-3 text-muted" style="white-space: pre-wrap;">{{ task.customer.detail or '-' }}</span></p>
+                <p><strong>รายละเอียด/อาการเบื้องต้น (จากลูกค้า):</strong><br><span class="ps-3 text-muted" style="white-space: pre-wrap;">{{ task.customer.detail or '-' }}</span></p>
                 <hr>
                 <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">
                     <i class="fas fa-user-edit me-2"></i>แก้ไขข้อมูลลูกค้า

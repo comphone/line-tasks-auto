@@ -100,22 +100,6 @@
     </div>
 </div>
 
-<!-- Filter and Search Form -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="get" class="d-flex flex-wrap gap-2">
-            <input type="text" name="search_query" class="form-control flex-grow-1" placeholder="ค้นหารายละเอียดงาน, ชื่อลูกค้า..." value="{{ search_query }}">
-            <select name="status_filter" class="form-select" style="min-width: 150px;">
-                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>ทุกสถานะ</option>
-                <option value="needsAction" {% if status_filter == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
-                <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>งานเสร็จแล้ว</option>
-                <option value="overdue" {% if status_filter == 'overdue' %}selected{% endif %}>งานเลยกำหนด</option>
-            </select>
-            <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> ค้นหา</button>
-        </form>
-    </div>
-</div>
-
 <!-- Task Table -->
 <div class="card shadow-sm">
     <div class="card-body">
@@ -125,7 +109,7 @@
                     <tr>
                         <th style="width: 5%;">#</th>
                         <th>ลูกค้า</th>
-                        <th>รายละเอียดงาน</th>
+                        <th>หัวข้องาน</th>
                         <th>วันนัดหมาย</th>
                         <th class="text-center">สถานะ</th>
                     </tr>
@@ -156,7 +140,6 @@
                     <tr>
                         <td colspan="5" class="text-center p-4">
                             <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
-                            <p class="text-muted mb-0">ไม่พบงานที่ตรงกับเงื่อนไขการค้นหาของคุณ</p>
                         </td>
                     </tr>
                     {% endfor %}
