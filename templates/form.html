@@ -33,8 +33,6 @@
                         <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
                         <textarea class="form-control" id="address" name="address" rows="2"></textarea>
                     </div>
-                    
-                    <!-- FIX 1: Geolocation Button -->
                     <div class="mb-3">
                         <label for="latitude_longitude" class="form-label">พิกัดแผนที่</label>
                         <div class="input-group">
@@ -45,7 +43,6 @@
                         </div>
                         <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
                     </div>
-
                     <div class="mb-3">
                         <label for="detail" class="form-label">รายละเอียดงาน</label>
                         <textarea class="form-control" id="detail" name="detail" rows="4"></textarea>
@@ -74,7 +71,7 @@
                 dateFormat: "Y-m-d H:i",
                 locale: "th",
             });
-            
+
             const shareBtn = document.getElementById('shareLocationBtn');
             const locationInput = document.getElementById('latitude_longitude');
             const statusText = document.getElementById('shareLocationStatus');
