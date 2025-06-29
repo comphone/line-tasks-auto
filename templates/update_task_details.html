@@ -3,100 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>อัปเดตรายละเอียดงาน</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <title>รายละเอียดงาน: {{ task.title }}</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f4f7f6; }
-        .task-header { background-color: #0056b3; color: white; }
-        .report-card { border-left: 5px solid #17a2b8; }
+        body { background-color: #f4f7f6; }
+        .card { margin-bottom: 1.5rem; border: none; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
+        .card-header { background-color: #007bff; color: white; font-weight: bold; }
+        .history-card { background-color: #ffffff; border-left: 5px solid #6c757d; }
+        .customer-card { border-left: 5px solid #17a2b8; }
+        .form-card { border-left: 5px solid #28a745; }
+        .dl-horizontal dt { font-weight: bold; color: #495057; }
+        .dl-horizontal dd { margin-bottom: .5rem; }
+        .btn-secondary {
+            background-color: #6c757d;
+            border-color: #6c757d;
+        }
     </style>
 </head>
 <body>
-    <div class="container py-4">
-        <div class="card shadow-sm mb-4">
-            <div class="card-header task-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">รายละเอียดงาน: {{ task.title }}</h4>
-                <a href="{{ url_for('summary') }}" class="btn btn-sm btn-light">
-                    <i class="fas fa-arrow-left me-1"></i> กลับหน้ารายงาน
-                </a>
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1 class="h3">รายละเอียดงาน</h1>
+            <a href="{{ url_for('summary') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> กลับไปหน้าสรุป
+            </a>
+        </div>
+
+        <div class="card customer-card">
+            <div class="card-header bg-info">
+                ข้อมูลลูกค้า: {{ task.customer.name }}
             </div>
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <h5 class="card-title">{{ task.customer.name }}</h5>
-                        <p class="card-text mb-1"><i class="fas fa-phone me-2 text-muted"></i>{{ task.customer.phone or '-' }}</p>
-                        <p class="card-text mb-1"><i class="fas fa-map-marker-alt me-2 text-muted"></i>{{ task.customer.address or '-' }}</p>
-                        <p class="card-text"><i class="fas fa-info-circle me-2 text-muted"></i>{{ task.customer.detail or '-' }}</p>
-                    </div>
-                    <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm flex-shrink-0">
-                        <i class="fas fa-edit me-1"></i> แก้ไขข้อมูลลูกค้า
-                    </a>
-                </div>
+                <dl class="row dl-horizontal">
+                    <dt class="col-sm-3">ชื่องาน:</dt>
+                    <dd class="col-sm-9">{{ task.title }}</dd>
+
+                    <dt class="col-sm-3">ชื่อลูกค้า:</dt>
+                    <dd class="col-sm-9">{{ task.customer.name or '-' }}</dd>
+                    
+                    <dt class="col-sm-3">เบอร์โทร:</dt>
+                    <dd class="col-sm-9">{{ task.customer.phone or '-' }}</dd>
+
+                    <dt class="col-sm-3">ที่อยู่:</dt>
+                    <dd class="col-sm-9">{{ task.customer.address or '-' }}</dd>
+
+                    <dt class="col-sm-3">รายละเอียดเบื้องต้น:</dt>
+                    <dd class="col-sm-9" style="white-space: pre-wrap;">{{ task.customer.detail or '-' }}</dd>
+
+                    <dt class="col-sm-3">สถานะปัจจุบัน:</dt>
+                    <dd class="col-sm-9">
+                        {% if task.status == 'completed' %}
+                            <span class="badge badge-success">เสร็จสิ้น</span>
+                        {% else %}
+                            <span class="badge badge-warning">รอดำเนินการ</span>
+                        {% endif %}
+                    </dd>
+                </dl>
+                <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-user-edit"></i> แก้ไขข้อมูลลูกค้า / พิกัด / วันนัดหมาย
+                </a>
             </div>
         </div>
 
-        <!-- ฟอร์มสำหรับเพิ่มรายงานความคืบหน้า -->
-        <div class="card shadow-sm">
-            <div class="card-header bg-white">
-                <h5><i class="fas fa-clipboard-list me-2"></i>บันทึกความคืบหน้าและปิดงาน</h5>
+        <div class="card form-card">
+            <div class="card-header bg-success">
+                เพิ่มรายงานการทำงานใหม่
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('update_task_details', task_id=task.id) }}" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="work_summary" class="form-label"><strong>สรุปการทำงาน (ถ้ามี)</strong></label>
-                        <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกสรุปการทำงานที่ทำในครั้งนี้..."></textarea>
+                <form action="{{ url_for('update_task_details', task_id=task.id) }}" method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="work_summary"><strong>สรุปการทำงาน <span class="text-danger">*</span></strong></label>
+                        <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงาน..."></textarea>
                     </div>
-                    <div class="mb-3">
-                        <label for="equipment_used" class="form-label"><strong>อุปกรณ์ที่ใช้ (ถ้ามี)</strong></label>
-                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="ตัวอย่าง: สาย LAN, 10 เมตร&#10;หัว RJ45, 2 ชิ้น"></textarea>
+
+                    <div class="form-group">
+                        <label for="equipment_used"><strong>อุปกรณ์ที่ใช้ (แต่ละรายการขึ้นบรรทัดใหม่)</strong></label>
+                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="5" list="equipment_datalist" placeholder="เช่น สาย LAN, 10 เมตร&#10;หัว RJ45, 2 ชิ้น"></textarea>
+                        <datalist id="equipment_datalist">
+                            {% for item in common_equipment_items %}
+                                <option value="{{ item }}">
+                            {% endfor %}
+                        </datalist>
                     </div>
-                    <div class="mb-3">
-                        <label for="files" class="form-label"><strong>แนบไฟล์รูปภาพ (ถ้ามี)</strong></label>
-                        <input class="form-control" type="file" id="files" name="files[]" multiple>
+
+                    <div class="form-group">
+                        <label for="files"><strong>แนบไฟล์ (รูปภาพ, เอกสาร)</strong></label>
+                        <input type="file" class="form-control-file" id="files" name="files[]" multiple>
                     </div>
-                    <hr>
-                    <div class="mb-3">
-                        <label for="status" class="form-label"><strong>อัปเดตสถานะงาน</strong></label>
-                        <select class="form-select" id="status" name="status">
+
+                    <div class="form-group">
+                        <label for="status"><strong>อัปเดตสถานะงาน</strong></label>
+                        <select class="form-control" id="status" name="status">
                             <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>รอดำเนินการ</option>
                             <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>เสร็จสิ้น</option>
                         </select>
                     </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fas fa-save me-2"></i> บันทึกการอัปเดต
-                        </button>
-                    </div>
+
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> บันทึกรายงาน</button>
                 </form>
             </div>
         </div>
-
-        <!-- ส่วนแสดงประวัติการทำงาน -->
-        <h5 class="mt-5 mb-3">ประวัติการทำงาน</h5>
+        
+        <h2 class="h4 mt-5">ประวัติการทำงาน</h2>
         {% if task.tech_reports_history %}
             {% for report in task.tech_reports_history %}
-                <div class="card report-card mb-3 shadow-sm">
-                    <div class="card-body">
-                        <p><strong><i class="fas fa-calendar-alt me-2"></i>วันที่:</strong> {{ report.summary_date }}</p>
-                        <p><strong><i class="fas fa-tools me-2"></i>สรุป:</strong> {{ report.work_summary or '-' }}</p>
-                        <p><strong><i class="fas fa-box-open me-2"></i>อุปกรณ์:</strong> {{ report.equipment_used_display or '-' }}</p>
-                        {% if report.attachment_urls %}
-                            <p><strong><i class="fas fa-paperclip me-2"></i>ไฟล์แนบ:</strong></p>
-                            <ul>
-                            {% for url in report.attachment_urls %}
-                                <li><a href="{{ url }}" target="_blank">ดูไฟล์</a></li>
-                            {% endfor %}
-                            </ul>
-                        {% endif %}
-                    </div>
+            <div class="card history-card">
+                <div class="card-body">
+                    <h5 class="card-title"><strong>สรุปเมื่อ:</strong> {{ report.summary_date }}</h5>
+                    <p><strong>รายละเอียด:</strong></p>
+                    <p style="white-space: pre-wrap;" class="pl-3">{{ report.work_summary or 'ไม่มีรายละเอียดการทำงาน' }}</p>
+                    <p><strong>อุปกรณ์ที่ใช้:</strong></p>
+                    <p class="pl-3">
+                        {% autoescape false %}
+                        {{ report.equipment_used_display|replace('\n', '<br>') or 'ไม่มี' }}
+                        {% endautoescape %}
+                    </p>
+                    {% if report.attachment_urls %}
+                        <p><strong>ไฟล์แนบ:</strong></p>
+                        <ul>
+                        {% for url in report.attachment_urls %}
+                            <li><a href="{{ url }}" target="_blank">ดูไฟล์แนบ</a></li>
+                        {% endfor %}
+                        </ul>
+                    {% endif %}
                 </div>
+            </div>
             {% endfor %}
         {% else %}
-            <p class="text-muted">ยังไม่มีการบันทึกความคืบหน้า</p>
+            <div class="alert alert-secondary">ยังไม่มีประวัติการทำงาน</div>
         {% endif %}
-
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>
