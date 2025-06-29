@@ -28,8 +28,7 @@ from linebot.exceptions import (
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FlexSendMessage,
     BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
-    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
-    ImageMessage, FileMessage, PostbackEvent
+    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
 )
 # ---------------------------------------------
 
@@ -83,33 +82,15 @@ TECHNICIAN_LINE_IDS = {
 
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
-    'report_times': {
-        'appointment_reminder_hour_thai': 7,
-        'outstanding_report_hour_thai': 20
-    },
-    'line_recipients': {
-        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
-        'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
-        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
-    },
-    'qrcode_settings': { 
-        'box_size': 8,
-        'border': 4,
-        'fill_color': '#28a745', 
-        'back_color': '#FFFFFF',
-        'custom_url': '' 
-    },
+    'report_times': { 'appointment_reminder_hour_thai': 7, 'outstanding_report_hour_thai': 20 },
+    'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
+    'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [ 
-        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0},
-        {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
-        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0},
-        {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
-        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0},
-        {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
-        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0},
-        {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
-        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0},
-        {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
+        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0}, {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
+        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0}, {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
+        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0}, {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
+        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0}, {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
+        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0}, {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
         {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
     ],
     'common_equipment_items': [] 
@@ -119,16 +100,13 @@ _APP_SETTINGS_STORE = {}
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            app.logger.error(f"Error handling settings.json: {e}")
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+        except (json.JSONDecodeError, IOError) as e: app.logger.error(f"Error handling settings.json: {e}")
     return None
 
 def save_settings_to_file(settings_data):
     try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(settings_data, f, ensure_ascii=False, indent=4)
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
         return True
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
@@ -141,24 +119,19 @@ def get_app_settings():
         if loaded:
             _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE.copy()
             for key, default_value in _APP_SETTINGS_STORE.items():
-                if isinstance(default_value, dict):
-                    _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
-                elif key in loaded:
-                    _APP_SETTINGS_STORE[key] = loaded[key]
+                if isinstance(default_value, dict): _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
+                elif key in loaded: _APP_SETTINGS_STORE[key] = loaded[key]
         else:
             _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE
             save_settings_to_file(_APP_SETTINGS_STORE)
-    
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
     global _APP_SETTINGS_STORE
     for key, value in settings_data.items():
-        if isinstance(value, dict) and key in _APP_SETTINGS_STORE:
-            _APP_SETTINGS_STORE[key].update(value)
-        else:
-            _APP_SETTINGS_STORE[key] = value
+        if isinstance(value, dict) and key in _APP_SETTINGS_STORE: _APP_SETTINGS_STORE[key].update(value)
+        else: _APP_SETTINGS_STORE[key] = value
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
@@ -169,16 +142,13 @@ def get_google_service(api_name, api_version):
     token_path = 'token.json'
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
     if google_token_json_str:
-        try:
-            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-        except Exception as e:
-            app.logger.warning(f"Could not load token from env var: {e}")
+        try: creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
+        except Exception as e: app.logger.warning(f"Could not load token from env var: {e}")
     elif os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
+            try: creds.refresh(Request())
             except Exception as e:
                 app.logger.error(f"Error refreshing token: {e}")
                 creds = None
@@ -186,9 +156,8 @@ def get_google_service(api_name, api_version):
             flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
             creds = flow.run_console()
         if creds:
-            with open(token_path, 'w') as token:
-                token.write(creds.to_json())
-            app.logger.info(f"Token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render.")
+            with open(token_path, 'w') as token: token.write(creds.to_json())
+            app.logger.info(f"Token saved to {token_path}. Update GOOGLE_TOKEN_JSON on Render.")
     return build(api_name, api_version, credentials=creds) if creds else None
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
@@ -221,29 +190,11 @@ def create_google_task(title, notes=None, due=None):
         app.logger.error(f"Error creating Google Task: {e}")
         return None
 
-def create_google_calendar_event(summary, location, description, start_time, end_time, timezone='Asia/Bangkok'):
-    service = get_google_calendar_service()
-    if not service:
-        app.logger.error("Failed to get Google Calendar service.")
-        return None
-    try:
-        event = {
-            'summary': summary, 'location': location, 'description': description,
-            'start': {'dateTime': start_time, 'timeZone': timezone},
-            'end': {'dateTime': end_time, 'timeZone': timezone},
-            'reminders': {'useDefault': True},
-        }
-        return service.events().insert(calendarId='primary', body=event).execute()
-    except HttpError as e:
-        app.logger.error(f"Error creating Google Calendar Event: {e}")
-        return None
-
 def delete_google_task(task_id):
     service = get_google_tasks_service()
     if not service: return False
     try:
         service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        app.logger.info(f"Successfully deleted task ID: {task_id}")
         return True
     except HttpError as err:
         app.logger.error(f"API Error deleting task {task_id}: {err}")
@@ -280,62 +231,6 @@ def get_google_tasks_for_report(show_completed=True):
     except HttpError as err:
         app.logger.error(f"API Error getting tasks: {err}")
         return None
-
-def get_single_task(task_id):
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        return service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-    except HttpError as err:
-        app.logger.error(f"Error getting single task {task_id}: {err}")
-        return None
-
-def get_upcoming_events(time_delta_hours=24):
-    service = get_google_calendar_service()
-    if not service: return []
-    try:
-        now_utc = datetime.datetime.utcnow().isoformat() + 'Z'
-        time_max_utc = (datetime.datetime.utcnow() + datetime.timedelta(hours=time_delta_hours)).isoformat() + 'Z'
-        events_result = service.events().list(
-            calendarId='primary', timeMin=now_utc, timeMax=time_max_utc,
-            maxResults=10, singleEvents=True, orderBy='startTime'
-        ).execute()
-        return events_result.get('items', [])
-    except HttpError as e:
-        app.logger.error(f"Error fetching upcoming events: {e}")
-        return []
-
-def extract_lat_lon_from_notes(notes):
-    if not notes: return None, None
-    match = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", notes)
-    if match: return (float(match.group(1)), float(match.group(2)))
-    match = re.search(r"พิกัด:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)", notes)
-    if match: return (float(match.group(1)), float(match.group(2)))
-    map_url_regex = r"https?://(?:www\.)?(?:google\.com/maps/place/|maps\.app\.goo\.gl/)(?:[^/]+/@)?(-?\d+\.\d+),(-?\d+\.\d+)"
-    map_url_match = re.search(map_url_regex, notes)
-    if map_url_match:
-        return (float(map_url_match.group(1)), float(map_url_match.group(2)))
-    return None, None
-
-def find_nearby_jobs(completed_task_id, radius_km=5):
-    completed_task = get_single_task(completed_task_id)
-    if not completed_task: return []
-    origin_lat, origin_lon = extract_lat_lon_from_notes(completed_task.get('notes', ''))
-    if origin_lat is None or origin_lon is None: return []
-    origin_coords = (origin_lat, origin_lon)
-    pending_tasks = get_google_tasks_for_report(show_completed=False)
-    if not pending_tasks: return []
-    nearby_jobs = []
-    for task in pending_tasks:
-        if task.get('id') == completed_task_id: continue
-        task_lat, task_lon = extract_lat_lon_from_notes(task.get('notes', ''))
-        if task_lat is not None and task_lon is not None:
-            distance = geodesic(origin_coords, (task_lat, task_lon)).kilometers
-            if distance <= radius_km:
-                task['distance_km'] = round(distance, 1)
-                nearby_jobs.append(task)
-    nearby_jobs.sort(key=lambda x: x['distance_km'])
-    return nearby_jobs
 
 def parse_customer_info_from_notes(notes):
     info = {'name': '', 'phone': '', 'address': '', 'detail': '', 'map_url': None}
@@ -489,37 +384,6 @@ def form_page():
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
     return render_template('form.html')
-
-@app.route("/lookup_customer", methods=['GET'])
-def lookup_customer():
-    customer_name_query = str(request.args.get('customer_name', '')).strip().lower() 
-    if not customer_name_query: return jsonify({}) 
-    tasks_raw = get_google_tasks_for_report(show_completed=False) 
-    if tasks_raw is None: return jsonify({"error": "Failed to retrieve tasks"}), 500
-    found_customer_info = {}
-    for task_item in reversed(tasks_raw): 
-        customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
-        if customer_name_query in str(customer_info.get('name', '')).strip().lower(): 
-            if customer_info.get('phone'): found_customer_info['phone'] = str(customer_info['phone']).strip() 
-            if customer_info.get('address'): found_customer_info['address'] = str(customer_info['address']).strip() 
-            if customer_info.get('detail'): found_customer_info['detail'] = str(customer_info['detail']).strip() 
-            if customer_info.get('map_url'): found_customer_info['map_url'] = str(customer_info['map_url']).strip() 
-            if all(key in found_customer_info and found_customer_info[key] for key in ['phone', 'address', 'detail']): break
-    return jsonify(found_customer_info)
-
-@app.route("/lookup_equipment", methods=['GET'])
-def lookup_equipment():
-    query = request.args.get('q', '').strip().lower()
-    if not query: return jsonify([])
-    equipment_catalog = get_app_settings().get('equipment_catalog', [])
-    results = []
-    for item in equipment_catalog:
-        item_name_lower = str(item.get('item_name', '')).lower()
-        barcode_lower = str(item.get('barcode', '')).lower()
-        if query in item_name_lower or (barcode_lower and query in barcode_lower):
-            results.append(item)
-    results.sort(key=lambda x: (not str(x['item_name']).lower().startswith(query), str(x['item_name']).lower()))
-    return jsonify(results[:10])
 
 @app.route('/summary')
 def summary():
@@ -720,17 +584,47 @@ def callback():
         abort(400)
     return 'OK'
 
+# --- ส่วนจัดการคำสั่ง LINE ---
+def handle_help_command(event):
+    """Handles the 'comphone' command."""
+    help_text = (
+        "🤖 วิธีใช้งานบอท 🤖\n\n"
+        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
+        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
+        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
+        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า (เช่น c สมศรี)\n\n"
+        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
+        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
+        "➡️ `เปิดงานใหม่` หรือ `เริ่มลงงาน`\nรับลิงก์สำหรับจัดการงาน"
+    )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    text = event.message.text.lower().strip()
-    reply_message = None
-    if text == 'สรุปงาน':
-        reply_message = TextSendMessage(text=f"ดูสรุปงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")
-    elif text == 'สร้างงานใหม่':
-        reply_message = TextSendMessage(text=f"สร้างงานใหม่ได้ที่: {url_for('form_page', _external=True)}")
-    if reply_message:
-        line_bot_api.reply_message(event.reply_token, reply_message)
+    """
+    ฟังก์ชันหลักสำหรับจัดการข้อความที่เข้ามา
+    จะตรวจสอบคำสั่งและเรียกใช้ฟังก์ชันที่เกี่ยวข้อง
+    """
+    text = event.message.text.strip()
+    text_lower = text.lower()
 
+    if text_lower == 'comphone' or text_lower == 'help':
+        handle_help_command(event)
+
+    elif text_lower == 'สรุปงาน':
+        summary_url = url_for('summary', _external=True)
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ดูสรุปงานทั้งหมดได้ที่: {summary_url}"))
+
+    elif text_lower == 'สร้างงานใหม่' or text_lower == 'เปิดงานใหม่':
+        form_url = url_for('form_page', _external=True)
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {form_url}"))
+    
+    # สามารถเพิ่มคำสั่งอื่นๆ ได้ที่นี่
+    # elif text_lower == 'งานค้าง':
+    #     handle_outstanding_tasks_command(event)
+    
+    # ถ้าไม่มีคำสั่งใดตรงกัน บอทจะเงียบ
+    
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
