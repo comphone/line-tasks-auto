@@ -14,25 +14,13 @@ load_dotenv()
 from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response 
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
-from geopy.distance import geodesic
 
 import qrcode
 import base64
 
-# --- ใช้ line-bot-sdk เวอร์ชัน 2.4.2 ---
-from linebot import (
-    LineBotApi, WebhookHandler
-)
-from linebot.exceptions import (
-    InvalidSignatureError
-)
-from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, FlexSendMessage,
-    BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
-    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
-    ImageComponent
-)
-# ---------------------------------------------
+from linebot import (LineBotApi, WebhookHandler)
+from linebot.exceptions import (InvalidSignatureError)
+from linebot.models import (MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, BubbleContainer, BoxComponent, TextComponent, ButtonComponent, SeparatorComponent, URIAction)
 
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
@@ -43,72 +31,37 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 import pandas as pd 
 
-# --- Initialization & Configurations ---
+# --- Configurations ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
 UPLOAD_FOLDER = 'static/uploads' 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
-
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# --- LINE & Google Configs ---
+# --- Constants and Global Vars ---
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
-if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
-    sys.exit("LINE Bot credentials are not set in environment variables.")
-
-LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') 
-LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
-LINE_HR_GROUP_ID = os.environ.get('LINE_HR_GROUP_ID') 
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') 
-
-if not GOOGLE_DRIVE_FOLDER_ID:
-    app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
-
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
-GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
-
-# Initialize LINE Bot SDK v2
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-TECHNICIAN_LINE_IDS = {
-    "ช่างเอ": "Uxxxxxxxxxxxxxxxxxxxxxxxxx1",
-    "ช่างบี": "Uxxxxxxxxxxxxxxxxxxxxxxxxx2",
-}
-
 SETTINGS_FILE = 'settings.json'
-# ใช้ Default Settings จาก app_original.py ที่มีข้อมูลครบถ้วนกว่า
+_APP_SETTINGS_STORE = {}
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': { 'appointment_reminder_hour_thai': 7, 'outstanding_report_hour_thai': 20 },
     'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
-    'line_commands': {
-        'help': 'comphone', 'outstanding_tasks': 'งานค้าง', 'completed_tasks': 'งานเสร็จ',
-        'summary_report': 'สรุปรายงาน', 'new_task_form': 'เปิดงานใหม่', 'start_work': 'เริ่มลงงาน'
-    },
-    'notification_formats': {
-        'morning_show_customer': True, 'morning_show_phone': True, 'morning_show_detail': True,
-        'evening_show_title': True, 'evening_show_customer': True
-    },
-    'equipment_catalog': [ 
-        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0}, {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
-        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0}, {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
-        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0}, {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
-        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0}, {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
-        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0}, {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
-        {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
-    ],
+    'equipment_catalog': [], 
     'common_equipment_items': [] 
 }
-_APP_SETTINGS_STORE = {}
 
-# ใช้ฟังก์ชัน load/save settings ที่ปรับปรุงแล้วจาก app.py
+
+#<editor-fold desc="Helper Functions">
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
         try:
@@ -128,22 +81,25 @@ def get_app_settings():
     global _APP_SETTINGS_STORE
     if not _APP_SETTINGS_STORE:
         loaded = load_settings_from_file()
-        _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE.copy()
+        _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
         if loaded:
             for key, default_value in _APP_SETTINGS_STORE.items():
                 if isinstance(default_value, dict): _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
                 elif key in loaded: _APP_SETTINGS_STORE[key] = loaded[key]
         else:
             save_settings_to_file(_APP_SETTINGS_STORE)
-    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
+    
+    equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
+    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in equipment_catalog if 'item_name' in item)))
     return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
     global _APP_SETTINGS_STORE
+    current_settings = get_app_settings()
     for key, value in settings_data.items():
-        if isinstance(value, dict) and key in _APP_SETTINGS_STORE: _APP_SETTINGS_STORE[key].update(value)
-        else: _APP_SETTINGS_STORE[key] = value
-    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
+        if isinstance(value, dict) and key in current_settings: current_settings[key].update(value)
+        else: current_settings[key] = value
+    _APP_SETTINGS_STORE = current_settings
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
 _APP_SETTINGS_STORE = get_app_settings()
@@ -174,25 +130,39 @@ def get_google_service(api_name, api_version):
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
 
-@cached(cache)
-def get_google_tasks_for_report(show_completed=True):
-    app.logger.info(f"Fetching tasks (show_completed={show_completed})")
-    service = get_google_tasks_service()
-    if not service: return None
+def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back_color="white"):
     try:
-        results = service.tasks().list(tasklist=GOOGLE_TASKS_LIST_ID, showCompleted=show_completed, maxResults=100).execute()
-        return results.get('items', [])
-    except HttpError as err:
-        app.logger.error(f"API Error getting tasks: {err}")
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color=fill_color, back_color=back_color)
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+    except Exception as e:
+        app.logger.error(f"Error generating QR code: {e}")
         return None
 
-def get_single_task(task_id):
+def update_google_task(task_id, title=None, notes=None, status=None, due=None):
     service = get_google_tasks_service()
     if not service: return None
     try:
-        return service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-    except HttpError as err:
-        app.logger.error(f"Error getting single task {task_id}: {err}")
+        task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        if title is not None: task['title'] = title
+        if notes is not None: task['notes'] = notes
+        if status is not None:
+            task['status'] = status
+        
+        if status == 'completed':
+            task['completed'] = datetime.datetime.now(pytz.utc).isoformat()
+            task.pop('due', None)
+        else:
+            task.pop('completed', None)
+            if due: task['due'] = due
+                
+        return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
+    except HttpError as e:
+        app.logger.error(f"Failed to update task {task_id}: {e}")
         return None
         
 def upload_file_to_google_drive(file_path, file_name, mime_type):
@@ -210,66 +180,6 @@ def upload_file_to_google_drive(file_path, file_name, mime_type):
         app.logger.error(f'Drive upload error: {e}')
         return None
 
-def create_google_task(title, notes=None, due=None):
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
-        if due: task_body['due'] = due
-        return service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_body).execute()
-    except HttpError as e:
-        app.logger.error(f"Error creating Google Task: {e}")
-        return None
-        
-def delete_google_task(task_id):
-    service = get_google_tasks_service()
-    if not service: return False
-    try:
-        service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        return True
-    except HttpError as err:
-        app.logger.error(f"API Error deleting task {task_id}: {err}")
-        return False
-
-def update_google_task(task_id, title=None, notes=None, status=None, due=None):
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-        if title is not None: task['title'] = title
-        if notes is not None: task['notes'] = notes
-        if status is not None:
-            task['status'] = status
-        
-        # Logic to handle completion and due dates
-        if status == 'completed':
-            task['completed'] = datetime.datetime.now(pytz.utc).isoformat()
-            task.pop('due', None)  # Remove due date on completion
-        else:
-            task.pop('completed', None) # Not completed, remove completion time
-            if due:  # If a new due date is provided, update it
-                task['due'] = due
-            # If status is not completed and no new due date is provided, keep the existing one.
-                
-        return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
-    except HttpError as e:
-        app.logger.error(f"Failed to update task {task_id}: {e}")
-        return None
-
-#***** FIX: นำฟังก์ชัน generate_qr_code_base64 กลับมา *****
-def generate_qr_code_base64(url, box_size=10, border=4, fill_color="black", back_color="white"):
-    try:
-        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
-        qr.add_data(url)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color=fill_color, back_color=back_color)
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
-    except Exception as e:
-        app.logger.error(f"Error generating QR code: {e}")
-        return None
-
 def parse_customer_info_from_notes(notes):
     info = {'name': '', 'phone': '', 'address': '', 'detail': '', 'map_url': None}
     if not notes: return info
@@ -282,7 +192,7 @@ def parse_customer_info_from_notes(notes):
     if lines and re.match(map_url_regex, lines[0]): info['map_url'] = lines.pop(0)
     info['detail'] = "\n".join(lines)
     return info
-    
+
 def parse_google_task_dates(task_item):
     parsed = task_item.copy()
     for key in ['created', 'due', 'completed']:
@@ -290,9 +200,7 @@ def parse_google_task_dates(task_item):
             try:
                 dt_utc = datetime.datetime.fromisoformat(parsed[key].replace('Z', '+00:00'))
                 parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
-                # Add a value for HTML datetime-local input
-                if key == 'due':
-                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+                if key == 'due': parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
             except (ValueError, TypeError): 
                 parsed[f'{key}_formatted'] = ''
                 if key == 'due': parsed['due_for_input'] = ''
@@ -308,21 +216,14 @@ def parse_tech_report_from_notes(notes):
     for json_str in report_blocks:
         try:
             report_data = json.loads(json_str)
-            if isinstance(report_data.get('equipment_used'), str):
-                report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
-            else:
-                report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
             history.append(report_data)
         except json.JSONDecodeError: pass
     original_notes_text = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
-    
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def _parse_equipment_string(text_input):
-    equipment_list, common_items = [], set(get_app_settings().get('common_equipment_items', []))
+    equipment_list = []
     if not text_input: return equipment_list
     for line in text_input.strip().split('\n'):
         if not line.strip(): continue
@@ -330,47 +231,17 @@ def _parse_equipment_string(text_input):
         item_name = parts[0].strip()
         if item_name:
             equipment_list.append({"item": item_name, "quantity": parts[1].strip() if len(parts) > 1 else ''})
-            common_items.add(item_name)
-    save_app_settings({'common_equipment_items': sorted(list(common_items))})
     return equipment_list
+    
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+#</editor-fold>
 
-def _format_equipment_list(equipment_data):
-    if not equipment_data: return 'N/A'
-    if isinstance(equipment_data, str): return equipment_data
-    lines = []
-    if isinstance(equipment_data, list):
-        for item in equipment_data:
-            if isinstance(item, dict) and "item" in item:
-                line = item['item']
-                if item.get("quantity"): line += f", {item['quantity']}"
-                lines.append(line)
-            elif isinstance(item, str): lines.append(item)
-    return "\n".join(lines) if lines else 'N/A'
-
-def create_task_flex_message(task):
-    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-    parsed_dates = parse_google_task_dates(task)
-    update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
-    phone_action = URIAction(label=customer_info['phone'], uri=f"tel:{re.sub(r'[^0-9]','', customer_info['phone'])}") if customer_info.get('phone') else None
-    map_action = URIAction(label="📍 เปิด Google Maps", uri=customer_info['map_url']) if customer_info.get('map_url') else None
-    bubble = BubbleContainer(
-        direction='ltr',
-        header=BoxComponent(layout='vertical', contents=[TextComponent(text='📢 แจ้งเตือนงาน', weight='bold', color='#ffffff')], background_color='#007BFF', padding_all='12px'),
-        body=BoxComponent(layout='vertical', contents=[
-            TextComponent(text=task.get('title', 'ไม่มีหัวข้อ'), weight='bold', size='xl', wrap=True), SeparatorComponent(margin='md'),
-            BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=customer_info.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='โทร:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=customer_info.get('phone', '-'), wrap=True, color='#1E90FF', size='sm', flex=5, action=phone_action, decoration='underline' if phone_action else 'none')]),
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#007BFF', size='sm', flex=2, weight='bold'), TextComponent(text=parsed_dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
-            ]),
-            SeparatorComponent(margin='md'),
-            TextComponent(text='รายละเอียดงาน:', weight='bold', color='#007BFF', size='sm', margin='md'), TextComponent(text=customer_info.get('detail', '-'), wrap=True, margin='sm', color='#666666')
-        ]),
-        footer=BoxComponent(layout='vertical', spacing='sm', contents=([ButtonComponent(style='link', height='sm', action=map_action), SeparatorComponent(margin='md')] if map_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url))])
-    )
-    return FlexSendMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
-
-@app.route("/", methods=['GET', 'POST'])
+@app.route("/")
+def form_page_redirect():
+    return redirect(url_for('summary'))
+    
+@app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
         customer_name = str(request.form.get('customer', '')).strip()
@@ -397,21 +268,18 @@ def form_page():
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
             except ValueError: app.logger.error(f"Invalid appointment format: {appointment_str}")
 
-        created_task = create_google_task(title, notes=notes, due=due_date_gmt)
+        service = get_google_tasks_service()
+        if not service:
+            flash('ไม่สามารถเชื่อมต่อกับ Google Service ได้', 'danger')
+            return render_template('form.html')
+
+        task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
+        if due_date_gmt: task_body['due'] = due_date_gmt
+        created_task = service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_body).execute()
+        
         if created_task:
             cache.clear()
-            try:
-                flex_message = create_task_flex_message(created_task)
-                settings = get_app_settings()
-                recipients = [id for id in [settings['line_recipients'].get('admin_group_id'), settings['line_recipients'].get('technician_group_id')] if id]
-                if recipients:
-                    line_bot_api.multicast(recipients, flex_message)
-                    flash('สร้างงานและส่งแจ้งเตือน LINE เรียบร้อยแล้ว!', 'success')
-                else:
-                    flash('สร้างงานเรียบร้อยแล้ว (ไม่มีผู้รับแจ้งเตือน LINE).', 'info')
-            except Exception as e:
-                app.logger.error(f"Failed to create or push Flex Message: {e}")
-                flash('สร้างงานเรียบร้อยแล้ว แต่ส่งข้อความแจ้งเตือนไม่ได้', 'warning')
+            flash('สร้างงานเรียบร้อยแล้ว!', 'success')
             return redirect(url_for('summary'))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
@@ -419,47 +287,25 @@ def form_page():
 
 @app.route('/summary')
 def summary():
-    search_query = str(request.args.get('search_query', '')).strip().lower()
-    status_filter = str(request.args.get('status_filter', 'all')).strip()
-    tasks_raw = get_google_tasks_for_report(show_completed=True)
-    if tasks_raw is None:
-        flash('ไม่สามารถเชื่อมต่อกับ Google Tasks ได้', 'danger')
-        return render_template("tasks_summary.html", tasks=[], summary={}, search_query=search_query, status_filter=status_filter)
+    service = get_google_tasks_service()
+    if not service:
+        flash('ไม่สามารถเชื่อมต่อกับ Google Service ได้ กรุณาตรวจสอบการตั้งค่า', 'danger')
+        return render_template("tasks_summary.html", tasks=[])
+
+    try:
+        tasks_raw = service.tasks().list(tasklist=GOOGLE_TASKS_LIST_ID, showCompleted=True, maxResults=100).execute().get('items', [])
+    except HttpError as e:
+        flash(f'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Tasks: {e}', 'danger')
+        tasks_raw = []
+
+    final_tasks = [parse_google_task_dates(task) for task in tasks_raw]
+    for task in final_tasks:
+        task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     
-    current_time_utc = datetime.datetime.now(pytz.utc)
-    final_filtered_tasks = []
-    total_summary_stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
+    final_tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
+    return render_template("tasks_summary.html", tasks=final_tasks)
 
-    for task in tasks_raw:
-        task_status = task.get('status', 'needsAction')
-        is_overdue = False
-        if task_status == 'needsAction' and task.get('due'):
-            try:
-                due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
-                if due_dt_utc < current_time_utc: is_overdue = True
-            except (ValueError, TypeError): pass
-        
-        if task_status == 'completed': total_summary_stats['completed'] += 1
-        elif task_status == 'needsAction':
-            total_summary_stats['needsAction'] += 1
-            if is_overdue: total_summary_stats['overdue'] += 1
 
-        if (status_filter == 'all' or
-            (status_filter == 'completed' and task_status == 'completed') or
-            (status_filter == 'needsAction' and task_status == 'needsAction' and not is_overdue) or
-            (status_filter == 'overdue' and is_overdue)):
-            
-            if not search_query or (search_query in str(task.get('title', '')).lower() or search_query in str(task.get('notes', '')).lower()):
-                parsed_task = parse_google_task_dates(task)
-                parsed_task['customer'] = parse_customer_info_from_notes(parsed_task.get('notes', ''))
-                parsed_task['is_overdue'] = is_overdue
-                final_filtered_tasks.append(parsed_task)
-
-    final_filtered_tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
-    return render_template("tasks_summary.html", tasks=final_filtered_tasks, summary=total_summary_stats, search_query=search_query, status_filter=status_filter)
-
-#***** FIX & REFACTOR: ใช้ route update_task_details ที่ปรับปรุงแล้วจาก app.py *****
-# หน้านี้จะใช้สำหรับ "ช่าง" สรุปงานและแนบไฟล์เท่านั้น
 @app.route('/update_task/<task_id>', methods=['GET', 'POST'])
 def update_task_details(task_id):
     service = get_google_tasks_service()
@@ -470,12 +316,13 @@ def update_task_details(task_id):
         abort(404)
     
     if request.method == 'POST':
-        history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        history, original_base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        customer_info = parse_customer_info_from_notes(original_base_notes)
+
         work_summary = str(request.form.get('work_summary', '')).strip()
         files = request.files.getlist('files[]')
         new_attachments_uploaded = any(f and f.filename for f in files)
-
-        # Create a new report only if there's new info
+        
         if work_summary or new_attachments_uploaded:
             app.logger.info("New work summary or file found. Creating new tech report.")
             new_attachment_urls = []
@@ -487,8 +334,7 @@ def update_task_details(task_id):
                         file.save(temp_filepath)
                         mime_type = file.mimetype or mimetypes.guess_type(filename)[0] or 'application/octet-stream'
                         drive_url = upload_file_to_google_drive(temp_filepath, filename, mime_type)
-                        if drive_url:
-                            new_attachment_urls.append(drive_url)
+                        if drive_url: new_attachment_urls.append(drive_url)
                         os.remove(temp_filepath)
             
             new_tech_report_data = {
@@ -499,63 +345,8 @@ def update_task_details(task_id):
             }
             history.append(new_tech_report_data)
 
-        all_reports_text = ""
-        for report in sorted(history, key=lambda x: x.get('summary_date', '')):
-            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-        
-        final_notes = base_notes + all_reports_text
-        
-        # Only update notes and status from this page
-        updated_task = update_google_task(task_id, notes=final_notes, status=request.form.get('status'))
-        
-        if updated_task:
-            cache.clear()
-            flash('บันทึกความคืบหน้าของงานเรียบร้อยแล้ว!', 'success')
-        else:
-            flash('เกิดข้อผิดพลาดในการบันทึกความคืบหน้า', 'danger')
-        return redirect(url_for('update_task_details', task_id=task_id))
-        
-    task = parse_google_task_dates(task_raw)
-    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    task['tech_reports_history'], _ = parse_tech_report_from_notes(task.get('notes', ''))
-    
-    #***** FIX: นำ common_equipment_items กลับมาเพื่อให้ช่องกรอกมี suggestion *****
-    return render_template('update_task_details.html', task=task, common_equipment_items=get_app_settings().get('common_equipment_items', []))
+        customer_info['map_url'] = str(request.form.get('latitude_longitude', '')).strip()
 
-
-#***** NEW FEATURE: เพิ่ม Route ใหม่สำหรับแก้ไขข้อมูลลูกค้าโดยเฉพาะ *****
-@app.route('/edit_customer/<task_id>', methods=['GET', 'POST'])
-def edit_customer_info(task_id):
-    service = get_google_tasks_service()
-    if not service: abort(503)
-    try:
-        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
-    except HttpError:
-        abort(404)
-
-    if request.method == 'POST':
-        updated_customer_name = str(request.form.get('customer_name', '')).strip()
-        
-        # This part handles updating the "base" customer notes
-        new_base_notes_lines = [
-            updated_customer_name,
-            str(request.form.get('customer_phone', '')).strip(),
-            str(request.form.get('address', '')).strip(),
-            #***** FIX: รับค่าพิกัดแผนที่ (latitude_longitude) จากฟอร์ม *****
-            str(request.form.get('latitude_longitude', '')).strip(),
-            str(request.form.get('detail', '')).strip()
-        ]
-        new_base_notes = "\n".join(filter(None, new_base_notes_lines))
-
-        # Preserve the existing tech reports
-        history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        all_reports_text = ""
-        for report in history:
-             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-        
-        final_notes = new_base_notes + all_reports_text
-
-        #***** FIX: เพิ่มการจัดการวันนัดเลื่อนลูกค้า *****
         due_date_gmt = None
         appointment_str = str(request.form.get('appointment_due', '')).strip()
         if appointment_str:
@@ -566,99 +357,89 @@ def edit_customer_info(task_id):
                 app.logger.error(f"Invalid reschedule format: {appointment_str}")
                 flash('รูปแบบวันที่นัดหมายไม่ถูกต้อง', 'warning')
 
-        # Update the task with new customer info, title, and potentially a new due date
+        new_base_notes_lines = [
+            customer_info.get('name', ''), customer_info.get('phone', ''),
+            customer_info.get('address', ''), customer_info.get('map_url', ''),
+            customer_info.get('detail', '')
+        ]
+        new_base_notes = "\n".join(filter(None, new_base_notes_lines))
+        
+        all_reports_text = ""
+        for report in sorted(history, key=lambda x: x.get('summary_date', '')):
+            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
+        final_notes = new_base_notes + all_reports_text
+        
+        updated_task = update_google_task(
+            task_id, notes=final_notes, 
+            status=request.form.get('status'), due=due_date_gmt
+        )
+        
+        if updated_task:
+            cache.clear()
+            flash('บันทึกรายงานและความเปลี่ยนแปลงเรียบร้อยแล้ว!', 'success')
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger')
+        return redirect(url_for('update_task_details', task_id=task_id))
+        
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(task.get('notes', ''))
+    
+    return render_template('update_task_details.html', task=task, common_equipment_items=get_app_settings().get('common_equipment_items', []))
+
+
+@app.route('/edit_customer/<task_id>', methods=['GET', 'POST'])
+def edit_customer_info(task_id):
+    service = get_google_tasks_service()
+    if not service: abort(503)
+    try:
+        task_raw = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+    except HttpError:
+        abort(404)
+
+    if request.method == 'POST':
+        history, original_base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        customer_info = parse_customer_info_from_notes(original_base_notes)
+
+        updated_customer_name = str(request.form.get('customer_name', '')).strip()
+        customer_info['name'] = updated_customer_name
+        customer_info['phone'] = str(request.form.get('customer_phone', '')).strip()
+        customer_info['address'] = str(request.form.get('address', '')).strip()
+        customer_info['map_url'] = str(request.form.get('latitude_longitude', '')).strip()
+        # Detail is now part of customer info, not a separate report
+        customer_info['detail'] = str(request.form.get('detail', '')).strip()
+
+        new_base_notes_lines = [
+            customer_info.get('name', ''), customer_info.get('phone', ''),
+            customer_info.get('address', ''), customer_info.get('map_url', ''),
+            customer_info.get('detail', '')
+        ]
+        new_base_notes = "\n".join(filter(None, new_base_notes_lines))
+
+        all_reports_text = ""
+        for report in history:
+             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
+        final_notes = new_base_notes + all_reports_text
+
         updated_task = update_google_task(
             task_id, 
             title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'}", 
-            notes=final_notes,
-            due=due_date_gmt
+            notes=final_notes
         )
 
         if updated_task:
             cache.clear()
-            flash('แก้ไขข้อมูลลูกค้าและวันนัดหมายเรียบร้อยแล้ว!', 'success')
+            flash('แก้ไขข้อมูลลูกค้าเรียบร้อยแล้ว!', 'success')
         else:
             flash('เกิดข้อผิดพลาดในการแก้ไขข้อมูลลูกค้า', 'danger')
         
-        # Redirect back to the main details page
         return redirect(url_for('update_task_details', task_id=task_id))
 
-    # For GET request
     task = parse_google_task_dates(task_raw)
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('edit_customer_info.html', task=task)
-
-@app.route('/delete_task/<task_id>', methods=['POST'])
-def delete_task(task_id):
-    if delete_google_task(task_id):
-        flash('ลบงานเรียบร้อยแล้ว!', 'success')
-        cache.clear()
-    else:
-        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
-    return redirect(url_for('summary'))
-
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-#***** NEW FEATURE: เพิ่ม Route สำหรับ Backup ข้อมูล *****
-@app.route('/backup_data')
-def backup_data():
-    try:
-        all_tasks = get_google_tasks_for_report(show_completed=True)
-        all_settings = get_app_settings()
-        drive_service = get_google_drive_service()
-        if all_tasks is None or all_settings is None or drive_service is None:
-            flash('ไม่สามารถเชื่อมต่อบริการที่จำเป็น (Tasks, Drive) ได้', 'danger')
-            return redirect(url_for('settings_page'))
-        memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-            app.logger.info("Backing up data files...")
-            zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
-            zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False))
-            app.logger.info("Starting Google Drive file backup...")
-            all_drive_links = set()
-            for task in all_tasks:
-                history, _ = parse_tech_report_from_notes(task.get('notes', ''))
-                for report in history:
-                    for url in report.get('attachment_urls', []):
-                        all_drive_links.add(url)
-            drive_id_regex = re.compile(r'/d/([a-zA-Z0-9_-]+)')
-            for link in all_drive_links:
-                match = drive_id_regex.search(link)
-                if match:
-                    file_id = match.group(1)
-                    try:
-                        file_metadata = drive_service.files().get(fileId=file_id, fields='name').execute()
-                        file_name = file_metadata.get('name', file_id)
-                        request_dl = drive_service.files().get_media(fileId=file_id)
-                        fh = BytesIO()
-                        downloader = MediaIoBaseDownload(fh, request_dl)
-                        done = False
-                        while done is False: status, done = downloader.next_chunk()
-                        fh.seek(0)
-                        zf.writestr(f'data/drive_files/{file_name}', fh.read())
-                        app.logger.info(f"Added Drive file to backup: {file_name}")
-                    except HttpError as error: app.logger.error(f"Could not download file ID {file_id} from Drive: {error}")
-            app.logger.info("Backing up source code files...")
-            project_root = os.path.dirname(os.path.abspath(__file__))
-            zf.write(os.path.join(project_root, 'app.py'), arcname='code/app.py')
-            templates_dir = os.path.join(project_root, 'templates')
-            if os.path.isdir(templates_dir):
-                for root, dirs, files in os.walk(templates_dir):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        archive_name = os.path.relpath(file_path, project_root)
-                        zf.write(file_path, arcname=f'code/{archive_name}')
-            if os.path.exists(os.path.join(project_root, 'requirements.txt')):
-                zf.write(os.path.join(project_root, 'requirements.txt'), arcname='code/requirements.txt')
-        memory_file.seek(0)
-        backup_filename = f"full_system_backup_{datetime.date.today()}.zip"
-        return Response(memory_file, mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={backup_filename}'})
-    except Exception as e:
-        app.logger.error(f"Error creating full system backup file: {e}")
-        flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูลฉบับสมบูรณ์', 'danger')
-        return redirect(url_for('settings_page'))
 
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
@@ -677,7 +458,6 @@ def settings_page():
     qr_url_to_use = current_settings.get('qrcode_settings', {}).get('custom_url', '') or general_summary_url
     qr_settings = current_settings.get('qrcode_settings', {})
     
-    #***** FIX: เรียกใช้ฟังก์ชัน generate_qr_code_base64 ที่นำกลับมาแล้ว *****
     qr_code_base64_general = generate_qr_code_base64(
         qr_url_to_use, 
         box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
@@ -685,7 +465,6 @@ def settings_page():
     )
     return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
 
-#***** NEW FEATURE: เพิ่ม Route สำหรับ Export/Import แคตตาล็อกอุปกรณ์ *****
 @app.route('/export_equipment_catalog', methods=['GET'])
 def export_equipment_catalog():
     try:
@@ -739,8 +518,7 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
-
-@app.route("/callback", methods=['POST'])
+@app.route('/callback', methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
@@ -753,67 +531,12 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    text = event.message.text.strip()
-    text_lower = text.lower()
-    settings = get_app_settings()
-    commands = settings.get('line_commands', {})
+    text = event.message.text.strip().lower()
+    # Simple reply logic for demonstration
+    if text == 'สรุปงาน':
+        reply_text = f"ดูสรุปงานทั้งหมดได้ที่: {url_for('summary', _external=True)}"
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
-    command_function_map = {
-        commands.get('help'): handle_help_command,
-        commands.get('outstanding_tasks'): handle_outstanding_tasks_command,
-        commands.get('completed_tasks'): handle_completed_tasks_command,
-        commands.get('summary_report'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
-        commands.get('new_task_form'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}")),
-        commands.get('start_work'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}"))
-    }
-    
-    if text_lower in command_function_map:
-        command_function_map[text_lower](event)
-        return
-
-    if text_lower.startswith('c '):
-        parts = text.split(maxsplit=1)
-        if len(parts) > 1: handle_customer_search_command(event, parts[1])
-        return
-
-    if text_lower.startswith('ดูงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_view_task_command(event, parts[1])
-        return
-
-    if text_lower.startswith('เสร็จงาน '):
-        parts = text.split()
-        if len(parts) > 1: handle_complete_task_command(event, parts[1])
-        return
-
-def handle_help_command(event):
-    help_text = (
-        "🤖 **วิธีใช้งานบอท** 🤖\n\n"
-        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
-        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
-        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า (เช่น c สมศรี)\n\n"
-        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
-        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
-        "➡️ `เปิดงานใหม่` หรือ `เริ่มลงงาน`\nรับลิงก์สำหรับจัดการงาน"
-    )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
-    
-def handle_outstanding_tasks_command(event):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ฟังก์ชัน 'งานค้าง' กำลังอยู่ในระหว่างการพัฒนา"))
-
-def handle_completed_tasks_command(event):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ฟังก์ชัน 'งานเสร็จ' กำลังอยู่ในระหว่างการพัฒนา"))
-
-def handle_customer_search_command(event, customer_name):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังค้นหางานของลูกค้า: {customer_name}"))
-
-def handle_view_task_command(event, task_id):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังดูรายละเอียดงาน ID: {task_id}"))
-
-def handle_complete_task_command(event, task_id):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"กำลังปิดงาน ID: {task_id}"))
-    
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
