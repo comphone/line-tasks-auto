@@ -48,7 +48,7 @@ app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
 UPLOAD_FOLDER = 'static/uploads' 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'} # Allowed extensions for logo
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -535,6 +535,21 @@ def delete_task(task_id):
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
+        # --- ADDED: Handle Logo Upload ---
+        if 'logo_file' in request.files:
+            logo_file = request.files['logo_file']
+            if logo_file and logo_file.filename != '' and allowed_file(logo_file.filename):
+                filename = 'logo.png' # Always overwrite with the same name
+                filepath = os.path.join(app.root_path, 'static', filename)
+                try:
+                    logo_file.save(filepath)
+                    flash('อัปเดตโลโก้เรียบร้อยแล้ว!', 'success')
+                except Exception as e:
+                    app.logger.error(f"Could not save logo: {e}")
+                    flash('เกิดข้อผิดพลาดในการบันทึกโลโก้', 'danger')
+                return redirect(url_for('settings_page'))
+
+        # Handle other settings save
         save_app_settings({
             'report_times': { 'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')) },
             'line_recipients': { 'admin_group_id': request.form.get('admin_group_id', '').strip(), 'technician_group_id': request.form.get('technician_group_id', '').strip() },
@@ -687,7 +702,6 @@ def handle_completed_tasks_command(event):
     reply_message = create_task_list_message("งานที่เสร็จล่าสุด (5 รายการ)", completed_tasks, limit=5)
     line_bot_api.reply_message(event.reply_token, reply_message)
 
-# ADDED: New handler for searching tasks by customer name via LINE
 def handle_view_task_by_name_command(event, customer_name):
     try:
         tasks_raw = get_google_tasks_for_report(show_completed=True) or []
@@ -716,7 +730,6 @@ def handle_view_task_by_name_command(event, customer_name):
         app.logger.error(f"Error in handle_view_task_by_name_command: {e}")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขออภัย, เกิดข้อผิดพลาดในการค้นหางานครับ"))
 
-# ADDED: Helper function to create the Flex Message for a task
 def create_task_flex_message(task):
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     parsed_dates = parse_google_task_dates(task)
@@ -764,14 +777,12 @@ def handle_message(event):
         command_map[text_lower](event)
         return
     
-    # Check for search command like "ดูงาน <customer_name>"
     if text_lower.startswith('ดูงาน '):
         parts = text.split(maxsplit=1)
         if len(parts) > 1:
             handle_view_task_by_name_command(event, parts[1])
             return
 
-    # CHANGED: Updated the help text to include the new 'ดูงาน' command.
     help_text = (
         "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
         "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
