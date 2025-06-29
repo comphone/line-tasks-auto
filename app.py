@@ -161,8 +161,8 @@ def get_google_service(api_name, api_version):
             except Exception as e:
                 app.logger.error(f"Error refreshing token: {e}")
                 creds = None
-        if not creds and os.path.exists(GOOGLE_CREDENTIALS_FILE_NAME):
-            flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
+        if not creds and os.path.exists('credentials.json'):
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
             creds = flow.run_console()
         if creds:
             with open(token_path, 'w') as token: token.write(creds.to_json())
@@ -289,7 +289,7 @@ def parse_tech_report_from_notes(notes):
     original_notes_text = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
-
+    
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -341,6 +341,31 @@ def create_task_flex_message(task):
         footer=BoxComponent(layout='vertical', spacing='sm', contents=([ButtonComponent(style='link', height='sm', action=map_action), SeparatorComponent(margin='md')] if map_action else []) + [ButtonComponent(style='link', height='sm', action=URIAction(label='📝 อัปเดต/สรุปงาน', uri=update_url))])
     )
     return FlexSendMessage(alt_text=f"แจ้งเตือนงาน: {task.get('title', '')}", contents=bubble)
+
+def create_customer_history_carousel(tasks):
+    if not tasks: return None
+    bubbles = []
+    for task in tasks[:12]:
+        parsed = parse_google_task_dates(task)
+        update_url = url_for('update_task_details', task_id=task.get('id'), _external=True)
+        status_text, status_color = ("รอดำเนินการ", "#FFA500")
+        if task.get('status') == 'completed':
+            status_text, status_color = "เสร็จสิ้น", "#28A745"
+        elif task.get('is_overdue'):
+            status_text, status_color = "ยังไม่ดำเนินการ", "#DC3545"
+        bubble = BubbleContainer(
+            body=BoxComponent(layout='vertical', spacing='md', contents=[
+                TextComponent(text=str(task.get('title', 'N/A')), weight='bold', size='lg', wrap=True), 
+                SeparatorComponent(margin='md'),
+                BoxComponent(layout='vertical', margin='md', spacing='sm', contents=[
+                    BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='สถานะ', color='#aaaaaa', size='sm', flex=2), TextComponent(text=status_text, wrap=True, color=status_color, size='sm', flex=5, weight='bold')]),
+                    BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='วันที่สร้าง', color='#aaaaaa', size='sm', flex=2), TextComponent(text=str(parsed.get('created_formatted', '-')), wrap=True, color='#666666', size='sm', flex=5)])
+                ])
+            ]),
+            footer=BoxComponent(layout='vertical', spacing='sm', contents=[ButtonComponent(style='link', height='sm', action=URIAction(label='ดูรายละเอียด / อัปเดต', uri=update_url))])
+        )
+        bubbles.append(bubble)
+    return CarouselContainer(contents=bubbles)
 
 @app.route("/", methods=['GET', 'POST'])
 def form_page():
@@ -489,6 +514,7 @@ def update_task_details(task_id):
     
     return render_template('update_task_details.html', task=task)
 
+
 @app.route('/edit_customer/<task_id>', methods=['GET', 'POST'])
 def edit_customer_info(task_id):
     service = get_google_tasks_service()
@@ -512,8 +538,10 @@ def edit_customer_info(task_id):
         all_reports_text = ""
         for report in history:
              all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
         final_notes = new_base_notes + all_reports_text
         updated_task = update_google_task(task_id, title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'}", notes=final_notes)
+
         if updated_task:
             cache.clear()
             flash('แก้ไขข้อมูลลูกค้าเรียบร้อยแล้ว!', 'success')
@@ -683,30 +711,40 @@ def callback():
         abort(400)
     return 'OK'
 
-def handle_help_command(event):
-    help_text = (
-        "🤖 **วิธีใช้งานบอท** 🤖\n\n"
-        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
-        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
-        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า (เช่น c สมศรี)\n\n"
-        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
-        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
-        "➡️ `เปิดงานใหม่` หรือ `เริ่มลงงาน`\nรับลิงก์สำหรับจัดการงาน"
-    )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
-
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
     text_lower = text.lower()
+    settings = get_app_settings()
+    commands = settings.get('line_commands', {})
 
-    if text_lower == 'comphone' or text_lower == 'help':
-        handle_help_command(event)
-    elif text_lower == 'สรุปงาน':
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ดูสรุปงานทั้งหมดได้ที่: {url_for('summary', _external=True)}"))
-    elif text_lower == 'สร้างงานใหม่' or text_lower == 'เปิดงานใหม่':
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}"))
+    command_function_map = {
+        commands.get('help'): handle_help_command,
+        commands.get('outstanding_tasks'): handle_outstanding_tasks_command,
+        commands.get('completed_tasks'): handle_completed_tasks_command,
+        commands.get('summary_report'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
+        commands.get('new_task_form'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}")),
+        commands.get('start_work'): lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}"))
+    }
+    
+    if text_lower in command_function_map:
+        command_function_map[text_lower](event)
+        return
+
+    if text_lower.startswith('c '):
+        parts = text.split(maxsplit=1)
+        if len(parts) > 1: handle_customer_search_command(event, parts[1])
+        return
+
+    if text_lower.startswith('ดูงาน '):
+        parts = text.split()
+        if len(parts) > 1: handle_view_task_command(event, parts[1])
+        return
+
+    if text_lower.startswith('เสร็จงาน '):
+        parts = text.split()
+        if len(parts) > 1: handle_complete_task_command(event, parts[1])
+        return
     
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
