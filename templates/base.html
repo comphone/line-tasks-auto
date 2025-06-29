@@ -15,6 +15,21 @@
             width: auto;
             margin-right: 10px;
         }
+
+        /* --- ADDED: Mobile Font Size Improvement --- */
+        /* Increase font size for better readability on mobile devices */
+        .form-label,
+        .form-control,
+        .form-select {
+            font-size: 1.1rem; /* Adjust this value as needed */
+        }
+
+        /* Optional: Slightly larger font for card headers on mobile */
+        .card-header {
+            font-size: 1.2rem;
+        }
+        /* --- End of Mobile Font Size Improvement --- */
+
     </style>
     {% block head_extra %}{% endblock %}
 </head>
@@ -22,7 +37,6 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container-fluid">
-            <!-- CHANGED: Added logo to the navbar -->
             <a class="navbar-brand d-flex align-items-center" href="{{ url_for('summary') }}">
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="navbar-logo">
                 <span class="d-none d-sm-inline">Task Manager</span>
@@ -38,7 +52,6 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>
                     </li>
-                    <!-- CHANGED: Made the "Create New Task" link a prominent button -->
                     <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
                         <a class="btn btn-success" href="{{ url_for('form_page') }}">
                             <i class="fas fa-plus-circle me-1"></i>สร้างงานใหม่
