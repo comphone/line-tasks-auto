@@ -18,7 +18,7 @@ import qrcode
 import base64
 from io import BytesIO
 
-# --- ใช้ line-bot-sdk เวอร์ชัน 2.4.2 ---
+# --- การแก้ไข: เปลี่ยนไปใช้ line-bot-sdk เวอร์ชัน 2 ---
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -28,9 +28,10 @@ from linebot.exceptions import (
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FlexSendMessage,
     BubbleContainer, CarouselContainer, BoxComponent, TextComponent,
-    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
+    ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
+    ImageMessage, FileMessage, PostbackEvent
 )
-# ---------------------------------------------
+# ---------------------------------------------------------
 
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
@@ -71,9 +72,10 @@ GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
-# Initialize LINE Bot SDK v2
+# --- การแก้ไข: เปลี่ยนไปใช้ LineBotApi ของเวอร์ชัน 2 ---
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
+# ----------------------------------------------------
 
 TECHNICIAN_LINE_IDS = {
     "ช่างเอ": "Uxxxxxxxxxxxxxxxxxxxxxxxxx1",
@@ -82,33 +84,15 @@ TECHNICIAN_LINE_IDS = {
 
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
-    'report_times': {
-        'appointment_reminder_hour_thai': 7,
-        'outstanding_report_hour_thai': 20
-    },
-    'line_recipients': {
-        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
-        'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''),
-        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '')
-    },
-    'qrcode_settings': { 
-        'box_size': 8,
-        'border': 4,
-        'fill_color': '#28a745', 
-        'back_color': '#FFFFFF',
-        'custom_url': '' 
-    },
+    'report_times': { 'appointment_reminder_hour_thai': 7, 'outstanding_report_hour_thai': 20 },
+    'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
+    'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [ 
-        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0},
-        {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
-        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0},
-        {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
-        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0},
-        {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
-        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0},
-        {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
-        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0},
-        {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
+        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0}, {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
+        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0}, {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
+        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0}, {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
+        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0}, {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
+        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0}, {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
         {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
     ],
     'common_equipment_items': [] 
@@ -118,16 +102,13 @@ _APP_SETTINGS_STORE = {}
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            app.logger.error(f"Error handling settings.json: {e}")
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+        except (json.JSONDecodeError, IOError) as e: app.logger.error(f"Error handling settings.json: {e}")
     return None
 
 def save_settings_to_file(settings_data):
     try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(settings_data, f, ensure_ascii=False, indent=4)
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
         return True
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
@@ -140,24 +121,19 @@ def get_app_settings():
         if loaded:
             _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE.copy()
             for key, default_value in _APP_SETTINGS_STORE.items():
-                if isinstance(default_value, dict):
-                     _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
-                elif key in loaded:
-                     _APP_SETTINGS_STORE[key] = loaded[key]
+                if isinstance(default_value, dict): _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
+                elif key in loaded: _APP_SETTINGS_STORE[key] = loaded[key]
         else:
             _APP_SETTINGS_STORE = _DEFAULT_APP_SETTINGS_STORE
             save_settings_to_file(_APP_SETTINGS_STORE)
-    
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
     global _APP_SETTINGS_STORE
     for key, value in settings_data.items():
-        if isinstance(value, dict) and key in _APP_SETTINGS_STORE:
-            _APP_SETTINGS_STORE[key].update(value)
-        else:
-            _APP_SETTINGS_STORE[key] = value
+        if isinstance(value, dict) and key in _APP_SETTINGS_STORE: _APP_SETTINGS_STORE[key].update(value)
+        else: _APP_SETTINGS_STORE[key] = value
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item['item_name'] for item in _APP_SETTINGS_STORE.get('equipment_catalog', []) if 'item_name' in item)))
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
@@ -168,16 +144,13 @@ def get_google_service(api_name, api_version):
     token_path = 'token.json'
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
     if google_token_json_str:
-        try:
-            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-        except Exception as e:
-            app.logger.warning(f"Could not load token from env var: {e}")
+        try: creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
+        except Exception as e: app.logger.warning(f"Could not load token from env var: {e}")
     elif os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
+            try: creds.refresh(Request())
             except Exception as e:
                 app.logger.error(f"Error refreshing token: {e}")
                 creds = None
@@ -185,9 +158,8 @@ def get_google_service(api_name, api_version):
             flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE_NAME, SCOPES)
             creds = flow.run_console()
         if creds:
-            with open(token_path, 'w') as token:
-                token.write(creds.to_json())
-            app.logger.info(f"Token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render.")
+            with open(token_path, 'w') as token: token.write(creds.to_json())
+            app.logger.info(f"Token saved to {token_path}. Update GOOGLE_TOKEN_JSON on Render.")
     return build(api_name, api_version, credentials=creds) if creds else None
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
@@ -489,6 +461,37 @@ def form_page():
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
     return render_template('form.html')
 
+@app.route("/lookup_customer", methods=['GET'])
+def lookup_customer():
+    customer_name_query = str(request.args.get('customer_name', '')).strip().lower() 
+    if not customer_name_query: return jsonify({}) 
+    tasks_raw = get_google_tasks_for_report(show_completed=False) 
+    if tasks_raw is None: return jsonify({"error": "Failed to retrieve tasks"}), 500
+    found_customer_info = {}
+    for task_item in reversed(tasks_raw): 
+        customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
+        if customer_name_query in str(customer_info.get('name', '')).strip().lower(): 
+            if customer_info.get('phone'): found_customer_info['phone'] = str(customer_info['phone']).strip() 
+            if customer_info.get('address'): found_customer_info['address'] = str(customer_info['address']).strip() 
+            if customer_info.get('detail'): found_customer_info['detail'] = str(customer_info['detail']).strip() 
+            if customer_info.get('map_url'): found_customer_info['map_url'] = str(customer_info['map_url']).strip() 
+            if all(key in found_customer_info and found_customer_info[key] for key in ['phone', 'address', 'detail']): break
+    return jsonify(found_customer_info)
+
+@app.route("/lookup_equipment", methods=['GET'])
+def lookup_equipment():
+    query = request.args.get('q', '').strip().lower()
+    if not query: return jsonify([])
+    equipment_catalog = get_app_settings().get('equipment_catalog', [])
+    results = []
+    for item in equipment_catalog:
+        item_name_lower = str(item.get('item_name', '')).lower()
+        barcode_lower = str(item.get('barcode', '')).lower()
+        if query in item_name_lower or (barcode_lower and query in barcode_lower):
+            results.append(item)
+    results.sort(key=lambda x: (not str(x['item_name']).lower().startswith(query), str(x['item_name']).lower()))
+    return jsonify(results[:10])
+
 @app.route('/summary')
 def summary():
     search_query = str(request.args.get('search_query', '')).strip().lower()
@@ -543,7 +546,6 @@ def update_task_details(task_id):
         new_status = request.form.get('status')
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
         
-        # สร้าง base notes จากฟอร์ม
         base_notes_lines = [
             updated_customer_name,
             str(request.form.get('customer_phone', '')).strip(),
@@ -553,20 +555,19 @@ def update_task_details(task_id):
         ]
         updated_base_notes = "\n".join(filter(None, base_notes_lines))
         
-        # ดึง report เก่าทั้งหมดมาต่อท้าย
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        
         all_reports_text = ""
         for report in history:
             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-
-        # เพิ่ม report ใหม่
+        
         work_summary = str(request.form.get('work_summary', '')).strip()
-        if work_summary: # เพิ่ม report ใหม่เฉพาะเมื่อมีการกรอกข้อมูล
+        if work_summary:
             new_tech_report_data = {
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
-                'attachment_urls': [] # Logic for attachment needs to be added here if required
+                'attachment_urls': [] 
             }
             all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(new_tech_report_data, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
@@ -578,11 +579,9 @@ def update_task_details(task_id):
             cache.clear()
             flash('อัปเดตงานเรียบร้อยแล้ว!', 'success')
             if new_status == 'completed' and original_status != 'completed':
-                # แจ้งเตือนเมื่อปิดงาน
-                pass # You can add notification logic here
+                pass
         else:
             flash('เกิดข้อผิดพลาดในการอัปเดตงาน', 'danger')
-
         return redirect(url_for('summary'))
         
     task = parse_google_task_dates(task_raw)
@@ -590,7 +589,6 @@ def update_task_details(task_id):
     task['tech_reports_history'], _ = parse_tech_report_from_notes(task.get('notes', ''))
     
     return render_template('update_task_details.html', task=task, common_equipment_items=get_app_settings().get('common_equipment_items', []))
-
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
@@ -601,18 +599,85 @@ def delete_task(task_id):
         flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
     return redirect(url_for('summary'))
 
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
-        save_app_settings({
-            'line_recipients': {
-                'admin_group_id': request.form.get('admin_group_id', '').strip(),
-                'technician_group_id': request.form.get('technician_group_id', '').strip()
-            }
-        })
-        flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
+        settings_data = {
+            'report_times': { 'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')) },
+            'line_recipients': { 'admin_group_id': request.form.get('admin_group_id', '').strip(), 'manager_user_id': request.form.get('manager_user_id', '').strip(), 'technician_group_id': request.form.get('technician_group_id', '').strip() },
+            'qrcode_settings': { 'box_size': int(request.form.get('qr_box_size', 8)), 'border': int(request.form.get('qr_border', 4)), 'fill_color': request.form.get('qr_fill_color', '#28a745'), 'back_color': request.form.get('qr_back_color', '#FFFFFF'), 'custom_url': request.form.get('qr_custom_url', '').strip() }
+        }
+        current_settings = get_app_settings()
+        settings_data['equipment_catalog'] = current_settings.get('equipment_catalog', [])
+        if save_app_settings(settings_data):
+            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
+            cache.clear()
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
         return redirect(url_for('settings_page'))
-    return render_template('settings_page.html', settings=get_app_settings())
+
+    current_settings = get_app_settings()
+    general_summary_url = url_for('summary', _external=True)
+    qr_url_to_use = current_settings.get('qrcode_settings', {}).get('custom_url', '') or general_summary_url
+    qr_settings = current_settings.get('qrcode_settings', {})
+    qr_code_base64_general = generate_qr_code_base64(
+        qr_url_to_use, 
+        box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
+        fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
+    )
+    return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
+
+@app.route('/export_equipment_catalog', methods=['GET'])
+def export_equipment_catalog():
+    try:
+        equipment_catalog = get_app_settings().get('equipment_catalog', [])
+        columns = ['รหัสสินค้า/barcodeสินค้า', 'รายการสินค้า', 'หน่วย', 'ราคา']
+        data_for_df = [{'รหัสสินค้า/barcodeสินค้า': item.get('barcode', ''), 'รายการสินค้า': item.get('item_name', ''), 'หน่วย': item.get('unit', ''), 'ราคา': item.get('price', 0.0)} for item in equipment_catalog]
+        df = pd.DataFrame(data_for_df, columns=columns)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Equipment Catalog')
+        output.seek(0)
+        return Response(output.getvalue(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment;filename=equipment_catalog_template.xlsx"})
+    except Exception as e:
+        app.logger.error(f"Error exporting equipment catalog: {e}")
+        flash(f"เกิดข้อผิดพลาดในการส่งออกแคตตาล็อกอุปกรณ์: {e}", 'danger')
+        return redirect(url_for('settings_page'))
+
+@app.route('/import_equipment_catalog', methods=['POST'])
+def import_equipment_catalog():
+    if 'excel_file' not in request.files or not request.files['excel_file'].filename:
+        flash('กรุณาเลือกไฟล์ Excel', 'danger')
+        return redirect(url_for('settings_page'))
+    file = request.files['excel_file']
+    if file and file.filename.endswith(('.xls', '.xlsx')):
+        try:
+            df = pd.read_excel(file.stream)
+            df.columns = [col.strip().lower() for col in df.columns]
+            expected_cols = {'รหัสสินค้า/barcodeสินค้า': 'barcode', 'รายการสินค้า': 'item_name', 'หน่วย': 'unit', 'ราคา': 'price'}
+            if not all(col in df.columns for col in expected_cols):
+                flash(f'ไฟล์ Excel ต้องมีคอลัมน์ที่จำเป็น: {", ".join(expected_cols.keys())}', 'danger')
+                return redirect(url_for('settings_page'))
+            new_catalog = df.rename(columns=expected_cols)[list(expected_cols.values())].to_dict('records')
+            for item in new_catalog:
+                try: item['price'] = float(item['price']) if pd.notna(item['price']) else 0.0
+                except (ValueError, TypeError): item['price'] = 0.0
+            current_settings = get_app_settings()
+            current_settings['equipment_catalog'] = [item for item in new_catalog if item['item_name']]
+            if save_app_settings(current_settings):
+                flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
+            else:
+                flash('เกิดข้อผิดพลาดในการบันทึกแคตตาล็อกอุปกรณ์', 'danger')
+        except Exception as e:
+            app.logger.error(f"Error importing Excel: {e}")
+            flash(f"เกิดข้อผิดพลาดในการนำเข้าไฟล์: {e}", 'danger')
+    else:
+        flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
+    return redirect(url_for('settings_page'))
 
 @app.route("/callback", methods=['POST'])
 def callback():
