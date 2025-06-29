@@ -19,26 +19,23 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <!-- CHANGED: unify heading -->
         <h1 class="mb-4 text-center">แก้ไขรายละเอียดงาน</h1>
         
         <div class="card shadow-sm">
             <div class="card-header">
-               <!-- CHANGED: unify label -->
                <strong>ชื่อลูกค้า:</strong> {{ task.customer.name or 'ไม่ระบุ' }}
             </div>
             <div class="card-body p-4">
                 <form action="{{ url_for('edit_task_title', task_id=task.id) }}" method="POST">
-                    <!-- Edit Task Title -->
+                    
                     <div class="mb-3">
-                        <!-- CHANGED: unify label -->
-                        <label for="new_title" class="form-label"><strong><i class="fas fa-briefcase me-2"></i>รายละเอียดงาน</strong></label>
+                        <!-- CHANGED: Unified the label to match the create form for clarity -->
+                        <label for="new_title" class="form-label"><strong><i class="fas fa-briefcase me-2"></i>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong></label>
                         <input type="text" class="form-control" id="new_title" name="new_title" value="{{ task.title }}" required>
                     </div>
 
-                    <!-- Quick Status Change -->
+                    
                     <div class="mb-3">
-                        <!-- CHANGED: unify label -->
                         <label for="status" class="form-label"><strong><i class="fas fa-check-circle me-2"></i>สถานะงาน</strong></label>
                         <select class="form-select" id="status" name="status">
                             <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
@@ -47,7 +44,7 @@
                     </div>
                     <hr>
                     
-                    <!-- Action Buttons -->
+                    
                     <div class="d-grid">
                         <button type="submit" class="btn btn-success btn-lg">
                             <i class="fas fa-save me-1"></i> บันทึกการแก้ไข
@@ -55,16 +52,16 @@
                     </div>
                 </form>
                 
-                <!-- Shortcut to Edit Customer Info -->
+                
                 <div class="text-center mt-4">
-                     <a href="{{ url_for('edit_customer_info', task_id=task.id) }}" class="btn btn-outline-info">
-                        <i class="fas fa-user-edit me-1"></i> ไปที่หน้าแก้ไขข้อมูลลูกค้าแบบเต็ม
+                     <a href="{{ url_for('update_task_details', task_id=task.id) }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i> กลับไปที่หน้ารายละเอียดหลัก
                     </a>
                 </div>
             </div>
         </div>
 
-        <!-- Danger Zone for Deleting Task -->
+        
         <div class="danger-zone">
             <h5 class="text-danger"><i class="fas fa-exclamation-triangle"></i> โซนอันตราย</h5>
             <p class="text-muted">การกระทำในส่วนนี้ไม่สามารถย้อนกลับได้</p>
