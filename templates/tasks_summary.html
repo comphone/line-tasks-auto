@@ -4,9 +4,7 @@
 
 {% block head_extra %}
     <style>
-        .summary-card-link {
-            text-decoration: none;
-        }
+        .summary-card-link { text-decoration: none; }
         .summary-card {
             color: white;
             border-radius: .75rem;
@@ -20,41 +18,36 @@
             transform: translateY(-5px);
             box-shadow: 0 8px 15px rgba(0,0,0,0.15);
         }
-        .summary-card .icon {
-            font-size: 1.5rem;
-        }
-        .summary-card .text-content {
-            margin-left: 1rem;
-        }
-        .summary-card .card-title {
-            font-size: 0.9rem;
-            margin-bottom: 0;
-        }
-        .summary-card .card-text {
-            font-size: 1.75rem;
-            font-weight: bold;
-        }
-        .table-hover tbody tr {
-            cursor: pointer;
-        }
-        .table-hover tbody tr:hover {
-            background-color: #f1f1f1;
-        }
-        .badge {
-            font-size: 0.9em;
-            padding: .5em .75em;
-        }
+        .summary-card .icon { font-size: 1.5rem; }
+        .summary-card .text-content { margin-left: 1rem; }
+        .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
+        .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
+        .table-hover tbody tr { cursor: pointer; }
+        .table-hover tbody tr:hover { background-color: #f1f1f1; }
+        .badge { font-size: 0.9em; padding: .5em .75em; }
     </style>
 {% endblock %}
 
 {% block content %}
-<!-- CHANGED: Added a prominent "Create New Task" button next to the main header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="mb-0">สรุปสถานะงาน</h1>
     <a href="{{ url_for('form_page') }}" class="btn btn-success btn-lg">
         <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
     </a>
 </div>
+
+<!-- ADDED: Search form is back! -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('summary') }}">
+            <div class="input-group">
+                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หรือเบอร์โทร..." value="{{ search_query or '' }}">
+                <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 
 <!-- Summary Cards -->
 <div class="row">
@@ -120,14 +113,13 @@
                 </thead>
                 <tbody>
                     {% for task in tasks %}
-                    <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('update_task_details', task_id=task.id) }}';">
+                    <!-- CHANGED: The onclick now points to the new consolidated route 'task_details' -->
+                    <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                         <td>{{ loop.index }}</td>
                         <td>{{ task.customer.name or '-' }}</td>
                         <td>
                             {{ task.title }}
-                            <a href="{{ url_for('edit_task_title', task_id=task.id) }}" class="btn btn-sm btn-link p-0 ms-1" title="แก้ไขด่วน" onclick="event.stopPropagation();">
-                                <i class="fas fa-pencil-alt"></i>
-                            </a>
+                            <!-- REMOVED: The separate quick-edit pencil icon is gone for simplicity. -->
                         </td>
                         <td>{{ task.due_formatted or '-' }}</td>
                         <td class="text-center">
