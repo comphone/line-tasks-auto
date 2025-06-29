@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}บันทึกงานใหม่{% endblock %}
+
+{% block head_extra %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-plus-circle me-2"></i>บันทึกงานใหม่</h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="customer" class="form-label"><strong>ชื่อลูกค้า</strong> <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="customer" name="customer" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
+                            <input type="tel" class="form-control" id="phone" name="phone">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="appointment" class="form-label">วันเวลานัดหมาย</label>
+                            <input type="text" class="form-control datetimepicker" id="appointment" name="appointment" placeholder="เลือกวันและเวลา">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
+                        <textarea class="form-control" id="address" name="address" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่</label>
+                        <div class="input-group">
+                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่งปัจจุบัน">
+                            <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
+                                <i class="fas fa-location-arrow"></i>
+                            </button>
+                        </div>
+                        <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="detail" class="form-label">รายละเอียดงาน</label>
+                        <textarea class="form-control" id="detail" name="detail" rows="4"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="files" class="form-label">แนบไฟล์</label>
+                        <input class="form-control" type="file" id="files" name="files[]" multiple>
+                    </div>
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            flatpickr(".datetimepicker", {
+                enableTime: true,
+                dateFormat: "Y-m-d H:i",
+                locale: "th",
+            });
+
+            const shareBtn = document.getElementById('shareLocationBtn');
+            const locationInput = document.getElementById('latitude_longitude');
+            const statusText = document.getElementById('shareLocationStatus');
+
+            if (shareBtn) {
+                shareBtn.addEventListener('click', function() {
+                    statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
+                    statusText.classList.remove('text-success', 'text-danger');
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                const lat = position.coords.latitude;
+                                const lon = position.coords.longitude;
+                                locationInput.value = `https://www.google.com/maps?q=${lat},${lon}`;
+                                statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                                statusText.classList.add('text-success');
+                            },
+                            (error) => {
+                                console.error("Geolocation Error: ", error);
+                                statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้ (โปรดอนุญาตการเข้าถึง)';
+                                statusText.classList.add('text-danger');
+                            }
+                        );
+                    } else {
+                        statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                        statusText.classList.add('text-danger');
+                    }
+                });
+            }
+        });
+    </script>
+{% endblock %}
