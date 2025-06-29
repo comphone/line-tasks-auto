@@ -19,6 +19,7 @@ from geopy.distance import geodesic
 import qrcode
 import base64
 
+# --- Use line-bot-sdk version 2.4.2 ---
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -31,6 +32,7 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
     ImageComponent
 )
+# ---------------------------------------------
 
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
@@ -71,6 +73,7 @@ GOOGLE_CREDENTIALS_FILE_NAME = 'credentials.json'
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
+# Initialize LINE Bot SDK v2
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
@@ -326,6 +329,10 @@ def _format_equipment_list(equipment_data):
                 lines.append(line)
             elif isinstance(item, str): lines.append(item)
     return "\n".join(lines) if lines else 'N/A'
+
+@app.context_processor
+def inject_now():
+    return {'now': datetime.datetime.now(THAILAND_TZ)}
 #</editor-fold>
 
 #<editor-fold desc="LINE Flex Message Builder">
@@ -365,7 +372,7 @@ def create_task_flex_message(task):
     return bubble
 #</editor-fold>
 
-@app.route("/", methods=['GET'])
+@app.route("/")
 def root_redirect():
     return redirect(url_for('summary'))
     
@@ -392,7 +399,8 @@ def form_page():
         due_date_gmt = None
         if appointment_str:
             try:
-                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%dT%H:%M"))
+                # Use a specific format for parsing
+                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
             except ValueError: app.logger.error(f"Invalid appointment format: {appointment_str}")
 
@@ -594,7 +602,6 @@ def edit_customer_info(task_id):
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('edit_customer_info.html', task=task)
 
-# NEW FEATURE 3: Route to edit task title
 @app.route('/edit_task_title/<task_id>', methods=['GET', 'POST'])
 def edit_task_title(task_id):
     service = get_google_tasks_service()
@@ -606,18 +613,21 @@ def edit_task_title(task_id):
         
     if request.method == 'POST':
         new_title = request.form.get('new_title', '').strip()
+        new_status = request.form.get('status', '').strip()
+
         if not new_title:
             flash('กรุณากรอกชื่องานใหม่', 'danger')
             return redirect(url_for('edit_task_title', task_id=task_id))
 
-        updated_task = update_google_task(task_id, title=new_title)
+        updated_task = update_google_task(task_id, title=new_title, status=new_status) 
         if updated_task:
             cache.clear()
-            flash('แก้ไขชื่องานเรียบร้อยแล้ว', 'success')
+            flash('แก้ไขงานเรียบร้อยแล้ว', 'success')
             return redirect(url_for('summary'))
         else:
-            flash('เกิดข้อผิดพลาดในการแก้ไขชื่องาน', 'danger')
+            flash('เกิดข้อผิดพลาดในการแก้ไขงาน', 'danger')
 
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('edit_task_title.html', task=task)
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
@@ -715,7 +725,6 @@ def settings_page():
     )
     return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
 
-# NEW FEATURE 2: Route to test notification
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
     settings = get_app_settings()
@@ -815,19 +824,12 @@ def handle_message(event):
         command_map[text_lower](event)
         return
 
-    # NEW FEATURE 1: Change `ดูงาน` to search by name
-    if text_lower.startswith('ดูงาน '):
+    if text_lower.startswith('ดูงาน ') or text_lower.startswith('c '):
         parts = text.split(maxsplit=1)
         if len(parts) > 1:
             handle_view_task_by_name_command(event, parts[1])
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาพิมพ์ 'ดูงาน' ตามด้วยชื่อลูกค้าที่ต้องการค้นหาครับ"))
-        return
-        
-    if text_lower.startswith('c '):
-        parts = text.split(maxsplit=1)
-        if len(parts) > 1:
-            handle_view_task_by_name_command(event, parts[1]) # Re-use the same function
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาพิมพ์คำสั่งตามด้วยชื่อลูกค้าที่ต้องการค้นหาครับ"))
         return
 
 def handle_view_task_by_name_command(event, customer_name):
@@ -847,8 +849,8 @@ def handle_view_task_by_name_command(event, customer_name):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ไม่พบงานของลูกค้าชื่อ: {customer_name}"))
             return
 
-        if len(matching_tasks) > 10: # LINE carousel limit is 12, but 10 is safer
-            matching_tasks = matching_tasks[:10]
+        if len(matching_tasks) > 12: # LINE carousel limit
+            matching_tasks = matching_tasks[:12]
 
         bubbles = [create_task_flex_message(task) for task in matching_tasks]
         
@@ -860,7 +862,6 @@ def handle_view_task_by_name_command(event, customer_name):
     except Exception as e:
         app.logger.error(f"Error in handle_view_task_by_name_command: {e}")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขออภัย, เกิดข้อผิดพลาดในการค้นหางานครับ"))
-
 
 def handle_help_command(event):
     help_text = (
