@@ -526,7 +526,6 @@ def edit_customer_info(task_id):
 
     if request.method == 'POST':
         updated_customer_name = str(request.form.get('customer_name', '')).strip()
-        
         new_base_notes_lines = [
             updated_customer_name,
             str(request.form.get('customer_phone', '')).strip(),
@@ -535,14 +534,12 @@ def edit_customer_info(task_id):
             str(request.form.get('detail', '')).strip()
         ]
         new_base_notes = "\n".join(filter(None, new_base_notes_lines))
-
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         all_reports_text = ""
         for report in history:
              all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
         
         final_notes = new_base_notes + all_reports_text
-
         updated_task = update_google_task(task_id, title=f"งานลูกค้า: {updated_customer_name or 'ไม่ระบุชื่อลูกค้า'}", notes=final_notes)
 
         if updated_task:
@@ -550,7 +547,6 @@ def edit_customer_info(task_id):
             flash('แก้ไขข้อมูลลูกค้าเรียบร้อยแล้ว!', 'success')
         else:
             flash('เกิดข้อผิดพลาดในการแก้ไขข้อมูลลูกค้า', 'danger')
-
         return redirect(url_for('update_task_details', task_id=task_id))
 
     task = parse_google_task_dates(task_raw)
