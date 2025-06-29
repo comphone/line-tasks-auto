@@ -5,8 +5,8 @@ import re
 import json
 import pytz
 import mimetypes 
-import zipfile # เพิ่มการ import สำหรับสร้างไฟล์ .zip
-from io import BytesIO # เพิ่มการ import สำหรับจัดการไฟล์ใน Memory
+import zipfile
+from io import BytesIO
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -39,7 +39,7 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload 
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
 
 import pandas as pd 
 
@@ -88,11 +88,16 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'manager_user_id': os.environ.get('LINE_MANAGER_USER_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [ 
-        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0}, {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
-        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0}, {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
-        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0}, {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
-        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0}, {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
-        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0}, {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
+        {'barcode': 'EQ001', 'item_name': 'สาย LAN', 'unit': 'เมตร', 'price': 50.0},
+        {'barcode': 'EQ002', 'item_name': 'หัว RJ45', 'unit': 'ชิ้น', 'price': 5.0},
+        {'barcode': 'EQ003', 'item_name': 'คีมย้ำ', 'unit': 'อัน', 'price': 350.0},
+        {'barcode': 'EQ004', 'item_name': 'ไขควง', 'unit': 'อัน', 'price': 120.0},
+        {'barcode': 'EQ005', 'item_name': 'มัลติมิเตอร์', 'unit': 'เครื่อง', 'price': 800.0},
+        {'barcode': 'EQ006', 'item_name': 'สายไฟ VAF 2.5', 'unit': 'เมตร', 'price': 30.0},
+        {'barcode': 'EQ007', 'item_name': 'ปลั๊กไฟ', 'unit': 'ชุด', 'price': 80.0},
+        {'barcode': 'EQ008', 'item_name': 'เต้ารับ', 'unit': 'ตัว', 'price': 60.0},
+        {'barcode': 'EQ009', 'item_name': 'เบรกเกอร์', 'unit': 'ลูก', 'price': 200.0},
+        {'barcode': 'EQ010', 'item_name': 'Adapter', 'unit': 'ชิ้น', 'price': 250.0},
         {'barcode': 'EQ011', 'item_name': 'ติดตั้งกล้อง', 'unit': 'จุด', 'price': 1500.0}
     ],
     'common_equipment_items': [] 
@@ -214,6 +219,7 @@ def delete_google_task(task_id):
     if not service: return False
     try:
         service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        app.logger.info(f"Successfully deleted task ID: {task_id}")
         return True
     except HttpError as err:
         app.logger.error(f"API Error deleting task {task_id}: {err}")
@@ -602,45 +608,64 @@ def delete_task(task_id):
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- ฟังก์ชันสำรองข้อมูล ---
 @app.route('/backup_data')
 def backup_data():
-    """สร้างและส่งไฟล์ ZIP ที่มีการสำรองข้อมูล tasks และ settings."""
+    """สร้างและส่งไฟล์ ZIP ที่มีการสำรองข้อมูลทั้งหมด (Code + Data + Files)"""
     try:
-        # 1. ดึงข้อมูล
         all_tasks = get_google_tasks_for_report(show_completed=True)
         all_settings = get_app_settings()
-
-        if all_tasks is None:
-            flash('ไม่สามารถดึงข้อมูลงานจาก Google Tasks ได้', 'danger')
+        drive_service = get_google_drive_service()
+        if all_tasks is None or all_settings is None or drive_service is None:
+            flash('ไม่สามารถเชื่อมต่อบริการที่จำเป็น (Tasks, Drive) ได้', 'danger')
             return redirect(url_for('settings_page'))
-
-        # 2. สร้างไฟล์ ZIP ในหน่วยความจำ
         memory_file = BytesIO()
         with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # เพิ่มข้อมูล tasks
-            tasks_data = json.dumps(all_tasks, indent=4, ensure_ascii=False)
-            zf.writestr('tasks_backup.json', tasks_data)
-            
-            # เพิ่มข้อมูล settings
-            settings_data = json.dumps(all_settings, indent=4, ensure_ascii=False)
-            zf.writestr('settings_backup.json', settings_data)
-        
+            app.logger.info("Backing up data files...")
+            zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
+            zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False))
+            app.logger.info("Starting Google Drive file backup...")
+            all_drive_links = set()
+            for task in all_tasks:
+                history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                for report in history:
+                    for url in report.get('attachment_urls', []):
+                        all_drive_links.add(url)
+            drive_id_regex = re.compile(r'/d/([a-zA-Z0-9_-]+)')
+            for link in all_drive_links:
+                match = drive_id_regex.search(link)
+                if match:
+                    file_id = match.group(1)
+                    try:
+                        file_metadata = drive_service.files().get(fileId=file_id, fields='name').execute()
+                        file_name = file_metadata.get('name', file_id)
+                        request_dl = drive_service.files().get_media(fileId=file_id)
+                        fh = BytesIO()
+                        downloader = MediaIoBaseDownload(fh, request_dl)
+                        done = False
+                        while done is False: status, done = downloader.next_chunk()
+                        fh.seek(0)
+                        zf.writestr(f'data/drive_files/{file_name}', fh.read())
+                        app.logger.info(f"Added Drive file to backup: {file_name}")
+                    except HttpError as error: app.logger.error(f"Could not download file ID {file_id} from Drive: {error}")
+            app.logger.info("Backing up source code files...")
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            zf.write(os.path.join(project_root, 'app.py'), arcname='code/app.py')
+            templates_dir = os.path.join(project_root, 'templates')
+            if os.path.isdir(templates_dir):
+                for root, dirs, files in os.walk(templates_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        archive_name = os.path.relpath(file_path, project_root)
+                        zf.write(file_path, arcname=f'code/{archive_name}')
+            if os.path.exists(os.path.join(project_root, 'requirements.txt')):
+                zf.write(os.path.join(project_root, 'requirements.txt'), arcname='code/requirements.txt')
         memory_file.seek(0)
-
-        # 3. ส่งไฟล์ให้ผู้ใช้ดาวน์โหลด
-        backup_filename = f"backup_{datetime.date.today()}.zip"
-        return Response(
-            memory_file,
-            mimetype='application/zip',
-            headers={'Content-Disposition': f'attachment;filename={backup_filename}'}
-        )
-
+        backup_filename = f"full_system_backup_{datetime.date.today()}.zip"
+        return Response(memory_file, mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={backup_filename}'})
     except Exception as e:
-        app.logger.error(f"Error creating backup file: {e}")
-        flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
+        app.logger.error(f"Error creating full system backup file: {e}")
+        flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูลฉบับสมบูรณ์', 'danger')
         return redirect(url_for('settings_page'))
-
 
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
@@ -653,7 +678,6 @@ def settings_page():
         flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
         cache.clear()
         return redirect(url_for('settings_page'))
-
     current_settings = get_app_settings()
     general_summary_url = url_for('summary', _external=True)
     qr_url_to_use = current_settings.get('qrcode_settings', {}).get('custom_url', '') or general_summary_url
@@ -730,35 +754,23 @@ def callback():
         abort(400)
     return 'OK'
 
-def handle_help_command(event):
-    help_text = (
-        "🤖 **วิธีใช้งานบอท** 🤖\n\n"
-        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-        "➡️ `งานเสร็จ`\nดูรายการงานที่เสร็จแล้ว 5 งานล่าสุด\n\n"
-        "➡️ `สรุปรายงาน`\nดูภาพรวมจำนวนงาน\n\n"
-        "➡️ `c <ชื่อลูกค้า>`\nค้นหาประวัติงานของลูกค้า (เช่น c สมศรี)\n\n"
-        "➡️ `ดูงาน <ID>`\nดูรายละเอียดของงานตาม ID\n\n"
-        "➡️ `เสร็จงาน <ID>`\nปิดงานด่วนจาก LINE\n\n"
-        "➡️ `เปิดงานใหม่` หรือ `เริ่มลงงาน`\nรับลิงก์สำหรับจัดการงาน"
-    )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
-
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
     text_lower = text.lower()
-
-    if text_lower == 'comphone' or text_lower == 'help':
-        handle_help_command(event)
-
-    elif text_lower == 'สรุปงาน':
-        summary_url = url_for('summary', _external=True)
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ดูสรุปงานทั้งหมดได้ที่: {summary_url}"))
-
-    elif text_lower == 'สร้างงานใหม่' or text_lower == 'เปิดงานใหม่':
-        form_url = url_for('form_page', _external=True)
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {form_url}"))
     
+    # --- New Command Dispatcher Logic ---
+    command_map = {
+        'comphone': handle_help_command,
+        'help': handle_help_command,
+        'สรุปงาน': lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
+        'สร้างงานใหม่': lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}")),
+        'เปิดงานใหม่': lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"สร้างงานใหม่ผ่านฟอร์มได้ที่นี่: {url_for('form_page', _external=True)}"))
+    }
+
+    if text_lower in command_map:
+        command_map[text_lower](event)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
