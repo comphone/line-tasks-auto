@@ -18,8 +18,8 @@ import qrcode
 import base64
 from io import BytesIO
 
-# --- การแก้ไขครั้งล่าสุด: แก้ไขตำแหน่งการ import ของ WebhookHandler ให้ถูกต้อง ---
-from linebot.v3.webhook import WebhookHandler  # <--- แก้ไขที่นี่: import จาก linebot.v3.webhook
+# --- การแก้ไขครั้งสุดท้าย: แยก import models ของ Flex Message ออกมาให้ถูกต้อง ---
+from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import (
     MessageEvent, TextMessageContent, PostbackEvent,
@@ -27,11 +27,14 @@ from linebot.v3.webhooks import (
 )
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest,
-    ReplyMessageRequest, FlexMessage, TextMessage, BubbleContainer,
-    CarouselContainer, BoxComponent, TextComponent, ButtonComponent,
+    ReplyMessageRequest, FlexMessage, TextMessage
+)
+# โมเดลสำหรับ Flex Message จะอยู่ใน .models
+from linebot.v3.messaging.models import (
+    BubbleContainer, CarouselContainer, BoxComponent, TextComponent, ButtonComponent,
     SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton
 )
-# -------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -76,7 +79,7 @@ cache = TTLCache(maxsize=100, ttl=60)
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 line_api_client = ApiClient(configuration)
 line_messaging_api = MessagingApi(line_api_client)
-handler = WebhookHandler(LINE_CHANNEL_SECRET) # บรรทัดนี้จะทำงานได้ถูกต้องแล้ว
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 TECHNICIAN_LINE_IDS = {
     "ช่างเอ": "Uxxxxxxxxxxxxxxxxxxxxxxxxx1",
