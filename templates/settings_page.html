@@ -141,26 +141,17 @@
             </div>
         </form>
 
-        <!-- New: Equipment Catalog Management Section (with its own form for file upload) -->
-        <div class="card shadow-sm mt-4"> {# Added mt-4 for spacing #}
+        <!-- Equipment Catalog Management Section -->
+        <div class="card shadow-sm mt-4">
             <div class="card-header">
                 <i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์
             </div>
             <div class="card-body">
                 <p class="text-muted">ใช้สำหรับกำหนดรายการอุปกรณ์และคุณสมบัติ (ราคา, หน่วย) สำหรับการใช้งานในระบบ.</p>
-                <div class="mb-3">
-                    <label for="common_equipment_list_input" class="form-label">รายการอุปกรณ์ที่ใช้บ่อยปัจจุบัน</label>
-                    <textarea class="form-control" id="common_equipment_list_input" rows="5" readonly 
-                        title="รายการนี้จะอัปเดตจากการนำเข้า Excel หรือเมื่อคุณบันทึกอุปกรณ์ใหม่ในหน้าอัปเดตงาน"
-                    >{{ common_equipment_list_for_display }}</textarea>
-                    <div class="form-text">รายการนี้ถูกสร้างจาก "รายการสินค้า" ในแคตตาล็อกอุปกรณ์. **ไม่สามารถแก้ไขโดยตรงที่นี่ได้.**.</div>
-                </div>
-                
                 <div class="d-flex justify-content-between mt-3">
                     <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-info">
                         <i class="fas fa-download me-2"></i>ส่งออก Excel Template
                     </a>
-                    {# This form is specifically for importing Excel #}
                     <form id="importForm" action="{{ url_for('import_equipment_catalog') }}" method="POST" enctype="multipart/form-data" class="d-inline-block">
                         <label for="excel_file_input" class="btn btn-outline-success mb-0">
                             <i class="fas fa-upload me-2"></i>นำเข้า Excel
@@ -173,6 +164,20 @@
                 </div>
             </div>
         </div>
+
+        <!-- ***** โค้ดที่เพิ่มเข้ามา ***** -->
+        <div class="card mt-4 shadow-sm">
+            <div class="card-header">
+                <h5><i class="fas fa-database me-2"></i>การสำรองข้อมูล</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">สำรองข้อมูลงานทั้งหมดใน Google Tasks และข้อมูลการตั้งค่าทั้งหมดของระบบออกมาเป็นไฟล์ .zip</p>
+                <a href="{{ url_for('backup_data') }}" class="btn btn-success">
+                    <i class="fas fa-download me-2"></i> สำรองข้อมูลทั้งหมด (.zip)
+                </a>
+            </div>
+        </div>
+        <!-- ***** สิ้นสุดโค้ดที่เพิ่มเข้ามา ***** -->
 
 
         <!-- QR Code for general summary page -->
