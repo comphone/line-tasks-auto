@@ -18,7 +18,7 @@ import qrcode
 import base64
 from io import BytesIO
 
-# --- การแก้ไขครั้งสุดท้าย: รวม import ทั้งหมดของ line-bot-sdk v3 ให้อยู่ในตำแหน่งที่ถูกต้องสมบูรณ์ ---
+# --- โครงสร้าง Import ที่ถูกต้องสำหรับ line-bot-sdk v3 ---
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import (
@@ -33,7 +33,6 @@ from linebot.v3.messaging import (
     ReplyMessageRequest,
     FlexMessage,
     TextMessage,
-    # Flex Message Components ทั้งหมดจะถูก import จากที่นี่โดยตรง
     BubbleContainer,
     CarouselContainer,
     BoxComponent,
@@ -45,7 +44,7 @@ from linebot.v3.messaging import (
     QuickReply,
     QuickReplyButton
 )
-# -------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
