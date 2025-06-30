@@ -5,6 +5,8 @@
 {% block content %}
 <h1 class="mb-4">ตั้งค่าระบบ</h1>
 
+{# REMOVED: Section for "Manage System Logo" #}
+{#
 <div class="card mb-4">
     <div class="card-header bg-dark text-white"><i class="fas fa-image me-2"></i>จัดการโลโก้ระบบ</div>
     <div class="card-body">
@@ -25,6 +27,7 @@
         </form>
     </div>
 </div>
+#}
 
 
 <form action="{{ url_for('settings_page') }}" method="POST">
@@ -32,13 +35,17 @@
         <div class="card-header bg-primary text-white"><i class="fas fa-cogs me-2"></i>การตั้งค่าทั่วไป</div>
         <div class="card-body">
             <div class="row">
-                <div class="col-md-6 mb-3">
+                <div class="col-md-4 mb-3"> 
                     <label for="appointment_reminder_hour" class="form-label">เวลาแจ้งเตือนนัดหมาย (0-23)</label>
                     <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour" value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23">
                 </div>
-                <div class="col-md-6 mb-3">
+                <div class="col-md-4 mb-3"> 
                     <label for="outstanding_report_hour" class="form-label">เวลารายงานงานค้าง (0-23)</label>
                     <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour" value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-md-4 mb-3"> 
+                    <label for="customer_followup_hour" class="form-label">เวลาแจ้งเตือนติดตามลูกค้า (0-23)</label>
+                    <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour" value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23">
                 </div>
             </div>
         </div>
@@ -60,6 +67,25 @@
             </div>
         </div>
     </div>
+
+    {# NEW: Shop Information Settings #}
+    <div class="card mb-4 border-success">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-store me-2"></i>ข้อมูลร้านค้า (สำหรับข้อความลูกค้า)</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="shop_contact_phone" class="form-label">เบอร์โทรศัพท์ร้านค้า</label>
+                <input type="tel" class="form-control" id="shop_contact_phone" name="shop_contact_phone" value="{{ settings.shop_info.contact_phone }}">
+            </div>
+            <div class="mb-3">
+                <label for="shop_line_id" class="form-label">LINE ID ร้านค้า (เช่น @ComphoneService)</label>
+                <input type="text" class="form-control" id="shop_line_id" name="shop_line_id" value="{{ settings.shop_info.line_id }}">
+            </div>
+        </div>
+    </div>
+    {# END NEW: Shop Information Settings #}
+
     <div class="card mb-4">
         <div class="card-header bg-secondary text-white"><i class="fas fa-qrcode me-2"></i>ตั้งค่า QR Code</div>
         <div class="card-body">
@@ -134,6 +160,11 @@
         <form action="{{ url_for('test_notification') }}" method="POST">
             <button type="submit" class="btn btn-info"><i class="fab fa-line me-2"></i>ทดสอบส่งแจ้งเตือน</button>
         </form>
+        <hr class="my-3">
+        <p>กดปุ่มเพื่อทดสอบการส่งแบบสอบถามความพึงพอใจลูกค้า สำหรับงานที่เพิ่งเสร็จ</p>
+        <form action="{{ url_for('trigger_customer_follow_up_test') }}" method="POST">
+            <button type="submit" class="btn btn-info"><i class="fas fa-user-check me-2"></i>ทดสอบส่งแบบสอบถามติดตามลูกค้า</button>
+        </form>
     </div>
 </div>
 
@@ -170,7 +201,8 @@
 
 {% block body_extra %}
 <script>
-// ADDED: JavaScript to handle live preview of the selected logo.
+// REMOVED: JavaScript for live preview of logo (as the logo upload section is removed)
+/*
 document.addEventListener('DOMContentLoaded', function() {
     const logoUploadInput = document.getElementById('logoUpload');
     const logoPreviewImage = document.getElementById('logoPreview');
@@ -188,5 +220,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+*/
 </script>
 {% endblock %}

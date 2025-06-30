@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}แจ้งปัญหาบริการ{% endblock %}
+
+{% block head_extra %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        /* CSS สำหรับปรับแต่งสีให้เข้ากับธีมแจ้งปัญหา */
+        .card-header {
+            background-color: #dc3545 !important; /* สีแดงสำหรับแจ้งปัญหา */
+            color: white;
+        }
+        .btn-primary {
+            background-color: #dc3545 !important;
+            border-color: #dc3545 !important;
+        }
+        .btn-primary:hover {
+            background-color: #c82333 !important;
+            border-color: #bd2130 !important;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-exclamation-circle me-2"></i>แจ้งปัญหาเกี่ยวกับงานซ่อม</h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('submit_customer_problem') }}" class="needs-validation" novalidate>
+                    <input type="hidden" name="task_id" value="{{ task.id }}">
+                    
+                    <p class="mb-3"><strong>งาน:</strong> {{ task.title }}</p>
+                    <p class="mb-3"><strong>ลูกค้า:</strong> {{ task.customer.name }} (โทร: {{ task.customer.phone or '-' }})</p>
+
+                    <div class="mb-3">
+                        <label for="problem_description" class="form-label"><strong>รายละเอียดปัญหาที่พบ หรือสิ่งที่ต้องการให้แก้ไขเพิ่มเติม</strong> <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="problem_description" name="problem_description" rows="5" required placeholder="กรุณาอธิบายปัญหาที่พบ หรือสิ่งที่ต้องการให้ช่างดำเนินการแก้ไขอย่างละเอียด..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="preferred_datetime" class="form-label"><strong>วันและเวลาที่สะดวกให้ช่างเข้าซ่อม/ตรวจสอบ</strong></label>
+                        <input type="datetime-local" class="form-control datetimepicker" id="preferred_datetime" name="preferred_datetime" placeholder="เลือกวันและเวลาที่สะดวก">
+                        <small class="form-text text-muted">หากไม่ระบุ วันเวลา ช่างจะติดต่อกลับไปเพื่อสอบถาม</small>
+                    </div>
+                    
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-paper-plane me-2"></i>ส่งข้อมูลปัญหา</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+    <script>
+        // Initialize datetime picker
+        document.addEventListener('DOMContentLoaded', function() {
+            flatpickr(".datetimepicker", {
+                enableTime: true,
+                dateFormat: "Y-m-d H:i",
+                locale: "th",
+                minDate: "today" // ป้องกันการเลือกวันที่ในอดีต
+            });
+        });
+    </script>
+{% endblock %}
