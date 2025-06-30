@@ -86,6 +86,8 @@ _DEFAULT_APP_SETTINGS_STORE = {
 _APP_SETTINGS_STORE = {} 
 
 # --- Flask App Instance (Global Scope) ---
+# This is the standard way to define the Flask app object so Gunicorn can find it
+# and all decorators can bind to it directly.
 app = Flask(__name__, static_folder='static')
 
 
@@ -1078,7 +1080,7 @@ def configure_app(app_instance):
 
             new_notes_lines = [f"ลูกค้า: {customer_name}", f"เบอร์โทรศัพท์: {customer_phone}", f"ที่อยู่: {address}"]
             if map_url: new_notes_lines.append(map_url)
-            new_base_notes = "\n".join(filter(None, new_notes_lines))
+            new_base_notes = "\n".join(filter(None, notes_lines))
 
             history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
             if work_summary or new_attachments_uploaded:
@@ -1479,7 +1481,7 @@ def configure_app(app_instance):
                     f"Comphone ได้รับแจ้งปัญหาเกี่ยวกับงาน: {task.get('title', '-')}\n"
                     f"เรียบร้อยแล้วครับ/ค่ะ\n"
                     f"ทีมงานกำลังตรวจสอบข้อมูลและจะติดต่อกลับเพื่อดูแลท่านโดยเร็วที่สุดครับ/ค่ะ\n\n"
-                    f"หากมีข้อสงสัยใดๆ หรือต้องการความช่วยเหลือเพิ่มเติม ติดต่อเราได้ที่:\n"
+                    f"หากมีข้อสงสัยเร่งด่วน โปรดติดต่อเราได้ที่:\n"
                     f"โทร: {shop_info.get('contact_phone', '081-XXX-XXXX')}\n"
                     f"LINE ID: {shop_info.get('line_id', '@ComphoneService')}\n\n"
                     f"ขออภัยในความไม่สะดวกอีกครั้งครับ/ค่ะ\n"
@@ -1487,7 +1489,7 @@ def configure_app(app_instance):
                 )
                 try:
                     app_instance.line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=thank_you_message_to_customer))
-                    print(f"INFO: Sent thank you message to customer {customer_line_user_id} for task {task_id}.", file=sys.stderr)
+                    print(f"INFO: Sent thank you message to customer {customer_line_user_id}.", file=sys.stderr)
                 except Exception as e:
                     print(f"ERROR: Failed to send thank you message to customer {customer_line_user_id}: {e}", file=sys.stderr)
 
