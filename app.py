@@ -66,10 +66,13 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') 
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') 
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') # Folder for general file uploads
+GOOGLE_SETTINGS_BACKUP_FOLDER_ID = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID') # NEW: Folder for settings backups
 
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
+if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
+    app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID environment variable is not set. Automatic settings backup/restore will not work.")
 
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -83,12 +86,12 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': { 'appointment_reminder_hour_thai': 7, 'outstanding_report_hour_thai': 20 },
-    'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
+    'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') , 'manager_user_id': ''}, # Added manager_user_id to default
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [],
-    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 } # NEW: Auto backup settings
+    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 } 
 }
-_APP_SETTINGS_STORE = {}
+_APP_SETTINGS_STORE = {} # Global variable to hold settings
 
 #<editor-fold desc="Helper and Utility Functions">
 def load_settings_from_file():
@@ -98,8 +101,8 @@ def load_settings_from_file():
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
         except (json.JSONDecodeError, IOError) as e: 
             app.logger.error(f"Error handling settings.json: {e}")
-            # If file is corrupted, delete it and return default settings
-            if os.path.getsize(SETTINGS_FILE) == 0:
+            # If file is corrupted or empty, delete it and return default settings
+            if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) == 0:
                 os.remove(SETTINGS_FILE)
                 app.logger.warning(f"Empty settings.json deleted. Using default settings.")
     return None
@@ -148,7 +151,69 @@ def save_app_settings(settings_data):
     _APP_SETTINGS_STORE = current_settings
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
-# Initialize settings store on app start
+# NEW: Function to load settings from Google Drive on startup
+def load_settings_from_drive_on_startup():
+    """
+    Attempts to load the latest settings_backup.json from Google Drive
+    and save it locally to ensure persistence across Render restarts.
+    """
+    if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
+        app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings restore from Drive.")
+        return False
+
+    service = get_google_drive_service()
+    if not service:
+        app.logger.error("Could not get Drive service for settings restore on startup.")
+        return False
+
+    try:
+        # Search for the latest settings_backup.json in the dedicated folder
+        query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
+        response = service.files().list(q=query, spaces='drive', fields='files(id, name, createdTime)', orderBy='createdTime desc', pageSize=1).execute()
+        files = response.get('files', [])
+
+        if files:
+            latest_backup_file_id = files[0]['id']
+            app.logger.info(f"Found latest settings backup on Drive: {files[0]['name']} (ID: {latest_backup_file_id})")
+
+            request = service.files().get_media(fileId=latest_backup_file_id)
+            fh = BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+                app.logger.debug(f"Download settings progress: {int(status.progress() * 100)}%.")
+            fh.seek(0)
+            
+            downloaded_settings = json.loads(fh.read().decode('utf-8'))
+            
+            # Save the downloaded settings locally
+            if save_settings_to_file(downloaded_settings):
+                app.logger.info("Successfully restored settings from Google Drive backup.")
+                # Force reload _APP_SETTINGS_STORE global variable
+                global _APP_SETTINGS_STORE
+                _APP_SETTINGS_STORE = downloaded_settings 
+                return True
+            else:
+                app.logger.error("Failed to save restored settings to local file.")
+                return False
+        else:
+            app.logger.info("No settings backup found on Google Drive for automatic restore.")
+            return False
+    except HttpError as e:
+        app.logger.error(f"Google Drive API error during settings restore: {e}")
+        return False
+    except json.JSONDecodeError as e:
+        app.logger.error(f"Error decoding settings JSON from Drive: {e}")
+        return False
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
+        return False
+
+# Attempt to load settings from Google Drive on app startup
+load_settings_from_drive_on_startup()
+
+# Initialize settings store (will use loaded settings from Drive or defaults if restore failed)
 _APP_SETTINGS_STORE = get_app_settings()
 
 def get_google_service(api_name, api_version):
@@ -165,35 +230,44 @@ def get_google_service(api_name, api_version):
         except Exception as e: 
             app.logger.warning(f"Could not load token from env var, falling back to token.json: {e}")
     
-    # Fallback to local token.json file
+    # Fallback to local token.json file (which will be ephemeral on Render)
     if not creds and os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
         app.logger.info(f"Loaded Google credentials from local {token_path}.")
 
     # Refresh token if expired
-    if creds and creds.expired and creds.refresh_token:
+    if creds and creds.valid and creds.expired and creds.refresh_token:
         try: 
             creds.refresh(Request())
             app.logger.info("Refreshed Google access token.")
+            # If refreshed, save back to local file and recommend updating env var
+            if not google_token_json_str: # Only save to file if not using env var
+                with open(token_path, 'w') as token: token.write(creds.to_json())
+                app.logger.info(f"Refreshed token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
         except Exception as e:
             app.logger.error(f"Error refreshing token: {e}")
             creds = None # Invalidate creds if refresh fails
     
-    # If no valid credentials, try to get new ones from credentials.json
-    if not creds and os.path.exists('credentials.json'):
-        app.logger.info("Attempting to get new Google credentials from credentials.json.")
-        try:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_console() # This will require manual interaction in console
-            if creds:
-                with open(token_path, 'w') as token: token.write(creds.to_json())
-                app.logger.info(f"New token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
-        except Exception as e:
-            app.logger.error(f"Error getting new credentials: {e}")
-            creds = None
+    # If no valid credentials, try to get new ones from credentials.json (local dev only)
+    if not creds or not creds.valid:
+        if os.path.exists('credentials.json'):
+            app.logger.info("Attempting to get new Google credentials from credentials.json.")
+            try:
+                # This will typically open a browser for authentication on local dev
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                creds = flow.run_console() 
+                if creds:
+                    with open(token_path, 'w') as token: token.write(creds.to_json())
+                    app.logger.info(f"New token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
+            except Exception as e:
+                app.logger.error(f"Error getting new credentials: {e}")
+                creds = None
+        else:
+            app.logger.error("No valid Google credentials available. API service cannot be built.")
+            app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set or credentials.json exists.")
 
     if not creds or not creds.valid:
-        app.logger.error("No valid Google credentials available. API service cannot be built.")
+        app.logger.error("Final check: No valid Google credentials after all attempts.")
         return None
         
     return build(api_name, api_version, credentials=creds)
@@ -422,7 +496,9 @@ def _create_backup_zip():
         memory_file = BytesIO()
         with zipfile.ZipFile(memory_file, 'w', zipfile.DEFLATED) as zf:
             zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
-            zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False))
+            # No longer write settings_backup.json here as it's uploaded separately
+            # zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False)) 
+            
             # Include source code in backup
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
@@ -442,36 +518,35 @@ def _create_backup_zip():
         return None, None
 
 # NEW: Internal function to upload backup to Google Drive
-def _upload_backup_to_drive(memory_file, filename):
-    """Uploads the given memory file (zip) to Google Drive."""
+def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
+    """Uploads the given memory file (zip or json) to Google Drive."""
     if not memory_file or not filename:
         app.logger.error("No memory file or filename provided for Drive upload.")
         return False
     
     service = get_google_drive_service()
-    folder_id = GOOGLE_DRIVE_FOLDER_ID
-    
-    if not service or not folder_id:
-        app.logger.error("Drive service or folder ID is not configured for auto backup upload.")
+    if not service or not drive_folder_id:
+        app.logger.error("Drive service or folder ID is not configured for upload.")
         return False
     
     try:
+        mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
         # Create a MediaIoBaseUpload object from BytesIO
-        media = MediaIoBaseUpload(memory_file, mimetype='application/zip', resumable=True)
-        file_metadata = {'name': filename, 'parents': [folder_id]}
+        media = MediaIoBaseUpload(memory_file, mimetype=mime_type, resumable=True)
+        file_metadata = {'name': filename, 'parents': [drive_folder_id]}
         
         file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
         
         # Make the uploaded file publicly readable (optional, based on your security needs)
         service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
         
-        app.logger.info(f"Successfully uploaded auto backup to Drive: {file_obj.get('webViewLink')}")
+        app.logger.info(f"Successfully uploaded backup to Drive: {file_obj.get('webViewLink')}")
         return True
     except HttpError as e:
-        app.logger.error(f'Google Drive auto backup upload error: {e}')
+        app.logger.error(f'Google Drive backup upload error for {filename}: {e}')
         return False
     except Exception as e:
-        app.logger.error(f"An unexpected error occurred during auto backup upload: {e}")
+        app.logger.error(f"An unexpected error occurred during backup upload for {filename}: {e}")
         return False
 
 # NEW: Scheduled backup job
@@ -479,14 +554,43 @@ def scheduled_backup_job():
     """Scheduled job to perform automatic backup to Google Drive."""
     with app.app_context(): # Run within app context for url_for and settings access
         app.logger.info("Running scheduled backup job...")
-        memory_file, filename = _create_backup_zip()
-        if memory_file and filename:
-            if _upload_backup_to_drive(memory_file, filename):
-                app.logger.info("Automatic backup completed successfully to Google Drive.")
+        
+        # 1. Perform full system backup (zip)
+        memory_file_zip, filename_zip = _create_backup_zip()
+        if memory_file_zip and filename_zip:
+            if _upload_backup_to_drive(memory_file_zip, filename_zip, GOOGLE_DRIVE_FOLDER_ID):
+                app.logger.info("Automatic full system backup completed successfully to Google Drive.")
             else:
-                app.logger.error("Automatic backup to Google Drive failed.")
+                app.logger.error("Automatic full system backup to Google Drive failed.")
         else:
-            app.logger.error("Failed to create backup zip file for automatic backup.")
+            app.logger.error("Failed to create full system backup zip file for automatic backup.")
+
+        # 2. Perform settings-only backup (JSON)
+        if GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
+            settings_data = get_app_settings()
+            settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
+            settings_backup_filename = "settings_backup.json" # Fixed name for easy retrieval
+            
+            # Check for existing settings_backup.json and delete it first
+            service = get_google_drive_service()
+            if service:
+                try:
+                    query = f"name = '{settings_backup_filename}' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
+                    response = service.files().list(q=query, spaces='drive', fields='files(id)').execute()
+                    existing_files = response.get('files', [])
+                    for f in existing_files:
+                        service.files().delete(fileId=f['id']).execute()
+                        app.logger.info(f"Deleted existing settings_backup.json (ID: {f['id']}) from Drive.")
+                except HttpError as e:
+                    app.logger.warning(f"Could not delete existing settings_backup.json: {e}")
+
+            if _upload_backup_to_drive(settings_json_bytes, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
+                app.logger.info("Automatic settings backup completed successfully to Google Drive (JSON).")
+            else:
+                app.logger.error("Automatic settings backup to Google Drive (JSON) failed.")
+        else:
+            app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping automatic settings JSON backup.")
+
 
 # NEW: Scheduler initialization
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
@@ -498,27 +602,25 @@ def run_scheduler():
     auto_backup_hour = settings.get('auto_backup', {}).get('hour_thai', 2)
     auto_backup_minute = settings.get('auto_backup', {}).get('minute_thai', 0)
 
-    # Remove existing jobs to prevent duplicates on reloads (e.g., during debug)
-    # This might be tricky with Flask reloader; ensure scheduler stops cleanly.
+    # Shutdown existing scheduler to ensure jobs are correctly re-added/removed
     if scheduler.running:
-        app.logger.info("Scheduler is already running. Shutting down existing jobs.")
-        scheduler.shutdown(wait=False) # Shutdown without waiting for current jobs to finish
+        app.logger.info("Scheduler is already running. Shutting down existing jobs for reinitialization.")
+        scheduler.shutdown(wait=False)
+        # Reinitialize scheduler to ensure clean state
+        global scheduler
+        scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
-    # Reinitialize scheduler to ensure clean state
-    global scheduler
-    scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
+    # Re-add auto backup job based on current settings
+    job_id = 'auto_system_backup'
     if auto_backup_enabled:
-        job_id = 'auto_system_backup'
-        # Check if job already exists to prevent adding duplicates if app reloads without full restart
-        if not scheduler.get_job(job_id):
+        if not scheduler.get_job(job_id): # Add if it doesn't exist
             app.logger.info(f"Scheduling automatic backup daily at {auto_backup_hour:02d}:{auto_backup_minute:02d} Thai Time.")
             scheduler.add_job(
                 scheduled_backup_job,
                 CronTrigger(hour=auto_backup_hour, minute=auto_backup_minute, timezone=THAILAND_TZ),
                 id=job_id
             )
-        else:
+        else: # Reschedule if it exists
             app.logger.info(f"Automatic backup job '{job_id}' already exists. Reconfiguring trigger.")
             scheduler.reschedule_job(
                 job_id,
@@ -526,8 +628,8 @@ def run_scheduler():
             )
     else:
         # If auto backup is disabled, remove the job if it exists
-        if scheduler.get_job('auto_system_backup'):
-            scheduler.remove_job('auto_system_backup')
+        if scheduler.get_job(job_id):
+            scheduler.remove_job(job_id)
             app.logger.info("Automatic backup job removed as it is disabled.")
 
     if not scheduler.running:
@@ -536,9 +638,10 @@ def run_scheduler():
         # Ensure the scheduler shuts down cleanly when the app exits
         atexit.register(lambda: scheduler.shutdown(wait=False))
 
-# Call run_scheduler on app startup (after initial settings load)
+# Call run_scheduler on app startup (after initial settings load from Drive or defaults)
 # This will schedule the jobs based on current settings
-run_scheduler()
+with app.app_context(): # run_scheduler needs app_context for url_for and get_app_settings
+    run_scheduler()
 
 #</editor-fold>
 
@@ -686,16 +789,28 @@ def task_details(task_id):
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         if work_summary or new_attachments_uploaded:
             new_attachment_urls = []
+            upload_errors = [] # NEW: To track upload errors
             if new_attachments_uploaded:
                 for file in files:
                     if file and allowed_file(file.filename):
                         filename = secure_filename(file.filename)
                         temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                        file.save(temp_filepath)
-                        mime_type = file.mimetype or mimetypes.guess_type(filename)[0] or 'application/octet-stream'
-                        drive_url = upload_file_to_google_drive(temp_filepath, filename, mime_type)
-                        if drive_url: new_attachment_urls.append(drive_url)
-                        os.remove(temp_filepath)
+                        try:
+                            file.save(temp_filepath)
+                            mime_type = file.mimetype or mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+                            drive_url = upload_file_to_google_drive(temp_filepath, filename, mime_type)
+                            if drive_url: 
+                                new_attachment_urls.append(drive_url)
+                                flash(f"อัปโหลดไฟล์ '{filename}' สำเร็จ!", 'success') # NEW: User feedback
+                            else:
+                                upload_errors.append(f"ไม่สามารถอัปโหลดไฟล์ '{filename}' ไปยัง Google Drive ได้") # NEW: Track error
+                                flash(f"อัปโหลดไฟล์ '{filename}' ไม่สำเร็จ!", 'warning') # NEW: User feedback
+                        except Exception as e:
+                            upload_errors.append(f"เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดไฟล์ '{filename}': {e}") # NEW: Track error
+                            flash(f"เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดไฟล์ '{filename}'!", 'warning') # NEW: User feedback
+                        finally:
+                            if os.path.exists(temp_filepath):
+                                os.remove(temp_filepath) # Ensure temporary file is removed
             
             new_tech_report_data = {
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -732,6 +847,11 @@ def task_details(task_id):
             flash('บันทึกการเปลี่ยนแปลงทั้งหมดเรียบร้อยแล้ว!', 'success')
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger')
+        
+        # Display aggregated upload errors if any
+        if upload_errors:
+            for err in upload_errors:
+                app.logger.error(err) # Log for detailed tracking
         
         return redirect(url_for('task_details', task_id=task_id))
 
@@ -784,7 +904,7 @@ def settings_page():
             'line_recipients': { 
                 'admin_group_id': request.form.get('admin_group_id', '').strip(), 
                 'technician_group_id': request.form.get('technician_group_id', '').strip(),
-                'manager_user_id': request.form.get('manager_user_id', '').strip() # Ensure manager_user_id is saved
+                'manager_user_id': request.form.get('manager_user_id', '').strip() 
             },
             'qrcode_settings': { 
                 'box_size': int(request.form.get('qr_box_size', 8)), 
@@ -793,7 +913,7 @@ def settings_page():
                 'back_color': request.form.get('qr_back_color', '#FFFFFF'), 
                 'custom_url': request.form.get('qr_custom_url', '').strip() 
             },
-            'auto_backup': { # NEW: Save auto backup settings
+            'auto_backup': { 
                 'enabled': auto_backup_enabled,
                 'hour_thai': auto_backup_hour,
                 'minute_thai': auto_backup_minute
@@ -1093,4 +1213,3 @@ def handle_message(event):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
-
