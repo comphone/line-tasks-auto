@@ -91,9 +91,13 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 } 
 }
-_APP_SETTINGS_STORE = {} # Global variable to hold settings
+# _APP_SETTINGS_STORE is declared here, but its value is set later after
+# necessary helper functions are defined and initial settings are loaded.
+_APP_SETTINGS_STORE = {} 
 
 #<editor-fold desc="Helper and Utility Functions">
+# --- All Helper and Utility Functions should be defined first ---
+
 def load_settings_from_file():
     """Load application settings from JSON file."""
     if os.path.exists(SETTINGS_FILE):
@@ -115,107 +119,6 @@ def save_settings_to_file(settings_data):
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
-
-def get_app_settings():
-    """Get current application settings, loading from file or using defaults."""
-    global _APP_SETTINGS_STORE
-    if not _APP_SETTINGS_STORE:
-        loaded = load_settings_from_file()
-        # Deep copy default settings to ensure new dictionaries are created
-        _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
-        if loaded:
-            # Update nested dictionaries carefully
-            for key, default_value in _APP_SETTINGS_STORE.items():
-                if isinstance(default_value, dict) and key in loaded and isinstance(loaded[key], dict):
-                    _APP_SETTINGS_STORE[key].update(loaded[key])
-                elif key in loaded: 
-                    _APP_SETTINGS_STORE[key] = loaded[key]
-        else:
-            # If no settings file, save the default settings
-            save_settings_to_file(_APP_SETTINGS_STORE)
-    
-    # Ensure common_equipment_items is always up-to-date
-    equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
-    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
-    return _APP_SETTINGS_STORE
-
-def save_app_settings(settings_data):
-    """Save application settings, merging with current settings."""
-    global _APP_SETTINGS_STORE
-    current_settings = get_app_settings()
-    for key, value in settings_data.items():
-        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
-            current_settings[key].update(value)
-        else: 
-            current_settings[key] = value
-    _APP_SETTINGS_STORE = current_settings
-    return save_settings_to_file(_APP_SETTINGS_STORE)
-
-# NEW: Function to load settings from Google Drive on startup
-def load_settings_from_drive_on_startup():
-    """
-    Attempts to load the latest settings_backup.json from Google Drive
-    and save it locally to ensure persistence across Render restarts.
-    """
-    if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
-        app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings restore from Drive.")
-        return False
-
-    service = get_google_drive_service()
-    if not service:
-        app.logger.error("Could not get Drive service for settings restore on startup.")
-        return False
-
-    try:
-        # Search for the latest settings_backup.json in the dedicated folder
-        query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
-        response = service.files().list(q=query, spaces='drive', fields='files(id, name, createdTime)', orderBy='createdTime desc', pageSize=1).execute()
-        files = response.get('files', [])
-
-        if files:
-            latest_backup_file_id = files[0]['id']
-            app.logger.info(f"Found latest settings backup on Drive: {files[0]['name']} (ID: {latest_backup_file_id})")
-
-            request = service.files().get_media(fileId=latest_backup_file_id)
-            fh = BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
-                app.logger.debug(f"Download settings progress: {int(status.progress() * 100)}%.")
-            fh.seek(0)
-            
-            downloaded_settings = json.loads(fh.read().decode('utf-8'))
-            
-            # Save the downloaded settings locally
-            if save_settings_to_file(downloaded_settings):
-                app.logger.info("Successfully restored settings from Google Drive backup.")
-                # Force reload _APP_SETTINGS_STORE global variable
-                global _APP_SETTINGS_STORE
-                _APP_SETTINGS_STORE = downloaded_settings 
-                return True
-            else:
-                app.logger.error("Failed to save restored settings to local file.")
-                return False
-        else:
-            app.logger.info("No settings backup found on Google Drive for automatic restore.")
-            return False
-    except HttpError as e:
-        app.logger.error(f"Google Drive API error during settings restore: {e}")
-        return False
-    except json.JSONDecodeError as e:
-        app.logger.error(f"Error decoding settings JSON from Drive: {e}")
-        return False
-    except Exception as e:
-        app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
-        return False
-
-# Attempt to load settings from Google Drive on app startup
-load_settings_from_drive_on_startup()
-
-# Initialize settings store (will use loaded settings from Drive or defaults if restore failed)
-# This line is called after load_settings_from_drive_on_startup so it picks up restored settings
-_APP_SETTINGS_STORE = get_app_settings()
 
 def get_google_service(api_name, api_version):
     """Authenticates and returns a Google API service."""
@@ -275,6 +178,101 @@ def get_google_service(api_name, api_version):
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
+
+
+def load_settings_from_drive_on_startup():
+    """
+    Attempts to load the latest settings_backup.json from Google Drive
+    and save it locally to ensure persistence across Render restarts.
+    """
+    if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
+        app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings restore from Drive.")
+        return False
+
+    service = get_google_drive_service() # This function is now defined
+    if not service:
+        app.logger.error("Could not get Drive service for settings restore on startup.")
+        return False
+
+    try:
+        # Search for the latest settings_backup.json in the dedicated folder
+        query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
+        response = service.files().list(q=query, spaces='drive', fields='files(id, name, createdTime)', orderBy='createdTime desc', pageSize=1).execute()
+        files = response.get('files', [])
+
+        if files:
+            latest_backup_file_id = files[0]['id']
+            app.logger.info(f"Found latest settings backup on Drive: {files[0]['name']} (ID: {latest_backup_file_id})")
+
+            request = service.files().get_media(fileId=latest_backup_file_id)
+            fh = BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+                app.logger.debug(f"Download settings progress: {int(status.progress() * 100)}%.")
+            fh.seek(0)
+            
+            downloaded_settings = json.loads(fh.read().decode('utf-8'))
+            
+            # Save the downloaded settings locally
+            if save_settings_to_file(downloaded_settings):
+                app.logger.info("Successfully restored settings from Google Drive backup.")
+                # We update the global _APP_SETTINGS_STORE later when get_app_settings is called
+                return True
+            else:
+                app.logger.error("Failed to save restored settings to local file.")
+                return False
+        else:
+            app.logger.info("No settings backup found on Google Drive for automatic restore.")
+            return False
+    except HttpError as e:
+        app.logger.error(f"Google Drive API error during settings restore: {e}")
+        return False
+    except json.JSONDecodeError as e:
+        app.logger.error(f"Error decoding settings JSON from Drive: {e}")
+        return False
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
+        return False
+
+# get_app_settings and save_app_settings need to be defined after basic loader/saver functions
+def get_app_settings():
+    """Get current application settings, loading from file or using defaults."""
+    global _APP_SETTINGS_STORE
+    # If _APP_SETTINGS_STORE is empty, it means this is the first call,
+    # or it was intentionally cleared. We try to load from file (which might
+    # have been restored from Drive).
+    if not _APP_SETTINGS_STORE: 
+        loaded = load_settings_from_file()
+        _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE)) # Start with defaults
+        if loaded:
+            for key, default_value in _APP_SETTINGS_STORE.items():
+                if isinstance(default_value, dict) and key in loaded and isinstance(loaded[key], dict):
+                    _APP_SETTINGS_STORE[key].update(loaded[key])
+                elif key in loaded: 
+                    _APP_SETTINGS_STORE[key] = loaded[key]
+        else:
+            # If no settings file, save the default settings
+            save_settings_to_file(_APP_SETTINGS_STORE)
+    
+    # Ensure common_equipment_items is always up-to-date
+    equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
+    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
+    return _APP_SETTINGS_STORE
+
+def save_app_settings(settings_data):
+    """Save application settings, merging with current settings."""
+    global _APP_SETTINGS_STORE
+    current_settings = get_app_settings() # Get current settings (may load from file if not in global var)
+    for key, value in settings_data.items():
+        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
+            current_settings[key].update(value)
+        else: 
+            current_settings[key] = value
+    _APP_SETTINGS_STORE = current_settings # Update global variable
+    return save_settings_to_file(_APP_SETTINGS_STORE)
+
 
 @cached(cache)
 def get_google_tasks_for_report(show_completed=True):
@@ -593,7 +591,7 @@ def scheduled_backup_job():
             app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping automatic settings JSON backup.")
 
 
-# NEW: Scheduler initialization
+# NEW: Scheduler initialization (declared as global here)
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
 def run_scheduler():
@@ -604,12 +602,11 @@ def run_scheduler():
     auto_backup_minute = settings.get('auto_backup', {}).get('minute_thai', 0)
 
     # Shutdown existing scheduler to prevent duplicates on reloads (e.g., during debug)
+    # The 'global scheduler' is not needed here as 'scheduler' is already a global variable
     if scheduler.running:
         app.logger.info("Scheduler is already running. Shutting down existing jobs for reinitialization.")
         scheduler.shutdown(wait=False)
-        # ไม่จำเป็นต้อง reinitialize scheduler หรือประกาศ global scheduler อีกครั้ง
-        # เพราะตัวแปร scheduler ถูกประกาศเป็น global แล้วที่ด้านบนของไฟล์
-        # และเราต้องการทำงานกับ instance เดิม
+        # We don't need to reinitialize 'scheduler' here. The existing global instance is fine.
         
     # Re-add auto backup job based on current settings
     job_id = 'auto_system_backup'
@@ -639,13 +636,28 @@ def run_scheduler():
         # Ensure the scheduler shuts down cleanly when the app exits
         atexit.register(lambda: scheduler.shutdown(wait=False))
 
-# Call run_scheduler on app startup (after initial settings load from Drive or defaults)
-# This will schedule the jobs based on current settings
-with app.app_context(): # run_scheduler needs app_context for url_for and get_app_settings
-    run_scheduler()
-
 #</editor-fold>
 
+# --- Initial app setup calls (placed after all function definitions) ---
+
+# This line ensures _APP_SETTINGS_STORE is initialized with defaults or loaded settings
+# before any routes or other top-level code might need it.
+# load_settings_from_drive_on_startup() is already called inside get_app_settings's logic
+# when it tries to load from file if _APP_SETTINGS_STORE is empty.
+# So we simply call get_app_settings() once.
+# However, to explicitly call load_settings_from_drive_on_startup first for a guaranteed restore attempt
+# after all drive service functions are defined, we call it here.
+with app.app_context(): # load_settings_from_drive_on_startup and get_app_settings needs app_context for logging or settings access
+    load_settings_from_drive_on_startup() # Explicitly attempt to restore settings on startup
+    # After restore attempt, re-initialize global settings from file (which might be the restored one)
+    # This also correctly sets up _APP_SETTINGS_STORE with common_equipment_items
+    _APP_SETTINGS_STORE = get_app_settings()
+    
+    # Now that settings are loaded, initialize and run the scheduler
+    run_scheduler()
+
+
+# --- Flask Routes ---
 @app.route("/")
 def root_redirect():
     return redirect(url_for('summary'))
