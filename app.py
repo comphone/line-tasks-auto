@@ -34,8 +34,10 @@ from linebot.models import (
 )
 # ---------------------------------------------
 
+# --- Google API Imports (สำคัญ: InstalledAppFlow ต้องถูก import) ---
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
+from google_auth_oauthlib.flow import InstalledAppFlow # <--- ต้องแน่ใจว่ามีบรรทัดนี้
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
@@ -120,6 +122,7 @@ def save_settings_to_file(settings_data):
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
 
+# get_google_service must be defined before get_google_drive_service
 def get_google_service(api_name, api_version):
     """Authenticates and returns a Google API service."""
     creds = None
@@ -602,7 +605,7 @@ def run_scheduler():
     auto_backup_minute = settings.get('auto_backup', {}).get('minute_thai', 0)
 
     # Shutdown existing scheduler to prevent duplicates on reloads (e.g., during debug)
-    # The 'global scheduler' is not needed here as 'scheduler' is already a global variable
+    # No 'global scheduler' is needed here as 'scheduler' is already a global variable
     if scheduler.running:
         app.logger.info("Scheduler is already running. Shutting down existing jobs for reinitialization.")
         scheduler.shutdown(wait=False)
@@ -639,21 +642,19 @@ def run_scheduler():
 #</editor-fold>
 
 # --- Initial app setup calls (placed after all function definitions) ---
+# It is crucial to call these after all dependent functions (like get_google_drive_service) are defined.
 
-# This line ensures _APP_SETTINGS_STORE is initialized with defaults or loaded settings
-# before any routes or other top-level code might need it.
-# load_settings_from_drive_on_startup() is already called inside get_app_settings's logic
-# when it tries to load from file if _APP_SETTINGS_STORE is empty.
-# So we simply call get_app_settings() once.
-# However, to explicitly call load_settings_from_drive_on_startup first for a guaranteed restore attempt
-# after all drive service functions are defined, we call it here.
-with app.app_context(): # load_settings_from_drive_on_startup and get_app_settings needs app_context for logging or settings access
-    load_settings_from_drive_on_startup() # Explicitly attempt to restore settings on startup
-    # After restore attempt, re-initialize global settings from file (which might be the restored one)
-    # This also correctly sets up _APP_SETTINGS_STORE with common_equipment_items
-    _APP_SETTINGS_STORE = get_app_settings()
+with app.app_context(): 
+    # Explicitly attempt to restore settings on startup.
+    # This must happen before _APP_SETTINGS_STORE is fully initialized with defaults
+    # so that the restored settings can take precedence.
+    load_settings_from_drive_on_startup() 
+
+    # After restore attempt, ensure _APP_SETTINGS_STORE global variable is correctly populated.
+    # This handles cases where restore failed (using defaults) or was successful.
+    _APP_SETTINGS_STORE = get_app_settings() 
     
-    # Now that settings are loaded, initialize and run the scheduler
+    # Now that settings are loaded, initialize and run the scheduler based on these settings.
     run_scheduler()
 
 
@@ -923,7 +924,7 @@ def settings_page():
                 'box_size': int(request.form.get('qr_box_size', 8)), 
                 'border': int(request.form.get('qr_border', 4)), 
                 'fill_color': request.form.get('qr_fill_color', '#28a745'), 
-                'back_color': request.form.get('qr_back_color', '#FFFFFF'), 
+                'back_color': request.form.get('back_color', '#FFFFFF'), 
                 'custom_url': request.form.get('qr_custom_url', '').strip() 
             },
             'auto_backup': { 
