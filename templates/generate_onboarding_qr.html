@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}QR Code สำหรับลูกค้า{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* ซ่อนส่วนที่ไม่จำเป็นสำหรับการพิมพ์ */
+    @media print {
+        .no-print,
+        nav,
+        footer,
+        .btn {
+            display: none !important;
+        }
+        body {
+            background-color: #fff !important;
+        }
+        .card {
+            box-shadow: none !important;
+            border: none !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow-sm text-center">
+                <div class="card-header bg-info text-white">
+                    <h4 class="mb-0"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับเชื่อมต่อ LINE</h4>
+                </div>
+                <div class="card-body p-4">
+                    <p class="lead">สำหรับงาน: <strong>{{ task.title }}</strong></p>
+                    <p class="mb-4">ลูกค้า: <strong>{{ customer_info.name or 'N/A' }}</strong></p>
+
+                    <p class="text-muted">กรุณาให้ลูกค้าใช้แอปพลิเคชัน LINE สแกน QR Code นี้</p>
+
+                    <div class="my-4">
+                        <img src="{{ qr_code_base64 }}" alt="Customer Onboarding QR Code" class="img-fluid rounded border p-2">
+                    </div>
+
+                    <div class="mt-4 no-print">
+                        <button class="btn btn-primary" onclick="window.print();">
+                            <i class="fas fa-print me-2"></i>พิมพ์หน้านี้
+                        </button>
+                        <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>กลับ
+                        </a>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <label for="onboardingUrl" class="form-label">หรือคัดลอกลิงก์:</label>
+                        <input type="text" id="onboardingUrl" class="form-control text-center" value="{{ onboarding_url }}" readonly>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    // เพิ่ม script สำหรับคัดลอก URL ไปยัง clipboard เมื่อคลิกที่ input
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlInput = document.getElementById('onboardingUrl');
+        if(urlInput) {
+            urlInput.addEventListener('click', function() {
+                this.select();
+                document.execCommand('copy');
+                // อาจจะแสดงข้อความว่า "คัดลอกแล้ว!" ชั่วคราว
+                const originalText = this.value;
+                this.value = 'คัดลอกลิงก์แล้ว!';
+                setTimeout(() => {
+                    this.value = originalText;
+                }, 1500);
+            });
+        }
+    });
+</script>
+{% endblock %}

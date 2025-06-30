@@ -8,23 +8,19 @@
         <h1 class="h2 mb-0">รายละเอียดและจัดการงาน</h1>
         <div>
             <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับไปหน้าสรุป</a>
-            <!-- ปุ่ม "บันทึกการเปลี่ยนแปลง" ถูกย้ายไปอยู่ด้านล่าง -->
         </div>
     </div>
 
     <div class="row">
-        <!-- Left Column: Main Details & Customer Info -->
         <div class="col-lg-7">
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-edit me-2"></i>แก้ไขข้อมูลหลัก</div>
                 <div class="card-body">
-                    <!-- Task Title -->
                     <div class="mb-3">
                         <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong></label>
                         <textarea class="form-control" id="task_title" name="task_title" rows="3" required>{{ task.title }}</textarea>
                     </div>
                     <hr>
-                    <!-- Customer Info -->
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="customer_name" class="form-label">ชื่อลูกค้า</label>
@@ -66,7 +62,6 @@
             </div>
         </div>
 
-        <!-- Right Column: New Report & History -->
         <div class="col-lg-5">
             <div class="card border-success mb-4">
                 <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>สรุปการทำงานและอุปกรณ์ที่ใช้</div>
@@ -89,7 +84,6 @@
                 </div>
             </div>
 
-            {# NEW: Section to generate Customer Onboarding QR Code #}
             <div class="card mb-4 border-info">
                 <div class="card-header bg-info text-white h5">
                     <i class="fas fa-qrcode me-2"></i>สำหรับลูกค้า (หลังงานเสร็จ)
@@ -102,18 +96,60 @@
                     <p class="mt-3 text-muted small">**สำคัญ:** การสแกน QR Code นี้จะทำให้ระบบสามารถส่งข้อความติดตามผลไปยังลูกค้าโดยตรง</p>
                 </div>
             </div>
-            {# END NEW: Section to generate Customer Onboarding QR Code #}
+            
+            {# NEW: Section to display Customer Feedback #}
+            {% if task.customer_feedback %}
+            <div class="card mb-4 border-secondary">
+                <div class="card-header bg-secondary text-white h5">
+                    <i class="fas fa-comment-dots me-2"></i>Feedback จากลูกค้า
+                </div>
+                <div class="card-body">
+                    {% if task.customer_feedback.customer_line_user_id %}
+                        <p class="mb-1"><strong>เชื่อมต่อ LINE:</strong> <span class="badge bg-success">ใช่</span></p>
+                        {% if task.customer_feedback.id_saved_date %}
+                        <p class="text-muted small">บันทึกเมื่อ: {{ task.customer_feedback.id_saved_date }}</p>
+                        {% endif %}
+                    {% else %}
+                        <p><strong>เชื่อมต่อ LINE:</strong> <span class="badge bg-secondary">ยังไม่ได้เชื่อมต่อ</span></p>
+                    {% endif %}
+                    
+                    {% if task.customer_feedback.feedback_type %}
+                        <hr>
+                        <p class="mb-1"><strong>การประเมินล่าสุด:</strong> 
+                            {% if task.customer_feedback.feedback_type == 'very_satisfied' %}
+                                <span class="text-success fw-bold">พอใจมาก</span>
+                            {% elif task.customer_feedback.feedback_type == 'satisfied' %}
+                                <span class="text-info fw-bold">พอใจ</span>
+                            {% elif task.customer_feedback.feedback_type == 'problem_reported' %}
+                                <span class="text-danger fw-bold">แจ้งปัญหา</span>
+                            {% else %}
+                                <span>{{ task.customer_feedback.feedback_type }}</span>
+                            {% endif %}
+                        </p>
+                        {% if task.customer_feedback.feedback_date %}
+                             <p class="text-muted small">เมื่อ: {{ task.customer_feedback.feedback_date }}</p>
+                        {% endif %}
+
+                        {% if task.customer_feedback.problem_description %}
+                            <p class="mt-2"><strong>รายละเอียดปัญหาที่แจ้ง:</strong><br><span class="text-danger" style="white-space: pre-wrap;">{{ task.customer_feedback.problem_description }}</span></p>
+                        {% endif %}
+                    {% else %}
+                        <hr>
+                        <p class="text-muted">ยังไม่ได้รับการประเมินจากลูกค้า</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {# END NEW: Section to display Customer Feedback #}
 
         </div>
     </div>
 
-    <!-- ปุ่ม "บันทึกการเปลี่ยนแปลง" ที่ถูกย้ายมาอยู่ด้านล่าง -->
     <div class="d-grid gap-2 mb-4">
         <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
     </div>
 </form>
 
-<!-- History Section is outside the form -->
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -124,8 +160,15 @@
                     <div class="border-start border-4 border-secondary ps-3 mb-3">
                         <p class="mb-1"><strong>สรุปเมื่อ:</strong> {{ report.summary_date }}</p>
                         <p class="mb-1" style="white-space: pre-wrap;">{{ report.work_summary or '-' }}</p>
-                        {% if report.equipment_used_display %}
-                            <p class="mb-0 small text-muted"><strong>อุปกรณ์:</strong> {{ report.equipment_used_display|replace('\n', ', ') }}</p>
+                        {% if report.equipment_used_display and report.equipment_used_display != 'N/A' %}
+                            <p class="mb-1 small text-muted"><strong>อุปกรณ์:</strong> {{ report.equipment_used_display|replace('\n', ', ') }}</p>
+                        {% endif %}
+                        {% if report.attachment_urls %}
+                            <p class="mb-0 small"><strong>ไฟล์แนบ:</strong>
+                                {% for url in report.attachment_urls %}
+                                    <a href="{{ url }}" target="_blank">ดูไฟล์ที่ {{ loop.index }}</a>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </p>
                         {% endif %}
                     </div>
                     {% endfor %}
@@ -137,17 +180,14 @@
     </div>
 </div>
 
-{# NEW: Collapsible Danger Zone with Delete Button and Confirmation Modal #}
 <div class="card border-danger my-4">
-    <div class="card-header bg-danger text-white h5 d-flex justify-content-between align-items-center">
+    <div class="card-header bg-danger text-white h5 d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#dangerZoneCollapse" role="button" aria-expanded="false" aria-controls="dangerZoneCollapse" style="cursor: pointer;">
         <span><i class="fas fa-exclamation-triangle me-2"></i>โซนอันตราย</span>
-        <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse" aria-expanded="false" aria-controls="dangerZoneCollapse">
-            <i class="fas fa-chevron-down"></i> <span class="visually-hidden">Toggle Danger Zone</span>
-        </button>
+        <i class="fas fa-chevron-down"></i>
     </div>
-    <div class="collapse" id="dangerZoneCollapse"> {# This div will be collapsible #}
+    <div class="collapse" id="dangerZoneCollapse">
         <div class="card-body text-center">
-            <p class="text-muted">หากต้องการลบงานนี้อย่างถาวร โปรดกดปุ่มด้านล่าง</p>
+            <p class="text-muted">หากต้องการลบงานนี้อย่างถาวร โปรดกดปุ่มด้านล่าง การกระทำนี้ไม่สามารถย้อนกลับได้</p>
             <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
                 <i class="fas fa-trash-alt me-2"></i>ลบงานนี้ทิ้ง
             </button>
@@ -155,7 +195,6 @@
     </div>
 </div>
 
-<!-- Confirm Delete Modal (remains the same) -->
 <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -165,7 +204,7 @@
             </div>
             <div class="modal-body">
                 <p>คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?</p>
-                <p class="text-danger">การกระทำนี้ไม่สามารถย้อนกลับได้!</p>
+                <p class="text-danger fw-bold">การกระทำนี้ไม่สามารถย้อนกลับได้!</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
