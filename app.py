@@ -34,15 +34,15 @@ from linebot.models import (
 )
 # ---------------------------------------------
 
-# --- Google API Imports ---
+# --- Google API Imports (สำคัญ: InstalledAppFlow ต้องถูก import) ---
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
 from google_auth_oauthlib.flow import InstalledAppFlow 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 # Corrected imports for Googleapiclient.http
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload # <-- MediaIoBaseDownload is needed for downloading
-from googleapiclient.http import MediaIoBaseUpload # <-- NEW: MediaIoBaseUpload for uploading BytesIO
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
+from googleapiclient.http import MediaIoBaseUpload 
 
 import pandas as pd 
 
@@ -78,7 +78,7 @@ if not GOOGLE_DRIVE_FOLDER_ID:
 if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
     app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID environment variable is not set. Automatic settings backup/restore will not work.")
 
-SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
+SCOPES = ['[https://www.googleapis.com/auth/tasks](https://www.googleapis.com/auth/tasks)', '[https://www.googleapis.com/auth/calendar](https://www.googleapis.com/auth/calendar)', '[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
@@ -1210,7 +1210,7 @@ def handle_create_new_task_command(event):
         return
 
     # สร้าง URL สำหรับ LIFF App
-    liff_url = f"https://liff.line.me/{LIFF_ID_FORM}" 
+    liff_url = f"[https://liff.line.me/](https://liff.line.me/){LIFF_ID_FORM}" 
 
     # สร้าง Quick Reply เพื่อให้ผู้ใช้กดเปิดฟอร์ม
     quick_reply_buttons = QuickReply(items=[
@@ -1330,40 +1330,3 @@ def handle_message(event):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
-```
-
-**สาเหตุของปัญหา:**
-
-จาก Log ล่าสุดที่คุณให้มา:
-
-1.  `module 'zipfile' has no attribute 'DEFLATED'`
-2.  `name 'MediaIoBaseUpload' is not defined`
-
-เป็นข้อผิดพลาด 2 อย่างที่มาจาก **การ import และการเรียกใช้ที่ไม่ถูกต้อง** ในส่วนของการสำรองข้อมูลครับ
-
-**วิธีการแก้ไข:**
-
-ผมได้แก้ไขโค้ด `app.py` แล้ว (ใน Code block ด้านบนนี้) โดย:
-
-1.  **เปลี่ยน `zipfile.DEFLATED` เป็น `zipfile.ZIP_DEFLATED`**:
-    * นี่คือชื่อค่าคงที่ที่ถูกต้องสำหรับโหมดการบีบอัดแบบ DEFLATE ในไลบรารี `zipfile` ของ Python.
-    * **ค้นหา:** `with zipfile.ZipFile(memory_file, 'w', zipfile.DEFLATED) as zf:`
-    * **เปลี่ยนเป็น:** `with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:`
-
-2.  **เพิ่ม `MediaIoBaseUpload` ในบรรทัด import ที่ถูกต้อง**:
-    * `MediaIoBaseUpload` เป็นคลาสที่จำเป็นสำหรับการอัปโหลดข้อมูลจาก `BytesIO` ไปยัง Google Drive.
-    * **ค้นหา:** `from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload`
-    * **เปลี่ยนเป็น (เพิ่ม `MediaIoBaseUpload` เข้าไป):**
-        ```python
-        from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload # สำหรับดาวน์โหลด
-        from googleapiclient.http import MediaIoBaseUpload # <-- NEW: สำหรับอัปโหลด BytesIO
-        ```
-
-**สิ่งที่คุณต้องทำ:**
-
-1.  **คัดลอกโค้ดเต็มของ `app.py` ที่อยู่ในข้อความนี้ทั้งหมด**
-2.  **นำไปวางทับไฟล์ `app.py` เดิมของคุณ** (ตรวจสอบให้แน่ใจว่าวางทับทั้งหมด).
-3.  **บันทึกไฟล์.**
-4.  **Deploy หรือรีสตาร์ท Web Service บน Render.com อีกครั้ง.**
-
-การแก้ไขทั้งสองจุดนี้จะช่วยให้ฟังก์ชันการสำรองข้อมูลอัตโนมัติทำงานได้อย่างถูกต้องครับ และจะแก้ปัญหา `NameError` และ `AttributeError` ที่คุณเ
