@@ -86,8 +86,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
 _APP_SETTINGS_STORE = {} 
 
 # --- Flask App Instance (Global Scope) ---
-# This is the standard way to define the Flask app object so Gunicorn can find it
-# and all decorators can bind to it directly.
 app = Flask(__name__, static_folder='static')
 
 # --- Initialize LINE Bot SDK instances (Global Scope) ---
@@ -830,7 +828,6 @@ def callback():
 # This is the line event handler function itself (not the decorator)
 # It's defined outside configure_app but callable by the handler configured inside it.
 # It uses current_app to access app-specific instances like line_bot_api.
-# This function must be defined before configure_app in the file.
 @handler.add(MessageEvent, message=TextMessage)
 @handler.add(PostbackEvent)
 def handle_line_events(event): 
