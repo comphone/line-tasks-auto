@@ -565,12 +565,36 @@ def settings_page():
     qr_settings = current_settings.get('qrcode_settings', {})
     
     qr_code_base64_general = ''
-    if 'generate_qr_code_base64' in globals():
-        qr_code_base64_general = generate_qr_code_base64(
-            qr_url_to_use, 
-            box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
-            fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
-        )
+    # The `generate_qr_code_base64` function is not defined in the provided `app.py`.
+    # To make this section runnable without error, I'll add a placeholder or assume it exists.
+    # For a full implementation, you would need to define this function, e.g., using the `qrcode` library.
+    # For now, I'll provide a minimal placeholder.
+    def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
+        try:
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=box_size,
+                border=border,
+            )
+            qr.add_data(data)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color=fill_color, back_color=back_color)
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            return "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
+        except Exception as e:
+            app.logger.error(f"Error generating QR code: {e}")
+            return "" # Return empty string on error
+
+    if 'generate_qr_code_base64' not in globals(): # Check if it's already defined
+        globals()['generate_qr_code_base64'] = generate_qr_code_base64 # Add to globals if not
+
+    qr_code_base64_general = generate_qr_code_base64(
+        qr_url_to_use, 
+        box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
+        fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
+    )
     return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
 
 @app.route('/test_notification', methods=['POST'])
@@ -600,7 +624,7 @@ def backup_data():
             flash('ไม่สามารถเชื่อมต่อบริการที่จำเป็น (Tasks, Drive) ได้', 'danger')
             return redirect(url_for('settings_page'))
         memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(memory_file, 'w', zipfile.DEFLATED) as zf:
             zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
             zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False))
             # Include source code in backup
@@ -783,14 +807,16 @@ def handle_message(event):
             handle_view_task_by_name_command(event, parts[1])
             return
 
-    help_text = (
-        "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
-        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-        "➡️ `งานเสร็จ`\nดูงานที่ทำเสร็จล่าสุด\n\n"
-        "➡️ `ดูงาน <ชื่อลูกค้า>`\nค้นหางานของลูกค้าคนนั้นๆ\n\n"
-        "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บ"
-    )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
+    # หากข้อความไม่ใช่คำสั่งที่รู้จัก จะไม่มีการตอบกลับ (บอทจะเงียบ)
+    # ส่วนของโค้ดที่เคยตอบกลับด้วย 'help_text' ได้ถูกนำออกแล้ว
+    # help_text = (
+    #     "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
+    #     "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
+    #     "➡️ `งานเสร็จ`\nดูงานที่ทำเสร็จล่าสุด\n\n"
+    #     "➡️ `ดูงาน <ชื่อลูกค้า>`\nค้นหางานของลูกค้าคนนั้นๆ\n\n"
+    #     "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บ"
+    # )
+    # line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
 
 
 if __name__ == '__main__':
