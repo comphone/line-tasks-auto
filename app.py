@@ -11,7 +11,7 @@ from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response, current_app # Added current_app
+from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response, current_app 
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
@@ -66,7 +66,7 @@ cache = TTLCache(maxsize=100, ttl=60)
 # --- Global variable for app settings ---
 _APP_SETTINGS_STORE = {} 
 
-# --- Helper and Utility Functions (remain outside init_app, but designed to be callable globally) ---
+# --- Helper and Utility Functions (remain outside create_flask_app_instance) ---
 def load_settings_from_file():
     """Load application settings from JSON file."""
     if os.path.exists(SETTINGS_FILE):
@@ -333,7 +333,6 @@ def parse_customer_info_from_notes(notes):
 
     return info
 
-# NEW: Function to parse customer feedback data from notes
 def parse_customer_feedback_from_notes(notes):
     """Parses customer feedback data from task notes."""
     feedback_data = {}
@@ -507,7 +506,6 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
 # NEW: Scheduled backup job
 def scheduled_backup_job():
     """Scheduled job to perform automatic backup to Google Drive."""
-    # Ensure this runs within an app context if needed for Flask features (like url_for, flash)
     with current_app.app_context(): # Use current_app
         print("INFO: Running scheduled backup job...", file=sys.stderr)
         
@@ -606,7 +604,6 @@ def scheduled_appointment_reminder_job():
         # Send messages to recipients
         if messages_to_send:
             try:
-                # Use current_app.line_bot_api
                 if admin_group_id:
                     current_app.line_bot_api.push_message(admin_group_id, messages_to_send)
                     print(f"INFO: Sent {len(messages_to_send)} appointment reminders to admin group.", file=sys.stderr)
@@ -618,9 +615,6 @@ def scheduled_appointment_reminder_job():
 
 # NEW: Function to create the customer follow-up Flex Message
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name, customer_phone, technician_id_to_mention=None):
-    # This function is called from a scheduled job, so it might not have app_context directly.
-    # It should pass current_app.url_for or be called within an app_context.
-    # url_for is okay here because scheduled_customer_follow_up_job runs in current_app.app_context()
     detail_url = url_for('task_details', task_id=task_id, _external=True)
     
     # Text for manager mention (if available)
@@ -750,7 +744,7 @@ def scheduled_customer_follow_up_job():
             if tech_history_existing: 
                 all_reports_text = ""
                 for report in sorted(tech_history_existing, key=lambda x: x.get('summary_date', '')):
-                    final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+                    all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
                 final_notes += all_reports_text
 
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback_existing, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
@@ -800,11 +794,8 @@ def scheduled_customer_follow_up_job():
                 except Exception as e:
                     print(f"ERROR: Failed to send group follow-up LINE messages for task {task.get('id')}: {e}", file=sys.stderr)
             
-# NEW: handle postback event for customer feedback
-# Renamed from handle_line_event to handle_line_webhook_event to clarify its role
-@handler.add(MessageEvent, message=TextMessage) # Keep existing TextMessage handler
-@handler.add(PostbackEvent) # Add PostbackEvent handler
-def handle_line_webhook_event(event): # Renamed to differentiate from Flask route webhook handler
+# Renamed from handle_line_event_postback_or_message
+def handle_line_webhook_event(event): # This will be wrapped by handler.add
     """Handles various LINE webhook events (messages and postbacks)."""
     if isinstance(event, PostbackEvent):
         print(f"INFO: Received PostbackEvent: {event.postback.data}", file=sys.stderr)
@@ -815,7 +806,7 @@ def handle_line_webhook_event(event): # Renamed to differentiate from Flask rout
         if action == 'customer_feedback':
             task_id = params.get('task_id')
             feedback_type = params.get('feedback')
-            customer_line_user_id = event.source.userId # NEW: Get customer's LINE User ID from Postback
+            customer_line_user_id = event.source.userId 
 
             task = get_single_task(task_id)
             if not task:
@@ -829,12 +820,11 @@ def handle_line_webhook_event(event): # Renamed to differentiate from Flask rout
             customer_feedback_data_existing.update({
                 'feedback_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'feedback_type': feedback_type,
-                'customer_line_user_id': customer_line_user_id # NEW: Save customer LINE ID
+                'customer_line_user_id': customer_line_user_id 
             })
             
             feedback_json_str = json.dumps(customer_feedback_data_existing, ensure_ascii=False, indent=2)
             
-            # Reconstruct notes with updated/new feedback and existing tech reports
             final_notes = base_customer_info_notes.strip()
             if tech_reports_history: 
                 all_reports_text = ""
@@ -913,12 +903,7 @@ def handle_line_webhook_event(event): # Renamed to differentiate from Flask rout
             else:
                 if command_map[text_lower]: 
                     command_map[text_lower](event) 
-                # For `สรุปรายงาน` and `create_new_task_command`, they implicitly use current_app.line_bot_api
-                # For other handlers, we need to pass line_bot_api if they directly call it.
-                # All handlers are now adjusted to use url_for and other common functions that pull from context.
-                # If a handler calls line_bot_api directly, it will need current_app.line_bot_api as well.
-                # Let's ensure top-level calls use current_app.line_bot_api
-            return
+                return
         
         if text_lower.startswith('ดูงาน '):
             parts = text.split(maxsplit=1)
@@ -926,345 +911,51 @@ def handle_line_webhook_event(event): # Renamed to differentiate from Flask rout
                 handle_view_task_by_name_command(event, parts[1])
                 return
 
-# NEW: Route to generate customer onboarding QR code
-@app.route('/generate_customer_onboarding_qr')
-def generate_customer_onboarding_qr():
-    """Generates QR code for customer onboarding."""
-    task_id = request.args.get('task_id')
-    task = get_single_task(task_id)
-    if not task:
-        flash("ไม่พบข้อมูลงานสำหรับสร้าง QR Code", 'danger')
-        return redirect(url_for('summary'))
-
-    onboarding_liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?page=onboarding&task_id={task_id}"
-    
-    qr_code_base64 = generate_qr_code_base64(onboarding_liff_url, box_size=10, border=4, fill_color='#000000', back_color='#FFFFFF')
-    
-    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-
-    return render_template('generate_onboarding_qr.html', 
-                           qr_code_base64=qr_code_base64,
-                           task=task,
-                           customer_info=customer_info,
-                           onboarding_url=onboarding_liff_url)
-
-@app.route('/customer_onboarding')
-def customer_onboarding_page():
-    """Renders the customer onboarding LIFF form."""
-    task_id = request.args.get('task_id') 
-    task = get_single_task(task_id) 
-    if not task:
-        return render_template('liff_close_page.html', message="ไม่พบข้อมูลงาน")
-
-    parsed_task = parse_google_task_dates(task)
-    parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    
-    return render_template('customer_onboarding.html', task=parsed_task)
-
-
-@app.route('/save_customer_line_id', methods=['POST'])
-def save_customer_line_id():
-    """Saves customer LINE User ID to Google Task notes."""
-    task_id = request.form.get('task_id')
-    customer_line_user_id = request.form.get('customer_line_user_id')
-    
-    task = get_single_task(task_id)
-    if not task:
-        return jsonify({"status": "error", "message": "Task not found"}), 404
-
-    current_notes = task.get('notes', '')
-    
-    tech_history, base_customer_info_notes = parse_tech_report_from_notes(current_notes)
-    customer_feedback_existing = parse_customer_feedback_from_notes(current_notes)
-    
-    customer_feedback_existing['customer_line_user_id'] = customer_line_user_id
-    customer_feedback_existing['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S")
-    
-    final_notes = base_customer_info_notes.strip()
-    if tech_history:
-        all_reports_text = ""
-        for report in sorted(tech_history, key=lambda x: x.get('summary_date', '')):
-            final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-        
-    final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback_existing, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-    
-    updated_task = update_google_task(task_id=task_id, notes=final_notes, status=task['status'], due=task.get('due'))
-    
-    if updated_task:
-        print(f"INFO: Successfully saved customer LINE ID {customer_line_user_id} for task {task_id}.", file=sys.stderr)
-        cache.clear()
-        
-        settings = get_app_settings()
-        shop_info = settings.get('shop_info', {})
-        customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-        
-        welcome_message = (
-            f"เรียน ลูกค้า {customer_info.get('name', '-')},\n"
-            f"Comphone ยินดีที่ได้ให้บริการครับ/ค่ะ! 😊\n"
-            f"เราจะใช้ LINE นี้ในการส่งข้อมูลสำคัญหรือโปรโมชั่นพิเศษในอนาคตครับ/ค่ะ\n\n"
-            f"หากมีข้อสงสัยใดๆ หรือต้องการความช่วยเหลือเพิ่มเติม ติดต่อเราได้ที่:\n"
-            f"โทร: {shop_info.get('contact_phone', '081-XXX-XXXX')}\n"
-            f"LINE ID: {shop_info.get('line_id', '@ComphoneService')}\n\n"
-            f"ขอบคุณที่เลือกใช้บริการ Comphone ครับ/ค่ะ"
-        )
-        try:
-            current_app.line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=welcome_message))
-            print(f"INFO: Sent welcome message to new customer {customer_line_user_id}.", file=sys.stderr)
-        except Exception as e:
-            print(f"ERROR: Failed to send welcome message to customer {customer_line_user_id}: {e}", file=sys.stderr)
-
-        return jsonify({"status": "success", "message": "LINE ID saved"}), 200
-    else:
-        print(f"ERROR: Failed to save customer LINE ID {customer_line_user_id} for task {task_id}.", file=sys.stderr)
-        return jsonify({"status": "error", "message": "Failed to save LINE ID"}), 500
-
-
-@app.route('/customer_problem_form')
-def customer_problem_form():
-    """Renders the customer problem LIFF form."""
-    task_id = request.args.get('task_id')
-    task = get_single_task(task_id)
-    if not task:
-        flash("ไม่พบข้อมูลงานสำหรับแจ้งปัญหา", 'danger')
-        return redirect(url_for('summary'))
-    
-    parsed_task = parse_google_task_dates(task)
-    parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-
-    return render_template('customer_problem_form.html', task=parsed_task)
-
-@app.route('/submit_customer_problem', methods=['POST'])
-def submit_customer_problem():
-    """Handles submission from customer problem form."""
-    task_id = request.form.get('task_id')
-    problem_description = request.form.get('problem_description')
-    preferred_datetime_str = request.form.get('preferred_datetime')
-
-    task = get_single_task(task_id)
-    if not task:
-        flash("ไม่พบข้อมูลงานที่เกี่ยวข้อง", 'danger')
-        return redirect(url_for('summary'))
-
-    preferred_datetime_thai = None
-    if preferred_datetime_str:
-        try:
-            preferred_datetime_thai = THAILAND_TZ.localize(datetime.datetime.strptime(preferred_datetime_str, "%Y-%m-%dT%H:%M"))
-        except ValueError:
-            print(f"ERROR: Invalid preferred_datetime format from form: {preferred_datetime_thai}", file=sys.stderr)
-    
-    customer_problem_data = {
-        'problem_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-        'problem_description': problem_description,
-        'preferred_datetime': preferred_datetime_thai.strftime("%Y-%m-%d %H:%M") if preferred_datetime_thai else 'ไม่มีระบุ',
-        'feedback_type': 'problem_reported'
-    }
-
-    current_notes = task.get('notes', '')
-    customer_feedback_existing = parse_customer_feedback_from_notes(current_notes)
-    customer_feedback_existing.update(customer_problem_data) 
-    customer_line_user_id = customer_feedback_existing.get('customer_line_user_id') 
-
-    tech_reports_history, base_customer_info_notes = parse_tech_report_from_notes(current_notes)
-    
-    final_notes = base_customer_info_notes.strip()
-    if tech_reports_history:
-        all_reports_text = ""
-        for report in sorted(tech_reports_history, key=lambda x: x.get('summary_date', '')):
-            final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-        
-    final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback_existing, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-    updated_task = update_google_task(
-        task_id=task_id,
-        notes=final_notes,
-        status='needsAction', 
-        due=task.get('due') 
-    )
-    cache.clear()
-
-    if updated_task:
-        flash('บันทึกปัญหาและแจ้งผู้ดูแลเรียบร้อยแล้ว!', 'success')
-        
-        settings = get_app_settings()
-        admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
-        manager_user_id = settings.get('line_recipients', {}).get('manager_user_id', '')
-        shop_info = settings.get('shop_info', {})
-        
-        customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-        
-        notification_text = (
-            f"🚨 ลูกค้าแจ้งปัญหา! 🚨\n"
-            f"งาน: {task.get('title', '-')}\n"
-            f"ลูกค้า: {customer_info.get('name', '-')}\n"
-            f"โทร: {customer_info.get('phone', '-')}\n"
-            f"รายละเอียดปัญหา: {problem_description or '-'}\n"
-            f"วันเวลาที่ลูกค้าสะดวก: {preferred_datetime_thai.strftime('%d/%m/%y %H:%M') if preferred_datetime_thai else 'ไม่มีระบุ'}\n"
-            f"สถานะงานถูกเปลี่ยนเป็น: 'ยังไม่เสร็จ'\n\n"
-            f"ดูรายละเอียดงาน: {url_for('task_details', task_id=task_id, _external=True)}"
-        )
-        if manager_user_id:
-            notification_text += f"\n(ถึงผู้ดูแล: @{manager_user_id})" 
-
-        if admin_group_id:
-            try:
-                current_app.line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
-                print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
-            except Exception as e:
-                print(f"ERROR: Failed to send problem notification to admin group: {e}", file=sys.stderr)
-
-        if customer_line_user_id:
-            thank_you_message_to_customer = (
-                f"เรียน ลูกค้า {customer_info.get('name', '-')},\n"
-                f"Comphone ได้รับแจ้งปัญหาเกี่ยวกับงาน: {task.get('title', '-')}\n"
-                f"เรียบร้อยแล้วครับ/ค่ะ\n"
-                f"ทีมงานกำลังตรวจสอบข้อมูลและจะติดต่อกลับเพื่อดูแลท่านโดยเร็วที่สุดครับ/ค่ะ\n\n"
-                f"หากมีข้อสงสัยเร่งด่วน โปรดติดต่อเราได้ที่:\n"
-                f"โทร: {shop_info.get('contact_phone', '081-XXX-XXXX')}\n"
-                f"LINE ID: {shop_info.get('line_id', '@ComphoneService')}\n\n"
-                f"ขออภัยในความไม่สะดวกอีกครั้งครับ/ค่ะ\n"
-                f"Comphone - ยินดีบริการเสมอครับ/ค่ะ"
-            )
-            try:
-                current_app.line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=thank_you_message_to_customer))
-                print(f"INFO: Sent thank you message to customer {customer_line_user_id} for task {task_id}.", file=sys.stderr)
-            except Exception as e:
-                print(f"ERROR: Failed to send thank you message to customer {customer_line_user_id}: {e}", file=sys.stderr)
-
-    else:
-        flash('เกิดข้อผิดพลาดในการบันทึกปัญหา', 'danger')
-
-    return render_template('liff_close_page.html', message="บันทึกข้อมูลเรียบร้อยแล้ว!")
-
-
-# --- Gunicorn/Flask App Initialization ---
+# --- Main entry point for Gunicorn ---
 # This function creates and configures the Flask app instance.
 # Gunicorn will be configured to call this function (e.g., `app:create_flask_app_instance`)
 def create_flask_app_instance():
+    # Define app instance here
     _app = Flask(__name__, static_folder='static')
     _app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
     _app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-    # Initialize LINE Bot SDK instances here
+    # Initialize LINE Bot SDK instances here, within the app creation context
     _line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
     _handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
 
     # Attach line_bot_api and handler to Flask app context for global access
     # This is crucial for functions outside route decorators (like scheduled jobs)
-    # and for handlers not directly passed the line_bot_api/handler instances.
+    # and for webhook handler where `handler` is called explicitly.
     _app.line_bot_api = _line_bot_api
     _app.handler = _handler
 
-    # Define LINE webhook event handlers within this function
-    # These decorators will correctly bind to the _handler instance
-    @_handler.add(MessageEvent, message=TextMessage)
-    @_handler.add(PostbackEvent)
-    def handle_line_webhook_event(event): # Renamed to prevent conflict and clarify scope
-        """Handles various LINE webhook events (messages and postbacks)."""
-        # All logic that was previously in handle_line_webhook_event goes here
-        # It now has access to _line_bot_api and _handler implicitly via closure
-        # or explicitly via current_app.
-        if isinstance(event, PostbackEvent):
-            print(f"INFO: Received PostbackEvent: {event.postback.data}", file=sys.stderr)
-            data = event.postback.data
-            params = dict(item.split('=') for item in data.split('&'))
-
-            action = params.get('action')
-            if action == 'customer_feedback':
-                task_id = params.get('task_id')
-                feedback_type = params.get('feedback')
-                customer_line_user_id = event.source.userId 
-
-                task = get_single_task(task_id)
-                if not task:
-                    print(f"ERROR: Postback for unknown task_id: {task_id}", file=sys.stderr)
-                    return
-                
-                current_notes = task.get('notes', '')
-                tech_reports_history, base_customer_info_notes = parse_tech_report_from_notes(current_notes)
-                customer_feedback_data_existing = parse_customer_feedback_from_notes(current_notes) 
-                
-                customer_feedback_data_existing.update({
-                    'feedback_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-                    'feedback_type': feedback_type,
-                    'customer_line_user_id': customer_line_user_id 
-                })
-                
-                feedback_json_str = json.dumps(customer_feedback_data_existing, ensure_ascii=False, indent=2)
-                
-                final_notes = base_customer_info_notes.strip()
-                if tech_reports_history: 
-                    all_reports_text = ""
-                    for report in sorted(tech_reports_history, key=lambda x: x.get('summary_date', '')):
-                        final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-                    
-                final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{feedback_json_str}\n--- CUSTOMER_FEEDBACK_END ---"
-
-                new_task_status = 'needsAction' if feedback_type == 'problem' else task['status']
-                update_google_task(task_id=task_id, notes=final_notes, status=new_task_status, due=task.get('due'))
-                print(f"INFO: Task {task_id} updated with feedback: {feedback_type}. Status set to {new_task_status}. Customer ID: {customer_line_user_id}", file=sys.stderr)
-                cache.clear()
-
-                if feedback_type == 'problem':
-                    settings = get_app_settings()
-                    admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
-                    manager_user_id = settings.get('line_recipients', {}).get('manager_user_id', '')
-                    
-                    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-                    
-                    notification_text = (
-                        f"⚠️ แจ้งเตือน: ลูกค้าแจ้งปัญหา! ⚠️\n"
-                        f"งาน: {task.get('title', '-')}\n"
-                        f"ลูกค้า: {customer_info.get('name', '-')}\n"
-                        f"โทร: {customer_info.get('phone', '-')}\n"
-                        f"สถานะงานถูกเปลี่ยนเป็น: 'ยังไม่เสร็จ'\n\n" 
-                        f"โปรดตรวจสอบและติดต่อกลับลูกค้า:\n{url_for('task_details', task_id=task_id, _external=True)}\n"
-                    )
-
-                    if manager_user_id:
-                        notification_text += f"\n(ถึงผู้ดูแล: @{manager_user_id})" 
-                    
-                    problem_form_url_for_admin = url_for('customer_problem_form', task_id=task_id, _external=True)
-                    notification_text += f"\nลิงก์แจ้งปัญหาลูกค้า: {problem_form_url_for_admin}"
-
-
-                    _line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
-                    print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
-                
-            
-        elif isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
-            text = event.message.text.strip()
-            text_lower = text.lower()
-            
-            command_map = {
-                'งานค้าง': handle_outstanding_tasks_command,
-                'งานเสร็จ': handle_completed_tasks_command,
-                'งานวันนี้': lambda e: handle_daily_tasks_command(e, 'today'),
-                'งานพรุ่งนี้': lambda e: handle_daily_tasks_command(e, 'tomorrow'),
-                'สร้างงานใหม่': handle_create_new_task_command,
-                'สรุปรายงาน': lambda e: _line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
-                'comphone': None 
-            }
-            
-            if text_lower in command_map:
-                if text_lower == 'comphone':
-                    help_text = (
-                        "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
-                        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-                        "➡️ `งานเสร็จ`\nดูงานที่ทำเสร็จล่าสุด\n\n"
-                        "➡️ `งานวันนี้`\nดูงานที่มีกำหนดเสร็จในวันนี้\n\n"
-                        "➡️ `งานพรุ่งนี้`\nดูงานที่มีกำหนดเสร็จในวันพรุ่งนี้\n\n"
-                        "➡️ `ดูงาน ชื่อลูกค้า`\nค้นหางานของลูกค้าคนนั้นๆ (เช่น: `ดูงาน สมศรี`)\n\n"
-                        "➡️ `สร้างงานใหม่`\nเปิดฟอร์มสำหรับสร้างงานใหม่\n\n"
-                        "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บสรุปงาน\n\n"
-                        "หากคุณต้องการดูเมนูนี้อีกครั้ง พิมพ์ `comphone`"
-                    )
-                    _line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
-                else:
-                    if command_map[text_lower]: 
-                        command_map[text_lower](event) 
-                return
+    # Define LINE webhook event handler and other routes here
+    # Routes and handlers are now defined relative to _app and _handler
+    # @_app.route / @_handler.add
     
-    # Context processor needs to be set up on the app instance
+    # Callback route for LINE webhook
+    @_app.route("/callback", methods=['POST'])
+    def callback():
+        signature = request.headers['X-Line-Signature']
+        body = request.get_data(as_text=True)
+        print("INFO: LINE Webhook Request body: " + body, file=sys.stderr)
+        try:
+            _handler.handle(body, signature) # Use the _handler instance
+        except InvalidSignatureError:
+            print(f"ERROR: InvalidSignatureError: {body}", file=sys.stderr)
+            abort(400)
+        except Exception as e:
+            print(f"ERROR: Unhandled error in webhook: {e}", file=sys.stderr)
+            abort(500)
+        return 'OK'
+
+    # The actual line event handler (moved from global scope)
+    # It's already defined above as handle_line_webhook_event
+    # We just need to make sure _handler.add points to it.
+    # This is handled by @_handler.add decorators at the function definition.
+
+    # Flask context processor (needs to be set up on the app instance)
     @_app.context_processor
     def inject_now():
         return {'now': datetime.datetime.now(THAILAND_TZ)}
@@ -1277,12 +968,17 @@ def create_flask_app_instance():
         _APP_SETTINGS_STORE = get_app_settings() 
         
         # Now that settings are loaded, initialize and run the scheduler
-        run_scheduler()
-    
+        _scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ) # Create scheduler instance here
+        
+        # Pass the _scheduler instance to run_scheduler
+        run_scheduler(_scheduler) 
+        _app.scheduler = _scheduler # Attach scheduler to app for potential later access if needed
+
     return _app
 
 # Gunicorn will look for a callable named 'app' or 'application'.
-# We define 'app' at the top level and assign the result of create_flask_app_instance() to it.
+# We assign the result of create_flask_app_instance() to 'app'.
+# This makes 'app' the WSGI callable that Gunicorn will serve.
 app = create_flask_app_instance()
 
 if __name__ == '__main__':
