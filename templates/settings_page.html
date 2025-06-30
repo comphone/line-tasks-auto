@@ -97,6 +97,33 @@
             </div>
         </div>
     </div>
+
+    {# NEW: Auto Backup Settings #}
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-cloud-upload-alt me-2"></i>การสำรองข้อมูลอัตโนมัติ (ไปยัง Google Drive)</h5>
+        </div>
+        <div class="card-body">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="auto_backup_enabled" name="auto_backup_enabled" {% if settings.auto_backup.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="auto_backup_enabled">เปิดใช้งานการสำรองข้อมูลอัตโนมัติ</label>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="auto_backup_hour" class="form-label">เวลาสำรอง (ชั่วโมง, 0-23)</label>
+                    <input type="number" class="form-control" id="auto_backup_hour" name="auto_backup_hour" value="{{ settings.auto_backup.hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="auto_backup_minute" class="form-label">เวลาสำรอง (นาที, 0-59)</label>
+                    <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute" value="{{ settings.auto_backup.minute_thai }}" min="0" max="59">
+                </div>
+            </div>
+            <p class="text-muted small">ระบบจะทำการสำรองข้อมูลทั้งหมด (Google Tasks, การตั้งค่า, แคตตาล็อกอุปกรณ์, และโค้ด) ไปยัง Google Drive Folder ID ที่กำหนดไว้ใน Environment Variable `GOOGLE_DRIVE_FOLDER_ID`</p>
+            <p class="text-danger small">**ข้อควรระวัง:** Render.com เป็นระบบไฟล์ชั่วคราว (Ephemeral Filesystem) ดังนั้นหากไม่ได้ตั้งค่า `GOOGLE_DRIVE_FOLDER_ID` หรือเกิดข้อผิดพลาดในการอัปโหลด ไฟล์ `settings.json` (รวมถึงแคตตาล็อกอุปกรณ์) และไฟล์ที่อัปโหลดจะหายไปเมื่อเซิร์ฟเวอร์รีสตาร์ท</p>
+        </div>
+    </div>
+    {# END NEW: Auto Backup Settings #}
+
     <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่า</button>
 </form>
 
@@ -130,8 +157,13 @@
 <div class="card border-warning">
     <div class="card-header bg-warning text-dark"><i class="fas fa-archive me-2"></i>สำรองข้อมูลระบบ</div>
     <div class="card-body">
-        <p>ดาวน์โหลดไฟล์สำรองข้อมูลทั้งหมดของระบบ</p>
+        <p>ดาวน์โหลดไฟล์สำรองข้อมูลทั้งหมดของระบบ (Google Tasks, การตั้งค่า, โค้ด)</p>
         <a href="{{ url_for('backup_data') }}" class="btn btn-warning"><i class="fas fa-download me-2"></i>ดาวน์โหลด Backup (.zip)</a>
+        <hr class="my-3">
+        <p>คุณยังสามารถสั่งสำรองข้อมูลอัตโนมัติไปยัง Google Drive ทันที (โดยไม่ต้องรอเวลาที่ตั้งไว้) โดยกดปุ่มนี้</p>
+        <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST">
+            <button type="submit" class="btn btn-info"><i class="fas fa-cloud-upload-alt me-2"></i>สั่งสำรองข้อมูลไป Google Drive ทันที</button>
+        </form>
     </div>
 </div>
 {% endblock %}
