@@ -119,7 +119,7 @@
                 </div>
             </div>
             <p class="text-muted small">ระบบจะทำการสำรองข้อมูลทั้งหมด (Google Tasks, การตั้งค่า, แคตตาล็อกอุปกรณ์, และโค้ด) ไปยัง Google Drive Folder ID ที่กำหนดไว้ใน Environment Variable `GOOGLE_DRIVE_FOLDER_ID`</p>
-            <p class="text-danger small">**ข้อควรระวัง:** Render.com เป็นระบบไฟล์ชั่วคราว (Ephemeral Filesystem) ดังนั้นหากไม่ได้ตั้งค่า `GOOGLE_DRIVE_FOLDER_ID` หรือเกิดข้อผิดพลาดในการอัปโหลด ไฟล์ `settings.json` (รวมถึงแคตตาล็อกอุปกรณ์) และไฟล์ที่อัปโหลดจะหายไปเมื่อเซิร์ฟเวอร์รีสตาร์ท</p>
+            <p class="text-danger small">**ข้อควรระวัง:** Render.com เป็นระบบไฟล์ชั่วคราว (Ephemeral Filesystem) ดังนั้นหากไม่ได้ตั้งค่า `GOOGLE_DRIVE_FOLDER_ID` หรือ `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` หรือเกิดข้อผิดพลาดในการอัปโหลด ไฟล์ `settings.json` (รวมถึงแคตตาล็อกอุปกรณ์) และไฟล์ที่อัปโหลดจะหายไปเมื่อเซิร์ฟเวอร์รีสตาร์ท</p>
         </div>
     </div>
     {# END NEW: Auto Backup Settings #}
