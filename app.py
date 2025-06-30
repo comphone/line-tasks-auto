@@ -34,13 +34,15 @@ from linebot.models import (
 )
 # ---------------------------------------------
 
-# --- Google API Imports (สำคัญ: InstalledAppFlow ต้องถูก import) ---
+# --- Google API Imports ---
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
 from google_auth_oauthlib.flow import InstalledAppFlow 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
+# Corrected imports for Googleapiclient.http
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload # <-- MediaIoBaseDownload is needed for downloading
+from googleapiclient.http import MediaIoBaseUpload # <-- NEW: MediaIoBaseUpload for uploading BytesIO
 
 import pandas as pd 
 
@@ -93,8 +95,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 } 
 }
-# _APP_SETTINGS_STORE is declared here, but its value is set later after
-# necessary helper functions are defined and initial settings are loaded.
 _APP_SETTINGS_STORE = {} 
 
 #<editor-fold desc="Helper and Utility Functions">
@@ -499,7 +499,8 @@ def _create_backup_zip():
             return None, None
 
         memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w', zipfile.DEFLATED) as zf:
+        # Corrected zipfile.DEFLATED to zipfile.ZIP_DEFLATED
+        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf: 
             zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
             # No longer write settings_backup.json here as it's uploaded separately
             # zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False)) 
@@ -536,8 +537,8 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
     
     try:
         mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
-        # Create a MediaIoBaseUpload object from BytesIO
-        media = MediaIoBaseUpload(memory_file, mimetype=mime_type, resumable=True)
+        # Corrected: MediaIoBaseUpload is already imported at the top
+        media = MediaIoBaseUpload(memory_file, mimetype=mime_type, resumable=True) 
         file_metadata = {'name': filename, 'parents': [drive_folder_id]}
         
         file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
@@ -1329,3 +1330,40 @@ def handle_message(event):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+```
+
+**สาเหตุของปัญหา:**
+
+จาก Log ล่าสุดที่คุณให้มา:
+
+1.  `module 'zipfile' has no attribute 'DEFLATED'`
+2.  `name 'MediaIoBaseUpload' is not defined`
+
+เป็นข้อผิดพลาด 2 อย่างที่มาจาก **การ import และการเรียกใช้ที่ไม่ถูกต้อง** ในส่วนของการสำรองข้อมูลครับ
+
+**วิธีการแก้ไข:**
+
+ผมได้แก้ไขโค้ด `app.py` แล้ว (ใน Code block ด้านบนนี้) โดย:
+
+1.  **เปลี่ยน `zipfile.DEFLATED` เป็น `zipfile.ZIP_DEFLATED`**:
+    * นี่คือชื่อค่าคงที่ที่ถูกต้องสำหรับโหมดการบีบอัดแบบ DEFLATE ในไลบรารี `zipfile` ของ Python.
+    * **ค้นหา:** `with zipfile.ZipFile(memory_file, 'w', zipfile.DEFLATED) as zf:`
+    * **เปลี่ยนเป็น:** `with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:`
+
+2.  **เพิ่ม `MediaIoBaseUpload` ในบรรทัด import ที่ถูกต้อง**:
+    * `MediaIoBaseUpload` เป็นคลาสที่จำเป็นสำหรับการอัปโหลดข้อมูลจาก `BytesIO` ไปยัง Google Drive.
+    * **ค้นหา:** `from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload`
+    * **เปลี่ยนเป็น (เพิ่ม `MediaIoBaseUpload` เข้าไป):**
+        ```python
+        from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload # สำหรับดาวน์โหลด
+        from googleapiclient.http import MediaIoBaseUpload # <-- NEW: สำหรับอัปโหลด BytesIO
+        ```
+
+**สิ่งที่คุณต้องทำ:**
+
+1.  **คัดลอกโค้ดเต็มของ `app.py` ที่อยู่ในข้อความนี้ทั้งหมด**
+2.  **นำไปวางทับไฟล์ `app.py` เดิมของคุณ** (ตรวจสอบให้แน่ใจว่าวางทับทั้งหมด).
+3.  **บันทึกไฟล์.**
+4.  **Deploy หรือรีสตาร์ท Web Service บน Render.com อีกครั้ง.**
+
+การแก้ไขทั้งสองจุดนี้จะช่วยให้ฟังก์ชันการสำรองข้อมูลอัตโนมัติทำงานได้อย่างถูกต้องครับ และจะแก้ปัญหา `NameError` และ `AttributeError` ที่คุณเ
