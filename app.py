@@ -37,7 +37,7 @@ from linebot.models import (
 # --- Google API Imports (สำคัญ: InstalledAppFlow ต้องถูก import) ---
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
-from google_auth_oauthlib.flow import InstalledAppFlow # <--- ต้องแน่ใจว่ามีบรรทัดนี้
+from google_auth_oauthlib.flow import InstalledAppFlow 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
@@ -93,9 +93,7 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 } 
 }
-# _APP_SETTINGS_STORE is declared here, but its value is set later after
-# necessary helper functions are defined and initial settings are loaded.
-_APP_SETTINGS_STORE = {} 
+_APP_SETTINGS_STORE = {} # Global variable to hold settings
 
 #<editor-fold desc="Helper and Utility Functions">
 # --- All Helper and Utility Functions should be defined first ---
@@ -129,7 +127,7 @@ def get_google_service(api_name, api_version):
     token_path = 'token.json'
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
 
-    # Try to load credentials from environment variable first
+    # Try to load credentials from environment variable first (PREFERRED for Render)
     if google_token_json_str:
         try: 
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
@@ -137,7 +135,7 @@ def get_google_service(api_name, api_version):
         except Exception as e: 
             app.logger.warning(f"Could not load token from env var, falling back to token.json: {e}")
     
-    # Fallback to local token.json file (which will be ephemeral on Render)
+    # Fallback to local token.json file (Ephemeral on Render, only useful for initial local setup)
     if not creds and os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
         app.logger.info(f"Loaded Google credentials from local {token_path}.")
@@ -155,24 +153,27 @@ def get_google_service(api_name, api_version):
             app.logger.error(f"Error refreshing token: {e}")
             creds = None # Invalidate creds if refresh fails
     
-    # If no valid credentials, try to get new ones from credentials.json (local dev only)
+    # --- IMPORTANT: REMOVED run_console() FOR DEPLOYMENT ON RENDER ---
+    # This block is for local development only, where InstalledAppFlow.run_console() can open a browser.
+    # On Render, this will cause an error because there is no display/console for interaction.
+    # The primary authentication method for Render must be GOOGLE_TOKEN_JSON.
     if not creds or not creds.valid:
-        if os.path.exists('credentials.json'):
-            app.logger.info("Attempting to get new Google credentials from credentials.json.")
-            try:
-                # This will typically open a browser for authentication on local dev
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-                creds = flow.run_console() 
-                if creds:
-                    with open(token_path, 'w') as token: token.write(creds.to_json())
-                    app.logger.info(f"New token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
-            except Exception as e:
-                app.logger.error(f"Error getting new credentials: {e}")
-                creds = None
-        else:
+        # if os.path.exists('credentials.json'): 
+        #     app.logger.info("Attempting to get new Google credentials from credentials.json.")
+        #     try:
+        #         flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+        #         creds = flow.run_console() # THIS LINE CAUSES ERROR ON RENDER
+        #         if creds:
+        #             with open(token_path, 'w') as token: token.write(creds.to_json())
+        #             app.logger.info(f"New token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
+        #     except Exception as e:
+        #         app.logger.error(f"Error getting new credentials: {e}")
+        #         creds = None
+        # else: 
             app.logger.error("No valid Google credentials available. API service cannot be built.")
-            app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set or credentials.json exists.")
-
+            app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set.")
+            app.logger.error("If running locally, ensure credentials.json exists for initial setup.")
+            
     if not creds or not creds.valid:
         app.logger.error("Final check: No valid Google credentials after all attempts.")
         return None
