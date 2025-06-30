@@ -753,6 +753,10 @@ def scheduled_customer_follow_up_job():
         admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
         technician_group_id = settings.get('line_recipients', {}).get('technician_group_id', '')
         
+        # New: If customer_line_user_id is available, send directly to customer.
+        # Otherwise, send to admin/technician group for manual forwarding.
+        send_to_customer_directly = False # Default to false unless we have customer ID
+        
         if not admin_group_id and not technician_group_id:
             app.logger.warning("No LINE recipient IDs configured for customer follow-up. Skipping.")
             return
@@ -772,19 +776,14 @@ def scheduled_customer_follow_up_job():
                     
                     # Check if completed 24-48 hours ago AND no follow-up sent yet
                     if two_days_ago <= completed_dt_thai < one_day_ago:
-                        # Check if follow-up flag is present in notes JSON
                         notes_text = task.get('notes', '')
-                        # Corrected: Use parse_customer_feedback_from_notes to check
-                        customer_feedback = parse_customer_feedback_from_notes(notes_text)
+                        customer_feedback_data = parse_customer_feedback_from_notes(notes_text)
                         
-                        follow_up_sent = False
-                        if customer_feedback.get('follow_up_sent_date'):
-                            follow_up_sent = True # Assume if follow_up_sent_date exists, follow-up was sent.
-                            # Optionally, you could parse and check feedback_data.get('feedback_type') == 'problem'
-                            # to resend if it was a problem that wasn't addressed. For now, simple check.
-
-                        if not follow_up_sent:
+                        follow_up_sent_flag = customer_feedback_data.get('follow_up_sent_date') is not None
+                        
+                        if not follow_up_sent_flag:
                             follow_up_tasks.append(task)
+                            task['_customer_line_user_id'] = customer_feedback_data.get('customer_line_user_id') # Store customer ID if found
                             # Add temporary flag for this run to avoid duplicate in same batch
                             task['_temp_follow_up_eligible'] = True 
 
@@ -796,11 +795,10 @@ def scheduled_customer_follow_up_job():
             app.logger.info("No tasks eligible for customer follow-up today.")
             return
             
-        messages_to_send_admin = []
         for task in follow_up_tasks:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            customer_line_user_id_for_task = task.get('_customer_line_user_id') # Get stored ID for this task
             
-            # Create Flex Message for customer
             customer_follow_up_flex = _create_customer_follow_up_flex_message(
                 task_id=task.get('id'),
                 task_title=task.get('title'),
@@ -808,59 +806,71 @@ def scheduled_customer_follow_up_job():
                 customer_phone=customer_info.get('phone')
             )
             
-            # Send message to admin/tech to forward
-            admin_message_text = (
-                f"✅ งานซ่อมลูกค้า {customer_info.get('name', '-')}(โทร: {customer_info.get('phone', '-')}) เสร็จสิ้นครบ 1 วันแล้ว:\n"
-                f"โปรดส่งแบบสอบถามติดตามผลนี้ให้ลูกค้าครับ/ค่ะ\n"
-                f"รายละเอียดงาน: {task.get('title', '-').splitlines()[0] if task.get('title') else '-'}\n"
-                f"ลิงก์งาน: {url_for('task_details', task_id=task.get('id'), _external=True)}"
-            )
-            
-            # Send the text message first, then the Flex message as a separate message
-            messages_to_send_admin.append(TextSendMessage(text=admin_message_text))
-            messages_to_send_admin.append(FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex))
-
             # Mark task as followed-up in Google Tasks notes to prevent resending
             current_notes = task.get('notes', '')
             tech_history_existing, base_customer_info_notes_existing = parse_tech_report_from_notes(current_notes)
-            customer_feedback_existing = parse_customer_feedback_from_notes(current_notes) # Get existing feedback data
+            customer_feedback_existing = parse_customer_feedback_from_notes(current_notes) 
             
-            # Update customer feedback data with sent status and customer_user_id (if already known)
             customer_feedback_existing.update({
                 'follow_up_sent_date': now_thai.strftime("%Y-%m-%d %H:%M:%S"),
-                'initial_feedback': 'waiting_for_feedback' # Initial state
-                # We don't have customer_user_id here yet, it's captured on postback.
+                'initial_feedback': 'waiting_for_feedback', # Initial state
+                'customer_line_user_id': customer_line_user_id_for_task # Ensure customer ID is saved in notes now
             })
 
-            # Reconstruct notes with updated/new feedback and existing tech reports
-            final_notes = base_customer_info_notes_existing.strip() # Start with clean base notes
-            if tech_history_existing: # Re-add tech reports
+            final_notes = base_customer_info_notes_existing.strip() 
+            if tech_history_existing: 
                 all_reports_text = ""
                 for report in sorted(tech_history_existing, key=lambda x: x.get('summary_date', '')):
                     all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
                 final_notes += all_reports_text
 
-            # Add the updated customer feedback entry
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback_existing, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
             update_google_task(task_id=task['id'], notes=final_notes, status=task['status'], due=task.get('due'))
             app.logger.info(f"Marked task {task.get('id')} as follow-up sent and updated notes.")
-            cache.clear() # Clear cache to reflect updated task notes
+            cache.clear() 
 
+            # --- Sending Logic: Direct to Customer vs. Admin Group ---
+            if customer_line_user_id_for_task:
+                app.logger.info(f"Sending direct follow-up to customer {customer_line_user_id_for_task} for task {task.get('id')}.")
+                try:
+                    line_bot_api.push_message(customer_line_user_id_for_task, FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex))
+                    # Also send a small notification to admin that direct message was sent
+                    admin_notify_text = f"✅ ส่งแบบสอบถามความพึงพอใจลูกค้า [{customer_info.get('name', '-')}] ไปยังลูกค้าโดยตรงเรียบร้อยแล้ว"
+                    if admin_group_id:
+                        line_bot_api.push_message(admin_group_id, TextSendMessage(text=admin_notify_text))
+                except Exception as e:
+                    app.logger.error(f"Failed to send direct customer follow-up to {customer_line_user_id_for_task}: {e}")
+                    # Fallback to group if direct send fails
+                    admin_fallback_text = (
+                        f"⚠️ ส่งแบบสอบถามความพึงพอใจลูกค้า [{customer_info.get('name', '-')}] โดยตรงไม่สำเร็จ\n"
+                        f"โปรดส่งแบบสอบถามนี้ให้ลูกค้าแทนครับ/ค่ะ\n"
+                        f"รายละเอียดงาน: {task.get('title', '-').splitlines()[0] if task.get('title') else '-'}\n"
+                        f"ลิงก์งาน: {url_for('task_details', task_id=task.get('id'), _external=True)}"
+                    )
+                    if admin_group_id:
+                        line_bot_api.push_message(admin_group_id, [TextSendMessage(text=admin_fallback_text), FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex)])
+                    app.logger.info(f"Sent fallback follow-up to admin group for task {task.get('id')}.")
+            else:
+                app.logger.info(f"No LINE User ID for customer {customer_info.get('name', '-')}. Sending follow-up to admin/tech group for manual forwarding.")
+                admin_message_text = (
+                    f"✅ งานซ่อมลูกค้า {customer_info.get('name', '-')}(โทร: {customer_info.get('phone', '-')}) เสร็จสิ้นครบ 1 วันแล้ว:\n"
+                    f"โปรดส่งแบบสอบถามติดตามผลนี้ให้ลูกค้าครับ/ค่ะ\n"
+                    f"รายละเอียดงาน: {task.get('title', '-').splitlines()[0] if task.get('title') else '-'}\n"
+                    f"ลิงก์งาน: {url_for('task_details', task_id=task.get('id'), _external=True)}"
+                )
+                messages_to_send_group = [TextSendMessage(text=admin_message_text), FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex)]
 
-        # Send messages to recipients
-        if messages_to_send_admin:
-            try:
-                if admin_group_id:
-                    # LINE API allows sending multiple messages in a single push_message call
-                    line_bot_api.push_message(admin_group_id, messages_to_send_admin)
-                    app.logger.info(f"Sent {len(messages_to_send_admin)} follow-up messages to admin group.")
-                if technician_group_id and technician_group_id != admin_group_id: # Avoid sending duplicate if same group
-                    line_bot_api.push_message(technician_group_id, messages_to_send_admin)
-                    app.logger.info(f"Sent {len(messages_to_send_admin)} follow-up messages to technician group.")
-            except Exception as e:
-                app.logger.error(f"Failed to send customer follow-up LINE messages: {e}")
-
+                try:
+                    if admin_group_id:
+                        line_bot_api.push_message(admin_group_id, messages_to_send_group)
+                        app.logger.info(f"Sent group follow-up messages for task {task.get('id')} to admin group.")
+                    if technician_group_id and technician_group_id != admin_group_id:
+                        line_bot_api.push_message(technician_group_id, messages_to_send_group)
+                        app.logger.info(f"Sent group follow-up messages for task {task.get('id')} to technician group.")
+                except Exception as e:
+                    app.logger.error(f"Failed to send group follow-up LINE messages for task {task.get('id')}: {e}")
+            
 # NEW: handle postback event for customer feedback
 @handler.add(MessageEvent, message=TextMessage) # Keep existing TextMessage handler
 @handler.add(PostbackEvent) # Add PostbackEvent handler
@@ -879,14 +889,12 @@ def handle_postback(event):
             task = get_single_task(task_id)
             if not task:
                 app.logger.error(f"Postback for unknown task_id: {task_id}")
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขออภัย ไม่พบข้อมูลงานนี้ครับ"))
                 return
             
             current_notes = task.get('notes', '')
             tech_reports_history, base_customer_info_notes = parse_tech_report_from_notes(current_notes)
-            customer_feedback_data_existing = parse_customer_feedback_from_notes(current_notes) # Get existing feedback data
+            customer_feedback_data_existing = parse_customer_feedback_from_notes(current_notes) 
             
-            # Update customer feedback data
             customer_feedback_data_existing.update({
                 'feedback_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'feedback_type': feedback_type,
@@ -897,21 +905,18 @@ def handle_postback(event):
             
             # Reconstruct notes with updated/new feedback and existing tech reports
             final_notes = base_customer_info_notes.strip()
-            if tech_reports_history: # Re-add tech reports
+            if tech_reports_history: 
+                all_reports_text = ""
                 for report in sorted(tech_reports_history, key=lambda x: x.get('summary_date', '')):
                     final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-            
+                
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{feedback_json_str}\n--- CUSTOMER_FEEDBACK_END ---"
 
-            # Update Google Task with new notes and potentially change status
-            # If feedback is 'problem', change status back to 'needsAction'
             new_task_status = 'needsAction' if feedback_type == 'problem' else task['status']
             update_google_task(task_id=task_id, notes=final_notes, status=new_task_status, due=task.get('due'))
             app.logger.info(f"Task {task_id} updated with feedback: {feedback_type}. Status set to {new_task_status}. Customer ID: {customer_line_user_id}")
             cache.clear()
 
-            # Send immediate reply to customer via postback's display_text
-            # and send notification to manager if problem
             if feedback_type == 'problem':
                 settings = get_app_settings()
                 admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
@@ -925,11 +930,10 @@ def handle_postback(event):
                     f"งาน: {task.get('title', '-')}\n"
                     f"ลูกค้า: {customer_info.get('name', '-')}\n"
                     f"โทร: {customer_info.get('phone', '-')}\n"
-                    f"สถานะงานถูกเปลี่ยนเป็น: 'ยังไม่เสร็จ'\n\n" # Updated status info
+                    f"สถานะงานถูกเปลี่ยนเป็น: 'ยังไม่เสร็จ'\n\n" 
                     f"โปรดตรวจสอบและติดต่อกลับลูกค้า:\n{url_for('task_details', task_id=task_id, _external=True)}\n"
                 )
 
-                # Add manager mention if ID is provided
                 if manager_user_id:
                     notification_text += f"\n(ถึงผู้ดูแล: @{manager_user_id})" 
                 
@@ -945,9 +949,6 @@ def handle_postback(event):
                         app.logger.info(f"Sent problem notification for task {task_id} to admin group.")
                     except Exception as e:
                         app.logger.error(f"Failed to send problem notification to admin group: {e}")
-            
-            # For 'satisfied' or 'very_satisfied' feedback, we don't send a separate notification to admin/manager
-            # The Postback's display_text serves as immediate feedback to the user.
             
         
     elif isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
@@ -991,6 +992,109 @@ def handle_postback(event):
 
         # If the message is not a recognized command, do nothing (remain silent).
         # Removed the 'help_text' reply for unrecognized commands.
+
+# NEW: Route to generate customer onboarding QR code
+@app.route('/generate_customer_onboarding_qr')
+def generate_customer_onboarding_qr():
+    task_id = request.args.get('task_id')
+    task = get_single_task(task_id)
+    if not task:
+        flash("ไม่พบข้อมูลงานสำหรับสร้าง QR Code", 'danger')
+        return redirect(url_for('summary'))
+
+    # Build LIFF URL for customer onboarding, passing task_id
+    # The 'page=onboarding' parameter will tell the LIFF app which part of the HTML to show
+    onboarding_liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?page=onboarding&task_id={task_id}"
+    
+    qr_code_base64 = generate_qr_code_base64(onboarding_liff_url, box_size=10, border=4, fill_color='#000000', back_color='#FFFFFF')
+    
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+
+    return render_template('generate_onboarding_qr.html', 
+                           qr_code_base64=qr_code_base64,
+                           task=task,
+                           customer_info=customer_info,
+                           onboarding_url=onboarding_liff_url)
+
+# NEW: Route for customer onboarding form (LIFF App) - This will be customer_onboarding.html
+@app.route('/customer_onboarding')
+def customer_onboarding_page():
+    # This page will be part of the LIFF app and retrieve task_id from URL params
+    # It will use LIFF SDK to get user ID and send to /save_customer_line_id
+    task_id = request.args.get('task_id') # Get task_id passed via LIFF URL
+    task = get_single_task(task_id) # Fetch task details for display or validation
+    if not task:
+        # Handle case where task_id is missing or invalid
+        return render_template('liff_close_page.html', message="ไม่พบข้อมูลงาน")
+
+    parsed_task = parse_google_task_dates(task)
+    parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    
+    return render_template('customer_onboarding.html', task=parsed_task)
+
+
+# NEW: Route to save customer LINE User ID
+@app.route('/save_customer_line_id', methods=['POST'])
+def save_customer_line_id():
+    task_id = request.form.get('task_id')
+    customer_line_user_id = request.form.get('customer_line_user_id')
+    
+    task = get_single_task(task_id)
+    if not task:
+        return jsonify({"status": "error", "message": "Task not found"}), 404
+
+    current_notes = task.get('notes', '')
+    
+    # Get existing tech reports and base notes without feedback block
+    tech_history, base_customer_info_notes = parse_tech_report_from_notes(current_notes)
+    
+    # Get existing customer feedback data (including any existing LINE ID or initial feedback sent flag)
+    customer_feedback_existing = parse_customer_feedback_from_notes(current_notes)
+    
+    # Update or add customer_line_user_id
+    customer_feedback_existing['customer_line_user_id'] = customer_line_user_id
+    customer_feedback_existing['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    
+    final_notes = base_customer_info_notes.strip()
+    if tech_history:
+        all_reports_text = ""
+        for report in sorted(tech_history, key=lambda x: x.get('summary_date', '')):
+            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        final_notes += all_reports_text
+        
+    final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback_existing, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    updated_task = update_google_task(task_id=task_id, notes=final_notes, status=task['status'], due=task.get('due'))
+    
+    if updated_task:
+        app.logger.info(f"Successfully saved customer LINE ID {customer_line_user_id} for task {task_id}.")
+        cache.clear()
+        
+        # Send a welcome/thank you message directly to the customer via LINE
+        settings = get_app_settings()
+        shop_info = settings.get('shop_info', {})
+        customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+        
+        welcome_message = (
+            f"เรียน ลูกค้า {customer_info.get('name', '-')},\n"
+            f"Comphone ยินดีที่ได้ให้บริการครับ/ค่ะ! 😊\n"
+            f"เราจะใช้ LINE นี้ในการส่งข้อมูลสำคัญหรือโปรโมชั่นพิเศษในอนาคตครับ/ค่ะ\n\n"
+            f"หากมีข้อสงสัยใดๆ หรือต้องการความช่วยเหลือเพิ่มเติม ติดต่อเราได้ที่:\n"
+            f"โทร: {shop_info.get('contact_phone', '081-XXX-XXXX')}\n"
+            f"LINE ID: {shop_info.get('line_id', '@ComphoneService')}\n\n"
+            f"ขอบคุณที่เลือกใช้บริการ Comphone ครับ/ค่ะ"
+        )
+        try:
+            line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=welcome_message))
+            app.logger.info(f"Sent welcome message to new customer {customer_line_user_id}.")
+        except Exception as e:
+            app.logger.error(f"Failed to send welcome message to customer {customer_line_user_id}: {e}")
+
+        return jsonify({"status": "success", "message": "LINE ID saved"}), 200
+    else:
+        app.logger.error(f"Failed to save customer LINE ID {customer_line_user_id} for task {task_id}.")
+        return jsonify({"status": "error", "message": "Failed to save LINE ID"}), 500
+
 
 # NEW: Route for customer problem form (LIFF App)
 @app.route('/customer_problem_form')
@@ -1074,7 +1178,7 @@ def submit_customer_problem():
         customer_info = parse_customer_info_from_notes(task.get('notes', ''))
         
         notification_text = (
-            f"🚨 ลูกค้าแจ้งปัญหางาน! 🚨\n"
+            f"🚨 ลูกค้าแจ้งปัญหา! 🚨\n"
             f"งาน: {task.get('title', '-')}\n"
             f"ลูกค้า: {customer_info.get('name', '-')}\n"
             f"โทร: {customer_info.get('phone', '-')}\n"
@@ -1117,6 +1221,741 @@ def submit_customer_problem():
 
     return render_template('liff_close_page.html', message="บันทึกข้อมูลเรียบร้อยแล้ว!")
 
+# NEW: Simple LIFF close page
+@app.route('/liff_close_page')
+def liff_close_page():
+    message = request.args.get('message', 'ดำเนินการเสร็จสิ้น')
+    return f"""
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ยืนยัน</title>
+        <script src="https://static.line-scdn.net/liff/2.21.0/sdk.js"></script>
+        <style>
+            body {{ font-family: sans-serif; text-align: center; padding: 20px; }}
+            .message {{ font-size: 1.2em; color: #333; }}
+        </style>
+    </head>
+    <body>
+        <div class="message">{message}</div>
+        <script>
+            // Try to close LIFF window after a short delay
+            window.onload = function() {{
+                if (liff.isInClient()) {{
+                    setTimeout(() => {{ liff.closeWindow(); }}, 1000);
+                }}
+            }};
+        </script>
+    </body>
+    </html>
+    """
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+```
+
+**2. `update_task_details.html`**
+
+ไฟล์นี้จะมีการเพิ่มปุ่ม "สร้าง QR Code สำหรับลูกค้า" เพื่อให้ช่างสามารถสร้างและแสดง QR Code ให้ลูกค้าสแกนได้ทันทีหลังจากที่งานเสร็จสิ้นลง เพื่อให้ระบบสามารถเก็บ LINE User ID ของลูกค้าได้
+
+
+```html
+{% extends "base.html" %}
+
+{% block title %}จัดการงาน: {{ task.title }}{% endblock %}
+
+{% block content %}
+<form action="{{ url_for('task_details', task_id=task.id) }}" method="POST" enctype="multipart/form-data">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2 mb-0">รายละเอียดและจัดการงาน</h1>
+        <div>
+            <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับไปหน้าสรุป</a>
+            <!-- ปุ่ม "บันทึกการเปลี่ยนแปลง" ถูกย้ายไปอยู่ด้านล่าง -->
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Left Column: Main Details & Customer Info -->
+        <div class="col-lg-7">
+            <div class="card mb-4">
+                <div class="card-header h5"><i class="fas fa-edit me-2"></i>แก้ไขข้อมูลหลัก</div>
+                <div class="card-body">
+                    <!-- Task Title -->
+                    <div class="mb-3">
+                        <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong></label>
+                        <textarea class="form-control" id="task_title" name="task_title" rows="3" required>{{ task.title }}</textarea>
+                    </div>
+                    <hr>
+                    <!-- Customer Info -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="customer_name" class="form-label">ชื่อลูกค้า</label>
+                            <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name or '' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="customer_phone" class="form-label">เบอร์โทรศัพท์</label>
+                            <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone or '' }}">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
+                        <textarea class="form-control" id="address" name="address" rows="2">{{ task.customer.address or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
+                        <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header h5"><i class="fas fa-clipboard-check me-2"></i>สถานะและนัดหมาย</div>
+                <div class="card-body">
+                     <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="status" class="form-label">สถานะงาน</label>
+                            <select class="form-select" id="status" name="status">
+                                <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>งานยังไม่เสร็จ</option>
+                                <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>งานเสร็จเรียบร้อย</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                             <label for="appointment_due" class="form-label">วันเวลานัดหมาย</label>
+                             <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: New Report & History -->
+        <div class="col-lg-5">
+            <div class="card border-success mb-4">
+                <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>สรุปการทำงานและอุปกรณ์ที่ใช้</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="work_summary" class="form-label">สรุปการทำงาน</label>
+                        <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงาน..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="equipment_used" class="form-label">อุปกรณ์ที่ใช้</label>
+                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="4" list="equipment_datalist" placeholder="เช่น สาย LAN, 10 เมตร"></textarea>
+                        <datalist id="equipment_datalist">
+                            {% for item in common_equipment_items %}<option value="{{ item }}">{% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="mb-3">
+                        <label for="files" class="form-label">แนบไฟล์</label>
+                        <input type="file" class="form-control" id="files" name="files[]" multiple>
+                    </div>
+                </div>
+            </div>
+
+            {# NEW: Section to generate Customer Onboarding QR Code #}
+            <div class="card mb-4 border-info">
+                <div class="card-header bg-info text-white h5">
+                    <i class="fas fa-qrcode me-2"></i>สำหรับลูกค้า (หลังงานเสร็จ)
+                </div>
+                <div class="card-body text-center">
+                    <p class="mb-3">เมื่อช่างปิดงานซ่อมแล้ว โปรดให้ลูกค้าสแกน QR Code นี้ เพื่อเชื่อมต่อกับระบบ Comphone ครับ/ค่ะ</p>
+                    <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info btn-lg">
+                        <i class="fas fa-qrcode me-2"></i>สร้าง QR Code สำหรับลูกค้า
+                    </a>
+                    <p class="mt-3 text-muted small">**สำคัญ:** การสแกน QR Code นี้จะทำให้ระบบสามารถส่งข้อความติดตามผลไปยังลูกค้าโดยตรง</p>
+                </div>
+            </div>
+            {# END NEW: Section to generate Customer Onboarding QR Code #}
+
+        </div>
+    </div>
+
+    <!-- ปุ่ม "บันทึกการเปลี่ยนแปลง" ที่ถูกย้ายมาอยู่ด้านล่าง -->
+    <div class="d-grid gap-2 mb-4">
+        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
+    </div>
+</form>
+
+<!-- History Section is outside the form -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header h5"><i class="fas fa-history me-2"></i>ประวัติการทำงาน</div>
+            <div class="card-body">
+                {% if task.tech_reports_history %}
+                    {% for report in task.tech_reports_history %}
+                    <div class="border-start border-4 border-secondary ps-3 mb-3">
+                        <p class="mb-1"><strong>สรุปเมื่อ:</strong> {{ report.summary_date }}</p>
+                        <p class="mb-1" style="white-space: pre-wrap;">{{ report.work_summary or '-' }}</p>
+                        {% if report.equipment_used_display %}
+                            <p class="mb-0 small text-muted"><strong>อุปกรณ์:</strong> {{ report.equipment_used_display|replace('\n', ', ') }}</p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted text-center">ยังไม่มีประวัติการทำงาน</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# NEW: Collapsible Danger Zone with Delete Button and Confirmation Modal #}
+<div class="card border-danger my-4">
+    <div class="card-header bg-danger text-white h5 d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-exclamation-triangle me-2"></i>โซนอันตราย</span>
+        <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse" aria-expanded="false" aria-controls="dangerZoneCollapse">
+            <i class="fas fa-chevron-down"></i> <span class="visually-hidden">Toggle Danger Zone</span>
+        </button>
+    </div>
+    <div class="collapse" id="dangerZoneCollapse"> {# This div will be collapsible #}
+        <div class="card-body text-center">
+            <p class="text-muted">หากต้องการลบงานนี้อย่างถาวร โปรดกดปุ่มด้านล่าง</p>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
+                <i class="fas fa-trash-alt me-2"></i>ลบงานนี้ทิ้ง
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Confirm Delete Modal (remains the same) -->
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="confirmDeleteModalLabel">ยืนยันการลบงาน</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?</p>
+                <p class="text-danger">การกระทำนี้ไม่สามารถย้อนกลับได้!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" class="d-inline-block">
+                    <button type="submit" class="btn btn-danger">ยืนยันการลบ</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+```
+
+**3. `customer_onboarding.html` (ไฟล์ใหม่)**
+
+ไฟล์นี้จะใช้เมื่อลูกค้าสแกน QR Code ที่ช่างสร้างขึ้น หน้าเว็บนี้จะดึง LINE User ID ของลูกค้าและส่งไปยัง Backend เพื่อบันทึกใน Google Task
+
+
+```html
+{% extends "base.html" %}
+
+{% block title %}เชื่อมต่อกับ Comphone{% endblock %}
+
+{% block head_extra %}
+    <script src="https://static.line-scdn.net/liff/2.21.0/sdk.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; text-align: center; background-color: #f8f9fa; color: #343a40; }
+        .container { max-width: 500px; margin-top: 50px; padding: 20px; background-color: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #1DB446; font-weight: bold; margin-bottom: 20px; }
+        .message-box { padding: 15px; background-color: #e0ffe0; border: 1px solid #1DB446; border-radius: 10px; margin-top: 20px; }
+        .loading-spinner { border: 4px solid rgba(0,0,0,.1); border-left-color: #1DB446; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .fas.fa-check-circle { color: #28a745; font-size: 2em; margin-bottom: 10px; }
+        .btn-close-liff { background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto">
+    <h1>เชื่อมต่อกับ Comphone</h1>
+    <p>สแกน QR Code เพื่อให้เราสามารถส่งข่าวสารและโปรโมชั่นพิเศษให้คุณโดยตรง</p>
+
+    <div id="loading" class="loading-spinner"></div>
+    <div id="statusMessage" class="message-box" style="display:none;"></div>
+    <button id="closeButton" class="btn-close-liff" style="display:none;">ปิดหน้านี้</button>
+
+    <input type="hidden" id="taskId" value="{{ task.id }}">
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const loadingDiv = document.getElementById('loading');
+        const statusMessageDiv = document.getElementById('statusMessage');
+        const closeButton = document.getElementById('closeButton');
+        const taskId = document.getElementById('taskId').value;
+
+        loadingDiv.style.display = 'block';
+        statusMessageDiv.style.display = 'none';
+        closeButton.style.display = 'none';
+
+        liff.init({
+            liffId: "{{ LIFF_ID_FORM }}" // Your LIFF ID from Environment Variable
+        })
+        .then(() => {
+            if (!liff.isLoggedIn()) {
+                liff.login(); // Redirect to LINE Login if not logged in
+            } else {
+                liff.getProfile()
+                    .then(profile => {
+                        const customerLineUserId = profile.userId;
+                        statusMessageDiv.innerText = 'กำลังเชื่อมต่อข้อมูลของคุณ...';
+                        statusMessageDiv.style.display = 'block';
+
+                        // Send user ID and task_id to your Flask backend
+                        fetch('/save_customer_line_id', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: `task_id=${taskId}&customer_line_user_id=${customerLineUserId}`
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            loadingDiv.style.display = 'none';
+                            if (data.status === 'success') {
+                                statusMessageDiv.innerHTML = '<i class="fas fa-check-circle"></i><br>Comphone ได้รับข้อมูลการเชื่อมต่อของคุณแล้ว<br>ขอบคุณที่ให้โอกาสเราดูแลครับ/ค่ะ!';
+                                statusMessageDiv.style.backgroundColor = '#d4edda'; // Light green
+                                statusMessageDiv.style.color = '#155724'; // Dark green text
+                            } else {
+                                statusMessageDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i><br>เกิดข้อผิดพลาดในการเชื่อมต่อ: ${data.message || 'ไม่ทราบข้อผิดพลาด'}<br>โปรดลองอีกครั้งหรือติดต่อผู้ดูแล`;
+                                statusMessageDiv.style.backgroundColor = '#f8d7da'; // Light red
+                                statusMessageDiv.style.color = '#721c24'; // Dark red text
+                            }
+                            closeButton.style.display = 'block';
+                        })
+                        .catch(error => {
+                            loadingDiv.style.display = 'none';
+                            statusMessageDiv.innerHTML = `<i class="fas fa-times-circle"></i><br>เกิดข้อผิดพลาดในการส่งข้อมูล: ${error.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'}<br>โปรดลองอีกครั้ง`;
+                            statusMessageDiv.style.backgroundColor = '#f8d7da';
+                            statusMessageDiv.style.color = '#721c24';
+                            statusMessageDiv.style.display = 'block';
+                            closeButton.style.display = 'block';
+                        });
+                    })
+                    .catch(err => {
+                        loadingDiv.style.display = 'none';
+                        statusMessageDiv.innerHTML = `<i class="fas fa-times-circle"></i><br>ไม่สามารถดึงข้อมูล LINE ของคุณได้: ${err.message || 'กรุณาตรวจสอบสิทธิ์ LIFF'}`;
+                        statusMessageDiv.style.backgroundColor = '#f8d7da';
+                        statusMessageDiv.style.color = '#721c24';
+                        statusMessageDiv.style.display = 'block';
+                        closeButton.style.display = 'block';
+                    });
+            }
+        })
+        .catch(err => {
+            loadingDiv.style.display = 'none';
+            statusMessageDiv.innerHTML = `<i class="fas fa-times-circle"></i><br>เกิดข้อผิดพลาดในการเริ่มต้น LIFF: ${err.message || 'กรุณาลองใหม่'}<br>ตรวจสอบ LIFF ID หรือการตั้งค่า`;
+            statusMessageDiv.style.backgroundColor = '#f8d7da';
+            statusMessageDiv.style.color = '#721c24';
+            statusMessageDiv.style.display = 'block';
+            closeButton.style.display = 'block';
+        });
+
+        closeButton.addEventListener('click', function() {
+            if (liff.isInClient()) {
+                liff.closeWindow();
+            } else {
+                alert('คุณกำลังดูหน้านี้ในเบราว์เซอร์ปกติ ไม่ใช่ใน LINE. หากอยู่ใน LINE คุณสามารถปิดหน้านี้ได้เลย');
+                // For testing outside LINE, you might want to redirect
+                // window.location.href = 'about:blank';
+            }
+        });
+    });
+</script>
+{% endblock %}
+```
+
+**4. `customer_problem_form.html` (ไฟล์นี้เป็นโค้ดเดิม ไม่มีการเปลี่ยนแปลง)**
+
+คุณสามารถใช้ไฟล์ `customer_problem_form.html` ที่ผมเคยให้ไปก่อนหน้านี้ได้เลยครับ เนื่องจากโครงสร้างฟอร์มยังคงเดิม และ Logic การส่งข้อมูลถูกจัดการใน `app.py` แล้ว
+
+**5. `generate_onboarding_qr.html` (ไฟล์ใหม่)**
+
+ไฟล์นี้จะใช้เมื่อช่างกดปุ่ม "สร้าง QR Code สำหรับลูกค้า" ในหน้ารายละเอียดงาน เพื่อแสดง QR Code ที่ลูกค้าจะสแกน
+
+```html
+{% extends "base.html" %}
+
+{% block title %}QR Code สำหรับลูกค้า{% endblock %}
+
+{% block head_extra %}
+    <style>
+        body { text-align: center; }
+        .qr-container { 
+            background-color: white; 
+            padding: 30px; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            max-width: 400px; 
+            margin: 50px auto; 
+        }
+        .qr-code-img { 
+            width: 100%; 
+            height: auto; 
+            max-width: 300px; 
+            margin-bottom: 20px; 
+            border: 5px solid #1DB446; /* Green border for professional look */
+            border-radius: 10px;
+        }
+        .instructions {
+            font-size: 1.1em;
+            color: #555;
+            line-height: 1.6;
+        }
+        .important-note {
+            background-color: #fff3cd; /* Light yellow */
+            border-left: 5px solid #ffc107; /* Yellow border */
+            padding: 15px;
+            margin-top: 25px;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 0.95em;
+        }
+        .important-note strong {
+            color: #856404; /* Darker yellow text */
+        }
+        .btn-print {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-print:hover {
+            background-color: #0056b3;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background-color: #fff !important;
+            }
+            .qr-container {
+                box-shadow: none !important;
+                border: 1px solid #dee2e6 !important;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="qr-container">
+    <h2 class="mb-3" style="color: #1DB446;">QR Code สำหรับเชื่อมต่อลูกค้า</h2>
+    <p class="text-muted">สำหรับงาน: <strong>{{ task.title }}</strong></p>
+    <p class="text-muted">ลูกค้า: <strong>{{ customer_info.name or '-' }}</strong> (โทร: {{ customer_info.phone or '-' }})</p>
+    
+    {% if qr_code_base64 %}
+        <img src="{{ qr_code_base64 }}" alt="Customer Onboarding QR Code" class="qr-code-img">
+        <div class="instructions">
+            <p>โปรดให้ลูกค้าสแกน QR Code นี้ด้วยแอปพลิเคชัน LINE</p>
+            <p>เมื่อสแกนแล้ว ลูกค้าจะถูกนำไปยังหน้ายืนยันการเชื่อมต่อ</p>
+            <p>การเชื่อมต่อนี้จะทำให้เราสามารถส่งข้อความติดตามผลงานหรือแจ้งโปรโมชั่นให้ลูกค้าได้โดยตรง</p>
+        </div>
+    {% else %}
+        <p class="text-danger">ไม่สามารถสร้าง QR Code ได้ โปรดตรวจสอบการตั้งค่า LIFF ID.</p>
+    {% endif %}
+
+    <div class="important-note">
+        <strong>ข้อควรจำสำหรับช่าง:</strong>
+        <ul>
+            <li>อธิบายให้ลูกค้าทราบว่า QR Code นี้มีไว้เพื่ออะไร (เช่น "สแกนเพื่อรับข่าวสารและบริการหลังการซ่อมจาก Comphone ครับ/ค่ะ")</li>
+            <li>แจ้งลูกค้าว่าเมื่อสแกนแล้วจะมีข้อความต้อนรับส่งไปยัง LINE ส่วนตัวของลูกค้า</li>
+            <li>หากลูกค้าแจ้งปัญหาในอนาคต ระบบจะใช้ LINE นี้ในการติดต่อกลับโดยตรง</li>
+        </ul>
+    </div>
+
+    <div class="no-print">
+        <a href="javascript:window.print()" class="btn-print"><i class="fas fa-print me-2"></i>พิมพ์ QR Code นี้</a>
+        <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary mt-3"><i class="fas fa-arrow-left me-2"></i>กลับไปหน้ารายละเอียดงาน</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+{# No extra script needed here, as LIFF logic is in customer_onboarding.html #}
+{% endblock %}
+```
+
+---
+
+### **6. `settings_page.html` (ปรับปรุงเพื่อเพิ่มช่องตั้งค่าข้อมูลร้านค้า)**
+
+ไฟล์นี้จะให้คุณสามารถกรอกข้อมูลเบอร์โทรศัพท์และ LINE ID ของร้าน เพื่อนำไปใช้ในข้อความต้อนรับลูกค้า
+
+
+```html
+{% extends "base.html" %}
+
+{% block title %}ตั้งค่าระบบ{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">ตั้งค่าระบบ</h1>
+
+{# REMOVED: Section for "Manage System Logo" #}
+
+
+<form action="{{ url_for('settings_page') }}" method="POST">
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white"><i class="fas fa-cogs me-2"></i>การตั้งค่าทั่วไป</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3"> 
+                    <label for="appointment_reminder_hour" class="form-label">เวลาแจ้งเตือนนัดหมาย (0-23)</label>
+                    <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour" value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-md-4 mb-3"> 
+                    <label for="outstanding_report_hour" class="form-label">เวลารายงานงานค้าง (0-23)</label>
+                    <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour" value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-md-4 mb-3"> 
+                    <label for="customer_followup_hour" class="form-label">เวลาแจ้งเตือนติดตามลูกค้า (0-23)</label>
+                    <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour" value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23">
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white"><i class="fab fa-line me-2"></i>ตั้งค่าการแจ้งเตือน LINE</div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="admin_group_id" class="form-label">LINE Admin Group/User ID</label>
+                <input type="text" class="form-control" id="admin_group_id" name="admin_group_id" value="{{ settings.line_recipients.admin_group_id }}">
+            </div>
+            <div class="mb-3">
+                <label for="technician_group_id" class="form-label">LINE Technician Group ID</label>
+                <input type="text" class="form-control" id="technician_group_id" name="technician_group_id" value="{{ settings.line_recipients.technician_group_id }}">
+            </div>
+            <div class="mb-3">
+                <label for="manager_user_id" class="form-label">LINE Manager User ID</label>
+                <input type="text" class="form-control" id="manager_user_id" name="manager_user_id" value="{{ settings.line_recipients.manager_user_id }}">
+            </div>
+        </div>
+    </div>
+
+    {# NEW: Shop Information Settings #}
+    <div class="card mb-4 border-success">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-store me-2"></i>ข้อมูลร้านค้า (สำหรับข้อความลูกค้า)</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="shop_contact_phone" class="form-label">เบอร์โทรศัพท์ร้านค้า</label>
+                <input type="tel" class="form-control" id="shop_contact_phone" name="shop_contact_phone" value="{{ settings.shop_info.contact_phone }}">
+            </div>
+            <div class="mb-3">
+                <label for="shop_line_id" class="form-label">LINE ID ร้านค้า (เช่น @ComphoneService)</label>
+                <input type="text" class="form-control" id="shop_line_id" name="shop_line_id" value="{{ settings.shop_info.line_id }}">
+            </div>
+        </div>
+    </div>
+    {# END NEW: Shop Information Settings #}
+
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white"><i class="fas fa-qrcode me-2"></i>ตั้งค่า QR Code</div>
+        <div class="card-body">
+             <div class="row">
+                <div class="col-md-8">
+                    <div class="mb-3">
+                        <label for="qr_custom_url" class="form-label">URL ที่กำหนดเอง (ถ้ามี)</label>
+                        <input type="url" class="form-control" id="qr_custom_url" name="qr_custom_url" value="{{ settings.qrcode_settings.custom_url }}" placeholder="{{ general_summary_url }}">
+                    </div>
+                     <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_box_size" class="form-label">ขนาด Box</label>
+                            <input type="number" class="form-control" id="qr_box_size" name="qr_box_size" value="{{ settings.qrcode_settings.box_size }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_border" class="form-label">ขนาดขอบ</label>
+                            <input type="number" class="form-control" id="qr_border" name="qr_border" value="{{ settings.qrcode_settings.border }}">
+                        </div>
+                    </div>
+                     <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_fill_color" class="form-label">สี QR Code</label>
+                            <input type="color" class="form-control form-control-color" id="qr_fill_color" name="qr_fill_color" value="{{ settings.qrcode_settings.fill_color }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="qr_back_color" class="form-label">สีพื้นหลัง</label>
+                            <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color" value="{{ settings.qrcode_settings.back_color }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 text-center">
+                    <p><strong>ตัวอย่าง QR Code</strong></p>
+                    <img src="{{ qr_code_base64_general }}" alt="QR Code" class="img-fluid rounded border">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# NEW: Auto Backup Settings #}
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-cloud-upload-alt me-2"></i>การสำรองข้อมูลอัตโนมัติ (ไปยัง Google Drive)</h5>
+        </div>
+        <div class="card-body">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="auto_backup_enabled" name="auto_backup_enabled" {% if settings.auto_backup.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="auto_backup_enabled">เปิดใช้งานการสำรองข้อมูลอัตโนมัติ</label>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="auto_backup_hour" class="form-label">เวลาสำรอง (ชั่วโมง, 0-23)</label>
+                    <input type="number" class="form-control" id="auto_backup_hour" name="auto_backup_hour" value="{{ settings.auto_backup.hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="auto_backup_minute" class="form-label">เวลาสำรอง (นาที, 0-59)</label>
+                    <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute" value="{{ settings.auto_backup.minute_thai }}" min="0" max="59">
+                </div>
+            </div>
+            <p class="text-muted small">ระบบจะทำการสำรองข้อมูลทั้งหมด (Google Tasks, การตั้งค่า, แคตตาล็อกอุปกรณ์, และโค้ด) ไปยัง Google Drive Folder ID ที่กำหนดไว้ใน Environment Variable `GOOGLE_DRIVE_FOLDER_ID`</p>
+            <p class="text-danger small">**ข้อควรระวัง:** Render.com เป็นระบบไฟล์ชั่วคราว (Ephemeral Filesystem) ดังนั้นหากไม่ได้ตั้งค่า `GOOGLE_DRIVE_FOLDER_ID` หรือ `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` หรือเกิดข้อผิดพลาดในการอัปโหลด ไฟล์ `settings.json` (รวมถึงแคตตาล็อกอุปกรณ์) และไฟล์ที่อัปโหลดจะหายไปเมื่อเซิร์ฟเวอร์รีสตาร์ท</p>
+        </div>
+    </div>
+    {# END NEW: Auto Backup Settings #}
+
+    <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่า</button>
+</form>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="fas fa-paper-plane me-2"></i>ทดสอบระบบ</div>
+    <div class="card-body">
+        <p>กดปุ่มเพื่อทดสอบส่งข้อความแจ้งเตือนไปยัง LINE Admin Group ID</p>
+        <form action="{{ url_for('test_notification') }}" method="POST">
+            <button type="submit" class="btn btn-info"><i class="fab fa-line me-2"></i>ทดสอบส่งแจ้งเตือน</button>
+        </form>
+        <hr class="my-3">
+        <p>กดปุ่มเพื่อทดสอบการส่งแบบสอบถามความพึงพอใจลูกค้า สำหรับงานที่เพิ่งเสร็จ</p>
+        <form action="{{ url_for('trigger_customer_follow_up_test') }}" method="POST">
+            <button type="submit" class="btn btn-info"><i class="fas fa-user-check me-2"></i>ทดสอบส่งแบบสอบถามติดตามลูกค้า</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-success"><i class="fas fa-file-excel me-2"></i>ส่งออกเป็น Excel</a>
+        </div>
+        <hr>
+        <form action="{{ url_for('import_equipment_catalog') }}" method="post" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="excel_file" class="form-label">นำเข้าไฟล์ Excel (.xlsx)</label>
+                <input type="file" class="form-control" id="excel_file" name="excel_file" required accept=".xlsx, .xls">
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-file-import me-2"></i>นำเข้า</button>
+        </form>
+    </div>
+</div>
+
+<div class="card border-warning">
+    <div class="card-header bg-warning text-dark"><i class="fas fa-archive me-2"></i>สำรองข้อมูลระบบ</div>
+    <div class="card-body">
+        <p>ดาวน์โหลดไฟล์สำรองข้อมูลทั้งหมดของระบบ (Google Tasks, การตั้งค่า, โค้ด)</p>
+        <a href="{{ url_for('backup_data') }}" class="btn btn-warning"><i class="fas fa-download me-2"></i>ดาวน์โหลด Backup (.zip)</a>
+        <hr class="my-3">
+        <p>คุณยังสามารถสั่งสำรองข้อมูลอัตโนมัติไปยัง Google Drive ทันที (โดยไม่ต้องรอเวลาที่ตั้งไว้) โดยกดปุ่มนี้</p>
+        <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST">
+            <button type="submit" class="btn btn-info"><i class="fas fa-cloud-upload-alt me-2"></i>สั่งสำรองข้อมูลไป Google Drive ทันที</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+// REMOVED: JavaScript for live preview of logo (as the logo upload section is removed)
+/*
+document.addEventListener('DOMContentLoaded', function() {
+    const logoUploadInput = document.getElementById('logoUpload');
+    const logoPreviewImage = document.getElementById('logoPreview');
+
+    if (logoUploadInput && logoPreviewImage) {
+        logoUploadInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    logoPreviewImage.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+});
+*/
+</script>
+{% endblock %}
+```
+
+---
+
+### **ขั้นตอนการนำไปใช้งานทั้งหมด**
+
+1.  **คัดลอกโค้ดเต็มของ `app.py`** ที่อยู่ในส่วน **`1. app.py (ปรับปรุงแล้ว)`** ไปวาง **ทับทั้งไฟล์ `app.py` เดิมของคุณ**.
+2.  **คัดลอกโค้ดเต็มของ `update_task_details.html`** ที่อยู่ในส่วน **`2. update_task_details.html (เพิ่มปุ่มสร้าง QR Code)`** ไปวาง **ทับทั้งไฟล์ `update_task_details.html` เดิมของคุณ**.
+3.  **สร้างไฟล์ใหม่ชื่อ `customer_onboarding.html`** ในโฟลเดอร์ `templates/` ของโปรเจกต์คุณ และคัดลอกโค้ดเต็มของ `customer_onboarding.html` ที่อยู่ในส่วน **`3. customer_onboarding.html (ไฟล์ใหม่)`** ไปวางในไฟล์นี้.
+4.  **ตรวจสอบไฟล์ `customer_problem_form.html`**: ใช้ไฟล์ `customer_problem_form.html` ที่ผมให้ไปก่อนหน้านี้ได้เลย (ตรวจสอบว่าอยู่ในโฟลเดอร์ `templates/` และมีเนื้อหาถูกต้องตามที่เคยให้ไป).
+5.  **คัดลอกโค้ดเต็มของ `settings_page.html`** ที่อยู่ในส่วน **`4. settings_page.html (ปรับปรุงเพื่อเพิ่มช่องตั้งค่าข้อมูลร้านค้า)`** ไปวาง **ทับทั้งไฟล์ `settings_page.html` เดิมของคุณ**.
+6.  **บันทึกไฟล์ทั้งหมด** ในโปรเจกต์ของคุณ.
+7.  **ตรวจสอบและตั้งค่า Environment Variables บน Render.com อย่างละเอียด (สำคัญมาก):**
+    * **`GOOGLE_TOKEN_JSON`**: **(สำคัญที่สุด)** ต้องเป็น JSON string ที่ถูกต้องสมบูรณ์ และสร้างใหม่ล่าสุด.
+    * **`GOOGLE_DRIVE_FOLDER_ID`**: ID โฟลเดอร์ Google Drive สำหรับไฟล์แนบงาน.
+    * **`GOOGLE_SETTINGS_BACKUP_FOLDER_ID`**: ID โฟลเดอร์ Google Drive สำหรับสำรอง `settings.json`.
+    * **`LINE_ADMIN_GROUP_ID`**: ID กลุ่ม LINE สำหรับผู้ดูแล.
+    * **`LINE_TECHNICIAN_GROUP_ID`**: ID กลุ่ม LINE สำหรับช่าง (ถ้ามี).
+    * **`LINE_MANAGER_USER_ID`**: LINE User ID ของผู้จัดการ/ช่างที่ต้องการ `@mention` เมื่อมีปัญหา.
+    * **`LIFF_ID_FORM`**: ID ของ LIFF App ที่คุณสร้างใน LINE Developers Console (ตรวจสอบว่า `Endpoint URL` บน LINE Developers Console ชี้ไปที่ URL หลักของ Render Web Service ของคุณอย่างถูกต้อง).
+8.  **Deploy หรือรีสตาร์ท Web Service บน Render.com**.
+
+### **วิธีการทดสอบฟีเจอร์ใหม่**
+
+เมื่อ Deploy สำเร็จและแอปพลิเคชันทำงานแล้ว:
+
+1.  **ตั้งค่าข้อมูลร้านค้า**:
+    * เข้าเว็บแอปของคุณ (URL ของ Render Service).
+    * ไปที่เมนู `ตั้งค่าระบบ`.
+    * เลื่อนลงไปที่ส่วน `ข้อมูลร้านค้า (สำหรับข้อความลูกค้า)`.
+    * กรอก `เบอร์โทรศัพท์ร้านค้า` และ `LINE ID ร้านค้า` ที่คุณต้องการให้แสดงในข้อความขอบคุณลูกค้า.
+    * กด `บันทึกการตั้งค่า`.
+
+2.  **ทดสอบการเก็บ LINE User ID ของลูกค้า (Onboarding)**:
+    * เข้าเว็บแอปของคุณ.
+    * ไปที่ `สรุปสถานะงาน` แล้วคลิกเข้าไปใน `รายละเอียดและจัดการงาน` ของงานใดงานหนึ่ง.
+    * เลื่อนลงไปที่ส่วน `สำหรับลูกค้า (หลังงานเสร็จ)`.
+    * คลิกปุ่ม `สร้าง QR Code สำหรับลูกค้า`.
+    * หน้าเว็บใหม่จะแสดง QR Code และคำแนะนำ. **ใช้ LINE App บนมือถือของลูกค้า (หรือบัญชี LINE ทดสอบ) สแกน QR Code นี้**.
+    * เมื่อสแกนแล้ว ควรมีหน้าเว็บ LIFF App เปิดขึ้นมา และแสดงข้อความว่า "Comphone ได้รับข้อมูลการเชื่อมต่อของคุณแล้ว".
+    * **ตรวจสอบ**:
+        * **Log ของ Render.com**: คุณควรจะเห็น Log ข้อความประมาณ `Successfully saved customer LINE ID Uxxxxxxxxxxxxxxx for task YYYYYYYYYYYYYYY.` และ `Sent welcome message to new customer Uxxxxxxxxxxxxxxx.`
+        * **LINE ส่วนตัวของลูกค้า (บัญชีที่สแกน)**: ควรได้รับข้อความต้อนรับจากบอทของคุณ.
+        * **Google Tasks**: เข้าไปดู `Notes` ของงานนั้นๆ คุณควรจะเห็นข้อมูล `customer_line_user_id` บันทึกอยู่ในบล็อก `--- CUSTOMER_FEEDBACK_START ---`.
+
+3.  **ทดสอบการแจ้งเตือนติดตามลูกค้า (Flex Message)**:
+    * ใน Google Tasks ของคุณ เลือกงานที่เพิ่งทำขั้นตอน Onboarding ลูกค้า (ข้อ 2) ไปแล้ว และมี `customer_line_user_id` บันทึกใน Notes แล้ว.
+    * ตั้งสถานะของงานนั้นเป็น `Completed` และตั้งเวลา `Completed date` ให้เป็น **เมื่อวานนี้** (หรือประมาณ 24-48 ชั่วโมงที่แล้ว) เช่น ถ้าวันนี้ 1 ก.ค. 09:00 น. คุณอาจตั้งเป็น 30 มิ.ย. 09:00 น.
+    * **รอให้ถึงเวลาที่ตั้งไว้ใน `เวลาแจ้งเตือนติดตามลูกค้า` (ในหน้าตั้งค่าระบบ)** หรือกดปุ่ม `ทดสอบส่งแบบสอบถามติดตามลูกค้า` ในหน้าตั้งค่าระบบ.
+    * **ตรวจสอบ**:
+        * **LINE ส่วนตัวของลูกค้า (บัญชีที่สแกน QR Code)**: ควรได้รับ Flex Message "🙏 แบบสอบถามความพึงพอใจบริการ 🙏" โดยตรงจากบอทของคุณ
+        * **LINE Admin Group**: ควรได้รับข้อความแจ้งว่า "✅ ส่งแบบสอบถามความพึงพอใจลูกค้า... ไปยังลูกค้าโดยตรงเรียบร้อยแล้ว".
+
+4.  **ทดสอบการแจ้งปัญหาและส่งข้อความขอบคุณ:**
+    * จาก Flex Message ที่ลูกค้าได้รับ (ในข้อ 3), ให้ลูกค้า (หรือบัญชีทดสอบ) กดปุ่ม `👎 มีปัญหา`.
+    * หน้าเว็บ LIFF App สำหรับแจ้งปัญหา (`customer_problem_form.html`) ควรจะเปิดขึ้นมา.
+    * กรอก `รายละเอียดปัญหา` และ `วันและเวลาที่สะดวก`.
+    * กด `ส่งข้อมูลปัญหา`.
+    * **ตรวจสอบ**:
+        * **LINE Admin Group**: ควรได้รับข้อความแจ้งเตือน "🚨 ลูกค้าแจ้งปัญหางาน! 🚨" พร้อมรายละเอียดและลิงก์งาน (ถ้าตั้ง `LINE_MANAGER_USER_ID` ไว้ ก็จะมีแสดงในข้อความด้วย).
+        * **LINE ส่วนตัวของลูกค้า**: ควรได้รับข้อความขอบคุณจากบอทของคุณ พร้อมเบอร์โทรและ LINE ID ของร้าน.
+        * **Google Tasks**: สถานะงานนั้นควรจะกลับไปเป็น `ยังไม่เสร็จ` และ `Notes` ควรมีข้อมูลปัญหาที่ลูกค้ากรอกเพิ่มเข้ามาในบล็อก `--- CUSTOMER_FEEDBACK_START ---`.
+
+หากทำตามขั้นตอนเหล่านี้ครบถ้วนและผลลัพธ์ตรงตามที่คาดหวัง แสดงว่าระบบของคุณทำงานได้อย่างสมบูรณ์แบบแล้วครับ! ยินดีด้วยคร

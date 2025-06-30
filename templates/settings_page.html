@@ -6,28 +6,6 @@
 <h1 class="mb-4">ตั้งค่าระบบ</h1>
 
 {# REMOVED: Section for "Manage System Logo" #}
-{#
-<div class="card mb-4">
-    <div class="card-header bg-dark text-white"><i class="fas fa-image me-2"></i>จัดการโลโก้ระบบ</div>
-    <div class="card-body">
-        <form action="{{ url_for('settings_page') }}" method="post" enctype="multipart/form-data">
-            <div class="row align-items-center">
-                <div class="col-md-8">
-                    <div class="mb-3">
-                        <label for="logoUpload" class="form-label">เลือกไฟล์โลโก้ใหม่ (แนะนำ .png พื้นหลังโปร่งใส)</label>
-                        <input class="form-control" type="file" id="logoUpload" name="logo_file" accept="image/png, image/jpeg, image/gif">
-                    </div>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>อัปเดตโลโก้</button>
-                </div>
-                <div class="col-md-4 text-center mt-3 mt-md-0">
-                    <p class="mb-2"><strong>ตัวอย่างโลโก้:</strong></p>
-                    <img id="logoPreview" src="{{ url_for('static', filename='logo.png') }}?v={{ now.timestamp() }}" alt="Logo Preview" class="img-fluid rounded border bg-light p-2" style="max-height: 100px;">
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
-#}
 
 
 <form action="{{ url_for('settings_page') }}" method="POST">

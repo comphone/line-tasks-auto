@@ -89,6 +89,21 @@
                 </div>
             </div>
 
+            {# NEW: Section to generate Customer Onboarding QR Code #}
+            <div class="card mb-4 border-info">
+                <div class="card-header bg-info text-white h5">
+                    <i class="fas fa-qrcode me-2"></i>สำหรับลูกค้า (หลังงานเสร็จ)
+                </div>
+                <div class="card-body text-center">
+                    <p class="mb-3">เมื่อช่างปิดงานซ่อมแล้ว โปรดให้ลูกค้าสแกน QR Code นี้ เพื่อเชื่อมต่อกับระบบ Comphone ครับ/ค่ะ</p>
+                    <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info btn-lg">
+                        <i class="fas fa-qrcode me-2"></i>สร้าง QR Code สำหรับลูกค้า
+                    </a>
+                    <p class="mt-3 text-muted small">**สำคัญ:** การสแกน QR Code นี้จะทำให้ระบบสามารถส่งข้อความติดตามผลไปยังลูกค้าโดยตรง</p>
+                </div>
+            </div>
+            {# END NEW: Section to generate Customer Onboarding QR Code #}
+
         </div>
     </div>
 
