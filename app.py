@@ -35,7 +35,7 @@ from linebot.models import (
 )
 # ---------------------------------------------
 
-# --- Google API Imports ---
+# --- Google API Imports (สำคัญ: InstalledAppFlow ต้องถูก import) ---
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
 from google_auth_oauthlib.flow import InstalledAppFlow 
@@ -556,7 +556,6 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
     
     try:
         mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
-        # Corrected: MediaIoBaseUpload is already imported at the top
         media = MediaIoBaseUpload(memory_file, mimetype=mime_type, resumable=True) 
         file_metadata = {'name': filename, 'parents': [drive_folder_id]}
         
@@ -693,11 +692,6 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name, 
     # Text for manager mention (if available)
     mention_text = ""
     if technician_id_to_mention:
-        # LINE's mention format: @{userId} for text message, or part of Flex message JSON if supported
-        # For simplicity in Flex, we might just put the ID or a predefined name.
-        # Direct Flex mention in text component is complex due to specific JSON structure.
-        # For now, we'll just show it as plain text. If a true @mention is needed,
-        # it would require a TextMessage separate from Flex.
         mention_text = f"ผู้ดูแล: @{technician_id_to_mention}\n" 
 
     return BubbleContainer(
@@ -786,7 +780,9 @@ def scheduled_customer_follow_up_job():
                         follow_up_sent = False
                         if customer_feedback.get('follow_up_sent_date'):
                             follow_up_sent = True # Assume if follow_up_sent_date exists, follow-up was sent.
-                            
+                            # Optionally, you could parse and check feedback_data.get('feedback_type') == 'problem'
+                            # to resend if it was a problem that wasn't addressed. For now, simple check.
+
                         if not follow_up_sent:
                             follow_up_tasks.append(task)
                             # Add temporary flag for this run to avoid duplicate in same batch
@@ -1029,7 +1025,7 @@ def submit_customer_problem():
         try:
             preferred_datetime_thai = THAILAND_TZ.localize(datetime.datetime.strptime(preferred_datetime_str, "%Y-%m-%dT%H:%M"))
         except ValueError:
-            app.logger.error(f"Invalid preferred_datetime format from form: {preferred_datetime_str}")
+            app.logger.error(f"Invalid preferred_datetime format from form: {preferred_datetime_thai}")
     
     # Construct new feedback entry
     customer_problem_data = {
@@ -1053,9 +1049,8 @@ def submit_customer_problem():
     if tech_reports_history:
         all_reports_text = ""
         for report in sorted(tech_reports_history, key=lambda x: x.get('summary_date', '')):
-            all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-        final_notes += all_reports_text
-
+            final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        
     final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback_existing, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
     # Update task status to 'needsAction' and notes
@@ -1125,4 +1120,3 @@ def submit_customer_problem():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
-
