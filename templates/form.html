@@ -95,7 +95,8 @@
                             (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                locationInput.value = `https://www.google.com/maps?q=${lat},${lon}`;
+                                // UPDATED: Corrected Google Maps URL format for better compatibility
+                                locationInput.value = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
                                 statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
                             },
                             (error) => {

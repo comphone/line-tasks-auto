@@ -241,9 +241,12 @@ def parse_customer_info_from_notes(notes):
     info['phone'] = (re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE) or re.search(r"phone:\s*(.*)", notes, re.IGNORECASE)).group(1).strip() if (re.search(r"เบอร์โทรศัพท์:", notes) or re.search(r"phone:", notes)) else ''
     info['address'] = (re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE) or re.search(r"address:\s*(.*)", notes, re.IGNORECASE)).group(1).strip() if (re.search(r"ที่อยู่:", notes) or re.search(r"address:", notes)) else ''
     
-    map_url_match = re.search(r"(https?://(?:www\.)?google\.com/maps.*)", notes)
+    # UPDATED: More robust regex for Google Maps URLs
+    app.logger.debug(f"Parsing notes for map_url: {notes}")
+    map_url_match = re.search(r"(https?://(?:www\.)?google\.com/maps/(?:place|search)/\?api=1&query=[-\d\.]+,[-\d\.]+|@[\d\.]+,[\d\.]+,[\d\.]z.*)", notes)
     if map_url_match:
-        info['map_url'] = map_url_match.group(1).strip()
+        info['map_url'] = map_url_match.group(0).strip() # Use group(0) to get the whole matched string
+        app.logger.debug(f"Parsed map_url: {info['map_url']}")
         
     if not any(info.values()):
         base_content = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL).strip()
@@ -841,9 +844,9 @@ def handle_message(event):
     command_map = {
         'งานค้าง': handle_outstanding_tasks_command,
         'งานเสร็จ': handle_completed_tasks_command,
-        'งานวันนี้': lambda e: handle_daily_tasks_command(e, 'today'), # เพิ่มคำสั่งใหม่
-        'งานพรุ่งนี้': lambda e: handle_daily_tasks_command(e, 'tomorrow'), # เพิ่มคำสั่งใหม่
-        'สร้างงานใหม่': handle_create_new_task_command, # เพิ่มคำสั่งใหม่
+        'งานวันนี้': lambda e: handle_daily_tasks_command(e, 'today'),
+        'งานพรุ่งนี้': lambda e: handle_daily_tasks_command(e, 'tomorrow'),
+        'สร้างงานใหม่': handle_create_new_task_command,
         'สรุปรายงาน': lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
         'comphone': None 
     }
@@ -854,10 +857,10 @@ def handle_message(event):
                 "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
                 "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
                 "➡️ `งานเสร็จ`\nดูงานที่ทำเสร็จล่าสุด\n\n"
-                "➡️ `งานวันนี้`\nดูงานที่มีกำหนดเสร็จในวันนี้\n\n" # อัปเดตวิธีใช้
-                "➡️ `งานพรุ่งนี้`\nดูงานที่มีกำหนดเสร็จในวันพรุ่งนี้\n\n" # อัปเดตวิธีใช้
-                "➡️ `ดูงาน ชื่อลูกค้า`\nค้นหางานของลูกค้าคนนั้นๆ (เช่น: `ดูงาน สมศรี`)\n\n" # อัปเดตวิธีใช้
-                "➡️ `สร้างงานใหม่`\nเปิดฟอร์มสำหรับสร้างงานใหม่\n\n" # อัปเดตวิธีใช้
+                "➡️ `งานวันนี้`\nดูงานที่มีกำหนดเสร็จในวันนี้\n\n"
+                "➡️ `งานพรุ่งนี้`\nดูงานที่มีกำหนดเสร็จในวันพรุ่งนี้\n\n"
+                "➡️ `ดูงาน ชื่อลูกค้า`\nค้นหางานของลูกค้าคนนั้นๆ (เช่น: `ดูงาน สมศรี`)\n\n"
+                "➡️ `สร้างงานใหม่`\nเปิดฟอร์มสำหรับสร้างงานใหม่\n\n"
                 "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บสรุปงาน\n\n"
                 "หากคุณต้องการดูเมนูนี้อีกครั้ง พิมพ์ `comphone`"
             )
@@ -875,8 +878,6 @@ def handle_message(event):
     # หากข้อความไม่ใช่คำสั่งที่รู้จัก บอทจะยังคงเงียบ
     # ไม่มีการตอบกลับด้วยข้อความ "วิธีใช้" อัตโนมัติอีกต่อไป
     # ผู้ใช้ต้องพิมพ์ "comphone" เพื่อเรียกดูวิธีใช้
-    # หากต้องการให้บอทแจ้งเตือนว่าไม่รู้จักคำสั่ง ให้เพิ่มบรรทัดด้านล่างนี้
-    # line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่เข้าใจคำสั่งของคุณครับ ลองพิมพ์ `comphone` เพื่อดูวิธีใช้"))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
