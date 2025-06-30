@@ -11,7 +11,7 @@ from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response 
+from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response, current_app # Added current_app
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
@@ -49,21 +49,15 @@ import pandas as pd
 # --- APScheduler for background tasks ---
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-import atexit # เพื่อให้ scheduler หยุดทำงานเมื่อ app_context()
+import atexit 
 
-# --- Global Configurations (these remain global, but will be used in create_app) ---
-# Moved app initialization to create_app() or get_wsgi_app()
-# LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET will be accessed via os.environ.get within functions.
-# LIFF_ID_FORM, GOOGLE_TASKS_LIST_ID, GOOGLE_DRIVE_FOLDER_ID, GOOGLE_SETTINGS_BACKUP_FOLDER_ID
-# are still global constants as they are needed by helper functions before app context fully starts.
-# These will be accessed via os.environ.get inside functions or global scope as needed.
+# --- Global Configurations (constants, remain global) ---
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') 
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') # Folder for general file uploads
-GOOGLE_SETTINGS_BACKUP_FOLDER_ID = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID') # NEW: Folder for settings backups
-
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
+GOOGLE_SETTINGS_BACKUP_FOLDER_ID = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID')
 
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -72,14 +66,13 @@ cache = TTLCache(maxsize=100, ttl=60)
 # --- Global variable for app settings ---
 _APP_SETTINGS_STORE = {} 
 
-# --- Helper and Utility Functions (remain outside get_wsgi_app, but use app.app_context where needed) ---
+# --- Helper and Utility Functions (remain outside init_app, but designed to be callable globally) ---
 def load_settings_from_file():
     """Load application settings from JSON file."""
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
         except (json.JSONDecodeError, IOError) as e: 
-            # Use print for logs before app.logger is fully initialized or when outside app_context.
             print(f"ERROR: Error handling settings.json: {e}", file=sys.stderr)
             if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) == 0:
                 os.remove(SETTINGS_FILE)
@@ -101,12 +94,10 @@ def get_google_service(api_name, api_version):
     token_path = 'token.json'
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
 
-    # LINE_CHANNEL_ACCESS_TOKEN check is now inside get_wsgi_app()
-    # if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
-    #     print("ERROR: LINE Bot credentials are not set in environment variables.", file=sys.stderr)
-    #     return None 
+    if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
+        print("ERROR: LINE Bot credentials are not set in environment variables.", file=sys.stderr)
+        return None 
 
-    # Try to load credentials from environment variable first (PREFERRED for Render)
     if google_token_json_str:
         try: 
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
@@ -114,25 +105,21 @@ def get_google_service(api_name, api_version):
         except Exception as e: 
             print(f"WARNING: Could not load token from env var, falling back to token.json: {e}", file=sys.stderr)
     
-    # Fallback to local token.json file (Ephemeral on Render, only useful for initial local setup)
     if not creds and os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
         print(f"INFO: Loaded Google credentials from local {token_path}.", file=sys.stderr)
 
-    # Refresh token if expired
     if creds and creds.valid and creds.expired and creds.refresh_token:
         try: 
             creds.refresh(Request())
             print("INFO: Refreshed Google access token.", file=sys.stderr)
-            # If refreshed, save back to local file and recommend updating env var
-            if not google_token_json_str: # Only save to file if not using env var
+            if not google_token_json_str: 
                 with open(token_path, 'w') as token: token.write(creds.to_json())
                 print(f"INFO: Refreshed token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.", file=sys.stderr)
         except Exception as e:
             print(f"ERROR: Error refreshing token: {e}", file=sys.stderr)
-            creds = None # Invalidate creds if refresh fails
+            creds = None 
     
-    # --- IMPORTANT: REMOVED run_console() FOR DEPLOYMENT ON RENDER ---
     if not creds or not creds.valid:
         print("ERROR: No valid Google credentials available. API service cannot be built.", file=sys.stderr)
         print("ERROR: Please ensure GOOGLE_TOKEN_JSON environment variable is set.", file=sys.stderr)
@@ -157,13 +144,12 @@ def load_settings_from_drive_on_startup():
         print("WARNING: GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings restore from Drive.", file=sys.stderr)
         return False
 
-    service = get_google_drive_service() # This function is now defined
+    service = get_google_drive_service() 
     if not service:
         print("ERROR: Could not get Drive service for settings restore on startup.", file=sys.stderr)
         return False
 
     try:
-        # Search for the latest settings_backup.json in the dedicated folder
         query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
         response = service.files().list(q=query, spaces='drive', fields='files(id, name, createdTime)', orderBy='createdTime desc', pageSize=1).execute()
         files = response.get('files', [])
@@ -182,7 +168,6 @@ def load_settings_from_drive_on_startup():
             
             downloaded_settings = json.loads(fh.read().decode('utf-8'))
             
-            # Save the downloaded settings locally
             if save_settings_to_file(downloaded_settings):
                 print("INFO: Successfully restored settings from Google Drive backup.", file=sys.stderr)
                 return True
@@ -205,12 +190,9 @@ def load_settings_from_drive_on_startup():
 def get_app_settings():
     """Get current application settings, loading from file or using defaults."""
     global _APP_SETTINGS_STORE
-    # If _APP_SETTINGS_STORE is empty, it means this is the first call,
-    # or it was intentionally cleared. We try to load from file (which might
-    # have been restored from Drive).
     if not _APP_SETTINGS_STORE: 
         loaded = load_settings_from_file()
-        _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE)) # Start with defaults
+        _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE)) 
         if loaded:
             for key, default_value in _APP_SETTINGS_STORE.items():
                 if isinstance(default_value, dict) and key in loaded and isinstance(loaded[key], dict):
@@ -218,10 +200,8 @@ def get_app_settings():
                 elif key in loaded: 
                     _APP_SETTINGS_STORE[key] = loaded[key]
         else:
-            # If no settings file, save the default settings
             save_settings_to_file(_APP_SETTINGS_STORE)
     
-    # Ensure common_equipment_items is always up-to-date
     equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
     return _APP_SETTINGS_STORE
@@ -229,13 +209,13 @@ def get_app_settings():
 def save_app_settings(settings_data):
     """Save application settings, merging with current settings."""
     global _APP_SETTINGS_STORE
-    current_settings = get_app_settings() # Get current settings (may load from file if not in global var)
+    current_settings = get_app_settings() 
     for key, value in settings_data.items():
         if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
             current_settings[key].update(value)
         else: 
             current_settings[key] = value
-    _APP_SETTINGS_STORE = current_settings # Update global variable
+    _APP_SETTINGS_STORE = current_settings 
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
 
@@ -273,7 +253,6 @@ def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=GOOGL
         file_metadata = {'name': file_name, 'parents': [folder_id]}
         file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
         
-        # Make the uploaded file publicly readable
         service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
         
         print(f"INFO: Uploaded to Drive: {file_obj.get('webViewLink')}", file=sys.stderr)
@@ -514,7 +493,6 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
         
         file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
         
-        # Make the uploaded file publicly readable
         service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
         
         print(f"INFO: Successfully uploaded backup to Drive: {file_obj.get('webViewLink')}", file=sys.stderr)
@@ -530,7 +508,7 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
 def scheduled_backup_job():
     """Scheduled job to perform automatic backup to Google Drive."""
     # Ensure this runs within an app context if needed for Flask features (like url_for, flash)
-    with app.app_context(): 
+    with current_app.app_context(): # Use current_app
         print("INFO: Running scheduled backup job...", file=sys.stderr)
         
         # 1. Perform full system backup (zip)
@@ -549,7 +527,6 @@ def scheduled_backup_job():
             settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
             settings_backup_filename = "settings_backup.json" # Fixed name for easy retrieval
             
-            # Check for existing settings_backup.json and delete it first
             service = get_google_drive_service()
             if service:
                 try:
@@ -575,7 +552,7 @@ def scheduled_appointment_reminder_job():
     """
     Scheduled job to send LINE notifications for appointments due today.
     """
-    with app.app_context():
+    with current_app.app_context(): # Use current_app
         print("INFO: Running scheduled appointment reminder job...", file=sys.stderr)
         settings = get_app_settings()
         admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
@@ -629,18 +606,21 @@ def scheduled_appointment_reminder_job():
         # Send messages to recipients
         if messages_to_send:
             try:
+                # Use current_app.line_bot_api
                 if admin_group_id:
-                    # LINE API allows sending multiple messages in a single push_message call
-                    line_bot_api.push_message(admin_group_id, messages_to_send)
+                    current_app.line_bot_api.push_message(admin_group_id, messages_to_send)
                     print(f"INFO: Sent {len(messages_to_send)} appointment reminders to admin group.", file=sys.stderr)
-                if technician_group_id and technician_group_id != admin_group_id: # Avoid sending duplicate if same group
-                    line_bot_api.push_message(technician_group_id, messages_to_send)
+                if technician_group_id and technician_group_id != admin_group_id: 
+                    current_app.line_bot_api.push_message(technician_group_id, messages_to_send)
                     print(f"INFO: Sent {len(messages_to_send)} appointment reminders to technician group.", file=sys.stderr)
             except Exception as e:
                 print(f"ERROR: Failed to send appointment reminder LINE messages: {e}", file=sys.stderr)
 
 # NEW: Function to create the customer follow-up Flex Message
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name, customer_phone, technician_id_to_mention=None):
+    # This function is called from a scheduled job, so it might not have app_context directly.
+    # It should pass current_app.url_for or be called within an app_context.
+    # url_for is okay here because scheduled_customer_follow_up_job runs in current_app.app_context()
     detail_url = url_for('task_details', task_id=task_id, _external=True)
     
     # Text for manager mention (if available)
@@ -701,15 +681,11 @@ def scheduled_customer_follow_up_job():
     """
     Scheduled job to send customer follow-up surveys after 24-48 hours of completion.
     """
-    with app.app_context():
+    with current_app.app_context(): # Use current_app
         print("INFO: Running scheduled customer follow-up job...", file=sys.stderr)
         settings = get_app_settings()
         admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
         technician_group_id = settings.get('line_recipients', {}).get('technician_group_id', '')
-        
-        # New: If customer_line_user_id is available, send directly to customer.
-        # Otherwise, send to admin/technician group for manual forwarding.
-        send_to_customer_directly = False # Default to false unless we have customer ID
         
         if not admin_group_id and not technician_group_id:
             print("WARNING: No LINE recipient IDs configured for customer follow-up. Skipping.", file=sys.stderr)
@@ -728,7 +704,6 @@ def scheduled_customer_follow_up_job():
                     completed_dt_utc = datetime.datetime.fromisoformat(task['completed'].replace('Z', '+00:00'))
                     completed_dt_thai = completed_dt_utc.astimezone(THAILAND_TZ)
                     
-                    # Check if completed 24-48 hours ago AND no follow-up sent yet
                     if two_days_ago <= completed_dt_thai < one_day_ago:
                         notes_text = task.get('notes', '')
                         customer_feedback_data = parse_customer_feedback_from_notes(notes_text)
@@ -788,11 +763,11 @@ def scheduled_customer_follow_up_job():
             if customer_line_user_id_for_task:
                 print(f"INFO: Sending direct follow-up to customer {customer_line_user_id_for_task} for task {task.get('id')}.", file=sys.stderr)
                 try:
-                    line_bot_api.push_message(customer_line_user_id_for_task, FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex))
+                    current_app.line_bot_api.push_message(customer_line_user_id_for_task, FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex))
                     # Also send a small notification to admin that direct message was sent
                     admin_notify_text = f"✅ ส่งแบบสอบถามความพึงพอใจลูกค้า [{customer_info.get('name', '-')}] ไปยังลูกค้าโดยตรงเรียบร้อยแล้ว"
                     if admin_group_id:
-                        line_bot_api.push_message(admin_group_id, TextSendMessage(text=admin_notify_text))
+                        current_app.line_bot_api.push_message(admin_group_id, TextSendMessage(text=admin_notify_text))
                 except Exception as e:
                     print(f"ERROR: Failed to send direct customer follow-up to {customer_line_user_id_for_task}: {e}", file=sys.stderr)
                     # Fallback to group if direct send fails
@@ -803,7 +778,7 @@ def scheduled_customer_follow_up_job():
                         f"ลิงก์งาน: {url_for('task_details', task_id=task.get('id'), _external=True)}"
                     )
                     if admin_group_id:
-                        line_bot_api.push_message(admin_group_id, [TextSendMessage(text=admin_fallback_text), FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex)])
+                        current_app.line_bot_api.push_message(admin_group_id, [TextSendMessage(text=admin_fallback_text), FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex)])
                     print(f"INFO: Sent fallback follow-up to admin group for task {task.get('id')}.", file=sys.stderr)
             else:
                 print(f"INFO: No LINE User ID for customer {customer_info.get('name', '-')}. Sending follow-up to admin/tech group for manual forwarding.", file=sys.stderr)
@@ -817,19 +792,20 @@ def scheduled_customer_follow_up_job():
 
                 try:
                     if admin_group_id:
-                        line_bot_api.push_message(admin_group_id, messages_to_send_group)
+                        current_app.line_bot_api.push_message(admin_group_id, messages_to_send_group)
                         print(f"INFO: Sent group follow-up messages for task {task.get('id')} to admin group.", file=sys.stderr)
                     if technician_group_id and technician_group_id != admin_group_id:
-                        line_bot_api.push_message(technician_group_id, messages_to_send_group)
+                        current_app.line_bot_api.push_message(technician_group_id, messages_to_send_group)
                         print(f"INFO: Sent group follow-up messages for task {task.get('id')} to technician group.", file=sys.stderr)
                 except Exception as e:
                     print(f"ERROR: Failed to send group follow-up LINE messages for task {task.get('id')}: {e}", file=sys.stderr)
             
 # NEW: handle postback event for customer feedback
+# Renamed from handle_line_event to handle_line_webhook_event to clarify its role
 @handler.add(MessageEvent, message=TextMessage) # Keep existing TextMessage handler
 @handler.add(PostbackEvent) # Add PostbackEvent handler
-def handle_line_event_postback_or_message(event): # Renamed to differentiate from webhook handler
-    """Handles various LINE events (messages and postbacks)."""
+def handle_line_webhook_event(event): # Renamed to differentiate from Flask route webhook handler
+    """Handles various LINE webhook events (messages and postbacks)."""
     if isinstance(event, PostbackEvent):
         print(f"INFO: Received PostbackEvent: {event.postback.data}", file=sys.stderr)
         data = event.postback.data
@@ -900,14 +876,13 @@ def handle_line_event_postback_or_message(event): # Renamed to differentiate fro
                 
                 if admin_group_id:
                     try:
-                        line_bot_api.push_message(admin_group_id, notification_messages)
+                        current_app.line_bot_api.push_message(admin_group_id, notification_messages)
                         print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
                     except Exception as e:
                         print(f"ERROR: Failed to send problem notification to admin group: {e}", file=sys.stderr)
             
         
     elif isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
-        # Existing TextMessage handler logic
         text = event.message.text.strip()
         text_lower = text.lower()
         
@@ -917,7 +892,7 @@ def handle_line_event_postback_or_message(event): # Renamed to differentiate fro
             'งานวันนี้': lambda e: handle_daily_tasks_command(e, 'today'),
             'งานพรุ่งนี้': lambda e: handle_daily_tasks_command(e, 'tomorrow'),
             'สร้างงานใหม่': handle_create_new_task_command,
-            'สรุปรายงาน': lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
+            'สรุปรายงาน': lambda e: current_app.line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
             'comphone': None 
         }
         
@@ -934,9 +909,15 @@ def handle_line_event_postback_or_message(event): # Renamed to differentiate fro
                     "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บสรุปงาน\n\n"
                     "หากคุณต้องการดูเมนูนี้อีกครั้ง พิมพ์ `comphone`"
                 )
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
+                current_app.line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
             else:
-                command_map[text_lower](event)
+                if command_map[text_lower]: 
+                    command_map[text_lower](event) 
+                # For `สรุปรายงาน` and `create_new_task_command`, they implicitly use current_app.line_bot_api
+                # For other handlers, we need to pass line_bot_api if they directly call it.
+                # All handlers are now adjusted to use url_for and other common functions that pull from context.
+                # If a handler calls line_bot_api directly, it will need current_app.line_bot_api as well.
+                # Let's ensure top-level calls use current_app.line_bot_api
             return
         
         if text_lower.startswith('ดูงาน '):
@@ -944,9 +925,6 @@ def handle_line_event_postback_or_message(event): # Renamed to differentiate fro
             if len(parts) > 1:
                 handle_view_task_by_name_command(event, parts[1])
                 return
-
-        # If the message is not a recognized command, do nothing (remain silent).
-        # Removed the 'help_text' reply for unrecognized commands.
 
 # NEW: Route to generate customer onboarding QR code
 @app.route('/generate_customer_onboarding_qr')
@@ -958,8 +936,6 @@ def generate_customer_onboarding_qr():
         flash("ไม่พบข้อมูลงานสำหรับสร้าง QR Code", 'danger')
         return redirect(url_for('summary'))
 
-    # Build LIFF URL for customer onboarding, passing task_id
-    # The 'page=onboarding' parameter will tell the LIFF app which part of the HTML to show
     onboarding_liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?page=onboarding&task_id={task_id}"
     
     qr_code_base64 = generate_qr_code_base64(onboarding_liff_url, box_size=10, border=4, fill_color='#000000', back_color='#FFFFFF')
@@ -972,14 +948,12 @@ def generate_customer_onboarding_qr():
                            customer_info=customer_info,
                            onboarding_url=onboarding_liff_url)
 
-# NEW: Route for customer onboarding form (LIFF App) - This will be customer_onboarding.html
 @app.route('/customer_onboarding')
 def customer_onboarding_page():
     """Renders the customer onboarding LIFF form."""
-    task_id = request.args.get('task_id') # Get task_id passed via LIFF URL
-    task = get_single_task(task_id) # Fetch task details for display or validation
+    task_id = request.args.get('task_id') 
+    task = get_single_task(task_id) 
     if not task:
-        # Handle case where task_id is missing or invalid
         return render_template('liff_close_page.html', message="ไม่พบข้อมูลงาน")
 
     parsed_task = parse_google_task_dates(task)
@@ -988,7 +962,6 @@ def customer_onboarding_page():
     return render_template('customer_onboarding.html', task=parsed_task)
 
 
-# NEW: Route to save customer LINE User ID
 @app.route('/save_customer_line_id', methods=['POST'])
 def save_customer_line_id():
     """Saves customer LINE User ID to Google Task notes."""
@@ -1035,7 +1008,7 @@ def save_customer_line_id():
             f"ขอบคุณที่เลือกใช้บริการ Comphone ครับ/ค่ะ"
         )
         try:
-            line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=welcome_message))
+            current_app.line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=welcome_message))
             print(f"INFO: Sent welcome message to new customer {customer_line_user_id}.", file=sys.stderr)
         except Exception as e:
             print(f"ERROR: Failed to send welcome message to customer {customer_line_user_id}: {e}", file=sys.stderr)
@@ -1134,7 +1107,7 @@ def submit_customer_problem():
 
         if admin_group_id:
             try:
-                line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
+                current_app.line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
                 print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
             except Exception as e:
                 print(f"ERROR: Failed to send problem notification to admin group: {e}", file=sys.stderr)
@@ -1152,7 +1125,7 @@ def submit_customer_problem():
                 f"Comphone - ยินดีบริการเสมอครับ/ค่ะ"
             )
             try:
-                line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=thank_you_message_to_customer))
+                current_app.line_bot_api.push_message(customer_line_user_id, TextSendMessage(text=thank_you_message_to_customer))
                 print(f"INFO: Sent thank you message to customer {customer_line_user_id} for task {task_id}.", file=sys.stderr)
             except Exception as e:
                 print(f"ERROR: Failed to send thank you message to customer {customer_line_user_id}: {e}", file=sys.stderr)
@@ -1163,72 +1136,33 @@ def submit_customer_problem():
     return render_template('liff_close_page.html', message="บันทึกข้อมูลเรียบร้อยแล้ว!")
 
 
-# --- Main entry point for Gunicorn ---
-# Gunicorn will look for 'application' or 'app' by default.
-# We explicitly name it 'app' for Gunicorn to find it.
-# All app initialization logic is now encapsulated here.
-# This function will be called once by Gunicorn.
-def create_app():
-    # Load settings from Drive first to ensure global _APP_SETTINGS_STORE is populated
-    load_settings_from_drive_on_startup() 
-    global _APP_SETTINGS_STORE
-    _APP_SETTINGS_STORE = get_app_settings() 
-    
-    # Initialize and run the scheduler based on these settings.
-    # This must happen after app settings are loaded.
-    run_scheduler()
-
-    # Flask context processor needs to be set up when the app is created or within app_context
-    @app.context_processor
-    def inject_now():
-        return {'now': datetime.datetime.now(THAILAND_TZ)}
-
-    return app
-
-# Gunicorn will typically import this module and look for a callable named 'app' or 'application'.
-# By having 'app = create_app()', when Gunicorn imports, it will call create_app()
-# which sets up all routes and global variables correctly.
-app = Flask(__name__, static_folder='static') # Initialize app outside create_app so decorators can find it
-# app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev') # Set inside create_app
-# Moved line_bot_api and handler to be initialized when app is ready for requests
-
-# Gunicorn will look for a variable named 'application' or 'app' at the top level
-# of the module. So we define it here, and the initialization logic goes into create_app().
-# We'll set app as the result of calling create_app() later in the if __name__ == '__main__': block,
-# or when Gunicorn imports this module, if we make 'app' the callable for Gunicorn.
-# For Gunicorn, the callable is typically set as `app = create_app()`.
-
-# It's better to wrap app creation in a function for Gunicorn to explicitly call it
-# rather than having complex logic directly at global scope.
-# So, the variable `app` that Gunicorn uses should be the result of a function call.
-# Let's adjust the bottom part to explicitly define `application` for Gunicorn.
-
-
-# Standard way for Gunicorn to find the application callable
-# This needs to be at the top level, and it will call create_app()
-# def application():
-#     return create_app()
-
-# If using `app:app` in gunicorn command, then `app` must be the callable.
-# Let's encapsulate the app creation and then assign it.
-def init_app():
+# --- Gunicorn/Flask App Initialization ---
+# This function creates and configures the Flask app instance.
+# Gunicorn will be configured to call this function (e.g., `app:create_flask_app_instance`)
+def create_flask_app_instance():
     _app = Flask(__name__, static_folder='static')
     _app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
     _app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-    # Initialize LINE Bot SDK within the app creation flow
+    # Initialize LINE Bot SDK instances here
     _line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
     _handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
 
-    # Assign handlers for webhook, needs to be done on the handler instance
+    # Attach line_bot_api and handler to Flask app context for global access
+    # This is crucial for functions outside route decorators (like scheduled jobs)
+    # and for handlers not directly passed the line_bot_api/handler instances.
+    _app.line_bot_api = _line_bot_api
+    _app.handler = _handler
+
+    # Define LINE webhook event handlers within this function
+    # These decorators will correctly bind to the _handler instance
     @_handler.add(MessageEvent, message=TextMessage)
     @_handler.add(PostbackEvent)
-    def handle_line_event_postback_or_message(event):
-        # All the logic for handle_line_event_postback_or_message goes here
-        # ... (copy the content of handle_line_event_postback_or_message here)
-        # For simplicity, let's keep this as a reference to the main handler below
-        # and just ensure it's attached.
-        # This is where the actual handlers are attached
+    def handle_line_webhook_event(event): # Renamed to prevent conflict and clarify scope
+        """Handles various LINE webhook events (messages and postbacks)."""
+        # All logic that was previously in handle_line_webhook_event goes here
+        # It now has access to _line_bot_api and _handler implicitly via closure
+        # or explicitly via current_app.
         if isinstance(event, PostbackEvent):
             print(f"INFO: Received PostbackEvent: {event.postback.data}", file=sys.stderr)
             data = event.postback.data
@@ -1288,13 +1222,13 @@ def init_app():
 
                     if manager_user_id:
                         notification_text += f"\n(ถึงผู้ดูแล: @{manager_user_id})" 
+                    
+                    problem_form_url_for_admin = url_for('customer_problem_form', task_id=task_id, _external=True)
+                    notification_text += f"\nลิงก์แจ้งปัญหาลูกค้า: {problem_form_url_for_admin}"
 
-                    if admin_group_id:
-                        try:
-                            _line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
-                            print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
-                        except Exception as e:
-                            print(f"ERROR: Failed to send problem notification to admin group: {e}", file=sys.stderr)
+
+                    _line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
+                    print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
                 
             
         elif isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
@@ -1326,31 +1260,34 @@ def init_app():
                     )
                     _line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
                 else:
-                    # Pass the correct line_bot_api instance
-                    if command_map[text_lower]: # check if it's not None (like comphone)
-                        command_map[text_lower](event) # Call handler with event
+                    if command_map[text_lower]: 
+                        command_map[text_lower](event) 
                 return
-            
-            if text_lower.startswith('ดูงาน '):
-                parts = text.split(maxsplit=1)
-                if len(parts) > 1:
-                    handle_view_task_by_name_command(event, parts[1])
-                    return
+    
+    # Context processor needs to be set up on the app instance
+    @_app.context_processor
+    def inject_now():
+        return {'now': datetime.datetime.now(THAILAND_TZ)}
 
-    # Assign _line_bot_api and _handler to global line_bot_api and handler
-    # This is complex with nested functions. Let's make the handlers themselves take line_bot_api.
-    # For now, let's just make the existing line_bot_api and handler global.
-
+    # Initial app setup and scheduler must be run within app context
+    with _app.app_context():
+        # Load settings from Drive first
+        load_settings_from_drive_on_startup() 
+        global _APP_SETTINGS_STORE
+        _APP_SETTINGS_STORE = get_app_settings() 
+        
+        # Now that settings are loaded, initialize and run the scheduler
+        run_scheduler()
+    
     return _app
 
-
-# Assign the app callable for Gunicorn
-# This will ensure that when Gunicorn imports app.py, it calls init_app()
-# which sets up all routes, handlers, and the scheduler.
-app = init_app()
+# Gunicorn will look for a callable named 'app' or 'application'.
+# We define 'app' at the top level and assign the result of create_flask_app_instance() to it.
+app = create_flask_app_instance()
 
 if __name__ == '__main__':
-    # This block is for local development only, not typically run by Gunicorn on Render.
+    # This block is for local development only. Gunicorn will not run this.
+    # It ensures `app.run()` is only called when script is executed directly.
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
 
