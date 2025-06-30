@@ -36,12 +36,16 @@ from linebot.models import (
 
 from google.oauth2.credentials import Credentials 
 from google.auth.transport.requests import Request 
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
 
 import pandas as pd 
+
+# --- NEW: APScheduler for background tasks ---
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import atexit # เพื่อให้ scheduler หยุดทำงานเมื่อ app ปิด
 
 # --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
@@ -81,19 +85,27 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': { 'appointment_reminder_hour_thai': 7, 'outstanding_report_hour_thai': 20 },
     'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', '') },
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
-    'equipment_catalog': []
+    'equipment_catalog': [],
+    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 } # NEW: Auto backup settings
 }
 _APP_SETTINGS_STORE = {}
 
 #<editor-fold desc="Helper and Utility Functions">
 def load_settings_from_file():
+    """Load application settings from JSON file."""
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-        except (json.JSONDecodeError, IOError) as e: app.logger.error(f"Error handling settings.json: {e}")
+        except (json.JSONDecodeError, IOError) as e: 
+            app.logger.error(f"Error handling settings.json: {e}")
+            # If file is corrupted, delete it and return default settings
+            if os.path.getsize(SETTINGS_FILE) == 0:
+                os.remove(SETTINGS_FILE)
+                app.logger.warning(f"Empty settings.json deleted. Using default settings.")
     return None
 
 def save_settings_to_file(settings_data):
+    """Save application settings to JSON file."""
     try:
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
         return True
@@ -102,60 +114,96 @@ def save_settings_to_file(settings_data):
         return False
 
 def get_app_settings():
+    """Get current application settings, loading from file or using defaults."""
     global _APP_SETTINGS_STORE
     if not _APP_SETTINGS_STORE:
         loaded = load_settings_from_file()
+        # Deep copy default settings to ensure new dictionaries are created
         _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
         if loaded:
+            # Update nested dictionaries carefully
             for key, default_value in _APP_SETTINGS_STORE.items():
-                if isinstance(default_value, dict): _APP_SETTINGS_STORE[key].update(loaded.get(key, {}))
-                elif key in loaded: _APP_SETTINGS_STORE[key] = loaded[key]
+                if isinstance(default_value, dict) and key in loaded and isinstance(loaded[key], dict):
+                    _APP_SETTINGS_STORE[key].update(loaded[key])
+                elif key in loaded: 
+                    _APP_SETTINGS_STORE[key] = loaded[key]
         else:
+            # If no settings file, save the default settings
             save_settings_to_file(_APP_SETTINGS_STORE)
     
+    # Ensure common_equipment_items is always up-to-date
     equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
     return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
+    """Save application settings, merging with current settings."""
     global _APP_SETTINGS_STORE
     current_settings = get_app_settings()
     for key, value in settings_data.items():
-        if isinstance(value, dict) and key in current_settings: current_settings[key].update(value)
-        else: current_settings[key] = value
+        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
+            current_settings[key].update(value)
+        else: 
+            current_settings[key] = value
     _APP_SETTINGS_STORE = current_settings
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
+# Initialize settings store on app start
 _APP_SETTINGS_STORE = get_app_settings()
 
 def get_google_service(api_name, api_version):
+    """Authenticates and returns a Google API service."""
     creds = None
     token_path = 'token.json'
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
+
+    # Try to load credentials from environment variable first
     if google_token_json_str:
-        try: creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-        except Exception as e: app.logger.warning(f"Could not load token from env var: {e}")
-    elif os.path.exists(token_path):
+        try: 
+            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
+            app.logger.info("Loaded Google credentials from GOOGLE_TOKEN_JSON environment variable.")
+        except Exception as e: 
+            app.logger.warning(f"Could not load token from env var, falling back to token.json: {e}")
+    
+    # Fallback to local token.json file
+    if not creds and os.path.exists(token_path):
         creds = Credentials.from_authorized_file(token_path, SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try: creds.refresh(Request())
-            except Exception as e:
-                app.logger.error(f"Error refreshing token: {e}")
-                creds = None
-        if not creds and os.path.exists('credentials.json'):
+        app.logger.info(f"Loaded Google credentials from local {token_path}.")
+
+    # Refresh token if expired
+    if creds and creds.expired and creds.refresh_token:
+        try: 
+            creds.refresh(Request())
+            app.logger.info("Refreshed Google access token.")
+        except Exception as e:
+            app.logger.error(f"Error refreshing token: {e}")
+            creds = None # Invalidate creds if refresh fails
+    
+    # If no valid credentials, try to get new ones from credentials.json
+    if not creds and os.path.exists('credentials.json'):
+        app.logger.info("Attempting to get new Google credentials from credentials.json.")
+        try:
             flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_console()
-        if creds:
-            with open(token_path, 'w') as token: token.write(creds.to_json())
-            app.logger.info(f"Token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render.")
-    return build(api_name, api_version, credentials=creds) if creds else None
+            creds = flow.run_console() # This will require manual interaction in console
+            if creds:
+                with open(token_path, 'w') as token: token.write(creds.to_json())
+                app.logger.info(f"New token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
+        except Exception as e:
+            app.logger.error(f"Error getting new credentials: {e}")
+            creds = None
+
+    if not creds or not creds.valid:
+        app.logger.error("No valid Google credentials available. API service cannot be built.")
+        return None
+        
+    return build(api_name, api_version, credentials=creds)
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
 
 @cached(cache)
 def get_google_tasks_for_report(show_completed=True):
+    """Fetches tasks from Google Tasks API."""
     app.logger.info(f"Fetching tasks (show_completed={show_completed})")
     service = get_google_tasks_service()
     if not service: return None
@@ -167,6 +215,7 @@ def get_google_tasks_for_report(show_completed=True):
         return None
 
 def get_single_task(task_id):
+    """Fetches a single task from Google Tasks API."""
     service = get_google_tasks_service()
     if not service: return None
     try:
@@ -175,15 +224,20 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
         
-def upload_file_to_google_drive(file_path, file_name, mime_type):
-    service, folder_id = get_google_drive_service(), GOOGLE_DRIVE_FOLDER_ID
+def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=GOOGLE_DRIVE_FOLDER_ID):
+    """Uploads a file to a specified Google Drive folder."""
+    service = get_google_drive_service()
     if not service or not folder_id:
-        app.logger.error("Drive service or folder ID is not configured.")
+        app.logger.error("Drive service or folder ID is not configured for upload.")
         return None
     try:
         media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-        file_obj = service.files().create(body={'name': file_name, 'parents': [folder_id]}, media_body=media, fields='id, webViewLink').execute()
+        file_metadata = {'name': file_name, 'parents': [folder_id]}
+        file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        
+        # Make the uploaded file publicly readable
         service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
+        
         app.logger.info(f"Uploaded to Drive: {file_obj.get('webViewLink')}")
         return file_obj.get('webViewLink')
     except HttpError as e:
@@ -191,6 +245,7 @@ def upload_file_to_google_drive(file_path, file_name, mime_type):
         return None
 
 def create_google_task(title, notes=None, due=None):
+    """Creates a new task in Google Tasks."""
     service = get_google_tasks_service()
     if not service: return None
     try:
@@ -202,6 +257,7 @@ def create_google_task(title, notes=None, due=None):
         return None
         
 def delete_google_task(task_id):
+    """Deletes a task from Google Tasks."""
     service = get_google_tasks_service()
     if not service: return False
     try:
@@ -212,6 +268,7 @@ def delete_google_task(task_id):
         return False
 
 def update_google_task(task_id, title=None, notes=None, status=None, due=None):
+    """Updates an existing task in Google Tasks."""
     service = get_google_tasks_service()
     if not service: return None
     try:
@@ -234,6 +291,7 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
         return None
 
 def parse_customer_info_from_notes(notes):
+    """Parses customer information and map URL from task notes."""
     info = {'name': '', 'phone': '', 'address': '', 'map_url': None}
     if not notes: return info
     
@@ -243,7 +301,8 @@ def parse_customer_info_from_notes(notes):
     
     # UPDATED: More robust regex for Google Maps URLs
     app.logger.debug(f"Parsing notes for map_url: {notes}")
-    map_url_match = re.search(r"(https?://(?:www\.)?google\.com/maps/(?:place|search)/\?api=1&query=[-\d\.]+,[-\d\.]+|@[\d\.]+,[\d\.]+,[\d\.]z.*)", notes)
+    # Regex to capture various Google Maps URL formats (e.g., /maps?q=, /maps/search/, /maps/place/, @lat,long)
+    map_url_match = re.search(r"(https?://(?:www\.)?google\.com/maps/(?:place|search)/\?api=1&query=[-\d\.]+,[-\d\.]+|https?://(?:www\.)?google\.com/maps\?q=[-\d\.]+,[-\d\.]+|https?://(?:www\.)?google\.com/maps/@[\d\.]+,[\d\.]+,[\d\.]z.*)", notes)
     if map_url_match:
         info['map_url'] = map_url_match.group(0).strip() # Use group(0) to get the whole matched string
         app.logger.debug(f"Parsed map_url: {info['map_url']}")
@@ -259,6 +318,7 @@ def parse_customer_info_from_notes(notes):
     return info
 
 def parse_google_task_dates(task_item):
+    """Parses and formats date fields from a Google Task item."""
     parsed = task_item.copy()
     for key in ['created', 'due', 'completed']:
         if parsed.get(key):
@@ -276,6 +336,7 @@ def parse_google_task_dates(task_item):
     return parsed
 
 def parse_tech_report_from_notes(notes):
+    """Parses technical report history from task notes."""
     if not notes: return [], ""
     report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
     history = []
@@ -294,9 +355,11 @@ def parse_tech_report_from_notes(notes):
     return history, original_notes_text
     
 def allowed_file(filename):
+    """Checks if a filename has an allowed extension."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def _parse_equipment_string(text_input):
+    """Parses equipment string into a list of dictionaries."""
     equipment_list = []
     if not text_input: return equipment_list
     for line in text_input.strip().split('\n'):
@@ -308,6 +371,7 @@ def _parse_equipment_string(text_input):
     return equipment_list
 
 def _format_equipment_list(equipment_data):
+    """Formats a list of equipment data into a display string."""
     if not equipment_data: return 'N/A'
     if isinstance(equipment_data, str): return equipment_data
     lines = []
@@ -322,7 +386,160 @@ def _format_equipment_list(equipment_data):
 
 @app.context_processor
 def inject_now():
+    """Injects current datetime into Jinja2 templates."""
     return {'now': datetime.datetime.now(THAILAND_TZ)}
+
+def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
+    """Generates a base64 encoded QR code image."""
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=box_size,
+            border=border,
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color=fill_color, back_color=back_color)
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
+    except Exception as e:
+        app.logger.error(f"Error generating QR code: {e}")
+        return "" # Return empty string on error
+
+# NEW: Internal function to create the backup zip file
+def _create_backup_zip():
+    """Creates a zip archive of all tasks, settings, and source code."""
+    try:
+        all_tasks = get_google_tasks_for_report(show_completed=True)
+        all_settings = get_app_settings()
+        
+        if all_tasks is None or all_settings is None:
+            app.logger.error('Failed to get all tasks or settings for backup.')
+            return None, None
+
+        memory_file = BytesIO()
+        with zipfile.ZipFile(memory_file, 'w', zipfile.DEFLATED) as zf:
+            zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
+            zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False))
+            # Include source code in backup
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            for folder, _, files in os.walk(project_root):
+                for file in files:
+                    # Exclude temporary or sensitive files from backup
+                    if file.endswith(('.py', '.html', '.css', '.js', '.json', '.env', 'Procfile', 'requirements.txt')) and \
+                       file not in ['token.json']: # Exclude local token if it exists
+                        file_path = os.path.join(folder, file)
+                        archive_name = os.path.relpath(file_path, project_root)
+                        zf.write(file_path, arcname=f'code/{archive_name}')
+        memory_file.seek(0)
+        backup_filename = f"full_system_backup_{datetime.date.today().strftime('%Y%m%d_%H%M%S')}.zip"
+        app.logger.info(f"Created backup zip: {backup_filename}")
+        return memory_file, backup_filename
+    except Exception as e:
+        app.logger.error(f"Error creating full system backup zip: {e}")
+        return None, None
+
+# NEW: Internal function to upload backup to Google Drive
+def _upload_backup_to_drive(memory_file, filename):
+    """Uploads the given memory file (zip) to Google Drive."""
+    if not memory_file or not filename:
+        app.logger.error("No memory file or filename provided for Drive upload.")
+        return False
+    
+    service = get_google_drive_service()
+    folder_id = GOOGLE_DRIVE_FOLDER_ID
+    
+    if not service or not folder_id:
+        app.logger.error("Drive service or folder ID is not configured for auto backup upload.")
+        return False
+    
+    try:
+        # Create a MediaIoBaseUpload object from BytesIO
+        media = MediaIoBaseUpload(memory_file, mimetype='application/zip', resumable=True)
+        file_metadata = {'name': filename, 'parents': [folder_id]}
+        
+        file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        
+        # Make the uploaded file publicly readable (optional, based on your security needs)
+        service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
+        
+        app.logger.info(f"Successfully uploaded auto backup to Drive: {file_obj.get('webViewLink')}")
+        return True
+    except HttpError as e:
+        app.logger.error(f'Google Drive auto backup upload error: {e}')
+        return False
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred during auto backup upload: {e}")
+        return False
+
+# NEW: Scheduled backup job
+def scheduled_backup_job():
+    """Scheduled job to perform automatic backup to Google Drive."""
+    with app.app_context(): # Run within app context for url_for and settings access
+        app.logger.info("Running scheduled backup job...")
+        memory_file, filename = _create_backup_zip()
+        if memory_file and filename:
+            if _upload_backup_to_drive(memory_file, filename):
+                app.logger.info("Automatic backup completed successfully to Google Drive.")
+            else:
+                app.logger.error("Automatic backup to Google Drive failed.")
+        else:
+            app.logger.error("Failed to create backup zip file for automatic backup.")
+
+# NEW: Scheduler initialization
+scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
+
+def run_scheduler():
+    """Initializes and runs the APScheduler jobs."""
+    settings = get_app_settings()
+    auto_backup_enabled = settings.get('auto_backup', {}).get('enabled', False)
+    auto_backup_hour = settings.get('auto_backup', {}).get('hour_thai', 2)
+    auto_backup_minute = settings.get('auto_backup', {}).get('minute_thai', 0)
+
+    # Remove existing jobs to prevent duplicates on reloads (e.g., during debug)
+    # This might be tricky with Flask reloader; ensure scheduler stops cleanly.
+    if scheduler.running:
+        app.logger.info("Scheduler is already running. Shutting down existing jobs.")
+        scheduler.shutdown(wait=False) # Shutdown without waiting for current jobs to finish
+
+    # Reinitialize scheduler to ensure clean state
+    global scheduler
+    scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
+
+    if auto_backup_enabled:
+        job_id = 'auto_system_backup'
+        # Check if job already exists to prevent adding duplicates if app reloads without full restart
+        if not scheduler.get_job(job_id):
+            app.logger.info(f"Scheduling automatic backup daily at {auto_backup_hour:02d}:{auto_backup_minute:02d} Thai Time.")
+            scheduler.add_job(
+                scheduled_backup_job,
+                CronTrigger(hour=auto_backup_hour, minute=auto_backup_minute, timezone=THAILAND_TZ),
+                id=job_id
+            )
+        else:
+            app.logger.info(f"Automatic backup job '{job_id}' already exists. Reconfiguring trigger.")
+            scheduler.reschedule_job(
+                job_id,
+                trigger=CronTrigger(hour=auto_backup_hour, minute=auto_backup_minute, timezone=THAILAND_TZ)
+            )
+    else:
+        # If auto backup is disabled, remove the job if it exists
+        if scheduler.get_job('auto_system_backup'):
+            scheduler.remove_job('auto_system_backup')
+            app.logger.info("Automatic backup job removed as it is disabled.")
+
+    if not scheduler.running:
+        scheduler.start()
+        app.logger.info("APScheduler started.")
+        # Ensure the scheduler shuts down cleanly when the app exits
+        atexit.register(lambda: scheduler.shutdown(wait=False))
+
+# Call run_scheduler on app startup (after initial settings load)
+# This will schedule the jobs based on current settings
+run_scheduler()
+
 #</editor-fold>
 
 @app.route("/")
@@ -364,6 +581,7 @@ def form_page():
         if created_task:
             cache.clear()
             # LINE notification logic would go here if needed
+            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
             return redirect(url_for('summary'))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
@@ -538,7 +756,7 @@ def delete_task(task_id):
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
-        # --- ADDED: Handle Logo Upload ---
+        # --- Handle Logo Upload ---
         if 'logo_file' in request.files:
             logo_file = request.files['logo_file']
             if logo_file and logo_file.filename != '' and allowed_file(logo_file.filename):
@@ -551,13 +769,40 @@ def settings_page():
                     app.logger.error(f"Could not save logo: {e}")
                     flash('เกิดข้อผิดพลาดในการบันทึกโลโก้', 'danger')
                 return redirect(url_for('settings_page'))
+        
+        # --- Handle Auto Backup Settings ---
+        auto_backup_enabled = request.form.get('auto_backup_enabled') == 'on'
+        auto_backup_hour = int(request.form.get('auto_backup_hour'))
+        auto_backup_minute = int(request.form.get('auto_backup_minute'))
 
-        # Handle other settings save
+        # Save other settings
         save_app_settings({
-            'report_times': { 'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')) },
-            'line_recipients': { 'admin_group_id': request.form.get('admin_group_id', '').strip(), 'technician_group_id': request.form.get('technician_group_id', '').strip() },
-            'qrcode_settings': { 'box_size': int(request.form.get('qr_box_size', 8)), 'border': int(request.form.get('qr_border', 4)), 'fill_color': request.form.get('qr_fill_color', '#28a745'), 'back_color': request.form.get('qr_back_color', '#FFFFFF'), 'custom_url': request.form.get('qr_custom_url', '').strip() }
+            'report_times': { 
+                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 
+                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')) 
+            },
+            'line_recipients': { 
+                'admin_group_id': request.form.get('admin_group_id', '').strip(), 
+                'technician_group_id': request.form.get('technician_group_id', '').strip(),
+                'manager_user_id': request.form.get('manager_user_id', '').strip() # Ensure manager_user_id is saved
+            },
+            'qrcode_settings': { 
+                'box_size': int(request.form.get('qr_box_size', 8)), 
+                'border': int(request.form.get('qr_border', 4)), 
+                'fill_color': request.form.get('qr_fill_color', '#28a745'), 
+                'back_color': request.form.get('qr_back_color', '#FFFFFF'), 
+                'custom_url': request.form.get('qr_custom_url', '').strip() 
+            },
+            'auto_backup': { # NEW: Save auto backup settings
+                'enabled': auto_backup_enabled,
+                'hour_thai': auto_backup_hour,
+                'minute_thai': auto_backup_minute
+            }
         })
+        
+        # After saving settings, re-run the scheduler to apply new backup times
+        run_scheduler()
+
         flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
         cache.clear()
         return redirect(url_for('settings_page'))
@@ -567,28 +812,6 @@ def settings_page():
     qr_url_to_use = current_settings.get('qrcode_settings', {}).get('custom_url', '') or general_summary_url
     qr_settings = current_settings.get('qrcode_settings', {})
     
-    qr_code_base64_general = ''
-    def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
-        try:
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=box_size,
-                border=border,
-            )
-            qr.add_data(data)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color=fill_color, back_color=back_color)
-            buffered = BytesIO()
-            img.save(buffered, format="PNG")
-            return "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
-        except Exception as e:
-            app.logger.error(f"Error generating QR code: {e}")
-            return "" # Return empty string on error
-
-    if 'generate_qr_code_base64' not in globals():
-        globals()['generate_qr_code_base64'] = generate_qr_code_base64
-
     qr_code_base64_general = generate_qr_code_base64(
         qr_url_to_use, 
         box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
@@ -615,33 +838,22 @@ def test_notification():
 
 @app.route('/backup_data')
 def backup_data():
-    try:
-        all_tasks = get_google_tasks_for_report(show_completed=True)
-        all_settings = get_app_settings()
-        drive_service = get_google_drive_service()
-        if all_tasks is None or all_settings is None or drive_service is None:
-            flash('ไม่สามารถเชื่อมต่อบริการที่จำเป็น (Tasks, Drive) ได้', 'danger')
-            return redirect(url_for('settings_page'))
-        memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w', zipfile.DEFLATED) as zf:
-            zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
-            zf.writestr('data/settings_backup.json', json.dumps(all_settings, indent=4, ensure_ascii=False))
-            # Include source code in backup
-            project_root = os.path.dirname(os.path.abspath(__file__))
-            for folder, _, files in os.walk(project_root):
-                for file in files:
-                    if file.endswith(('.py', '.html', '.css', '.js', '.json', '.env', 'Procfile', 'requirements.txt')):
-                        file_path = os.path.join(folder, file)
-                        archive_name = os.path.relpath(file_path, project_root)
-                        zf.write(file_path, arcname=f'code/{archive_name}')
-        memory_file.seek(0)
-        backup_filename = f"full_system_backup_{datetime.date.today()}.zip"
+    """Web endpoint to manually download a full system backup."""
+    memory_file, backup_filename = _create_backup_zip()
+    if memory_file and backup_filename:
+        flash('สร้างไฟล์สำรองข้อมูลเรียบร้อยแล้ว!', 'success')
         return Response(memory_file, mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={backup_filename}'})
-    except Exception as e:
-        app.logger.error(f"Error creating full system backup file: {e}")
+    else:
         flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
         return redirect(url_for('settings_page'))
 
+@app.route('/trigger_auto_backup_now', methods=['POST'])
+def trigger_auto_backup_now():
+    """Endpoint to manually trigger the automatic backup job."""
+    app.logger.info("Manual trigger for automatic backup initiated.")
+    scheduled_backup_job() # Directly call the job function
+    flash('ระบบกำลังดำเนินการสำรองข้อมูลอัตโนมัติ (โปรดตรวจสอบ Google Drive ของคุณในภายหลัง)', 'info')
+    return redirect(url_for('settings_page'))
 
 @app.route('/export_equipment_catalog', methods=['GET'])
 def export_equipment_catalog():
@@ -875,10 +1087,10 @@ def handle_message(event):
             handle_view_task_by_name_command(event, parts[1])
             return
 
-    # หากข้อความไม่ใช่คำสั่งที่รู้จัก บอทจะยังคงเงียบ
-    # ไม่มีการตอบกลับด้วยข้อความ "วิธีใช้" อัตโนมัติอีกต่อไป
-    # ผู้ใช้ต้องพิมพ์ "comphone" เพื่อเรียกดูวิธีใช้
+    # If the message is not a recognized command, do nothing (remain silent).
+    # Removed the 'help_text' reply for unrecognized commands.
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+
