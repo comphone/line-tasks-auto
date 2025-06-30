@@ -214,6 +214,7 @@ def load_settings_from_drive_on_startup():
 load_settings_from_drive_on_startup()
 
 # Initialize settings store (will use loaded settings from Drive or defaults if restore failed)
+# This line is called after load_settings_from_drive_on_startup so it picks up restored settings
 _APP_SETTINGS_STORE = get_app_settings()
 
 def get_google_service(api_name, api_version):
@@ -602,14 +603,14 @@ def run_scheduler():
     auto_backup_hour = settings.get('auto_backup', {}).get('hour_thai', 2)
     auto_backup_minute = settings.get('auto_backup', {}).get('minute_thai', 0)
 
-    # Shutdown existing scheduler to ensure jobs are correctly re-added/removed
+    # Shutdown existing scheduler to prevent duplicates on reloads (e.g., during debug)
     if scheduler.running:
         app.logger.info("Scheduler is already running. Shutting down existing jobs for reinitialization.")
         scheduler.shutdown(wait=False)
-        # Reinitialize scheduler to ensure clean state
-        global scheduler
-        scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
+        # ไม่จำเป็นต้อง reinitialize scheduler หรือประกาศ global scheduler อีกครั้ง
+        # เพราะตัวแปร scheduler ถูกประกาศเป็น global แล้วที่ด้านบนของไฟล์
+        # และเราต้องการทำงานกับ instance เดิม
+        
     # Re-add auto backup job based on current settings
     job_id = 'auto_system_backup'
     if auto_backup_enabled:
