@@ -72,12 +72,12 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 # --- SETTINGS_FILE (Moved to Global Scope) ---
-SETTINGS_FILE = 'settings.json' # <-- MOVED TO GLOBAL SCOPE
+SETTINGS_FILE = 'settings.json' 
 
 # --- Global variable for app settings store ---
 _APP_SETTINGS_STORE = {} 
 
-#<editor-fold desc="Helper and Utility Functions">
+# --- Helper and Utility Functions (remain outside create_flask_app_instance) ---
 def load_settings_from_file():
     """Load application settings from JSON file."""
     if os.path.exists(SETTINGS_FILE):
@@ -428,7 +428,7 @@ def _format_equipment_list(equipment_data):
             elif isinstance(item, str): lines.append(item)
     return "\n".join(lines) if lines else 'N/A'
 
-# app.context_processor should be inside create_app
+# app.context_processor should be inside create_flask_app_instance
 def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
     """Generates a base64 encoded QR code image."""
     try:
@@ -802,7 +802,7 @@ def scheduled_customer_follow_up_job():
                 except Exception as e:
                     print(f"ERROR: Failed to send group follow-up LINE messages for task {task.get('id')}: {e}", file=sys.stderr)
             
-def handle_line_webhook_event(event): # This will be wrapped by _handler.add
+def handle_line_webhook_event(event): 
     """Handles various LINE webhook events (messages and postbacks)."""
     if isinstance(event, PostbackEvent):
         print(f"INFO: Received PostbackEvent: {event.postback.data}", file=sys.stderr)
@@ -888,7 +888,7 @@ def handle_line_webhook_event(event): # This will be wrapped by _handler.add
             'งานเสร็จ': handle_completed_tasks_command,
             'งานวันนี้': lambda e: handle_daily_tasks_command(e, 'today'),
             'งานพรุ่งนี้': lambda e: handle_daily_tasks_command(e, 'tomorrow'),
-            'สร้างงานใหม่': handle_create_new_task_command,
+            'สร้างงานใหม่': lambda e: handle_create_new_task_command(e), # Pass event to create_new_task_command
             'สรุปรายงาน': lambda e: current_app.line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
             'comphone': None 
         }
@@ -1128,10 +1128,11 @@ def submit_customer_problem():
     return render_template('liff_close_page.html', message="บันทึกข้อมูลเรียบร้อยแล้ว!")
 
 
-# --- Main entry point for Gunicorn ---
-# Gunicorn will look for a callable named 'app' or 'application'.
+# --- Gunicorn/Flask App Initialization ---
 # This function creates and configures the Flask app instance.
+# Gunicorn will be configured to call this function (e.g., `app:create_flask_app_instance`)
 def create_flask_app_instance():
+    # Define app instance here
     _app = Flask(__name__, static_folder='static')
     _app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
     _app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER 
@@ -1143,116 +1144,25 @@ def create_flask_app_instance():
     _app.handler = _handler
 
     # Define LINE webhook event handlers within this function
-    @_handler.add(MessageEvent, message=TextMessage)
-    @_handler.add(PostbackEvent)
-    def handle_line_webhook_event(event): # This handles all incoming webhook events
-        """Handles various LINE webhook events (messages and postbacks)."""
-        if isinstance(event, PostbackEvent):
-            print(f"INFO: Received PostbackEvent: {event.postback.data}", file=sys.stderr)
-            data = event.postback.data
-            params = dict(item.split('=') for item in data.split('&'))
+    @_app.route("/callback", methods=['POST']) # This remains the Flask route decorator
+    def callback():
+        signature = request.headers['X-Line-Signature']
+        body = request.get_data(as_text=True)
+        print("INFO: LINE Webhook Request body: " + body, file=sys.stderr)
+        try:
+            _app.handler.handle(body, signature) 
+        except InvalidSignatureError:
+            print(f"ERROR: InvalidSignatureError: {body}", file=sys.stderr)
+            abort(400)
+        except Exception as e:
+            print(f"ERROR: Unhandled error in webhook: {e}", file=sys.stderr)
+            abort(500)
+        return 'OK'
 
-            action = params.get('action')
-            if action == 'customer_feedback':
-                task_id = params.get('task_id')
-                feedback_type = params.get('feedback')
-                customer_line_user_id = event.source.userId 
-
-                task = get_single_task(task_id)
-                if not task:
-                    print(f"ERROR: Postback for unknown task_id: {task_id}", file=sys.stderr)
-                    return
-                
-                current_notes = task.get('notes', '')
-                tech_reports_history, base_customer_info_notes = parse_tech_report_from_notes(current_notes)
-                customer_feedback_data_existing = parse_customer_feedback_from_notes(current_notes) 
-                
-                customer_feedback_data_existing.update({
-                    'feedback_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-                    'feedback_type': feedback_type,
-                    'customer_line_user_id': customer_line_user_id 
-                })
-                
-                feedback_json_str = json.dumps(customer_feedback_data_existing, ensure_ascii=False, indent=2)
-                
-                final_notes = base_customer_info_notes.strip()
-                if tech_reports_history: 
-                    all_reports_text = ""
-                    for report in sorted(tech_reports_history, key=lambda x: x.get('summary_date', '')):
-                        final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-                    
-                final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{feedback_json_str}\n--- CUSTOMER_FEEDBACK_END ---"
-
-                new_task_status = 'needsAction' if feedback_type == 'problem' else task['status']
-                update_google_task(task_id=task_id, notes=final_notes, status=new_task_status, due=task.get('due'))
-                print(f"INFO: Task {task_id} updated with feedback: {feedback_type}. Status set to {new_task_status}. Customer ID: {customer_line_user_id}", file=sys.stderr)
-                cache.clear()
-
-                if feedback_type == 'problem':
-                    settings = get_app_settings()
-                    admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
-                    manager_user_id = settings.get('line_recipients', {}).get('manager_user_id', '')
-                    
-                    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-                    
-                    notification_text = (
-                        f"⚠️ แจ้งเตือน: ลูกค้าแจ้งปัญหา! ⚠️\n"
-                        f"งาน: {task.get('title', '-')}\n"
-                        f"ลูกค้า: {customer_info.get('name', '-')}\n"
-                        f"โทร: {customer_info.get('phone', '-')}\n"
-                        f"สถานะงานถูกเปลี่ยนเป็น: 'ยังไม่เสร็จ'\n\n" 
-                        f"โปรดตรวจสอบและติดต่อกลับลูกค้า:\n{url_for('task_details', task_id=task_id, _external=True)}\n"
-                    )
-
-                    if manager_user_id:
-                        notification_text += f"\n(ถึงผู้ดูแล: @{manager_user_id})" 
-                    
-                    problem_form_url_for_admin = url_for('customer_problem_form', task_id=task_id, _external=True)
-                    notification_text += f"\nลิงก์แจ้งปัญหาลูกค้า: {problem_form_url_for_admin}"
-
-
-                    _line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
-                    print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
-            
-        elif isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
-            text = event.message.text.strip()
-            text_lower = text.lower()
-            
-            command_map = {
-                'งานค้าง': handle_outstanding_tasks_command,
-                'งานเสร็จ': handle_completed_tasks_command,
-                'งานวันนี้': lambda e: handle_daily_tasks_command(e, 'today'),
-                'งานพรุ่งนี้': lambda e: handle_daily_tasks_command(e, 'tomorrow'),
-                'สร้างงานใหม่': handle_create_new_task_command,
-                'สรุปรายงาน': lambda e: _line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
-                'comphone': None 
-            }
-            
-            if text_lower in command_map:
-                if text_lower == 'comphone':
-                    help_text = (
-                        "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
-                        "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-                        "➡️ `งานเสร็จ`\nดูงานที่ทำเสร็จล่าสุด\n\n"
-                        "➡️ `งานวันนี้`\nดูงานที่มีกำหนดเสร็จในวันนี้\n\n"
-                        "➡️ `งานพรุ่งนี้`\nดูงานที่มีกำหนดเสร็จในวันพรุ่งนี้\n\n"
-                        "➡️ `ดูงาน ชื่อลูกค้า`\nค้นหางานของลูกค้าคนนั้นๆ (เช่น: `ดูงาน สมศรี`)\n\n"
-                        "➡️ `สร้างงานใหม่`\nเปิดฟอร์มสำหรับสร้างงานใหม่\n\n"
-                        "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บสรุปงาน\n\n"
-                        "หากคุณต้องการดูเมนูนี้อีกครั้ง พิมพ์ `comphone`"
-                    )
-                    _line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
-                else:
-                    if command_map[text_lower]: 
-                        command_map[text_lower](event) 
-                return
-            
-            if text_lower.startswith('ดูงาน '):
-                parts = text.split(maxsplit=1)
-                if len(parts) > 1:
-                    handle_view_task_by_name_command(event, parts[1])
-                return
-
+    # Attach the actual line event handler function to the _handler instance
+    _handler.add(MessageEvent, message=TextMessage)(handle_line_webhook_event)
+    _handler.add(PostbackEvent)(handle_line_webhook_event)
+    
     # Flask context processor (needs to be set up on the app instance)
     @_app.context_processor
     def inject_now():
@@ -1271,7 +1181,7 @@ def create_flask_app_instance():
     return _app
 
 # Gunicorn will look for a callable named 'app' or 'application'.
-# We define 'app' at the top level and assign the result of create_flask_app_instance() to it.
+# We assign the result of create_flask_app_instance() to 'app'.
 # This makes 'app' the WSGI callable that Gunicorn will serve.
 app = create_flask_app_instance()
 
