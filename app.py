@@ -334,11 +334,14 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
         return None
 
 def parse_customer_info_from_notes(notes):
-    """Parses customer information and map URL from task notes robustly."""
-    info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'detail': ''}
+    """
+    Parses customer information and map URL from task notes robustly.
+    The main task detail is stored in the task's 'title', not in the notes.
+    """
+    # The 'detail' field is removed as it's now sourced from task.title
+    info = {'name': '', 'phone': '', 'address': '', 'map_url': None}
     if not notes: return info
 
-    # IMPROVED: Robust parsing to prevent errors
     name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
     phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
     address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
@@ -352,14 +355,11 @@ def parse_customer_info_from_notes(notes):
         info['address'] = address_match.group(1).strip()
     if map_url_match:
         info['map_url'] = map_url_match.group(0).strip()
-
-    # Extract the initial detail by removing known structured parts
-    base_content = re.sub(r"--- (?:TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*", "", notes, re.DOTALL)
-    if name_match: base_content = base_content.replace(name_match.group(0), '')
-    if phone_match: base_content = base_content.replace(phone_match.group(0), '')
-    if address_match: base_content = base_content.replace(address_match.group(0), '')
-    if map_url_match: base_content = base_content.replace(map_url_match.group(0), '')
-    info['detail'] = base_content.strip()
+    
+    # The logic to extract 'detail' is no longer needed here.
+    # The main task description is stored in the task's 'title' field.
+    # Any remaining text in the notes after parsing structured data is ignored
+    # to prevent old/redundant data from appearing.
 
     return info
 
@@ -707,6 +707,8 @@ def form_page():
             flash('กรุณากรอกชื่อลูกค้าและรายละเอียดงาน', 'danger')
             return redirect(url_for('form_page'))
         
+        # FIXED: The main 'task_title' is the Google Task's title.
+        # The 'notes' will only contain structured customer data.
         notes_lines = [
             f"ลูกค้า: {customer_name}",
             f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
@@ -714,7 +716,10 @@ def form_page():
         ]
         map_url = str(request.form.get('latitude_longitude', '')).strip()
         if map_url: notes_lines.append(map_url)
-        notes_lines.append(f"\n{task_title}")
+        
+        # REMOVED: The task_title is no longer appended to the notes to avoid data duplication.
+        # notes_lines.append(f"\n{task_title}") 
+        
         notes = "\n".join(filter(None, notes_lines))
         
         due_date_gmt = None
@@ -785,6 +790,8 @@ def task_details(task_id):
         task_raw = get_single_task(task_id)
         if not task_raw: abort(404)
 
+        # FIXED: The new task title is the Google Task's title.
+        # The notes will only contain structured customer data.
         new_base_notes_lines = [
             f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
             f"เบอร์โทรศัพท์: {str(request.form.get('customer_phone', '')).strip()}",
@@ -792,7 +799,10 @@ def task_details(task_id):
         ]
         map_url = str(request.form.get('latitude_longitude', '')).strip()
         if map_url: new_base_notes_lines.append(map_url)
-        new_base_notes_lines.append(f"\n{new_title}")
+        
+        # REMOVED: The new_title is no longer appended to the notes.
+        # new_base_notes_lines.append(f"\n{new_title}")
+        
         new_base_notes = "\n".join(filter(None, new_base_notes_lines))
 
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
