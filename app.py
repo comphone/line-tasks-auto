@@ -58,7 +58,6 @@ GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 GOOGLE_SETTINGS_BACKUP_FOLDER_ID = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID')
 
-# Corrected SCOPES list (removed markdown links)
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
@@ -87,9 +86,12 @@ _DEFAULT_APP_SETTINGS_STORE = {
 _APP_SETTINGS_STORE = {} 
 
 # --- Flask App Instance (Global Scope) ---
-# This is the standard way to define the Flask app object so Gunicorn can find it
-# and all decorators can bind to it directly.
 app = Flask(__name__, static_folder='static')
+
+# --- Initialize LINE Bot SDK instances (Global Scope) ---
+# These need to be global so @handler.add decorators can bind to them directly.
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
 # --- Helper and Utility Functions ---
@@ -563,7 +565,6 @@ def scheduled_backup_job():
             app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping automatic settings JSON backup.")
 
 
-# NEW: Scheduled job for appointment reminders
 def scheduled_appointment_reminder_job():
     """
     Scheduled job to send LINE notifications for appointments due today.
@@ -672,8 +673,7 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name, 
                         ButtonComponent(
                             style='danger',
                             height='sm',
-                            # NEW: For 'problem' feedback, point to a LIFF URL for problem form
-                            action=URIAction(label='👎 มีปัญหา', uri=f"https://liff.line.me/{LIFF_ID_FORM}?page=customer_problem&task_id={task_id}"), # Pass task_id
+                            action=URIAction(label='👎 มีปัญหา', uri=f"https://liff.line.me/{LIFF_ID_FORM}?page=customer_problem&task_id={task_id}"), 
                             color='#FF6666'
                         )
                     ]
@@ -699,10 +699,6 @@ def scheduled_customer_follow_up_job():
         settings = get_app_settings()
         admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
         technician_group_id = settings.get('line_recipients', {}).get('technician_group_id', '')
-        
-        # New: If customer_line_user_id is available, send directly to customer.
-        # Otherwise, send to admin/technician group for manual forwarding.
-        send_to_customer_directly = False # Default to false unless we have customer ID
         
         if not admin_group_id and not technician_group_id:
             app.logger.warning("No LINE recipient IDs configured for customer follow-up. Skipping.")
@@ -1009,7 +1005,7 @@ def submit_customer_problem():
                 f"Comphone ได้รับแจ้งปัญหาเกี่ยวกับงาน: {task.get('title', '-')}\n"
                 f"เรียบร้อยแล้วครับ/ค่ะ\n"
                 f"ทีมงานกำลังตรวจสอบข้อมูลและจะติดต่อกลับเพื่อดูแลท่านโดยเร็วที่สุดครับ/ค่ะ\n\n"
-                f"หากมีข้อสงสัยเร่งด่วน โปรดติดต่อเราได้ที่:\n"
+                f"หากมีข้อสงสัยใดๆ หรือต้องการความช่วยเหลือเพิ่มเติม ติดต่อเราได้ที่:\n"
                 f"โทร: {shop_info.get('contact_phone', '081-XXX-XXXX')}\n"
                 f"LINE ID: {shop_info.get('line_id', '@ComphoneService')}\n\n"
                 f"ขออภัยในความไม่สะดวกอีกครั้งครับ/ค่ะ\n"
