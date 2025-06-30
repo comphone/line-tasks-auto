@@ -63,10 +63,18 @@ SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/a
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
+# --- UPLOAD_FOLDER and ALLOWED_EXTENSIONS (Moved back to global scope) ---
+UPLOAD_FOLDER = 'static/uploads' 
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'} 
+
+# Ensure UPLOAD_FOLDER exists (this can be at global scope)
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 # --- Global variable for app settings ---
 _APP_SETTINGS_STORE = {} 
 
-# --- Helper and Utility Functions (remain outside create_flask_app_instance) ---
+#<editor-fold desc="Helper and Utility Functions">
 def load_settings_from_file():
     """Load application settings from JSON file."""
     if os.path.exists(SETTINGS_FILE):
@@ -744,7 +752,7 @@ def scheduled_customer_follow_up_job():
             if tech_history_existing: 
                 all_reports_text = ""
                 for report in sorted(tech_history_existing, key=lambda x: x.get('summary_date', '')):
-                    all_reports_text += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+                    final_notes += f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
                 final_notes += all_reports_text
 
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback_existing, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
@@ -794,7 +802,6 @@ def scheduled_customer_follow_up_job():
                 except Exception as e:
                     print(f"ERROR: Failed to send group follow-up LINE messages for task {task.get('id')}: {e}", file=sys.stderr)
             
-# Renamed from handle_line_event_postback_or_message
 def handle_line_webhook_event(event): # This will be wrapped by handler.add
     """Handles various LINE webhook events (messages and postbacks)."""
     if isinstance(event, PostbackEvent):
@@ -911,16 +918,16 @@ def handle_line_webhook_event(event): # This will be wrapped by handler.add
                 handle_view_task_by_name_command(event, parts[1])
                 return
 
-# --- Main entry point for Gunicorn ---
+# --- Gunicorn/Flask App Initialization ---
 # This function creates and configures the Flask app instance.
 # Gunicorn will be configured to call this function (e.g., `app:create_flask_app_instance`)
 def create_flask_app_instance():
     # Define app instance here
     _app = Flask(__name__, static_folder='static')
     _app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
-    _app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+    _app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER # UPLOAD_FOLDER is global now
 
-    # Initialize LINE Bot SDK instances here, within the app creation context
+    # Initialize LINE Bot SDK instances here
     _line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
     _handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
 
@@ -932,7 +939,6 @@ def create_flask_app_instance():
 
     # Define LINE webhook event handler and other routes here
     # Routes and handlers are now defined relative to _app and _handler
-    # @_app.route / @_handler.add
     
     # Callback route for LINE webhook
     @_app.route("/callback", methods=['POST'])
@@ -941,7 +947,8 @@ def create_flask_app_instance():
         body = request.get_data(as_text=True)
         print("INFO: LINE Webhook Request body: " + body, file=sys.stderr)
         try:
-            _handler.handle(body, signature) # Use the _handler instance
+            # Use the _handler instance that is part of the app context
+            _app.handler.handle(body, signature) 
         except InvalidSignatureError:
             print(f"ERROR: InvalidSignatureError: {body}", file=sys.stderr)
             abort(400)
@@ -951,9 +958,9 @@ def create_flask_app_instance():
         return 'OK'
 
     # The actual line event handler (moved from global scope)
-    # It's already defined above as handle_line_webhook_event
-    # We just need to make sure _handler.add points to it.
-    # This is handled by @_handler.add decorators at the function definition.
+    _handler.add(MessageEvent, message=TextMessage)
+    _handler.add(PostbackEvent)
+    _handler.add(handle_line_webhook_event) # Add the handler function here
 
     # Flask context processor (needs to be set up on the app instance)
     @_app.context_processor
@@ -968,11 +975,9 @@ def create_flask_app_instance():
         _APP_SETTINGS_STORE = get_app_settings() 
         
         # Now that settings are loaded, initialize and run the scheduler
-        _scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ) # Create scheduler instance here
-        
-        # Pass the _scheduler instance to run_scheduler
+        _scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ) 
         run_scheduler(_scheduler) 
-        _app.scheduler = _scheduler # Attach scheduler to app for potential later access if needed
+        _app.scheduler = _scheduler 
 
     return _app
 
