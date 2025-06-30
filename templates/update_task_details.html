@@ -8,23 +8,19 @@
         <h1 class="h2 mb-0">รายละเอียดและจัดการงาน</h1>
         <div>
             <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับไปหน้าสรุป</a>
-            <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
-        </div>
+            </div>
     </div>
 
     <div class="row">
-        <!-- Left Column: Main Details & Customer Info -->
         <div class="col-lg-7">
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-edit me-2"></i>แก้ไขข้อมูลหลัก</div>
                 <div class="card-body">
-                    <!-- Task Title -->
                     <div class="mb-3">
                         <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong></label>
                         <textarea class="form-control" id="task_title" name="task_title" rows="3" required>{{ task.title }}</textarea>
                     </div>
                     <hr>
-                    <!-- Customer Info -->
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="customer_name" class="form-label">ชื่อลูกค้า</label>
@@ -66,13 +62,12 @@
             </div>
         </div>
 
-        <!-- Right Column: New Report & History -->
         <div class="col-lg-5">
             <div class="card border-success mb-4">
-                <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>เพิ่มรายงานการทำงานใหม่</div>
+                <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>สรุปการทำงานและอุปกรณ์ที่ใช้</div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label for="work_summary" class="form-label">สรุปการทำงาน (ถ้ามี)</label>
+                        <label for="work_summary" class="form-label">สรุปการทำงาน</label>
                         <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงาน..."></textarea>
                     </div>
                     <div class="mb-3">
@@ -91,9 +86,12 @@
 
         </div>
     </div>
+
+    <div class="d-grid gap-2 mb-4">
+        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
+    </div>
 </form>
 
-<!-- History Section is outside the form -->
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -114,16 +112,6 @@
                 {% endif %}
             </div>
         </div>
-    </div>
-</div>
-
-<!-- Danger Zone -->
-<div class="card border-danger my-4">
-    <div class="card-header bg-danger text-white h5"><i class="fas fa-exclamation-triangle me-2"></i>โซนอันตราย</div>
-    <div class="card-body text-center">
-        <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');" class="d-inline-block">
-            <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt me-2"></i>ลบงานนี้ทิ้ง</button>
-        </form>
     </div>
 </div>
 

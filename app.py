@@ -565,10 +565,6 @@ def settings_page():
     qr_settings = current_settings.get('qrcode_settings', {})
     
     qr_code_base64_general = ''
-    # The `generate_qr_code_base64` function is not defined in the provided `app.py`.
-    # To make this section runnable without error, I'll add a placeholder or assume it exists.
-    # For a full implementation, you would need to define this function, e.g., using the `qrcode` library.
-    # For now, I'll provide a minimal placeholder.
     def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
         try:
             qr = qrcode.QRCode(
@@ -587,8 +583,8 @@ def settings_page():
             app.logger.error(f"Error generating QR code: {e}")
             return "" # Return empty string on error
 
-    if 'generate_qr_code_base64' not in globals(): # Check if it's already defined
-        globals()['generate_qr_code_base64'] = generate_qr_code_base64 # Add to globals if not
+    if 'generate_qr_code_base64' not in globals():
+        globals()['generate_qr_code_base64'] = generate_qr_code_base64
 
     qr_code_base64_general = generate_qr_code_base64(
         qr_url_to_use, 
@@ -726,6 +722,57 @@ def handle_completed_tasks_command(event):
     reply_message = create_task_list_message("งานที่เสร็จล่าสุด (5 รายการ)", completed_tasks, limit=5)
     line_bot_api.reply_message(event.reply_token, reply_message)
 
+# --- NEW: Handle daily tasks command ---
+def handle_daily_tasks_command(event, day_type):
+    tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+    
+    today = datetime.datetime.now(THAILAND_TZ).date()
+    if day_type == 'today':
+        target_date = today
+        title = "งานวันนี้"
+    elif day_type == 'tomorrow':
+        target_date = today + datetime.timedelta(days=1)
+        title = "งานพรุ่งนี้"
+    else:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="คำสั่งไม่ถูกต้องครับ"))
+        return
+
+    filtered_tasks = []
+    for task in tasks_raw:
+        if task.get('due'):
+            try:
+                due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                due_date_local = due_dt_utc.astimezone(THAILAND_TZ).date()
+                if due_date_local == target_date and task.get('status') == 'needsAction':
+                    filtered_tasks.append(task)
+            except (ValueError, TypeError):
+                continue
+    
+    reply_message = create_task_list_message(title, filtered_tasks)
+    line_bot_api.reply_message(event.reply_token, reply_message)
+
+# --- NEW: Handle create new task command ---
+def handle_create_new_task_command(event):
+    if not LIFF_ID_FORM:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่สามารถสร้างงานได้: ไม่พบ LIFF ID สำหรับฟอร์ม"))
+        return
+
+    # สร้าง URL สำหรับ LIFF App
+    liff_url = f"https://liff.line.me/{LIFF_ID_FORM}" 
+
+    # สร้าง Quick Reply เพื่อให้ผู้ใช้กดเปิดฟอร์ม
+    quick_reply_buttons = QuickReply(items=[
+        QuickReplyButton(action=URIAction(label="เปิดฟอร์มสร้างงาน", uri=liff_url))
+    ])
+
+    line_bot_api.reply_message(
+        event.reply_token, 
+        TextSendMessage(
+            text="คุณสามารถสร้างงานใหม่ได้ง่ายๆ ผ่านฟอร์มนี้ครับ 👇",
+            quick_reply=quick_reply_buttons
+        )
+    )
+
 def handle_view_task_by_name_command(event, customer_name):
     try:
         tasks_raw = get_google_tasks_for_report(show_completed=True) or []
@@ -794,11 +841,29 @@ def handle_message(event):
     command_map = {
         'งานค้าง': handle_outstanding_tasks_command,
         'งานเสร็จ': handle_completed_tasks_command,
+        'งานวันนี้': lambda e: handle_daily_tasks_command(e, 'today'), # เพิ่มคำสั่งใหม่
+        'งานพรุ่งนี้': lambda e: handle_daily_tasks_command(e, 'tomorrow'), # เพิ่มคำสั่งใหม่
+        'สร้างงานใหม่': handle_create_new_task_command, # เพิ่มคำสั่งใหม่
         'สรุปรายงาน': lambda e: line_bot_api.reply_message(e.reply_token, TextSendMessage(text=f"ดูสรุปรายงานทั้งหมดได้ที่: {url_for('summary', _external=True)}")),
+        'comphone': None 
     }
     
     if text_lower in command_map:
-        command_map[text_lower](event)
+        if text_lower == 'comphone':
+            help_text = (
+                "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
+                "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
+                "➡️ `งานเสร็จ`\nดูงานที่ทำเสร็จล่าสุด\n\n"
+                "➡️ `งานวันนี้`\nดูงานที่มีกำหนดเสร็จในวันนี้\n\n" # อัปเดตวิธีใช้
+                "➡️ `งานพรุ่งนี้`\nดูงานที่มีกำหนดเสร็จในวันพรุ่งนี้\n\n" # อัปเดตวิธีใช้
+                "➡️ `ดูงาน ชื่อลูกค้า`\nค้นหางานของลูกค้าคนนั้นๆ (เช่น: `ดูงาน สมศรี`)\n\n" # อัปเดตวิธีใช้
+                "➡️ `สร้างงานใหม่`\nเปิดฟอร์มสำหรับสร้างงานใหม่\n\n" # อัปเดตวิธีใช้
+                "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บสรุปงาน\n\n"
+                "หากคุณต้องการดูเมนูนี้อีกครั้ง พิมพ์ `comphone`"
+            )
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
+        else:
+            command_map[text_lower](event)
         return
     
     if text_lower.startswith('ดูงาน '):
@@ -807,17 +872,11 @@ def handle_message(event):
             handle_view_task_by_name_command(event, parts[1])
             return
 
-    # หากข้อความไม่ใช่คำสั่งที่รู้จัก จะไม่มีการตอบกลับ (บอทจะเงียบ)
-    # ส่วนของโค้ดที่เคยตอบกลับด้วย 'help_text' ได้ถูกนำออกแล้ว
-    # help_text = (
-    #     "สวัสดีครับ! พิมพ์คำสั่งที่ต้องการ:\n\n"
-    #     "➡️ `งานค้าง`\nดูรายการงานที่ยังไม่เสร็จ\n\n"
-    #     "➡️ `งานเสร็จ`\nดูงานที่ทำเสร็จล่าสุด\n\n"
-    #     "➡️ `ดูงาน <ชื่อลูกค้า>`\nค้นหางานของลูกค้าคนนั้นๆ\n\n"
-    #     "➡️ `สรุปรายงาน`\nรับลิงก์เพื่อเปิดเว็บ"
-    # )
-    # line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
-
+    # หากข้อความไม่ใช่คำสั่งที่รู้จัก บอทจะยังคงเงียบ
+    # ไม่มีการตอบกลับด้วยข้อความ "วิธีใช้" อัตโนมัติอีกต่อไป
+    # ผู้ใช้ต้องพิมพ์ "comphone" เพื่อเรียกดูวิธีใช้
+    # หากต้องการให้บอทแจ้งเตือนว่าไม่รู้จักคำสั่ง ให้เพิ่มบรรทัดด้านล่างนี้
+    # line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่เข้าใจคำสั่งของคุณครับ ลองพิมพ์ `comphone` เพื่อดูวิธีใช้"))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
