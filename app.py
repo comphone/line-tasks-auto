@@ -596,6 +596,7 @@ def scheduled_backup_job():
         else:
             app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping automatic settings JSON backup.")
 
+
 # NEW: Scheduled job for appointment reminders
 def scheduled_appointment_reminder_job():
     """
@@ -670,6 +671,9 @@ scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
 def run_scheduler():
     """Initializes and runs the APScheduler jobs."""
+    # Ensure scheduler variable is accessible and properly re-initialized if needed
+    global scheduler 
+
     settings = get_app_settings()
     
     # Auto Backup Settings
@@ -684,8 +688,7 @@ def run_scheduler():
     if scheduler.running:
         app.logger.info("Scheduler is already running. Shutting down existing jobs for reinitialization.")
         scheduler.shutdown(wait=False)
-        # Reinitialize the global scheduler instance
-        global scheduler
+        # Reinitialize the global scheduler instance to clear old jobs
         scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
         
     # Re-add auto backup job based on current settings
@@ -712,6 +715,8 @@ def run_scheduler():
 
     # Add/Reconfigure appointment reminder job
     appointment_reminder_job_id = 'daily_appointment_reminder'
+    # The appointment reminder job is always scheduled if settings permit (not directly enabled/disabled by user on UI)
+    # It's controlled by 'appointment_reminder_hour_thai' being set.
     if not scheduler.get_job(appointment_reminder_job_id):
         app.logger.info(f"Scheduling daily appointment reminders at {appointment_reminder_hour:02d}:00 Thai Time.")
         scheduler.add_job(
