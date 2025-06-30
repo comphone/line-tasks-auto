@@ -520,7 +520,7 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
 
 def scheduled_backup_job():
     """Scheduled job to perform automatic backup to Google Drive."""
-    with current_app.app_context(): # Use current_app
+    with current_app.app_context(): 
         print("INFO: Running scheduled backup job...", file=sys.stderr)
         
         memory_file_zip, filename_zip = _create_backup_zip()
@@ -781,7 +781,7 @@ def scheduled_customer_follow_up_job():
                     f"✅ งานซ่อมลูกค้า {customer_info.get('name', '-')}(โทร: {customer_info.get('phone', '-')}) เสร็จสิ้นครบ 1 วันแล้ว:\n"
                     f"โปรดส่งแบบสอบถามติดตามผลนี้ให้ลูกค้าครับ/ค่ะ\n"
                     f"รายละเอียดงาน: {task.get('title', '-').splitlines()[0] if task.get('title') else '-'}\n"
-                    f"ลิงก์งาน: {url_for('task_details', task_id=task.get('id'), _external=True)}" # Corrected to use task.get('id') here
+                    f"ลิงก์งาน: {url_for('task_details', task_id=task.get('id'), _external=True)}" # Changed to use task.get('id')
                 )
                 messages_to_send_group = [TextSendMessage(text=admin_message_text), FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=customer_follow_up_flex)]
 
