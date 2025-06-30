@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}รายงานผลงานช่าง{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">รายงานผลงานช่าง</h1>
+</div>
+
+<!-- Filter Form -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('technician_report') }}" class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label for="month" class="form-label">เดือน</label>
+                <select name="month" id="month" class="form-select">
+                    {% for month in months %}
+                    <option value="{{ month.value }}" {% if month.value == selected_month %}selected{% endif %}>
+                        {{ month.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label for="year" class="form-label">ปี</label>
+                <select name="year" id="year" class="form-select">
+                    {% for year in years %}
+                    <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>
+                        {{ year }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100"><i class="fas fa-filter me-1"></i> กรอง</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Report Results -->
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">สรุปผลงานประจำเดือน {{ months[selected_month-1].name }} ปี {{ selected_year }}</h5>
+    </div>
+    <div class="card-body">
+        {% if report_data %}
+        <div class="accordion" id="technicianAccordion">
+            {% for tech_name, data in report_data.items()|sort %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading-{{ loop.index }}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ loop.index }}" aria-expanded="false" aria-controls="collapse-{{ loop.index }}">
+                        <strong>{{ tech_name }}</strong>&nbsp;-&nbsp;<span class="badge bg-success">{{ data.count }} งาน</span>
+                    </button>
+                </h2>
+                <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading-{{ loop.index }}" data-bs-parent="#technicianAccordion">
+                    <div class="accordion-body">
+                        <ul class="list-group">
+                            {% for task in data.tasks %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank">{{ task.title }}</a>
+                                </div>
+                                <span class="text-muted small">เสร็จเมื่อ: {{ task.completed_formatted }}</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center p-4">
+            <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงานที่เสร็จสิ้นในเดือนที่เลือก</h4>
+            <p class="text-muted">กรุณาลองเลือกเดือนหรือปีอื่น</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

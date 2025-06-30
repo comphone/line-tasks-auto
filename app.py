@@ -7,6 +7,7 @@ import pytz
 import mimetypes 
 import zipfile
 from io import BytesIO
+from collections import defaultdict
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -102,7 +103,8 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
-    'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' }
+    'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
+    'technician_list': [] # NEW: Add technician list
 }
 _APP_SETTINGS_STORE = {} 
 
@@ -810,6 +812,10 @@ def task_details(task_id):
 
         work_summary = str(request.form.get('work_summary', '')).strip()
         files = request.files.getlist('files[]')
+        
+        # NEW: Get selected technicians
+        selected_technicians = request.form.getlist('technicians')
+
         if work_summary or any(f.filename for f in files):
             new_attachment_urls = []
             for file in files:
@@ -827,7 +833,8 @@ def task_details(task_id):
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
-                'attachment_urls': new_attachment_urls 
+                'attachment_urls': new_attachment_urls,
+                'technicians': selected_technicians # NEW: Save technicians to the report
             })
 
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in sorted(history, key=lambda x: x.get('summary_date', ''))])
@@ -860,7 +867,8 @@ def task_details(task_id):
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
     task['customer_feedback'] = parse_customer_feedback_from_notes(notes)
     
-    return render_template('update_task_details.html', task=task, common_equipment_items=get_app_settings().get('common_equipment_items', []))
+    app_settings = get_app_settings()
+    return render_template('update_task_details.html', task=task, common_equipment_items=app_settings.get('common_equipment_items', []), technician_list=app_settings.get('technician_list', []))
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
@@ -874,6 +882,10 @@ def delete_task(task_id):
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
+        # NEW: Handle technician list update
+        technician_names_text = request.form.get('technician_list', '').strip()
+        technician_list = [name.strip() for name in technician_names_text.splitlines() if name.strip()]
+
         save_app_settings({
             'report_times': { 
                 'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 
@@ -898,7 +910,8 @@ def settings_page():
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
-            }
+            },
+            'technician_list': technician_list # NEW: Save the list
         })
         
         run_scheduler()
@@ -981,6 +994,66 @@ def import_equipment_catalog():
     else:
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
+
+# --- NEW: Technician Report Route ---
+@app.route('/technician_report')
+def technician_report():
+    now = datetime.datetime.now(THAILAND_TZ)
+    
+    # Get filters from query params, with defaults
+    try:
+        selected_year = int(request.args.get('year', now.year))
+        selected_month = int(request.args.get('month', now.month))
+    except (ValueError, TypeError):
+        selected_year = now.year
+        selected_month = now.month
+
+    # Fetch all completed tasks
+    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    
+    report_data = defaultdict(lambda: {'count': 0, 'tasks': []})
+
+    for task in tasks_raw:
+        if task.get('status') == 'completed' and task.get('completed'):
+            try:
+                completed_dt_utc = datetime.datetime.fromisoformat(task['completed'].replace('Z', '+00:00'))
+                completed_dt_local = completed_dt_utc.astimezone(THAILAND_TZ)
+
+                # Filter by selected month and year
+                if completed_dt_local.year == selected_year and completed_dt_local.month == selected_month:
+                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                    
+                    # Use a set to avoid double-counting a task for the same technician
+                    technicians_on_this_task = set()
+                    for report_entry in history:
+                        technicians = report_entry.get('technicians', [])
+                        for tech_name in technicians:
+                            technicians_on_this_task.add(tech_name)
+                    
+                    # Add task to each technician's record
+                    for tech_name in technicians_on_this_task:
+                        report_data[tech_name]['count'] += 1
+                        report_data[tech_name]['tasks'].append({
+                            'id': task.get('id'),
+                            'title': task.get('title'),
+                            'completed_formatted': completed_dt_local.strftime("%d/%m/%Y")
+                        })
+            except (ValueError, TypeError) as e:
+                app.logger.warning(f"Could not process completed date for task {task.get('id')}: {e}")
+                continue
+
+    # Generate lists for dropdown filters
+    current_year = now.year
+    years = list(range(current_year - 5, current_year + 2))
+    months = [{'value': i, 'name': datetime.date(2000, i, 1).strftime('%B')} for i in range(1, 13)]
+
+    return render_template('technician_report.html', 
+                           report_data=report_data,
+                           selected_year=selected_year,
+                           selected_month=selected_month,
+                           years=years,
+                           months=months)
+
 
 # --- Customer Onboarding & Feedback Routes ---
 

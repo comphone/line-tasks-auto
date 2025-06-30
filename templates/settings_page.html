@@ -5,9 +5,6 @@
 {% block content %}
 <h1 class="mb-4">ตั้งค่าระบบ</h1>
 
-{# REMOVED: Section for "Manage System Logo" #}
-
-
 <form action="{{ url_for('settings_page') }}" method="POST">
     <div class="card mb-4">
         <div class="card-header bg-primary text-white"><i class="fas fa-cogs me-2"></i>การตั้งค่าทั่วไป</div>
@@ -42,6 +39,20 @@
             <div class="mb-3">
                 <label for="manager_user_id" class="form-label">LINE Manager User ID</label>
                 <input type="text" class="form-control" id="manager_user_id" name="manager_user_id" value="{{ settings.line_recipients.manager_user_id }}">
+            </div>
+        </div>
+    </div>
+    
+    <!-- NEW: Technician List Management Card -->
+    <div class="card mb-4 border-info">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-users-cog me-2"></i>จัดการรายชื่อช่าง</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="technician_list" class="form-label">รายชื่อช่าง (1 ชื่อต่อ 1 บรรทัด)</label>
+                <textarea class="form-control" id="technician_list" name="technician_list" rows="5" placeholder="ช่าง A&#10;ช่าง B&#10;ช่าง C">{{ settings.technician_list | join('\n') }}</textarea>
+                <small class="form-text text-muted">รายชื่อเหล่านี้จะปรากฏในหน้าบันทึกรายละเอียดงาน</small>
             </div>
         </div>
     </div>
@@ -175,29 +186,4 @@
         </form>
     </div>
 </div>
-{% endblock %}
-
-{% block body_extra %}
-<script>
-// REMOVED: JavaScript for live preview of logo (as the logo upload section is removed)
-/*
-document.addEventListener('DOMContentLoaded', function() {
-    const logoUploadInput = document.getElementById('logoUpload');
-    const logoPreviewImage = document.getElementById('logoPreview');
-
-    if (logoUploadInput && logoPreviewImage) {
-        logoUploadInput.addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    logoPreviewImage.src = e.target.result;
-                }
-                reader.readAsDataURL(file);
-            }
-        });
-    }
-});
-*/
-</script>
 {% endblock %}
