@@ -78,7 +78,7 @@ if not GOOGLE_DRIVE_FOLDER_ID:
 if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
     app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID environment variable is not set. Automatic settings backup/restore will not work.")
 
-SCOPES = ['[https://www.googleapis.com/auth/tasks](https://www.googleapis.com/auth/tasks)', '[https://www.googleapis.com/auth/calendar](https://www.googleapis.com/auth/calendar)', '[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)']
+SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
@@ -726,7 +726,7 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name, 
                             style='danger',
                             height='sm',
                             # NEW: For 'problem' feedback, point to a LIFF URL for problem form
-                            action=URIAction(label='👎 มีปัญหา', uri=f"[https://liff.line.me/](https://liff.line.me/){LIFF_ID_FORM}?page=customer_problem&task_id={task_id}"), # Pass task_id
+                            action=URIAction(label='👎 มีปัญหา', uri=f"https://liff.line.me/{LIFF_ID_FORM}?page=customer_problem&task_id={task_id}"), # Pass task_id
                             color='#FF6666'
                         )
                     ]
@@ -1004,7 +1004,7 @@ def generate_customer_onboarding_qr():
 
     # Build LIFF URL for customer onboarding, passing task_id
     # The 'page=onboarding' parameter will tell the LIFF app which part of the HTML to show
-    onboarding_liff_url = f"[https://liff.line.me/](https://liff.line.me/){LIFF_ID_FORM}?page=onboarding&task_id={task_id}"
+    onboarding_liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?page=onboarding&task_id={task_id}"
     
     qr_code_base64 = generate_qr_code_base64(onboarding_liff_url, box_size=10, border=4, fill_color='#000000', back_color='#FFFFFF')
     
@@ -1076,7 +1076,7 @@ def save_customer_line_id():
         
         welcome_message = (
             f"เรียน ลูกค้า {customer_info.get('name', '-')},\n"
-            f"Comphone ยินดีที่ได้ให้บริการครับ/ค่ะ! 😊\n"
+            f"Comphone ยินดีที่ได้ให้บริการครับ/ค่ะ! �\n"
             f"เราจะใช้ LINE นี้ในการส่งข้อมูลสำคัญหรือโปรโมชั่นพิเศษในอนาคตครับ/ค่ะ\n\n"
             f"หากมีข้อสงสัยใดๆ หรือต้องการความช่วยเหลือเพิ่มเติม ติดต่อเราได้ที่:\n"
             f"โทร: {shop_info.get('contact_phone', '081-XXX-XXXX')}\n"
@@ -1231,7 +1231,7 @@ def liff_close_page():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>ยืนยัน</title>
-        <script src="[https://static.line-scdn.net/liff/2.21.0/sdk.js](https://static.line-scdn.net/liff/2.21.0/sdk.js)"></script>
+        <script src="https://static.line-scdn.net/liff/2.21.0/sdk.js"></script>
         <style>
             body {{ font-family: sans-serif; text-align: center; padding: 20px; }}
             .message {{ font-size: 1.2em; color: #333; }}
@@ -1254,3 +1254,4 @@ def liff_close_page():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+�
