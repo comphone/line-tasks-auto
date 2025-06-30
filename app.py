@@ -93,7 +93,9 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 } 
 }
-_APP_SETTINGS_STORE = {} # Global variable to hold settings
+# _APP_SETTINGS_STORE is declared here, but its value is set later after
+# necessary helper functions are defined and initial settings are loaded.
+_APP_SETTINGS_STORE = {} 
 
 #<editor-fold desc="Helper and Utility Functions">
 # --- All Helper and Utility Functions should be defined first ---
@@ -540,7 +542,7 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
         
         file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
         
-        # Make the uploaded file publicly readable (optional, based on your security needs)
+        # Make the uploaded file publicly readable
         service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
         
         app.logger.info(f"Successfully uploaded backup to Drive: {file_obj.get('webViewLink')}")
@@ -793,6 +795,9 @@ def task_details(task_id):
         files = request.files.getlist('files[]')
         new_attachments_uploaded = any(f and f.filename for f in files)
 
+        # NEW: Initialize upload_errors at the beginning of the POST request block
+        upload_errors = [] 
+
         if not new_title:
             flash('กรุณากรอกรายละเอียดงาน', 'danger')
             return redirect(url_for('task_details', task_id=task_id))
@@ -804,7 +809,7 @@ def task_details(task_id):
         history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         if work_summary or new_attachments_uploaded:
             new_attachment_urls = []
-            upload_errors = [] # NEW: To track upload errors
+            # upload_errors = [] # REMOVED: Moved initialization to the top
             if new_attachments_uploaded:
                 for file in files:
                     if file and allowed_file(file.filename):
@@ -816,16 +821,16 @@ def task_details(task_id):
                             drive_url = upload_file_to_google_drive(temp_filepath, filename, mime_type)
                             if drive_url: 
                                 new_attachment_urls.append(drive_url)
-                                flash(f"อัปโหลดไฟล์ '{filename}' สำเร็จ!", 'success') # NEW: User feedback
+                                flash(f"อัปโหลดไฟล์ '{filename}' สำเร็จ!", 'success') 
                             else:
-                                upload_errors.append(f"ไม่สามารถอัปโหลดไฟล์ '{filename}' ไปยัง Google Drive ได้") # NEW: Track error
-                                flash(f"อัปโหลดไฟล์ '{filename}' ไม่สำเร็จ!", 'warning') # NEW: User feedback
+                                upload_errors.append(f"ไม่สามารถอัปโหลดไฟล์ '{filename}' ไปยัง Google Drive ได้") 
+                                flash(f"อัปโหลดไฟล์ '{filename}' ไม่สำเร็จ!", 'warning') 
                         except Exception as e:
-                            upload_errors.append(f"เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดไฟล์ '{filename}': {e}") # NEW: Track error
-                            flash(f"เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดไฟล์ '{filename}'!", 'warning') # NEW: User feedback
+                            upload_errors.append(f"เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดไฟล์ '{filename}': {e}") 
+                            flash(f"เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดไฟล์ '{filename}'!", 'warning') 
                         finally:
                             if os.path.exists(temp_filepath):
-                                os.remove(temp_filepath) # Ensure temporary file is removed
+                                os.remove(temp_filepath) 
             
             new_tech_report_data = {
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -863,7 +868,7 @@ def task_details(task_id):
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger')
         
-        # Display aggregated upload errors if any
+        # Display aggregated upload errors if any (now upload_errors is always defined)
         if upload_errors:
             for err in upload_errors:
                 app.logger.error(err) # Log for detailed tracking
