@@ -596,6 +596,74 @@ def scheduled_backup_job():
         else:
             app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping automatic settings JSON backup.")
 
+# NEW: Scheduled job for appointment reminders
+def scheduled_appointment_reminder_job():
+    """
+    Scheduled job to send LINE notifications for appointments due today.
+    """
+    with app.app_context():
+        app.logger.info("Running scheduled appointment reminder job...")
+        settings = get_app_settings()
+        admin_group_id = settings.get('line_recipients', {}).get('admin_group_id', '')
+        technician_group_id = settings.get('line_recipients', {}).get('technician_group_id', '')
+        
+        if not admin_group_id and not technician_group_id:
+            app.logger.warning("No LINE recipient IDs configured for appointment reminders. Skipping.")
+            return
+
+        tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+        
+        today_start_thai = THAILAND_TZ.localize(datetime.datetime.combine(datetime.date.today(), datetime.time.min))
+        today_end_thai = THAILAND_TZ.localize(datetime.datetime.combine(datetime.date.today(), datetime.time.max))
+
+        upcoming_appointments = []
+        for task in tasks_raw:
+            if task.get('status') == 'needsAction' and task.get('due'):
+                try:
+                    due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                    due_dt_thai = due_dt_utc.astimezone(THAILAND_TZ)
+                    
+                    if today_start_thai <= due_dt_thai <= today_end_thai:
+                        upcoming_appointments.append(task)
+                except (ValueError, TypeError):
+                    app.logger.warning(f"Could not parse due date for task {task.get('id')}: {task.get('due')}")
+                    continue
+        
+        if not upcoming_appointments:
+            app.logger.info("No upcoming appointments found for today.")
+            return
+            
+        # Sort by due date
+        upcoming_appointments.sort(key=lambda x: datetime.datetime.fromisoformat(x['due'].replace('Z', '+00:00')) if x.get('due') else datetime.datetime.max.replace(tzinfo=pytz.utc))
+
+        messages_to_send = []
+        for task in upcoming_appointments:
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            parsed_dates = parse_google_task_dates(task)
+            
+            # Concise message format
+            message_text = (
+                f"🔔 แจ้งเตือนงานนัดหมาย:\n"
+                f"ลูกค้า: {customer_info.get('name', '-')}\n"
+                f"โทร: {customer_info.get('phone', '-')}\n"
+                f"รายละเอียด: {task.get('title', '-').splitlines()[0] if task.get('title') else '-'}\n" # Take first line of title
+                f"นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n\n"
+                f"ดูรายละเอียดงานเพิ่มเติม: {url_for('task_details', task_id=task.get('id'), _external=True)}"
+            )
+            messages_to_send.append(TextSendMessage(text=message_text))
+
+        # Send messages to recipients
+        if messages_to_send:
+            try:
+                if admin_group_id:
+                    line_bot_api.push_message(admin_group_id, messages_to_send)
+                    app.logger.info(f"Sent {len(messages_to_send)} appointment reminders to admin group.")
+                if technician_group_id and technician_group_id != admin_group_id: # Avoid sending duplicate if same group
+                    line_bot_api.push_message(technician_group_id, messages_to_send)
+                    app.logger.info(f"Sent {len(messages_to_send)} appointment reminders to technician group.")
+            except Exception as e:
+                app.logger.error(f"Failed to send appointment reminder LINE messages: {e}")
+
 
 # NEW: Scheduler initialization (declared as global here)
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
@@ -603,38 +671,61 @@ scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 def run_scheduler():
     """Initializes and runs the APScheduler jobs."""
     settings = get_app_settings()
+    
+    # Auto Backup Settings
     auto_backup_enabled = settings.get('auto_backup', {}).get('enabled', False)
     auto_backup_hour = settings.get('auto_backup', {}).get('hour_thai', 2)
     auto_backup_minute = settings.get('auto_backup', {}).get('minute_thai', 0)
 
+    # Appointment Reminder Settings
+    appointment_reminder_hour = settings.get('report_times', {}).get('appointment_reminder_hour_thai', 7)
+    
     # Shutdown existing scheduler to prevent duplicates on reloads (e.g., during debug)
-    # No 'global scheduler' is needed here as 'scheduler' is already a global variable
     if scheduler.running:
         app.logger.info("Scheduler is already running. Shutting down existing jobs for reinitialization.")
         scheduler.shutdown(wait=False)
-        # We don't need to reinitialize 'scheduler' here. The existing global instance is fine.
+        # Reinitialize the global scheduler instance
+        global scheduler
+        scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
         
     # Re-add auto backup job based on current settings
-    job_id = 'auto_system_backup'
+    auto_backup_job_id = 'auto_system_backup'
     if auto_backup_enabled:
-        if not scheduler.get_job(job_id): # Add if it doesn't exist
+        if not scheduler.get_job(auto_backup_job_id): # Add if it doesn't exist
             app.logger.info(f"Scheduling automatic backup daily at {auto_backup_hour:02d}:{auto_backup_minute:02d} Thai Time.")
             scheduler.add_job(
                 scheduled_backup_job,
                 CronTrigger(hour=auto_backup_hour, minute=auto_backup_minute, timezone=THAILAND_TZ),
-                id=job_id
+                id=auto_backup_job_id
             )
         else: # Reschedule if it exists
-            app.logger.info(f"Automatic backup job '{job_id}' already exists. Reconfiguring trigger.")
+            app.logger.info(f"Automatic backup job '{auto_backup_job_id}' already exists. Reconfiguring trigger.")
             scheduler.reschedule_job(
-                job_id,
+                auto_backup_job_id,
                 trigger=CronTrigger(hour=auto_backup_hour, minute=auto_backup_minute, timezone=THAILAND_TZ)
             )
     else:
         # If auto backup is disabled, remove the job if it exists
-        if scheduler.get_job(job_id):
-            scheduler.remove_job(job_id)
+        if scheduler.get_job(auto_backup_job_id):
+            scheduler.remove_job(auto_backup_job_id)
             app.logger.info("Automatic backup job removed as it is disabled.")
+
+    # Add/Reconfigure appointment reminder job
+    appointment_reminder_job_id = 'daily_appointment_reminder'
+    if not scheduler.get_job(appointment_reminder_job_id):
+        app.logger.info(f"Scheduling daily appointment reminders at {appointment_reminder_hour:02d}:00 Thai Time.")
+        scheduler.add_job(
+            scheduled_appointment_reminder_job,
+            CronTrigger(hour=appointment_reminder_hour, minute=0, timezone=THAILAND_TZ), # Run at the top of the hour
+            id=appointment_reminder_job_id
+        )
+    else:
+        app.logger.info(f"Appointment reminder job '{appointment_reminder_job_id}' already exists. Reconfiguring trigger.")
+        scheduler.reschedule_job(
+            appointment_reminder_job_id,
+            trigger=CronTrigger(hour=appointment_reminder_hour, minute=0, timezone=THAILAND_TZ)
+        )
+
 
     if not scheduler.running:
         scheduler.start()
