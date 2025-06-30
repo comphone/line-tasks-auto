@@ -86,8 +86,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
 _APP_SETTINGS_STORE = {} 
 
 # --- Flask App Instance (Global Scope) ---
-# This is the standard way to define the Flask app object so Gunicorn can find it
-# and all decorators can bind to it directly.
 app = Flask(__name__, static_folder='static')
 
 
@@ -522,7 +520,7 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
 
 def scheduled_backup_job():
     """Scheduled job to perform automatic backup to Google Drive."""
-    with current_app.app_context(): # Use current_app
+    with current_app.app_context(): 
         print("INFO: Running scheduled backup job...", file=sys.stderr)
         
         memory_file_zip, filename_zip = _create_backup_zip()
@@ -726,7 +724,7 @@ def scheduled_customer_follow_up_job():
             
         for task in follow_up_tasks:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-            customer_line_user_id_for_task = task.get('_customer_line_user_id') 
+            customer_line_user_id_for_task = customer_info.get('customer_line_user_id') # Changed to access directly from customer_info
             
             customer_follow_up_flex = _create_customer_follow_up_flex_message(
                 task_id=task.get('id'),
@@ -743,7 +741,7 @@ def scheduled_customer_follow_up_job():
             customer_feedback_existing.update({
                 'follow_up_sent_date': now_thai.strftime("%Y-%m-%d %H:%M:%S"),
                 'initial_feedback': 'waiting_for_feedback', 
-                'customer_line_user_id': customer_line_user_id_for_task 
+                'customer_line_user_id': customer_line_user_id_for_task # Ensure customer ID is saved in notes now
             })
 
             final_notes = base_customer_info_notes_existing.strip() 
@@ -1080,7 +1078,7 @@ def configure_app(app_instance):
 
             new_notes_lines = [f"ลูกค้า: {customer_name}", f"เบอร์โทรศัพท์: {customer_phone}", f"ที่อยู่: {address}"]
             if map_url: new_notes_lines.append(map_url)
-            new_base_notes = "\n".join(filter(None, notes_lines))
+            new_base_notes = "\n".join(filter(None, new_notes_lines))
 
             history, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
             if work_summary or new_attachments_uploaded:
@@ -1388,12 +1386,11 @@ def configure_app(app_instance):
         task_id = request.args.get('task_id')
         task = get_single_task(task_id)
         if not task:
-            flash("ไม่พบข้อมูลงานสำหรับแจ้งปัญหา", 'danger')
-            return redirect(url_for('summary'))
-        
+            return render_template('liff_close_page.html', message="ไม่พบข้อมูลงาน")
+
         parsed_task = parse_google_task_dates(task)
         parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-
+        
         return render_template('customer_problem_form.html', task=parsed_task)
 
     @app_instance.route('/submit_customer_problem', methods=['POST'])
@@ -1462,18 +1459,25 @@ def configure_app(app_instance):
                 f"โทร: {customer_info.get('phone', '-')}\n"
                 f"รายละเอียดปัญหา: {problem_description or '-'}\n"
                 f"วันเวลาที่ลูกค้าสะดวก: {preferred_datetime_thai.strftime('%d/%m/%y %H:%M') if preferred_datetime_thai else 'ไม่มีระบุ'}\n"
-                f"สถานะงานถูกเปลี่ยนเป็น: 'ยังไม่เสร็จ'\n\n"
-                f"ดูรายละเอียดงาน: {url_for('task_details', task_id=task_id, _external=True)}"
+                f"สถานะงานถูกเปลี่ยนเป็น: 'ยังไม่เสร็จ'\n\n" 
+                f"โปรดตรวจสอบและติดต่อกลับลูกค้า:\n{url_for('task_details', task_id=task_id, _external=True)}\n"
             )
-            if manager_user_id:
-                notification_text += f"\n(ถึงผู้ดูแล: @{manager_user_id})" 
 
-            if admin_group_id:
-                try:
-                    app_instance.line_bot_api.push_message(admin_group_id, TextSendMessage(text=notification_text))
-                    print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
-                except Exception as e:
-                    print(f"ERROR: Failed to send problem notification to admin group: {e}", file=sys.stderr)
+                if manager_user_id:
+                    notification_text += f"\n(ถึงผู้ดูแล: @{manager_user_id})" 
+                
+                problem_form_url_for_admin = url_for('customer_problem_form', task_id=task_id, _external=True)
+                notification_text += f"\nลิงก์แจ้งปัญหาลูกค้า: {problem_form_url_for_admin}"
+
+
+                notification_messages.append(TextSendMessage(text=notification_text))
+                
+                if admin_group_id:
+                    try:
+                        app_instance.line_bot_api.push_message(admin_group_id, notification_messages)
+                        print(f"INFO: Sent problem notification for task {task_id} to admin group.", file=sys.stderr)
+                    except Exception as e:
+                        print(f"ERROR: Failed to send problem notification to admin group: {e}", file=sys.stderr)
 
             if customer_line_user_id:
                 thank_you_message_to_customer = (
@@ -1481,7 +1485,7 @@ def configure_app(app_instance):
                     f"Comphone ได้รับแจ้งปัญหาเกี่ยวกับงาน: {task.get('title', '-')}\n"
                     f"เรียบร้อยแล้วครับ/ค่ะ\n"
                     f"ทีมงานกำลังตรวจสอบข้อมูลและจะติดต่อกลับเพื่อดูแลท่านโดยเร็วที่สุดครับ/ค่ะ\n\n"
-                    f"หากมีข้อสงสัยเร่งด่วน โปรดติดต่อเราได้ที่:\n"
+                    f"หากมีข้อสงสัยใดๆ หรือต้องการความช่วยเหลือเพิ่มเติม ติดต่อเราได้ที่:\n"
                     f"โทร: {shop_info.get('contact_phone', '081-XXX-XXXX')}\n"
                     f"LINE ID: {shop_info.get('line_id', '@ComphoneService')}\n\n"
                     f"ขออภัยในความไม่สะดวกอีกครั้งครับ/ค่ะ\n"
@@ -1498,6 +1502,26 @@ def configure_app(app_instance):
 
         return render_template('liff_close_page.html', message="บันทึกข้อมูลเรียบร้อยแล้ว!")
 
+    @app_instance.route('/generate_customer_onboarding_qr')
+    def generate_customer_onboarding_qr():
+        task_id = request.args.get('task_id')
+        task = get_single_task(task_id)
+        if not task:
+            flash("ไม่พบข้อมูลงานสำหรับสร้าง QR Code", 'danger')
+            return redirect(url_for('summary'))
+
+        onboarding_liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?page=onboarding&task_id={task_id}"
+        
+        qr_code_base64 = generate_qr_code_base64(onboarding_liff_url, box_size=10, border=4, fill_color='#000000', back_color='#FFFFFF')
+        
+        customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+
+        return render_template('generate_onboarding_qr.html', 
+                               qr_code_base64=qr_code_base64,
+                               task=task,
+                               customer_info=customer_info,
+                               onboarding_url=onboarding_liff_url)
+    
     @app_instance.route('/liff_close_page')
     def liff_close_page():
         message = request.args.get('message', 'ดำเนินการเสร็จสิ้น')
