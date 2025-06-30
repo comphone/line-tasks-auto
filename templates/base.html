@@ -37,7 +37,7 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('summary') }}">
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('dashboard') }}">
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="navbar-logo">
                 <span class="d-none d-sm-inline">Task Manager</span>
             </a>
@@ -47,9 +47,8 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto align-items-center">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('summary') }}"><i class="fas fa-list-check me-1"></i>สรุปงาน</a>
+                        <a class="nav-link" href="{{ url_for('dashboard') }}"><i class="fas fa-tachometer-alt me-1"></i>แดชบอร์ด</a>
                     </li>
-                    <!-- NEW: Link to Technician Report -->
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
                     </li>

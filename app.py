@@ -8,6 +8,8 @@ import mimetypes
 import zipfile
 from io import BytesIO
 from collections import defaultdict
+from dateutil.relativedelta import relativedelta
+
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -104,7 +106,14 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
-    'technician_list': [] # NEW: Add technician list
+    'technician_list': [],
+    # NEW: Settings for sales and marketing
+    'sales_offers': {
+        'post_feedback_offer_enabled': False,
+        'post_feedback_offer_message': 'ขอบคุณสำหรับความไว้วางใจครับ/ค่ะ! สนใจสมัครแพ็กเกจล้างแอร์รายปีในราคาพิเศษหรือไม่ครับ/คะ? ติดต่อสอบถามได้เลย!',
+        'report_promotion_enabled': False,
+        'report_promotion_text': 'โปรโมชันพิเศษ! ลด 10% สำหรับการใช้บริการครั้งถัดไปภายใน 3 เดือน เพียงแจ้งรหัสงานนี้'
+    }
 }
 _APP_SETTINGS_STORE = {} 
 
@@ -697,51 +706,15 @@ with app.app_context():
 # --- Flask Routes ---
 @app.route("/")
 def root_redirect():
-    return redirect(url_for('summary'))
-    
-@app.route("/form", methods=['GET', 'POST'])
-def form_page():
-    if request.method == 'POST':
-        task_title = str(request.form.get('task_title', '')).strip()
-        customer_name = str(request.form.get('customer', '')).strip()
+    return redirect(url_for('dashboard'))
 
-        if not task_title or not customer_name:
-            flash('กรุณากรอกชื่อลูกค้าและรายละเอียดงาน', 'danger')
-            return redirect(url_for('form_page'))
-        
-        # FIXED: The main 'task_title' is the Google Task's title.
-        # The 'notes' will only contain structured customer data.
-        notes_lines = [
-            f"ลูกค้า: {customer_name}",
-            f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
-            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
-        ]
-        map_url = str(request.form.get('latitude_longitude', '')).strip()
-        if map_url: notes_lines.append(map_url)
-        
-        # REMOVED: The task_title is no longer appended to the notes to avoid data duplication.
-        # notes_lines.append(f"\n{task_title}") 
-        
-        notes = "\n".join(filter(None, notes_lines))
-        
-        due_date_gmt = None
-        appointment_str = str(request.form.get('appointment', '')).strip()
-        if appointment_str:
-            try:
-                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
-                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
-            except ValueError: app.logger.error(f"Invalid appointment format: {appointment_str}")
+# DEPRECATED: /summary is replaced by /dashboard
+@app.route("/summary")
+def summary_redirect():
+    return redirect(url_for('dashboard'))
 
-        if create_google_task(task_title, notes=notes, due=due_date_gmt):
-            cache.clear()
-            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
-            return redirect(url_for('summary'))
-        else:
-            flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
-    return render_template('form.html')
-
-@app.route('/summary')
-def summary():
+@app.route("/dashboard")
+def dashboard():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
@@ -749,7 +722,10 @@ def summary():
     current_time_utc = datetime.datetime.now(pytz.utc)
     final_tasks = []
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
-
+    
+    # Data for monthly chart
+    monthly_completion_data = defaultdict(int)
+    
     for task in tasks_raw:
         task_status = task.get('status', 'needsAction')
         is_overdue = False
@@ -759,7 +735,15 @@ def summary():
                 if due_dt_utc < current_time_utc: is_overdue = True
             except (ValueError, TypeError): pass
         
-        if task_status == 'completed': stats['completed'] += 1
+        if task_status == 'completed': 
+            stats['completed'] += 1
+            if task.get('completed'):
+                try:
+                    completed_dt_utc = datetime.datetime.fromisoformat(task['completed'].replace('Z', '+00:00'))
+                    completed_dt_local = completed_dt_utc.astimezone(THAILAND_TZ)
+                    month_key = completed_dt_local.strftime("%Y-%m")
+                    monthly_completion_data[month_key] += 1
+                except (ValueError, TypeError): pass
         else:
             stats['needsAction'] += 1
             if is_overdue: stats['overdue'] += 1
@@ -779,7 +763,64 @@ def summary():
                 final_tasks.append(parsed_task)
 
     final_tasks.sort(key=lambda x: (x.get('status') != 'needsAction', x.get('due') is None, x.get('due', '')))
-    return render_template("tasks_summary.html", tasks=final_tasks, summary=stats, search_query=search_query, status_filter=status_filter)
+    
+    # Prepare chart data for the last 12 months
+    chart_labels = []
+    chart_values = []
+    today = datetime.date.today()
+    for i in range(11, -1, -1):
+        month = today - relativedelta(months=i)
+        month_key = month.strftime("%Y-%m")
+        chart_labels.append(month.strftime("%b %y"))
+        chart_values.append(monthly_completion_data[month_key])
+
+    chart_data = {
+        'labels': chart_labels,
+        'values': chart_values
+    }
+
+    return render_template("dashboard.html", 
+                           tasks=final_tasks, 
+                           summary=stats, 
+                           search_query=search_query, 
+                           status_filter=status_filter,
+                           chart_data=json.dumps(chart_data))
+
+@app.route("/form", methods=['GET', 'POST'])
+def form_page():
+    if request.method == 'POST':
+        task_title = str(request.form.get('task_title', '')).strip()
+        customer_name = str(request.form.get('customer', '')).strip()
+
+        if not task_title or not customer_name:
+            flash('กรุณากรอกชื่อลูกค้าและรายละเอียดงาน', 'danger')
+            return redirect(url_for('form_page'))
+        
+        notes_lines = [
+            f"ลูกค้า: {customer_name}",
+            f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
+            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
+        ]
+        map_url = str(request.form.get('latitude_longitude', '')).strip()
+        if map_url: notes_lines.append(map_url)
+        
+        notes = "\n".join(filter(None, notes_lines))
+        
+        due_date_gmt = None
+        appointment_str = str(request.form.get('appointment', '')).strip()
+        if appointment_str:
+            try:
+                dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
+            except ValueError: app.logger.error(f"Invalid appointment format: {appointment_str}")
+
+        if create_google_task(task_title, notes=notes, due=due_date_gmt):
+            cache.clear()
+            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
+    return render_template('form.html')
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
@@ -792,8 +833,6 @@ def task_details(task_id):
         task_raw = get_single_task(task_id)
         if not task_raw: abort(404)
 
-        # FIXED: The new task title is the Google Task's title.
-        # The notes will only contain structured customer data.
         new_base_notes_lines = [
             f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
             f"เบอร์โทรศัพท์: {str(request.form.get('customer_phone', '')).strip()}",
@@ -801,9 +840,6 @@ def task_details(task_id):
         ]
         map_url = str(request.form.get('latitude_longitude', '')).strip()
         if map_url: new_base_notes_lines.append(map_url)
-        
-        # REMOVED: The new_title is no longer appended to the notes.
-        # new_base_notes_lines.append(f"\n{new_title}")
         
         new_base_notes = "\n".join(filter(None, new_base_notes_lines))
 
@@ -813,7 +849,6 @@ def task_details(task_id):
         work_summary = str(request.form.get('work_summary', '')).strip()
         files = request.files.getlist('files[]')
         
-        # NEW: Get selected technicians
         selected_technicians = request.form.getlist('technicians')
 
         if work_summary or any(f.filename for f in files):
@@ -834,7 +869,7 @@ def task_details(task_id):
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
                 'attachment_urls': new_attachment_urls,
-                'technicians': selected_technicians # NEW: Save technicians to the report
+                'technicians': selected_technicians
             })
 
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in sorted(history, key=lambda x: x.get('summary_date', ''))])
@@ -877,12 +912,11 @@ def delete_task(task_id):
         cache.clear()
     else:
         flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
-    return redirect(url_for('summary'))
+    return redirect(url_for('dashboard'))
 
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
-        # NEW: Handle technician list update
         technician_names_text = request.form.get('technician_list', '').strip()
         technician_list = [name.strip() for name in technician_names_text.splitlines() if name.strip()]
 
@@ -911,7 +945,14 @@ def settings_page():
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
-            'technician_list': technician_list # NEW: Save the list
+            'technician_list': technician_list,
+            # NEW: Save sales offer settings
+            'sales_offers': {
+                'post_feedback_offer_enabled': request.form.get('post_feedback_offer_enabled') == 'on',
+                'post_feedback_offer_message': request.form.get('post_feedback_offer_message', '').strip(),
+                'report_promotion_enabled': request.form.get('report_promotion_enabled') == 'on',
+                'report_promotion_text': request.form.get('report_promotion_text', '').strip()
+            }
         })
         
         run_scheduler()
@@ -920,7 +961,7 @@ def settings_page():
         return redirect(url_for('settings_page'))
     
     current_settings = get_app_settings()
-    general_summary_url = url_for('summary', _external=True)
+    general_summary_url = url_for('dashboard', _external=True)
     qr_url = current_settings.get('qrcode_settings', {}).get('custom_url') or general_summary_url
     qr_settings = current_settings.get('qrcode_settings', {})
     
@@ -995,12 +1036,10 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
-# --- NEW: Technician Report Route ---
 @app.route('/technician_report')
 def technician_report():
     now = datetime.datetime.now(THAILAND_TZ)
     
-    # Get filters from query params, with defaults
     try:
         selected_year = int(request.args.get('year', now.year))
         selected_month = int(request.args.get('month', now.month))
@@ -1008,7 +1047,6 @@ def technician_report():
         selected_year = now.year
         selected_month = now.month
 
-    # Fetch all completed tasks
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     
     report_data = defaultdict(lambda: {'count': 0, 'tasks': []})
@@ -1019,18 +1057,15 @@ def technician_report():
                 completed_dt_utc = datetime.datetime.fromisoformat(task['completed'].replace('Z', '+00:00'))
                 completed_dt_local = completed_dt_utc.astimezone(THAILAND_TZ)
 
-                # Filter by selected month and year
                 if completed_dt_local.year == selected_year and completed_dt_local.month == selected_month:
                     history, _ = parse_tech_report_from_notes(task.get('notes', ''))
                     
-                    # Use a set to avoid double-counting a task for the same technician
                     technicians_on_this_task = set()
                     for report_entry in history:
                         technicians = report_entry.get('technicians', [])
                         for tech_name in technicians:
                             technicians_on_this_task.add(tech_name)
                     
-                    # Add task to each technician's record
                     for tech_name in technicians_on_this_task:
                         report_data[tech_name]['count'] += 1
                         report_data[tech_name]['tasks'].append({
@@ -1042,7 +1077,6 @@ def technician_report():
                 app.logger.warning(f"Could not process completed date for task {task.get('id')}: {e}")
                 continue
 
-    # Generate lists for dropdown filters
     current_year = now.year
     years = list(range(current_year - 5, current_year + 2))
     months = [{'value': i, 'name': datetime.date(2000, i, 1).strftime('%B')} for i in range(1, 13)]
@@ -1092,7 +1126,6 @@ def trigger_customer_follow_up_test():
             
         latest_task = max(completed_tasks, key=lambda x: x.get('completed', ''))
         
-        # Temporarily adjust task for testing
         now_utc = datetime.datetime.now(pytz.utc)
         one_day_ago = now_utc - datetime.timedelta(days=1, minutes=5)
         latest_task['completed'] = one_day_ago.isoformat()
@@ -1127,8 +1160,11 @@ def public_task_report(task_id):
     latest_report = tech_reports[0] if tech_reports else {}
     equipment_used = latest_report.get('equipment_used', [])
     
-    catalog = get_app_settings().get('equipment_catalog', [])
+    app_settings = get_app_settings()
+    catalog = app_settings.get('equipment_catalog', [])
     catalog_dict = {item['item_name']: item for item in catalog}
+    sales_offers = app_settings.get('sales_offers', {})
+
 
     detailed_costs, total_cost = [], 0.0
 
@@ -1149,11 +1185,16 @@ def public_task_report(task_id):
                 'price_per_unit': price_per_unit or 'N/A', 'subtotal': subtotal or 'N/A'
             })
             
-    return render_template('public_task_report.html', task=task, customer_info=customer_info, latest_report=latest_report, detailed_costs=detailed_costs, total_cost=total_cost)
+    return render_template('public_task_report.html', 
+                           task=task, 
+                           customer_info=customer_info, 
+                           latest_report=latest_report, 
+                           detailed_costs=detailed_costs, 
+                           total_cost=total_cost,
+                           sales_offers=sales_offers)
 
 @app.route('/submit_customer_problem', methods=['POST'])
 def submit_customer_problem():
-    # FIXED: Accepts JSON
     data = request.json
     task_id = data.get('task_id')
     problem_desc = data.get('problem_description')
@@ -1193,7 +1234,6 @@ def submit_customer_problem():
 
 @app.route('/save_customer_line_id', methods=['POST'])
 def save_customer_line_id():
-    # FIXED: Accepts JSON
     data = request.json
     task_id = data.get('task_id')
     customer_line_id = data.get('customer_line_user_id')
@@ -1323,9 +1363,11 @@ def handle_postback(event):
 
         notes = task.get('notes', '')
         feedback_data = parse_customer_feedback_from_notes(notes)
+        feedback_type = data.get('feedback')
+        
         feedback_data.update({
             'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-            'feedback_type': data.get('feedback'),
+            'feedback_type': feedback_type,
             'customer_line_user_id': event.source.user_id
         })
         
@@ -1337,13 +1379,29 @@ def handle_postback(event):
         cache.clear()
         
         reply_text = "ขอบคุณสำหรับความคิดเห็นครับ/ค่ะ 🙏"
-        if data.get('feedback') == 'problem_reported':
+        if feedback_type == 'problem_reported':
             reply_text = "รับทราบปัญหาครับ/ค่ะ ทางเราจะรีบติดต่อกลับเพื่อดูแลโดยเร็วที่สุด"
-            
+        
+        # Send initial thank you/acknowledgement message
         try:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
         except Exception as e:
             app.logger.error(f"Failed to reply to postback: {e}")
+
+        # NEW: Sales offer logic
+        settings = get_app_settings()
+        sales_offers = settings.get('sales_offers', {})
+        if (sales_offers.get('post_feedback_offer_enabled') and 
+            feedback_type in ['very_satisfied', 'satisfied']):
+            
+            offer_message = sales_offers.get('post_feedback_offer_message')
+            if offer_message:
+                try:
+                    # Send a follow-up push message with the offer
+                    line_bot_api.push_message(event.source.user_id, TextSendMessage(text=offer_message))
+                except Exception as e:
+                    app.logger.error(f"Failed to send sales offer to {event.source.user_id}: {e}")
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))

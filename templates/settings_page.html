@@ -43,7 +43,6 @@
         </div>
     </div>
     
-    <!-- NEW: Technician List Management Card -->
     <div class="card mb-4 border-info">
         <div class="card-header bg-info text-white">
             <h5 class="mb-0"><i class="fas fa-users-cog me-2"></i>จัดการรายชื่อช่าง</h5>
@@ -57,7 +56,6 @@
         </div>
     </div>
 
-    {# NEW: Shop Information Settings #}
     <div class="card mb-4 border-success">
         <div class="card-header bg-success text-white">
             <h5 class="mb-0"><i class="fas fa-store me-2"></i>ข้อมูลร้านค้า (สำหรับข้อความลูกค้า)</h5>
@@ -73,7 +71,34 @@
             </div>
         </div>
     </div>
-    {# END NEW: Shop Information Settings #}
+    
+    <!-- NEW: Marketing & Sales Settings -->
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="fas fa-bullhorn me-2"></i>ตั้งค่าการตลาดและส่งเสริมการขาย</h5>
+        </div>
+        <div class="card-body">
+            <h6 class="card-title">ข้อเสนอหลังลูกค้าพอใจ</h6>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="post_feedback_offer_enabled" name="post_feedback_offer_enabled" {% if settings.sales_offers.post_feedback_offer_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="post_feedback_offer_enabled">เปิดใช้งานการส่งข้อเสนอหลังลูกค้าตอบว่า "พอใจ"</label>
+            </div>
+            <div class="mb-3">
+                <label for="post_feedback_offer_message" class="form-label">ข้อความที่จะส่ง</label>
+                <textarea class="form-control" id="post_feedback_offer_message" name="post_feedback_offer_message" rows="3">{{ settings.sales_offers.post_feedback_offer_message }}</textarea>
+            </div>
+            <hr>
+            <h6 class="card-title mt-3">โปรโมชันท้ายใบรายงาน</h6>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="report_promotion_enabled" name="report_promotion_enabled" {% if settings.sales_offers.report_promotion_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="report_promotion_enabled">เปิดใช้งานการแสดงโปรโมชันท้ายใบรายงานค่าใช้จ่าย</label>
+            </div>
+            <div class="mb-3">
+                <label for="report_promotion_text" class="form-label">ข้อความโปรโมชัน</label>
+                <textarea class="form-control" id="report_promotion_text" name="report_promotion_text" rows="2">{{ settings.sales_offers.report_promotion_text }}</textarea>
+            </div>
+        </div>
+    </div>
 
     <div class="card mb-4">
         <div class="card-header bg-secondary text-white"><i class="fas fa-qrcode me-2"></i>ตั้งค่า QR Code</div>
@@ -113,7 +138,6 @@
         </div>
     </div>
 
-    {# NEW: Auto Backup Settings #}
     <div class="card mb-4 border-primary">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fas fa-cloud-upload-alt me-2"></i>การสำรองข้อมูลอัตโนมัติ (ไปยัง Google Drive)</h5>
@@ -133,11 +157,8 @@
                     <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute" value="{{ settings.auto_backup.minute_thai }}" min="0" max="59">
                 </div>
             </div>
-            <p class="text-muted small">ระบบจะทำการสำรองข้อมูลทั้งหมด (Google Tasks, การตั้งค่า, แคตตาล็อกอุปกรณ์, และโค้ด) ไปยัง Google Drive Folder ID ที่กำหนดไว้ใน Environment Variable `GOOGLE_DRIVE_FOLDER_ID`</p>
-            <p class="text-danger small">**ข้อควรระวัง:** Render.com เป็นระบบไฟล์ชั่วคราว (Ephemeral Filesystem) ดังนั้นหากไม่ได้ตั้งค่า `GOOGLE_DRIVE_FOLDER_ID` หรือ `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` หรือเกิดข้อผิดพลาดในการอัปโหลด ไฟล์ `settings.json` (รวมถึงแคตตาล็อกอุปกรณ์) และไฟล์ที่อัปโหลดจะหายไปเมื่อเซิร์ฟเวอร์รีสตาร์ท</p>
         </div>
     </div>
-    {# END NEW: Auto Backup Settings #}
 
     <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่า</button>
 </form>
