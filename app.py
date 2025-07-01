@@ -1080,6 +1080,7 @@ def preview_tasks_import():
             if customer_info.get('map_url'):
                 cleaned_notes = cleaned_notes.replace(customer_info['map_url'], '').strip()
             
+            # UPDATED: Remove old report and feedback blocks
             cleaned_notes = re.sub(r"--- (?:TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*", "", cleaned_notes, re.DOTALL).strip()
 
             preview_data.append({
