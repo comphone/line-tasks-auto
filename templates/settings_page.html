@@ -141,25 +141,19 @@
                             </div>
                         </div>
                     </div>
-                    <!-- QR Code Settings -->
+                    <!-- Old Tasks Importer -->
                     <div class="col-lg-6 mb-4">
-                        <div class="card h-100">
-                            <div class="card-header"><i class="fas fa-qrcode me-2"></i>ตั้งค่า QR Code</div>
+                        <div class="card h-100 border-danger">
+                            <div class="card-header bg-danger text-white"><i class="fas fa-file-import me-2"></i>เครื่องมือนำเข้าข้อมูลงานเก่า</div>
                             <div class="card-body">
-                                 <div class="mb-3">
-                                    <label for="qr_custom_url" class="form-label">URL ที่กำหนดเอง (ถ้ามี)</label>
-                                    <input type="url" class="form-control" id="qr_custom_url" name="qr_custom_url" value="{{ settings.qrcode_settings.custom_url }}" placeholder="{{ general_summary_url }}">
-                                </div>
-                                 <div class="row">
-                                    <div class="col-6 mb-3">
-                                        <label for="qr_fill_color" class="form-label">สี QR Code</label>
-                                        <input type="color" class="form-control form-control-color" id="qr_fill_color" name="qr_fill_color" value="{{ settings.qrcode_settings.fill_color }}">
+                                <p class="text-muted">ใช้สำหรับย้ายข้อมูลงานจากระบบเก่ามายังระบบใหม่ **(ทำครั้งเดียวเท่านั้น)**</p>
+                                <form id="importTasksForm" action="{{ url_for('preview_tasks_import') }}" method="post" enctype="multipart/form-data">
+                                    <div class="mb-2">
+                                        <label for="tasks_backup_file" class="form-label">เลือกไฟล์ `tasks_backup.json`</label>
+                                        <input type="file" class="form-control" id="tasks_backup_file" name="tasks_backup_file" required accept=".json">
                                     </div>
-                                    <div class="col-6 mb-3">
-                                        <label for="qr_back_color" class="form-label">สีพื้นหลัง</label>
-                                        <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color" value="{{ settings.qrcode_settings.back_color }}">
-                                    </div>
-                                </div>
+                                    <button type="submit" class="btn btn-danger w-100"><i class="fas fa-search me-2"></i>ตรวจสอบข้อมูลก่อนนำเข้า</button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -194,4 +188,123 @@
     </div>
 </div>
 
+<!-- Import Tasks Preview Modal -->
+<div class="modal fade" id="importPreviewModal" tabindex="-1" aria-labelledby="importPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importPreviewModalLabel">ตรวจสอบข้อมูลงานก่อนนำเข้า</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>พบข้อมูล <strong id="taskCount">0</strong> รายการ โปรดตรวจสอบความถูกต้องก่อนกดยืนยัน</p>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>ชื่องาน (Title)</th>
+                                <th>รายละเอียด (Notes)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewTableBody">
+                            <!-- Data will be injected here by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="confirmImportBtn">ยืนยันการนำเข้า</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const importForm = document.getElementById('importTasksForm');
+    const fileInput = document.getElementById('tasks_backup_file');
+    const confirmBtn = document.getElementById('confirmImportBtn');
+    const previewModal = new bootstrap.Modal(document.getElementById('importPreviewModal'));
+    const previewTableBody = document.getElementById('previewTableBody');
+    const taskCountSpan = document.getElementById('taskCount');
+    let tasksToImport = [];
+
+    importForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        
+        if (!fileInput.files.length) {
+            alert('กรุณาเลือกไฟล์');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('tasks_backup_file', fileInput.files[0]);
+
+        fetch("{{ url_for('preview_tasks_import') }}", {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('เกิดข้อผิดพลาด: ' + data.error);
+                return;
+            }
+            
+            tasksToImport = data;
+            taskCountSpan.textContent = tasksToImport.length;
+            previewTableBody.innerHTML = ''; // Clear previous preview
+
+            tasksToImport.forEach((task, index) => {
+                const row = `<tr>
+                                <td>${index + 1}</td>
+                                <td>${task.title}</td>
+                                <td><pre>${task.notes}</pre></td>
+                             </tr>`;
+                previewTableBody.insertAdjacentHTML('beforeend', row);
+            });
+
+            previewModal.show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อตรวจสอบไฟล์');
+        });
+    });
+
+    confirmBtn.addEventListener('click', function() {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังนำเข้า...';
+
+        fetch("{{ url_for('import_tasks_from_backup') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(tasksToImport)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                previewModal.hide();
+                window.location.reload(); // Reload to show the flash message
+            } else {
+                alert('เกิดข้อผิดพลาดในการนำเข้า: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อนำเข้าข้อมูล');
+        })
+        .finally(() => {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = 'ยืนยันการนำเข้า';
+        });
+    });
+});
+</script>
 {% endblock %}

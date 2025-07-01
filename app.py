@@ -988,7 +988,6 @@ def settings_page():
         
         if save_app_settings(new_settings):
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว! กำลังสำรองข้อมูลไปยัง Google Drive...', 'success')
-            # NEW: Immediately back up settings to Google Drive after saving
             with app.app_context():
                 if _backup_settings_to_drive():
                     flash('สำรองข้อมูลการตั้งค่าไปยัง Google Drive สำเร็จ!', 'info')
@@ -1044,6 +1043,59 @@ def import_settings():
         flash('รองรับเฉพาะไฟล์ .json เท่านั้น', 'danger')
         
     return redirect(url_for('settings_page'))
+
+# NEW: Route to preview tasks from a backup file
+@app.route('/preview_tasks_import', methods=['POST'])
+def preview_tasks_import():
+    if 'tasks_backup_file' not in request.files or not request.files['tasks_backup_file'].filename:
+        return jsonify({"error": "กรุณาเลือกไฟล์"}), 400
+
+    file = request.files['tasks_backup_file']
+    if file and file.filename.endswith('.json'):
+        try:
+            tasks_data = json.load(file.stream)
+            if not isinstance(tasks_data, list):
+                return jsonify({"error": "รูปแบบไฟล์ไม่ถูกต้อง: ไฟล์ต้องเป็นรายการ (list) ของงาน"}), 400
+            
+            preview_data = []
+            for task in tasks_data:
+                if isinstance(task, dict) and 'title' in task:
+                    preview_data.append({
+                        'title': task.get('title', 'N/A'),
+                        'notes': task.get('notes', '')
+                    })
+            
+            return jsonify(preview_data)
+
+        except json.JSONDecodeError:
+            return jsonify({"error": "ไฟล์ที่อัปโหลดไม่ใช่รูปแบบ JSON ที่ถูกต้อง"}), 400
+        except Exception as e:
+            return jsonify({"error": f"เกิดข้อผิดพลาดที่ไม่คาดคิด: {e}"}), 500
+    else:
+        return jsonify({"error": "รองรับเฉพาะไฟล์ .json เท่านั้น"}), 400
+
+# NEW: Route to perform the actual import after confirmation
+@app.route('/import_tasks_from_backup', methods=['POST'])
+def import_tasks_from_backup():
+    try:
+        tasks_to_import = request.get_json()
+        if not isinstance(tasks_to_import, list):
+            return jsonify({"status": "error", "message": "ข้อมูลที่ส่งมาไม่ถูกต้อง"}), 400
+
+        imported_count = 0
+        for task in tasks_to_import:
+            if isinstance(task, dict) and 'title' in task:
+                create_google_task(title=task['title'], notes=task['notes'])
+                imported_count += 1
+        
+        cache.clear()
+        flash(f'นำเข้าข้อมูลงานเก่าจำนวน {imported_count} รายการสำเร็จ!', 'success')
+        return jsonify({"status": "success", "count": imported_count})
+
+    except Exception as e:
+        app.logger.error(f"Error during final task import: {e}")
+        return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
+
 
 # Other routes (test_notification, backup, etc.) remain the same...
 @app.route('/test_notification', methods=['POST'])
