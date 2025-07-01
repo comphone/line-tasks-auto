@@ -1066,29 +1066,40 @@ def preview_tasks_import():
             original_title = task.get('title', 'N/A')
             original_notes = task.get('notes', '')
 
-            # Parse customer info from the notes
             customer_info = parse_customer_info_from_notes(original_notes)
-
-            # Clean the notes to show only remaining details
-            cleaned_notes = original_notes
-            if customer_info.get('name'):
-                cleaned_notes = re.sub(r"ลูกค้า:\s*" + re.escape(customer_info['name']), '', cleaned_notes, flags=re.IGNORECASE).strip()
-            if customer_info.get('phone'):
-                cleaned_notes = re.sub(r"เบอร์โทรศัพท์:\s*" + re.escape(customer_info['phone']), '', cleaned_notes, flags=re.IGNORECASE).strip()
-            if customer_info.get('address'):
-                cleaned_notes = re.sub(r"ที่อยู่:\s*" + re.escape(customer_info['address']), '', cleaned_notes, flags=re.IGNORECASE).strip()
-            if customer_info.get('map_url'):
-                cleaned_notes = cleaned_notes.replace(customer_info['map_url'], '').strip()
             
-            # UPDATED: Remove old report and feedback blocks
-            cleaned_notes = re.sub(r"--- (?:TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*", "", cleaned_notes, re.DOTALL).strip()
+            cleaned_notes = original_notes
+            cleaned_notes = re.sub(r"ลูกค้า:\s*.*\n?", '', cleaned_notes, flags=re.IGNORECASE).strip()
+            cleaned_notes = re.sub(r"เบอร์โทรศัพท์:\s*.*\n?", '', cleaned_notes, flags=re.IGNORECASE).strip()
+            cleaned_notes = re.sub(r"ที่อยู่:\s*.*\n?", '', cleaned_notes, flags=re.IGNORECASE).strip()
+            if customer_info.get('map_url'):
+                 cleaned_notes = cleaned_notes.replace(customer_info['map_url'], '').strip()
+            cleaned_notes = re.sub(r"--- (?:TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*--- (?:TECH_REPORT_END|CUSTOMER_FEEDBACK_END) ---", "", cleaned_notes, flags=re.DOTALL).strip()
+
+            due_date_str = task.get('due')
+            due_date_formatted = ''
+            if due_date_str:
+                try:
+                    dt_utc = datetime.datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
+                    due_date_formatted = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%Y %H:%M")
+                except ValueError:
+                    due_date_formatted = 'รูปแบบไม่ถูกต้อง'
+
+            history, _ = parse_tech_report_from_notes(original_notes)
+            attachments = []
+            for report in history:
+                attachments.extend(report.get('attachment_urls', []))
 
             preview_data.append({
                 'title': original_title,
                 'customer_name': customer_info.get('name', ''),
                 'customer_phone': customer_info.get('phone', ''),
                 'customer_address': customer_info.get('address', ''),
-                'cleaned_notes': cleaned_notes
+                'customer_map_url': customer_info.get('map_url', ''),
+                'cleaned_notes': cleaned_notes,
+                'due_date_iso': due_date_str, 
+                'due_date_formatted': due_date_formatted,
+                'attachments': attachments
             })
         
         return jsonify(preview_data)
@@ -1110,7 +1121,6 @@ def import_tasks_from_backup():
         imported_count = 0
         for task_data in tasks_to_import:
             if isinstance(task_data, dict) and 'title' in task_data:
-                # Reconstruct notes cleanly from parsed data
                 notes_lines = []
                 if task_data.get('customer_name'):
                     notes_lines.append(f"ลูกค้า: {task_data['customer_name']}")
@@ -1118,16 +1128,23 @@ def import_tasks_from_backup():
                     notes_lines.append(f"เบอร์โทรศัพท์: {task_data['customer_phone']}")
                 if task_data.get('customer_address'):
                     notes_lines.append(f"ที่อยู่: {task_data['customer_address']}")
+                if task_data.get('customer_map_url'):
+                    notes_lines.append(task_data['customer_map_url'])
                 
-                # Add the remaining cleaned notes if they exist
                 if task_data.get('cleaned_notes'):
                     notes_lines.append(f"\n{task_data['cleaned_notes']}")
+                
+                if task_data.get('attachments'):
+                    notes_lines.append("\n\n--- ลิงก์ไฟล์แนบจากระบบเก่า (ต้องอัปโหลดใหม่) ---")
+                    for link in task_data['attachments']:
+                        notes_lines.append(link)
 
                 final_notes = "\n".join(notes_lines)
                 
                 create_google_task(
                     title=task_data['title'], 
-                    notes=final_notes
+                    notes=final_notes,
+                    due=task_data.get('due_date_iso')
                 )
                 imported_count += 1
         

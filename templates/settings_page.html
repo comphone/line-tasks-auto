@@ -203,11 +203,13 @@
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 5%;">#</th>
-                                <th style="width: 25%;">ชื่องาน (Title)</th>
+                                <th style="width: 20%;">ชื่องาน (Title)</th>
                                 <th style="width: 15%;">ลูกค้า</th>
-                                <th style="width: 15%;">เบอร์โทร</th>
-                                <th style="width: 20%;">ที่อยู่</th>
-                                <th style="width: 20%;">รายละเอียดเพิ่มเติม (Notes ที่เหลือ)</th>
+                                <th style="width: 10%;">เบอร์โทร</th>
+                                <th style="width: 15%;">ที่อยู่</th>
+                                <th style="width: 10%;">พิกัด</th>
+                                <th style="width: 10%;">วันที่นัดหมาย</th>
+                                <th style="width: 15%;">ลิงก์ไฟล์แนบ (เก่า)</th>
                             </tr>
                         </thead>
                         <tbody id="previewTableBody">
@@ -263,13 +265,18 @@ document.addEventListener('DOMContentLoaded', function() {
             previewTableBody.innerHTML = ''; // Clear previous preview
 
             tasksToImport.forEach((task, index) => {
+                let attachmentsHtml = task.attachments.map(url => `<a href="${url}" target="_blank">ดูไฟล์</a>`).join('<br>');
+                if (!attachmentsHtml) attachmentsHtml = '-';
+
                 const row = `<tr>
                                 <td>${index + 1}</td>
                                 <td>${task.title || ''}</td>
                                 <td>${task.customer_name || ''}</td>
                                 <td>${task.customer_phone || ''}</td>
                                 <td>${task.customer_address || ''}</td>
-                                <td><pre style="white-space: pre-wrap; word-break: break-all;">${task.cleaned_notes || ''}</pre></td>
+                                <td>${task.customer_map_url ? '<a href="' + task.customer_map_url + '" target="_blank">ดูแผนที่</a>' : '-'}</td>
+                                <td>${task.due_date_formatted || '-'}</td>
+                                <td>${attachmentsHtml}</td>
                              </tr>`;
                 previewTableBody.insertAdjacentHTML('beforeend', row);
             });
