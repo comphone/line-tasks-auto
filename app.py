@@ -548,6 +548,23 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
 #<editor-fold desc="Scheduled Jobs">
 # --- All Scheduled Jobs and Scheduler Management ---
 
+def _backup_settings_to_drive():
+    """Helper function to back up the current settings to Google Drive."""
+    if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
+        app.logger.warning("Cannot back up settings: GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set.")
+        return False
+    
+    settings_data = get_app_settings()
+    settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
+    settings_backup_filename = "settings_backup.json"
+    
+    if _upload_backup_to_drive(settings_json_bytes, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
+        app.logger.info("Successfully backed up settings to Google Drive.")
+        return True
+    else:
+        app.logger.error("Failed to back up settings to Google Drive.")
+        return False
+
 def scheduled_backup_job():
     with app.app_context():
         app.logger.info("Running scheduled backup job...")
@@ -559,15 +576,8 @@ def scheduled_backup_job():
             else:
                 app.logger.error("Automatic full system backup failed.")
 
-        if GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
-            settings_data = get_app_settings()
-            settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
-            settings_backup_filename = "settings_backup.json"
-            
-            if _upload_backup_to_drive(settings_json_bytes, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
-                app.logger.info("Automatic settings backup successful.")
-            else:
-                app.logger.error("Automatic settings backup failed.")
+        _backup_settings_to_drive()
+
 
 def scheduled_appointment_reminder_job():
     with app.app_context():
@@ -938,7 +948,6 @@ def settings_page():
         technician_names_text = request.form.get('technician_list', '').strip()
         technician_list = [name.strip() for name in technician_names_text.splitlines() if name.strip()]
 
-        # Preserve the existing task list ID when saving settings
         current_settings = get_app_settings()
         google_tasks_list_id = current_settings.get('google_tasks_list_id')
 
@@ -976,10 +985,19 @@ def settings_page():
                 'report_promotion_text': request.form.get('report_promotion_text', '').strip()
             }
         }
-        save_app_settings(new_settings)
         
+        if save_app_settings(new_settings):
+            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว! กำลังสำรองข้อมูลไปยัง Google Drive...', 'success')
+            # NEW: Immediately back up settings to Google Drive after saving
+            with app.app_context():
+                if _backup_settings_to_drive():
+                    flash('สำรองข้อมูลการตั้งค่าไปยัง Google Drive สำเร็จ!', 'info')
+                else:
+                    flash('สำรองข้อมูลการตั้งค่าไปยัง Google Drive ล้มเหลว!', 'danger')
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกไฟล์ตั้งค่า', 'danger')
+
         run_scheduler()
-        flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
         cache.clear()
         return redirect(url_for('settings_page'))
     
@@ -993,6 +1011,39 @@ def settings_page():
         fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
     )
     return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
+
+@app.route('/import_settings', methods=['POST'])
+def import_settings():
+    if 'settings_file' not in request.files or not request.files['settings_file'].filename:
+        flash('กรุณาเลือกไฟล์ตั้งค่า (.json)', 'danger')
+        return redirect(url_for('settings_page'))
+    
+    file = request.files['settings_file']
+    if file and file.filename.endswith('.json'):
+        try:
+            uploaded_settings = json.load(file.stream)
+            current_settings = get_app_settings()
+            google_tasks_list_id = current_settings.get('google_tasks_list_id')
+            uploaded_settings['google_tasks_list_id'] = google_tasks_list_id
+
+            if save_app_settings(uploaded_settings):
+                flash('นำเข้าและบันทึกการตั้งค่าใหม่เรียบร้อยแล้ว!', 'success')
+                with app.app_context():
+                    if _backup_settings_to_drive():
+                        app.logger.info("Successfully backed up newly imported settings to Google Drive.")
+                    else:
+                        app.logger.error("Failed to back up newly imported settings to Google Drive.")
+            else:
+                flash('เกิดข้อผิดพลาดในการบันทึกไฟล์ตั้งค่า', 'danger')
+
+        except json.JSONDecodeError:
+            flash('ไฟล์ที่อัปโหลดไม่ใช่รูปแบบ JSON ที่ถูกต้อง', 'danger')
+        except Exception as e:
+            flash(f"เกิดข้อผิดพลาดที่ไม่คาดคิด: {e}", 'danger')
+    else:
+        flash('รองรับเฉพาะไฟล์ .json เท่านั้น', 'danger')
+        
+    return redirect(url_for('settings_page'))
 
 # Other routes (test_notification, backup, etc.) remain the same...
 @app.route('/test_notification', methods=['POST'])
