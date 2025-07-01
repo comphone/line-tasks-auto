@@ -205,11 +205,9 @@
                                 <th style="width: 5%;">#</th>
                                 <th style="width: 20%;">ชื่องาน (Title)</th>
                                 <th style="width: 15%;">ลูกค้า</th>
-                                <th style="width: 10%;">เบอร์โทร</th>
-                                <th style="width: 15%;">ที่อยู่</th>
-                                <th style="width: 10%;">พิกัด</th>
-                                <th style="width: 10%;">วันที่นัดหมาย</th>
-                                <th style="width: 15%;">ลิงก์ไฟล์แนบ (เก่า)</th>
+                                <th style="width: 10%;">สถานะ</th>
+                                <th style="width: 15%;">วันที่นัดหมาย</th>
+                                <th style="width: 35%;">รายละเอียดเพิ่มเติม (Notes ที่เหลือ)</th>
                             </tr>
                         </thead>
                         <tbody id="previewTableBody">
@@ -230,94 +228,108 @@
 {% block body_extra %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const importForm = document.getElementById('importTasksForm');
-    const fileInput = document.getElementById('tasks_backup_file');
-    const confirmBtn = document.getElementById('confirmImportBtn');
-    const previewModal = new bootstrap.Modal(document.getElementById('importPreviewModal'));
-    const previewTableBody = document.getElementById('previewTableBody');
-    const taskCountSpan = document.getElementById('taskCount');
-    let tasksToImport = [];
+    // FIX: Defer initialization to ensure Bootstrap is loaded and ready.
+    setTimeout(function() {
+        const importForm = document.getElementById('importTasksForm');
+        const fileInput = document.getElementById('tasks_backup_file');
+        const confirmBtn = document.getElementById('confirmImportBtn');
+        let previewModalInstance = null;
+        const previewTableBody = document.getElementById('previewTableBody');
+        const taskCountSpan = document.getElementById('taskCount');
+        let tasksToImport = [];
 
-    importForm.addEventListener('submit', function(event) {
-        event.preventDefault();
-        
-        if (!fileInput.files.length) {
-            alert('กรุณาเลือกไฟล์');
-            return;
+        // Initialize the modal only if Bootstrap is available
+        if (typeof bootstrap !== 'undefined') {
+            previewModalInstance = new bootstrap.Modal(document.getElementById('importPreviewModal'));
+        } else {
+            console.error('Bootstrap is not defined. Modal functionality will be affected.');
+            return; 
         }
 
-        const formData = new FormData();
-        formData.append('tasks_backup_file', fileInput.files[0]);
-
-        fetch("{{ url_for('preview_tasks_import') }}", {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                alert('เกิดข้อผิดพลาด: ' + data.error);
+        importForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            if (!fileInput.files.length) {
+                alert('กรุณาเลือกไฟล์');
                 return;
             }
-            
-            tasksToImport = data;
-            taskCountSpan.textContent = tasksToImport.length;
-            previewTableBody.innerHTML = ''; // Clear previous preview
 
-            tasksToImport.forEach((task, index) => {
-                let attachmentsHtml = task.attachments.map(url => `<a href="${url}" target="_blank">ดูไฟล์</a>`).join('<br>');
-                if (!attachmentsHtml) attachmentsHtml = '-';
+            const formData = new FormData();
+            formData.append('tasks_backup_file', fileInput.files[0]);
 
-                const row = `<tr>
-                                <td>${index + 1}</td>
-                                <td>${task.title || ''}</td>
-                                <td>${task.customer_name || ''}</td>
-                                <td>${task.customer_phone || ''}</td>
-                                <td>${task.customer_address || ''}</td>
-                                <td>${task.customer_map_url ? '<a href="' + task.customer_map_url + '" target="_blank">ดูแผนที่</a>' : '-'}</td>
-                                <td>${task.due_date_formatted || '-'}</td>
-                                <td>${attachmentsHtml}</td>
-                             </tr>`;
-                previewTableBody.insertAdjacentHTML('beforeend', row);
+            fetch("{{ url_for('preview_tasks_import') }}", {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('เกิดข้อผิดพลาด: ' + data.error);
+                    return;
+                }
+                
+                tasksToImport = data;
+                taskCountSpan.textContent = tasksToImport.length;
+                previewTableBody.innerHTML = ''; // Clear previous preview
+
+                tasksToImport.forEach((task, index) => {
+                    let statusBadge = task.status === 'completed' 
+                        ? '<span class="badge bg-success">เสร็จแล้ว</span>' 
+                        : '<span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>';
+
+                    const row = `<tr>
+                                    <td>${index + 1}</td>
+                                    <td>${task.title || ''}</td>
+                                    <td>${task.customer_name || ''}</td>
+                                    <td>${statusBadge}</td>
+                                    <td>${task.due_date_formatted || '-'}</td>
+                                    <td><pre style="white-space: pre-wrap; word-break: break-all;">${task.cleaned_notes || ''}</pre></td>
+                                 </tr>`;
+                    previewTableBody.insertAdjacentHTML('beforeend', row);
+                });
+
+                if (previewModalInstance) {
+                    previewModalInstance.show();
+                } else {
+                    alert('เกิดข้อผิดพลาดในการแสดงหน้าต่างตรวจสอบข้อมูล');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อตรวจสอบไฟล์');
             });
-
-            previewModal.show();
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อตรวจสอบไฟล์');
         });
-    });
 
-    confirmBtn.addEventListener('click', function() {
-        confirmBtn.disabled = true;
-        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังนำเข้า...';
+        confirmBtn.addEventListener('click', function() {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังนำเข้า...';
 
-        fetch("{{ url_for('import_tasks_from_backup') }}", {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(tasksToImport)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                previewModal.hide();
-                window.location.reload(); // Reload to show the flash message
-            } else {
-                alert('เกิดข้อผิดพลาดในการนำเข้า: ' + data.message);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อนำเข้าข้อมูล');
-        })
-        .finally(() => {
-            confirmBtn.disabled = false;
-            confirmBtn.innerHTML = 'ยืนยันการนำเข้า';
+            fetch("{{ url_for('import_tasks_from_backup') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(tasksToImport)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    if(previewModalInstance) previewModalInstance.hide();
+                    window.location.reload(); // Reload to show the flash message
+                } else {
+                    alert('เกิดข้อผิดพลาดในการนำเข้า: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อนำเข้าข้อมูล');
+            })
+            .finally(() => {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = 'ยืนยันการนำเข้า';
+            });
         });
-    });
+    }, 100); // 100ms delay to ensure all scripts are loaded
 });
 </script>
 {% endblock %}

@@ -501,12 +501,14 @@ def _create_backup_zip():
     try:
         all_tasks = get_google_tasks_for_report(show_completed=True)
         if all_tasks is None:
-            app.logger.error('Failed to get tasks for backup.')
-            return None, None
+            all_tasks = [] # Ensure it's a list even if fetching fails
+        
+        settings_data = get_app_settings()
 
         memory_file = BytesIO()
         with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf: 
             zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
+            zf.writestr('data/settings_backup.json', json.dumps(settings_data, indent=4, ensure_ascii=False))
             
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
@@ -1099,7 +1101,8 @@ def preview_tasks_import():
                 'cleaned_notes': cleaned_notes,
                 'due_date_iso': due_date_str, 
                 'due_date_formatted': due_date_formatted,
-                'attachments': attachments
+                'attachments': attachments,
+                'status': task.get('status', 'needsAction') # NEW: Add status
             })
         
         return jsonify(preview_data)
@@ -1141,11 +1144,16 @@ def import_tasks_from_backup():
 
                 final_notes = "\n".join(notes_lines)
                 
-                create_google_task(
+                new_task = create_google_task(
                     title=task_data['title'], 
                     notes=final_notes,
                     due=task_data.get('due_date_iso')
                 )
+
+                # NEW: Update status if it was 'completed'
+                if new_task and task_data.get('status') == 'completed':
+                    update_google_task(new_task['id'], status='completed')
+
                 imported_count += 1
         
         cache.clear()
