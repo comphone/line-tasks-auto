@@ -961,9 +961,9 @@ def settings_page():
         new_settings = {
             'google_tasks_list_id': google_tasks_list_id,
             'report_times': { 
-                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 
-                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')),
-                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour'))
+                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour') or 7), 
+                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour') or 20),
+                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour') or 9)
             },
             'line_recipients': { 
                 'admin_group_id': request.form.get('admin_group_id', '').strip(), 
@@ -971,14 +971,17 @@ def settings_page():
                 'manager_user_id': request.form.get('manager_user_id', '').strip() 
             },
             'qrcode_settings': { 
-                'box_size': int(request.form.get('qr_box_size')), 'border': int(request.form.get('qr_border')), 
-                'fill_color': request.form.get('qr_fill_color'), 'back_color': request.form.get('qr_back_color'), 
+                # Since these fields are not in the main form, we provide defaults to prevent a TypeError
+                'box_size': int(request.form.get('qr_box_size') or 8), 
+                'border': int(request.form.get('qr_border') or 4), 
+                'fill_color': request.form.get('qr_fill_color') or '#28a745', 
+                'back_color': request.form.get('qr_back_color') or '#FFFFFF', 
                 'custom_url': request.form.get('qr_custom_url', '').strip() 
             },
             'auto_backup': { 
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('auto_backup_hour')),
-                'minute_thai': int(request.form.get('auto_backup_minute'))
+                'hour_thai': int(request.form.get('auto_backup_hour') or 2),
+                'minute_thai': int(request.form.get('auto_backup_minute') or 0)
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),

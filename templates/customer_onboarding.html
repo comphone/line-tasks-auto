@@ -65,8 +65,8 @@
                 const customerLineUserId = profile.userId;
                 displayStatus('fa-spinner fa-spin', 'กำลังเชื่อมต่อข้อมูลของคุณ...');
                 
-                // FIXED: Send data as JSON
-                fetch('/save_customer_line_id', {
+                // UPDATED: Changed to use url_for for better flexibility
+                fetch("{{ url_for('save_customer_line_id') }}", {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

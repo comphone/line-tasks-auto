@@ -7,7 +7,6 @@
 
 <form action="{{ url_for('settings_page') }}" method="POST">
 
-    <!-- Section 1: Core Business Settings -->
     <div class="card mb-4 border-primary">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fas fa-store me-2"></i>ตั้งค่าหลักของร้าน</h5>
@@ -32,7 +31,6 @@
         </div>
     </div>
 
-    <!-- Section 2: Automation Settings -->
     <div class="card mb-4">
         <div class="card-header"><i class="fas fa-robot me-2"></i>ระบบอัตโนมัติและการแจ้งเตือน</div>
         <div class="card-body">
@@ -64,7 +62,6 @@
         </div>
     </div>
 
-    <!-- Section 3: Marketing & Sales Settings -->
     <div class="card mb-4 border-warning">
         <div class="card-header bg-warning text-dark">
             <h5 class="mb-0"><i class="fas fa-bullhorn me-2"></i>การตลาดและส่งเสริมการขาย</h5>
@@ -92,10 +89,29 @@
         </div>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-header"><i class="fas fa-cloud-upload-alt me-2"></i>ตั้งค่าสำรองข้อมูลไป Google Drive</div>
+        <div class="card-body">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="auto_backup_enabled" name="auto_backup_enabled" {% if settings.auto_backup.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="auto_backup_enabled">เปิดใช้งานการสำรองข้อมูลอัตโนมัติ</label>
+            </div>
+            <div class="row">
+                <div class="col-6 mb-3">
+                    <label for="auto_backup_hour" class="form-label">เวลา (ชม.)</label>
+                    <input type="number" class="form-control" id="auto_backup_hour" name="auto_backup_hour" value="{{ settings.auto_backup.hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-6 mb-3">
+                    <label for="auto_backup_minute" class="form-label">เวลา (นาที)</label>
+                    <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute" value="{{ settings.auto_backup.minute_thai }}" min="0" max="59">
+                </div>
+            </div>
+        </div>
+    </div>
+
     <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด</button>
 </form>
 
-<!-- Section 4: Data & System Management -->
 <div class="accordion" id="systemManagementAccordion">
     <div class="accordion-item">
         <h2 class="accordion-header" id="headingOne">
@@ -106,7 +122,6 @@
         <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#systemManagementAccordion">
             <div class="accordion-body">
                 <div class="row">
-                    <!-- Backup & Restore -->
                     <div class="col-lg-6 mb-4">
                         <div class="card h-100">
                             <div class="card-header"><i class="fas fa-archive me-2"></i>สำรองและกู้คืนข้อมูล</div>
@@ -124,7 +139,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Equipment Catalog -->
                     <div class="col-lg-6 mb-4">
                         <div class="card h-100">
                             <div class="card-header"><i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์</div>
@@ -141,7 +155,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Old Tasks Importer -->
                     <div class="col-lg-6 mb-4">
                         <div class="card h-100 border-danger">
                             <div class="card-header bg-danger text-white"><i class="fas fa-file-import me-2"></i>เครื่องมือนำเข้าข้อมูลงานเก่า</div>
@@ -157,25 +170,11 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Auto Backup to Drive -->
-                     <div class="col-lg-6 mb-4">
+                    <div class="col-lg-6 mb-4">
                         <div class="card h-100">
-                            <div class="card-header"><i class="fas fa-cloud-upload-alt me-2"></i>สำรองข้อมูลไป Google Drive</div>
-                            <div class="card-body">
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="auto_backup_enabled" name="auto_backup_enabled" {% if settings.auto_backup.enabled %}checked{% endif %}>
-                                    <label class="form-check-label" for="auto_backup_enabled">เปิดใช้งานการสำรองข้อมูลอัตโนมัติ</label>
-                                </div>
-                                <div class="row">
-                                    <div class="col-6 mb-3">
-                                        <label for="auto_backup_hour" class="form-label">เวลา (ชม.)</label>
-                                        <input type="number" class="form-control" id="auto_backup_hour" name="auto_backup_hour" value="{{ settings.auto_backup.hour_thai }}" min="0" max="23">
-                                    </div>
-                                    <div class="col-6 mb-3">
-                                        <label for="auto_backup_minute" class="form-label">เวลา (นาที)</label>
-                                        <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute" value="{{ settings.auto_backup.minute_thai }}" min="0" max="59">
-                                    </div>
-                                </div>
+                            <div class="card-header"><i class="fas fa-play-circle me-2"></i>สั่งสำรองข้อมูลทันที</div>
+                            <div class="card-body d-flex flex-column justify-content-center text-center">
+                                <p>สั่งให้ระบบสำรองข้อมูลทั้งหมดไปยัง Google Drive ทันที</p>
                                 <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST">
                                     <button type="submit" class="btn btn-info w-100"><i class="fas fa-cloud-upload-alt me-2"></i>สั่งสำรองข้อมูลทันที</button>
                                 </form>
@@ -188,7 +187,6 @@
     </div>
 </div>
 
-<!-- Import Tasks Preview Modal -->
 <div class="modal fade" id="importPreviewModal" tabindex="-1" aria-labelledby="importPreviewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -211,8 +209,7 @@
                             </tr>
                         </thead>
                         <tbody id="previewTableBody">
-                            <!-- Data will be injected here by JavaScript -->
-                        </tbody>
+                            </tbody>
                     </table>
                 </div>
             </div>
