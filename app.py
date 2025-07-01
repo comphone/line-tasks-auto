@@ -1044,38 +1044,62 @@ def import_settings():
         
     return redirect(url_for('settings_page'))
 
-# NEW: Route to preview tasks from a backup file
-@app.route('/preview_tasks_import', methods=['POST'])
+@app.route('/api/preview_tasks_import', methods=['POST'])
 def preview_tasks_import():
     if 'tasks_backup_file' not in request.files or not request.files['tasks_backup_file'].filename:
         return jsonify({"error": "กรุณาเลือกไฟล์"}), 400
 
     file = request.files['tasks_backup_file']
-    if file and file.filename.endswith('.json'):
-        try:
-            tasks_data = json.load(file.stream)
-            if not isinstance(tasks_data, list):
-                return jsonify({"error": "รูปแบบไฟล์ไม่ถูกต้อง: ไฟล์ต้องเป็นรายการ (list) ของงาน"}), 400
-            
-            preview_data = []
-            for task in tasks_data:
-                if isinstance(task, dict) and 'title' in task:
-                    preview_data.append({
-                        'title': task.get('title', 'N/A'),
-                        'notes': task.get('notes', '')
-                    })
-            
-            return jsonify(preview_data)
-
-        except json.JSONDecodeError:
-            return jsonify({"error": "ไฟล์ที่อัปโหลดไม่ใช่รูปแบบ JSON ที่ถูกต้อง"}), 400
-        except Exception as e:
-            return jsonify({"error": f"เกิดข้อผิดพลาดที่ไม่คาดคิด: {e}"}), 500
-    else:
+    if not (file and file.filename.endswith('.json')):
         return jsonify({"error": "รองรับเฉพาะไฟล์ .json เท่านั้น"}), 400
 
-# NEW: Route to perform the actual import after confirmation
-@app.route('/import_tasks_from_backup', methods=['POST'])
+    try:
+        tasks_data = json.load(file.stream)
+        if not isinstance(tasks_data, list):
+            return jsonify({"error": "รูปแบบไฟล์ไม่ถูกต้อง: ไฟล์ต้องเป็นรายการ (list) ของงาน"}), 400
+        
+        preview_data = []
+        for task in tasks_data:
+            if not (isinstance(task, dict) and 'title' in task):
+                continue
+
+            original_title = task.get('title', 'N/A')
+            original_notes = task.get('notes', '')
+
+            # Parse customer info from the notes
+            customer_info = parse_customer_info_from_notes(original_notes)
+
+            # Clean the notes to show only remaining details
+            cleaned_notes = original_notes
+            if customer_info.get('name'):
+                cleaned_notes = re.sub(r"ลูกค้า:\s*" + re.escape(customer_info['name']), '', cleaned_notes, flags=re.IGNORECASE).strip()
+            if customer_info.get('phone'):
+                cleaned_notes = re.sub(r"เบอร์โทรศัพท์:\s*" + re.escape(customer_info['phone']), '', cleaned_notes, flags=re.IGNORECASE).strip()
+            if customer_info.get('address'):
+                cleaned_notes = re.sub(r"ที่อยู่:\s*" + re.escape(customer_info['address']), '', cleaned_notes, flags=re.IGNORECASE).strip()
+            if customer_info.get('map_url'):
+                cleaned_notes = cleaned_notes.replace(customer_info['map_url'], '').strip()
+            
+            cleaned_notes = re.sub(r"--- (?:TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*", "", cleaned_notes, re.DOTALL).strip()
+
+            preview_data.append({
+                'title': original_title,
+                'customer_name': customer_info.get('name', ''),
+                'customer_phone': customer_info.get('phone', ''),
+                'customer_address': customer_info.get('address', ''),
+                'cleaned_notes': cleaned_notes
+            })
+        
+        return jsonify(preview_data)
+
+    except json.JSONDecodeError:
+        return jsonify({"error": "ไฟล์ที่อัปโหลดไม่ใช่รูปแบบ JSON ที่ถูกต้อง"}), 400
+    except Exception as e:
+        app.logger.error(f"Error during task preview: {e}")
+        return jsonify({"error": f"เกิดข้อผิดพลาดที่ไม่คาดคิด: {e}"}), 500
+
+
+@app.route('/api/import_tasks_from_backup', methods=['POST'])
 def import_tasks_from_backup():
     try:
         tasks_to_import = request.get_json()
@@ -1083,9 +1107,27 @@ def import_tasks_from_backup():
             return jsonify({"status": "error", "message": "ข้อมูลที่ส่งมาไม่ถูกต้อง"}), 400
 
         imported_count = 0
-        for task in tasks_to_import:
-            if isinstance(task, dict) and 'title' in task:
-                create_google_task(title=task['title'], notes=task['notes'])
+        for task_data in tasks_to_import:
+            if isinstance(task_data, dict) and 'title' in task_data:
+                # Reconstruct notes cleanly from parsed data
+                notes_lines = []
+                if task_data.get('customer_name'):
+                    notes_lines.append(f"ลูกค้า: {task_data['customer_name']}")
+                if task_data.get('customer_phone'):
+                    notes_lines.append(f"เบอร์โทรศัพท์: {task_data['customer_phone']}")
+                if task_data.get('customer_address'):
+                    notes_lines.append(f"ที่อยู่: {task_data['customer_address']}")
+                
+                # Add the remaining cleaned notes if they exist
+                if task_data.get('cleaned_notes'):
+                    notes_lines.append(f"\n{task_data['cleaned_notes']}")
+
+                final_notes = "\n".join(notes_lines)
+                
+                create_google_task(
+                    title=task_data['title'], 
+                    notes=final_notes
+                )
                 imported_count += 1
         
         cache.clear()
@@ -1095,7 +1137,6 @@ def import_tasks_from_backup():
     except Exception as e:
         app.logger.error(f"Error during final task import: {e}")
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
-
 
 # Other routes (test_notification, backup, etc.) remain the same...
 @app.route('/test_notification', methods=['POST'])

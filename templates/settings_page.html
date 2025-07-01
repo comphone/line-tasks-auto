@@ -147,7 +147,7 @@
                             <div class="card-header bg-danger text-white"><i class="fas fa-file-import me-2"></i>เครื่องมือนำเข้าข้อมูลงานเก่า</div>
                             <div class="card-body">
                                 <p class="text-muted">ใช้สำหรับย้ายข้อมูลงานจากระบบเก่ามายังระบบใหม่ **(ทำครั้งเดียวเท่านั้น)**</p>
-                                <form id="importTasksForm" action="{{ url_for('preview_tasks_import') }}" method="post" enctype="multipart/form-data">
+                                <form id="importTasksForm" method="post" enctype="multipart/form-data">
                                     <div class="mb-2">
                                         <label for="tasks_backup_file" class="form-label">เลือกไฟล์ `tasks_backup.json`</label>
                                         <input type="file" class="form-control" id="tasks_backup_file" name="tasks_backup_file" required accept=".json">
@@ -199,12 +199,15 @@
             <div class="modal-body">
                 <p>พบข้อมูล <strong id="taskCount">0</strong> รายการ โปรดตรวจสอบความถูกต้องก่อนกดยืนยัน</p>
                 <div class="table-responsive">
-                    <table class="table table-bordered">
-                        <thead>
+                    <table class="table table-bordered table-sm">
+                        <thead class="table-light">
                             <tr>
-                                <th>#</th>
-                                <th>ชื่องาน (Title)</th>
-                                <th>รายละเอียด (Notes)</th>
+                                <th style="width: 5%;">#</th>
+                                <th style="width: 25%;">ชื่องาน (Title)</th>
+                                <th style="width: 15%;">ลูกค้า</th>
+                                <th style="width: 15%;">เบอร์โทร</th>
+                                <th style="width: 20%;">ที่อยู่</th>
+                                <th style="width: 20%;">รายละเอียดเพิ่มเติม (Notes ที่เหลือ)</th>
                             </tr>
                         </thead>
                         <tbody id="previewTableBody">
@@ -262,8 +265,11 @@ document.addEventListener('DOMContentLoaded', function() {
             tasksToImport.forEach((task, index) => {
                 const row = `<tr>
                                 <td>${index + 1}</td>
-                                <td>${task.title}</td>
-                                <td><pre>${task.notes}</pre></td>
+                                <td>${task.title || ''}</td>
+                                <td>${task.customer_name || ''}</td>
+                                <td>${task.customer_phone || ''}</td>
+                                <td>${task.customer_address || ''}</td>
+                                <td><pre style="white-space: pre-wrap; word-break: break-all;">${task.cleaned_notes || ''}</pre></td>
                              </tr>`;
                 previewTableBody.insertAdjacentHTML('beforeend', row);
             });
