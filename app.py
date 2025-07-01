@@ -38,9 +38,8 @@ from linebot.models import (
 # ---------------------------------------------
 
 # --- Google API Imports ---
-from google.oauth2.credentials import Credentials 
+from google.oauth2 import service_account
 from google.auth.transport.requests import Request 
-from google_auth_oauthlib.flow import InstalledAppFlow 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
@@ -71,7 +70,7 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') 
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
-GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
+# GOOGLE_TASKS_LIST_ID is now managed within settings.json
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 GOOGLE_SETTINGS_BACKUP_FOLDER_ID = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID')
 
@@ -80,7 +79,6 @@ if not GOOGLE_DRIVE_FOLDER_ID:
 if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
     app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID environment variable is not set. Automatic settings backup/restore will not work.")
 
-# Corrected SCOPES list (removed markdown links)
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
@@ -92,6 +90,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 # --- Settings Management ---
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
+    'google_tasks_list_id': None, # NEW: To store the ID of the list owned by the Service Account
     'report_times': { 
         'appointment_reminder_hour_thai': 7, 
         'outstanding_report_hour_thai': 20,
@@ -107,7 +106,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
     'technician_list': [],
-    # NEW: Settings for sales and marketing
     'sales_offers': {
         'post_feedback_offer_enabled': False,
         'post_feedback_offer_message': 'ขอบคุณสำหรับความไว้วางใจครับ/ค่ะ! สนใจสมัครแพ็กเกจล้างแอร์รายปีในราคาพิเศษหรือไม่ครับ/คะ? ติดต่อสอบถามได้เลย!',
@@ -142,37 +140,34 @@ def save_settings_to_file(settings_data):
         return False
 
 def get_google_service(api_name, api_version):
-    """Authenticates and returns a Google API service."""
+    """Authenticates and returns a Google API service using a Service Account."""
     creds = None
-    token_path = 'token.json'
-    google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
+    google_creds_json_str = os.environ.get('GOOGLE_CREDENTIALS_JSON')
 
-    if google_token_json_str:
-        try: 
-            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-        except Exception as e: 
-            app.logger.warning(f"Could not load token from env var, falling back to token.json: {e}")
-    
-    if not creds and os.path.exists(token_path):
-        creds = Credentials.from_authorized_file(token_path, SCOPES)
-
-    if creds and creds.valid and creds.expired and creds.refresh_token:
-        try: 
-            creds.refresh(Request())
-            app.logger.info("Refreshed Google access token.")
-            if not google_token_json_str:
-                with open(token_path, 'w') as token: token.write(creds.to_json())
-                app.logger.info(f"Refreshed token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
-        except Exception as e:
-            app.logger.error(f"Error refreshing token: {e}")
-            creds = None
-    
-    if not creds or not creds.valid:
-        app.logger.error("No valid Google credentials available. API service cannot be built.")
-        app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set.")
+    if google_creds_json_str:
+        try:
+            creds_info = json.loads(google_creds_json_str)
+            creds = service_account.Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            app.logger.error(f"Could not load Service Account credentials from env var: {e}")
+            return None
+    else:
+        # Fallback for local development if you have a file named 'service_account.json'
+        if os.path.exists('service_account.json'):
+            try:
+                creds = service_account.Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
+            except Exception as e:
+                app.logger.error(f"Could not load Service Account from file: {e}")
+                return None
+        else:
+            app.logger.error("No Google credentials available. Please set GOOGLE_CREDENTIALS_JSON environment variable.")
+            return None
+            
+    try:
+        return build(api_name, api_version, credentials=creds, cache_discovery=False)
+    except Exception as e:
+        app.logger.error(f"Failed to build Google API service '{api_name}': {e}")
         return None
-        
-    return build(api_name, api_version, credentials=creds)
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
@@ -252,14 +247,43 @@ def save_app_settings(settings_data):
     _APP_SETTINGS_STORE = current_settings
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
+def get_tasks_list_id():
+    """Gets the Task List ID from settings, creating a new list if it doesn't exist."""
+    settings = get_app_settings()
+    list_id = settings.get('google_tasks_list_id')
+
+    if list_id:
+        return list_id
+
+    app.logger.warning("No Google Tasks List ID found in settings. Attempting to create a new one.")
+    service = get_google_tasks_service()
+    if not service:
+        app.logger.error("Cannot create new Task List: Google service is not available.")
+        return None
+    
+    try:
+        list_title = f"Comphone Tasks (Created: {datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m-%d %H:%M')})"
+        new_list = service.tasklists().insert(body={'title': list_title}).execute()
+        new_list_id = new_list['id']
+        app.logger.info(f"Successfully created new Google Tasks List '{list_title}' with ID: {new_list_id}")
+        
+        # Save the new ID to settings
+        settings['google_tasks_list_id'] = new_list_id
+        save_app_settings(settings)
+        
+        return new_list_id
+    except HttpError as e:
+        app.logger.error(f"Failed to create new Google Tasks List: {e}")
+        return None
 
 @cached(cache)
 def get_google_tasks_for_report(show_completed=True):
     """Fetches tasks from Google Tasks API."""
     service = get_google_tasks_service()
-    if not service: return None
+    task_list_id = get_tasks_list_id()
+    if not service or not task_list_id: return None
     try:
-        results = service.tasks().list(tasklist=GOOGLE_TASKS_LIST_ID, showCompleted=show_completed, maxResults=100).execute()
+        results = service.tasks().list(tasklist=task_list_id, showCompleted=show_completed, maxResults=100).execute()
         return results.get('items', [])
     except HttpError as err:
         app.logger.error(f"API Error getting tasks: {err}")
@@ -269,9 +293,10 @@ def get_single_task(task_id):
     """Fetches a single task from Google Tasks API."""
     if not task_id: return None
     service = get_google_tasks_service()
-    if not service: return None
+    task_list_id = get_tasks_list_id()
+    if not service or not task_list_id: return None
     try:
-        return service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        return service.tasks().get(tasklist=task_list_id, task=task_id).execute()
     except HttpError as err:
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
@@ -301,11 +326,12 @@ def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=None)
 def create_google_task(title, notes=None, due=None):
     """Creates a new task in Google Tasks."""
     service = get_google_tasks_service()
-    if not service: return None
+    task_list_id = get_tasks_list_id()
+    if not service or not task_list_id: return None
     try:
         task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
         if due: task_body['due'] = due
-        return service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_body).execute()
+        return service.tasks().insert(tasklist=task_list_id, body=task_body).execute()
     except HttpError as e:
         app.logger.error(f"Error creating Google Task: {e}")
         return None
@@ -313,9 +339,10 @@ def create_google_task(title, notes=None, due=None):
 def delete_google_task(task_id):
     """Deletes a task from Google Tasks."""
     service = get_google_tasks_service()
-    if not service: return False
+    task_list_id = get_tasks_list_id()
+    if not service or not task_list_id: return False
     try:
-        service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        service.tasks().delete(tasklist=task_list_id, task=task_id).execute()
         return True
     except HttpError as err:
         app.logger.error(f"API Error deleting task {task_id}: {err}")
@@ -324,9 +351,10 @@ def delete_google_task(task_id):
 def update_google_task(task_id, title=None, notes=None, status=None, due=None):
     """Updates an existing task in Google Tasks."""
     service = get_google_tasks_service()
-    if not service: return None
+    task_list_id = get_tasks_list_id()
+    if not service or not task_list_id: return None
     try:
-        task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        task = service.tasks().get(tasklist=task_list_id, task=task_id).execute()
         if title is not None: task['title'] = title
         if notes is not None: task['notes'] = notes
         if status is not None:
@@ -339,7 +367,7 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
             task.pop('completed', None)
             if due: task['due'] = due
                 
-        return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
+        return service.tasks().update(tasklist=task_list_id, task=task_id, body=task).execute()
     except HttpError as e:
         app.logger.error(f"Failed to update task {task_id}: {e}")
         return None
@@ -347,9 +375,7 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
 def parse_customer_info_from_notes(notes):
     """
     Parses customer information and map URL from task notes robustly.
-    The main task detail is stored in the task's 'title', not in the notes.
     """
-    # The 'detail' field is removed as it's now sourced from task.title
     info = {'name': '', 'phone': '', 'address': '', 'map_url': None}
     if not notes: return info
 
@@ -367,11 +393,6 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         info['map_url'] = map_url_match.group(0).strip()
     
-    # The logic to extract 'detail' is no longer needed here.
-    # The main task description is stored in the task's 'title' field.
-    # Any remaining text in the notes after parsing structured data is ignored
-    # to prevent old/redundant data from appearing.
-
     return info
 
 def parse_customer_feedback_from_notes(notes):
@@ -393,7 +414,6 @@ def parse_google_task_dates(task_item):
     for key in ['created', 'due', 'completed']:
         if parsed.get(key):
             try:
-                # Handle different ISO format variations
                 dt_str = parsed[key].replace('Z', '+00:00')
                 dt_utc = datetime.datetime.fromisoformat(dt_str)
                 parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
@@ -491,7 +511,7 @@ def _create_backup_zip():
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
                 for file in files:
-                    if file.endswith(('.py', '.html', '.css', '.js', '.json', '.env', 'Procfile', 'requirements.txt')) and file != 'token.json':
+                    if file.endswith(('.py', '.html', '.css', '.js', '.json', '.env', 'Procfile', 'requirements.txt')) and file != 'token.json' and file != 'service_account.json':
                         file_path = os.path.join(folder, file)
                         archive_name = os.path.relpath(file_path, project_root)
                         zf.write(file_path, arcname=f'code/{archive_name}')
@@ -699,7 +719,8 @@ def run_scheduler():
 # --- Initial app setup calls ---
 with app.app_context(): 
     load_settings_from_drive_on_startup() 
-    _APP_SETTINGS_STORE = get_app_settings() 
+    _APP_SETTINGS_STORE = get_app_settings()
+    get_tasks_list_id() # Ensure the task list exists on startup
     run_scheduler()
 
 
@@ -708,7 +729,6 @@ with app.app_context():
 def root_redirect():
     return redirect(url_for('dashboard'))
 
-# DEPRECATED: /summary is replaced by /dashboard
 @app.route("/summary")
 def summary_redirect():
     return redirect(url_for('dashboard'))
@@ -723,7 +743,6 @@ def dashboard():
     final_tasks = []
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
     
-    # Data for monthly chart
     monthly_completion_data = defaultdict(int)
     
     for task in tasks_raw:
@@ -764,7 +783,6 @@ def dashboard():
 
     final_tasks.sort(key=lambda x: (x.get('status') != 'needsAction', x.get('due') is None, x.get('due', '')))
     
-    # Prepare chart data for the last 12 months
     chart_labels = []
     chart_values = []
     today = datetime.date.today()
@@ -920,7 +938,12 @@ def settings_page():
         technician_names_text = request.form.get('technician_list', '').strip()
         technician_list = [name.strip() for name in technician_names_text.splitlines() if name.strip()]
 
-        save_app_settings({
+        # Preserve the existing task list ID when saving settings
+        current_settings = get_app_settings()
+        google_tasks_list_id = current_settings.get('google_tasks_list_id')
+
+        new_settings = {
+            'google_tasks_list_id': google_tasks_list_id,
             'report_times': { 
                 'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')), 
                 'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')),
@@ -946,14 +969,14 @@ def settings_page():
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
             'technician_list': technician_list,
-            # NEW: Save sales offer settings
             'sales_offers': {
                 'post_feedback_offer_enabled': request.form.get('post_feedback_offer_enabled') == 'on',
                 'post_feedback_offer_message': request.form.get('post_feedback_offer_message', '').strip(),
                 'report_promotion_enabled': request.form.get('report_promotion_enabled') == 'on',
                 'report_promotion_text': request.form.get('report_promotion_text', '').strip()
             }
-        })
+        }
+        save_app_settings(new_settings)
         
         run_scheduler()
         flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
@@ -971,6 +994,7 @@ def settings_page():
     )
     return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
 
+# Other routes (test_notification, backup, etc.) remain the same...
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
     recipient_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
@@ -1090,7 +1114,6 @@ def technician_report():
 
 
 # --- Customer Onboarding & Feedback Routes ---
-
 @app.route('/generate_customer_onboarding_qr')
 def generate_customer_onboarding_qr():
     task_id = request.args.get('task_id')
@@ -1382,13 +1405,11 @@ def handle_postback(event):
         if feedback_type == 'problem_reported':
             reply_text = "รับทราบปัญหาครับ/ค่ะ ทางเราจะรีบติดต่อกลับเพื่อดูแลโดยเร็วที่สุด"
         
-        # Send initial thank you/acknowledgement message
         try:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
         except Exception as e:
             app.logger.error(f"Failed to reply to postback: {e}")
 
-        # NEW: Sales offer logic
         settings = get_app_settings()
         sales_offers = settings.get('sales_offers', {})
         if (sales_offers.get('post_feedback_offer_enabled') and 
@@ -1397,7 +1418,6 @@ def handle_postback(event):
             offer_message = sales_offers.get('post_feedback_offer_message')
             if offer_message:
                 try:
-                    # Send a follow-up push message with the offer
                     line_bot_api.push_message(event.source.user_id, TextSendMessage(text=offer_message))
                 except Exception as e:
                     app.logger.error(f"Failed to send sales offer to {event.source.user_id}: {e}")
