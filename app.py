@@ -122,12 +122,23 @@ def load_settings_from_file():
     """Load application settings from JSON file."""
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # --- ROBUSTNESS FIX: Ensure loaded data is a dictionary ---
+                if isinstance(data, dict):
+                    return data
+                else:
+                    app.logger.warning(f"Corrupted settings.json: Data is not a dictionary. File will be reset.")
+                    os.remove(SETTINGS_FILE) # Delete corrupted file
+                    return None
         except (json.JSONDecodeError, IOError) as e: 
             app.logger.error(f"Error handling settings.json: {e}")
-            if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) == 0:
-                os.remove(SETTINGS_FILE)
-                app.logger.warning(f"Empty settings.json deleted. Using default settings.")
+            if os.path.exists(SETTINGS_FILE):
+                try:
+                    os.remove(SETTINGS_FILE)
+                    app.logger.warning(f"Corrupted or empty settings.json deleted. Using default settings.")
+                except OSError as del_e:
+                    app.logger.error(f"Could not delete corrupted settings file: {del_e}")
     return None
 
 def save_settings_to_file(settings_data):
@@ -222,7 +233,7 @@ def get_app_settings():
     if not _APP_SETTINGS_STORE: 
         loaded = load_settings_from_file()
         _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
-        if loaded:
+        if loaded and isinstance(loaded, dict): # Ensure loaded data is a dictionary
             for key, default_value in _APP_SETTINGS_STORE.items():
                 if isinstance(default_value, dict) and key in loaded and isinstance(loaded[key], dict):
                     _APP_SETTINGS_STORE[key].update(loaded[key])
