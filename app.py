@@ -43,7 +43,6 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload 
-from googleapiclient.http import MediaIoBaseUpload 
 
 import pandas as pd 
 
@@ -70,14 +69,8 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') 
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
-# GOOGLE_TASKS_LIST_ID is now managed within settings.json
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
-GOOGLE_SETTINGS_BACKUP_FOLDER_ID = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID')
-
-if not GOOGLE_DRIVE_FOLDER_ID:
-    app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
-if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
-    app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID environment variable is not set. Automatic settings backup/restore will not work.")
+# GOOGLE_DRIVE_FOLDER_ID is no longer used for automatic backup
+GOOGLE_DRIVE_FOLDER_ID_FOR_UPLOADS = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') # Keep for task file uploads
 
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -90,7 +83,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 # --- Settings Management ---
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
-    'google_tasks_list_id': None, # NEW: To store the ID of the list owned by the Service Account
+    'google_tasks_list_id': None, 
     'report_times': { 
         'appointment_reminder_hour_thai': 7, 
         'outstanding_report_hour_thai': 20,
@@ -103,6 +96,7 @@ _DEFAULT_APP_SETTINGS_STORE = {
     },
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [],
+    # Auto backup is disabled as it's not supported with personal Google accounts
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
     'technician_list': [],
@@ -119,17 +113,16 @@ _APP_SETTINGS_STORE = {}
 # --- All Helper and Utility Functions ---
 
 def load_settings_from_file():
-    """Load application settings from JSON file."""
+    """Load application settings from JSON file with robustness."""
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # --- ROBUSTNESS FIX: Ensure loaded data is a dictionary ---
                 if isinstance(data, dict):
                     return data
                 else:
                     app.logger.warning(f"Corrupted settings.json: Data is not a dictionary. File will be reset.")
-                    os.remove(SETTINGS_FILE) # Delete corrupted file
+                    os.remove(SETTINGS_FILE)
                     return None
         except (json.JSONDecodeError, IOError) as e: 
             app.logger.error(f"Error handling settings.json: {e}")
@@ -162,17 +155,15 @@ def get_google_service(api_name, api_version):
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             app.logger.error(f"Could not load Service Account credentials from env var: {e}")
             return None
-    else:
-        # Fallback for local development if you have a file named 'service_account.json'
-        if os.path.exists('service_account.json'):
-            try:
-                creds = service_account.Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
-            except Exception as e:
-                app.logger.error(f"Could not load Service Account from file: {e}")
-                return None
-        else:
-            app.logger.error("No Google credentials available. Please set GOOGLE_CREDENTIALS_JSON environment variable.")
+    elif os.path.exists('service_account.json'):
+        try:
+            creds = service_account.Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
+        except Exception as e:
+            app.logger.error(f"Could not load Service Account from file: {e}")
             return None
+    else:
+        app.logger.error("No Google credentials available. Please set GOOGLE_CREDENTIALS_JSON environment variable.")
+        return None
             
     try:
         return build(api_name, api_version, credentials=creds, cache_discovery=False)
@@ -183,57 +174,13 @@ def get_google_service(api_name, api_version):
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
 
-
-def load_settings_from_drive_on_startup():
-    """Attempts to load the latest settings_backup.json from Google Drive."""
-    if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
-        app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings restore.")
-        return False
-
-    service = get_google_drive_service()
-    if not service:
-        app.logger.error("Could not get Drive service for settings restore.")
-        return False
-
-    try:
-        query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
-        response = service.files().list(q=query, spaces='drive', fields='files(id, name)', orderBy='createdTime desc', pageSize=1).execute()
-        files = response.get('files', [])
-
-        if files:
-            latest_backup_file_id = files[0]['id']
-            app.logger.info(f"Found latest settings backup on Drive (ID: {latest_backup_file_id})")
-
-            request = service.files().get_media(fileId=latest_backup_file_id)
-            fh = BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            fh.seek(0)
-            
-            downloaded_settings = json.loads(fh.read().decode('utf-8'))
-            
-            if save_settings_to_file(downloaded_settings):
-                app.logger.info("Successfully restored settings from Google Drive backup.")
-                return True
-            else:
-                app.logger.error("Failed to save restored settings to local file.")
-                return False
-        else:
-            app.logger.info("No settings backup found on Google Drive for automatic restore.")
-            return False
-    except Exception as e:
-        app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
-        return False
-
 def get_app_settings():
     """Get current application settings, loading from file or using defaults."""
     global _APP_SETTINGS_STORE
     if not _APP_SETTINGS_STORE: 
         loaded = load_settings_from_file()
         _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
-        if loaded and isinstance(loaded, dict): # Ensure loaded data is a dictionary
+        if loaded and isinstance(loaded, dict):
             for key, default_value in _APP_SETTINGS_STORE.items():
                 if isinstance(default_value, dict) and key in loaded and isinstance(loaded[key], dict):
                     _APP_SETTINGS_STORE[key].update(loaded[key])
@@ -278,7 +225,6 @@ def get_tasks_list_id():
         new_list_id = new_list['id']
         app.logger.info(f"Successfully created new Google Tasks List '{list_title}' with ID: {new_list_id}")
         
-        # Save the new ID to settings
         settings['google_tasks_list_id'] = new_list_id
         save_app_settings(settings)
         
@@ -313,9 +259,9 @@ def get_single_task(task_id):
         return None
         
 def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=None):
-    """Uploads a file to a specified Google Drive folder."""
+    """Uploads a file to a specified Google Drive folder for task attachments."""
     if folder_id is None:
-        folder_id = GOOGLE_DRIVE_FOLDER_ID
+        folder_id = GOOGLE_DRIVE_FOLDER_ID_FOR_UPLOADS
 
     service = get_google_drive_service()
     if not service or not folder_id:
@@ -517,7 +463,7 @@ def _create_backup_zip():
     try:
         all_tasks = get_google_tasks_for_report(show_completed=True)
         if all_tasks is None:
-            all_tasks = [] # Ensure it's a list even if fetching fails
+            all_tasks = []
         
         settings_data = get_app_settings()
 
@@ -529,6 +475,9 @@ def _create_backup_zip():
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
                 for file in files:
+                    # Exclude virtual environment and cache folders
+                    if '.venv' in folder or '__pycache__' in folder:
+                        continue
                     if file.endswith(('.py', '.html', '.css', '.js', '.json', '.env', 'Procfile', 'requirements.txt')) and file != 'token.json' and file != 'service_account.json':
                         file_path = os.path.join(folder, file)
                         archive_name = os.path.relpath(file_path, project_root)
@@ -540,62 +489,10 @@ def _create_backup_zip():
         app.logger.error(f"Error creating full system backup zip: {e}")
         return None, None
 
-def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
-    """Uploads the given memory file (zip or json) to Google Drive."""
-    if not all([memory_file, filename, drive_folder_id]):
-        app.logger.error("Missing memory_file, filename, or drive_folder_id for Drive upload.")
-        return False
-    
-    service = get_google_drive_service()
-    if not service: return False
-    
-    try:
-        mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
-        media = MediaIoBaseUpload(memory_file, mimetype=mime_type, resumable=True) 
-        file_metadata = {'name': filename, 'parents': [drive_folder_id]}
-        
-        file_obj = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        app.logger.info(f"Successfully uploaded backup '{filename}' to Drive (ID: {file_obj['id']})")
-        return True
-    except Exception as e:
-        app.logger.error(f'Google Drive backup upload error for {filename}: {e}')
-        return False
-
 #</editor-fold>
 
 #<editor-fold desc="Scheduled Jobs">
 # --- All Scheduled Jobs and Scheduler Management ---
-
-def _backup_settings_to_drive():
-    """Helper function to back up the current settings to Google Drive."""
-    if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
-        app.logger.warning("Cannot back up settings: GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set.")
-        return False
-    
-    settings_data = get_app_settings()
-    settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
-    settings_backup_filename = "settings_backup.json"
-    
-    if _upload_backup_to_drive(settings_json_bytes, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
-        app.logger.info("Successfully backed up settings to Google Drive.")
-        return True
-    else:
-        app.logger.error("Failed to back up settings to Google Drive.")
-        return False
-
-def scheduled_backup_job():
-    with app.app_context():
-        app.logger.info("Running scheduled backup job...")
-        
-        memory_file_zip, filename_zip = _create_backup_zip()
-        if memory_file_zip and filename_zip:
-            if _upload_backup_to_drive(memory_file_zip, filename_zip, GOOGLE_DRIVE_FOLDER_ID):
-                app.logger.info("Automatic full system backup successful.")
-            else:
-                app.logger.error("Automatic full system backup failed.")
-
-        _backup_settings_to_drive()
-
 
 def scheduled_appointment_reminder_job():
     with app.app_context():
@@ -730,9 +627,10 @@ def run_scheduler():
         scheduler.shutdown(wait=False)
     scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
         
-    ab = settings.get('auto_backup', {})
-    if ab.get('enabled'):
-        scheduler.add_job(scheduled_backup_job, CronTrigger(hour=ab.get('hour_thai', 2), minute=ab.get('minute_thai', 0)), id='auto_system_backup', replace_existing=True)
+    # Automatic backup is disabled
+    # ab = settings.get('auto_backup', {})
+    # if ab.get('enabled'):
+    #     scheduler.add_job(scheduled_backup_job, CronTrigger(hour=ab.get('hour_thai', 2), minute=ab.get('minute_thai', 0)), id='auto_system_backup', replace_existing=True)
 
     rt = settings.get('report_times', {})
     scheduler.add_job(scheduled_appointment_reminder_job, CronTrigger(hour=rt.get('appointment_reminder_hour_thai', 7), minute=0), id='daily_appointment_reminder', replace_existing=True)
@@ -746,19 +644,15 @@ def run_scheduler():
 
 # --- Initial app setup calls ---
 with app.app_context(): 
-    load_settings_from_drive_on_startup() 
+    # No longer loading from GCS on startup, as it's a manual process now.
     _APP_SETTINGS_STORE = get_app_settings()
-    get_tasks_list_id() # Ensure the task list exists on startup
+    get_tasks_list_id()
     run_scheduler()
 
 
 # --- Flask Routes ---
 @app.route("/")
 def root_redirect():
-    return redirect(url_for('dashboard'))
-
-@app.route("/summary")
-def summary_redirect():
     return redirect(url_for('dashboard'))
 
 @app.route("/dashboard")
@@ -905,6 +799,7 @@ def task_details(task_id):
                     temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     try:
                         file.save(temp_filepath)
+                        # Use Google Drive for individual file uploads as it works
                         drive_url = upload_file_to_google_drive(temp_filepath, filename, file.mimetype)
                         if drive_url: new_attachment_urls.append(drive_url)
                     finally:
@@ -982,18 +877,14 @@ def settings_page():
                 'manager_user_id': request.form.get('manager_user_id', '').strip() 
             },
             'qrcode_settings': { 
-                # Since these fields are not in the main form, we provide defaults to prevent a TypeError
                 'box_size': int(request.form.get('qr_box_size') or 8), 
                 'border': int(request.form.get('qr_border') or 4), 
                 'fill_color': request.form.get('qr_fill_color') or '#28a745', 
                 'back_color': request.form.get('qr_back_color') or '#FFFFFF', 
                 'custom_url': request.form.get('qr_custom_url', '').strip() 
             },
-            'auto_backup': { 
-                'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('auto_backup_hour') or 2),
-                'minute_thai': int(request.form.get('auto_backup_minute') or 0)
-            },
+            # Auto backup is no longer configured via UI
+            'auto_backup': current_settings.get('auto_backup', {'enabled': False}),
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
@@ -1008,12 +899,7 @@ def settings_page():
         }
         
         if save_app_settings(new_settings):
-            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว! กำลังสำรองข้อมูลไปยัง Google Drive...', 'success')
-            with app.app_context():
-                if _backup_settings_to_drive():
-                    flash('สำรองข้อมูลการตั้งค่าไปยัง Google Drive สำเร็จ!', 'info')
-                else:
-                    flash('สำรองข้อมูลการตั้งค่าไปยัง Google Drive ล้มเหลว!', 'danger')
+            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกไฟล์ตั้งค่า', 'danger')
 
@@ -1022,15 +908,7 @@ def settings_page():
         return redirect(url_for('settings_page'))
     
     current_settings = get_app_settings()
-    general_summary_url = url_for('dashboard', _external=True)
-    qr_url = current_settings.get('qrcode_settings', {}).get('custom_url') or general_summary_url
-    qr_settings = current_settings.get('qrcode_settings', {})
-    
-    qr_code_base64_general = generate_qr_code_base64(
-        qr_url, box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
-        fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
-    )
-    return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
+    return render_template('settings_page.html', settings=current_settings)
 
 @app.route('/import_settings', methods=['POST'])
 def import_settings():
@@ -1043,7 +921,6 @@ def import_settings():
         try:
             uploaded_data = json.load(file.stream)
             
-            # --- FIXED: Check if the uploaded file is a dictionary (object) ---
             if not isinstance(uploaded_data, dict):
                 flash('ไฟล์ตั้งค่าไม่ถูกต้อง: ข้อมูลต้องเป็นรูปแบบ object (ขึ้นต้นด้วย {) ไม่ใช่ list (ขึ้นต้นด้วย [)', 'danger')
                 return redirect(url_for('settings_page'))
@@ -1054,11 +931,6 @@ def import_settings():
 
             if save_app_settings(uploaded_data):
                 flash('นำเข้าและบันทึกการตั้งค่าใหม่เรียบร้อยแล้ว!', 'success')
-                with app.app_context():
-                    if _backup_settings_to_drive():
-                        app.logger.info("Successfully backed up newly imported settings to Google Drive.")
-                    else:
-                        app.logger.error("Failed to back up newly imported settings to Google Drive.")
             else:
                 flash('เกิดข้อผิดพลาดในการบันทึกไฟล์ตั้งค่า', 'danger')
 
@@ -1128,7 +1000,7 @@ def preview_tasks_import():
                 'due_date_formatted': due_date_formatted,
                 'attachments': attachments,
                 'status': task.get('status', 'needsAction'),
-                'completed_iso': task.get('completed') # NEW: Get completed timestamp
+                'completed_iso': task.get('completed')
             })
         
         return jsonify(preview_data)
@@ -1170,7 +1042,6 @@ def import_tasks_from_backup():
 
                 final_notes = "\n".join(notes_lines)
                 
-                # UPDATED: Pass status and completed timestamp on creation
                 create_google_task(
                     title=task_data['title'], 
                     notes=final_notes,
@@ -1188,7 +1059,6 @@ def import_tasks_from_backup():
         app.logger.error(f"Error during final task import: {e}")
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
 
-# Other routes (test_notification, backup, etc.) remain the same...
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
     recipient_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
@@ -1210,49 +1080,6 @@ def backup_data():
     else:
         flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
         return redirect(url_for('settings_page'))
-
-@app.route('/trigger_auto_backup_now', methods=['POST'])
-def trigger_auto_backup_now():
-    scheduled_backup_job()
-    flash('กำลังสำรองข้อมูลอัตโนมัติไปยัง Google Drive...', 'info')
-    return redirect(url_for('settings_page'))
-
-@app.route('/export_equipment_catalog', methods=['GET'])
-def export_equipment_catalog():
-    try:
-        df = pd.DataFrame(get_app_settings().get('equipment_catalog', []))
-        if df.empty:
-            flash('ไม่มีข้อมูลอุปกรณ์ในแคตตาล็อก', 'warning')
-            return redirect(url_for('settings_page'))
-        output = BytesIO()
-        df.to_excel(output, index=False, sheet_name='Equipment_Catalog')
-        output.seek(0)
-        return Response(output.getvalue(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment;filename=equipment_catalog.xlsx"})
-    except Exception as e:
-        flash(f'เกิดข้อผิดพลาดในการส่งออก: {e}', 'danger')
-        return redirect(url_for('settings_page'))
-
-@app.route('/import_equipment_catalog', methods=['POST'])
-def import_equipment_catalog():
-    if 'excel_file' not in request.files or not request.files['excel_file'].filename:
-        flash('กรุณาเลือกไฟล์ Excel', 'danger')
-        return redirect(url_for('settings_page'))
-    file = request.files['excel_file']
-    if file and file.filename.endswith(('.xls', '.xlsx')):
-        try:
-            df = pd.read_excel(file.stream)
-            if not all(col in df.columns for col in ['item_name', 'unit', 'price']):
-                flash('ไฟล์ Excel ต้องมีคอลัมน์: item_name, unit, price', 'danger')
-            else:
-                current_settings = get_app_settings()
-                current_settings['equipment_catalog'] = df.to_dict('records')
-                save_app_settings(current_settings)
-                flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
-        except Exception as e:
-            flash(f"เกิดข้อผิดพลาดในการนำเข้าไฟล์: {e}", 'danger')
-    else:
-        flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
-    return redirect(url_for('settings_page'))
 
 @app.route('/technician_report')
 def technician_report():
@@ -1620,3 +1447,319 @@ def handle_postback(event):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
+```
+
+#### ขั้นตอนที่ 4: อัปเดตไฟล์ `settings_page.html`
+
+เนื่องจากเราไม่ใช้ระบบ Backup อัตโนมัติแล้ว จึงควรปรับหน้าตั้งค่าให้สะท้อนการทำงานจริงครับ
+
+
+```html
+{% extends "base.html" %}
+
+{% block title %}ตั้งค่าระบบ{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">ตั้งค่าระบบ</h1>
+
+<form action="{{ url_for('settings_page') }}" method="POST">
+
+    <!-- Section 1: Core Business Settings -->
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-store me-2"></i>ตั้งค่าหลักของร้าน</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="shop_contact_phone" class="form-label">เบอร์โทรศัพท์ร้านค้า</label>
+                    <input type="tel" class="form-control" id="shop_contact_phone" name="shop_contact_phone" value="{{ settings.shop_info.contact_phone }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="shop_line_id" class="form-label">LINE ID ร้านค้า (เช่น @ComphoneService)</label>
+                    <input type="text" class="form-control" id="shop_line_id" name="shop_line_id" value="{{ settings.shop_info.line_id }}">
+                </div>
+            </div>
+            <hr>
+            <div class="mb-3">
+                <label for="technician_list" class="form-label">รายชื่อช่าง (1 ชื่อต่อ 1 บรรทัด)</label>
+                <textarea class="form-control" id="technician_list" name="technician_list" rows="5" placeholder="ช่าง A&#10;ช่าง B&#10;ช่าง C">{{ settings.technician_list | join('\n') }}</textarea>
+                <small class="form-text text-muted">รายชื่อเหล่านี้จะปรากฏในหน้าบันทึกรายละเอียดงาน</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: Automation Settings -->
+    <div class="card mb-4">
+        <div class="card-header"><i class="fas fa-robot me-2"></i>ระบบอัตโนมัติและการแจ้งเตือน</div>
+        <div class="card-body">
+            <h6 class="card-title">ตั้งค่าการแจ้งเตือน LINE</h6>
+            <div class="mb-3">
+                <label for="admin_group_id" class="form-label">LINE Admin Group/User ID</label>
+                <input type="text" class="form-control" id="admin_group_id" name="admin_group_id" value="{{ settings.line_recipients.admin_group_id }}">
+            </div>
+            <div class="mb-3">
+                <label for="technician_group_id" class="form-label">LINE Technician Group ID</label>
+                <input type="text" class="form-control" id="technician_group_id" name="technician_group_id" value="{{ settings.line_recipients.technician_group_id }}">
+            </div>
+             <hr>
+            <h6 class="card-title mt-3">ตั้งเวลาทำงานอัตโนมัติ</h6>
+            <div class="row">
+                <div class="col-md-4 mb-3"> 
+                    <label for="appointment_reminder_hour" class="form-label">เวลาแจ้งเตือนนัดหมาย (0-23)</label>
+                    <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour" value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-md-4 mb-3"> 
+                    <label for="customer_followup_hour" class="form-label">เวลาติดตามลูกค้า (0-23)</label>
+                    <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour" value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23">
+                </div>
+                <div class="col-md-4 mb-3"> 
+                    <label for="outstanding_report_hour" class="form-label">เวลารายงานงานค้าง (0-23)</label>
+                    <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour" value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 3: Marketing & Sales Settings -->
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="fas fa-bullhorn me-2"></i>การตลาดและส่งเสริมการขาย</h5>
+        </div>
+        <div class="card-body">
+            <h6 class="card-title">ข้อเสนอหลังลูกค้าพอใจ</h6>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="post_feedback_offer_enabled" name="post_feedback_offer_enabled" {% if settings.sales_offers.post_feedback_offer_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="post_feedback_offer_enabled">เปิดใช้งานการส่งข้อเสนอหลังลูกค้าตอบว่า "พอใจ"</label>
+            </div>
+            <div class="mb-3">
+                <label for="post_feedback_offer_message" class="form-label">ข้อความที่จะส่ง</label>
+                <textarea class="form-control" id="post_feedback_offer_message" name="post_feedback_offer_message" rows="3">{{ settings.sales_offers.post_feedback_offer_message }}</textarea>
+            </div>
+            <hr>
+            <h6 class="card-title mt-3">โปรโมชันท้ายใบรายงาน</h6>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="report_promotion_enabled" name="report_promotion_enabled" {% if settings.sales_offers.report_promotion_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="report_promotion_enabled">เปิดใช้งานการแสดงโปรโมชันท้ายใบรายงานค่าใช้จ่าย</label>
+            </div>
+            <div class="mb-3">
+                <label for="report_promotion_text" class="form-label">ข้อความโปรโมชัน</label>
+                <textarea class="form-control" id="report_promotion_text" name="report_promotion_text" rows="2">{{ settings.sales_offers.report_promotion_text }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด</button>
+</form>
+
+<!-- Section 4: Data & System Management -->
+<div class="accordion" id="systemManagementAccordion">
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingOne">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+                <i class="fas fa-database me-2"></i>จัดการข้อมูลและระบบ
+            </button>
+        </h2>
+        <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#systemManagementAccordion">
+            <div class="accordion-body">
+                <div class="row">
+                    <!-- Backup & Restore -->
+                    <div class="col-lg-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header"><i class="fas fa-archive me-2"></i>สำรองและกู้คืนข้อมูล</div>
+                            <div class="card-body">
+                                <p><strong>สำรองข้อมูล (แนะนำ):</strong> กดปุ่มเพื่อดาวน์โหลดไฟล์สำรองข้อมูลทั้งหมดของระบบ (.zip) มาเก็บไว้ในคอมพิวเตอร์ของคุณ</p>
+                                <a href="{{ url_for('backup_data') }}" class="btn btn-warning mb-3 w-100"><i class="fas fa-download me-2"></i>ดาวน์โหลด Backup ทั้งหมด</a>
+                                <hr>
+                                <p><strong>กู้คืนการตั้งค่า:</strong> นำเข้าไฟล์ตั้งค่า (`settings.json`) เพื่อกู้คืนการตั้งค่า</p>
+                                <form action="{{ url_for('import_settings') }}" method="post" enctype="multipart/form-data">
+                                    <div class="input-group">
+                                        <input type="file" class="form-control" id="settings_file" name="settings_file" required accept=".json">
+                                        <button type="submit" class="btn btn-success"><i class="fas fa-upload me-2"></i>นำเข้า</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Equipment Catalog -->
+                    <div class="col-lg-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header"><i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์</div>
+                            <div class="card-body">
+                                <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-success mb-3 w-100"><i class="fas fa-file-excel me-2"></i>ส่งออกเป็น Excel</a>
+                                <hr>
+                                <form action="{{ url_for('import_equipment_catalog') }}" method="post" enctype="multipart/form-data">
+                                    <div class="mb-2">
+                                        <label for="excel_file" class="form-label">นำเข้าไฟล์ Excel (.xlsx)</label>
+                                        <input type="file" class="form-control" id="excel_file" name="excel_file" required accept=".xlsx, .xls">
+                                    </div>
+                                    <button type="submit" class="btn btn-success w-100"><i class="fas fa-file-import me-2"></i>นำเข้า</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Old Tasks Importer -->
+                    <div class="col-lg-6 mb-4">
+                        <div class="card h-100 border-danger">
+                            <div class="card-header bg-danger text-white"><i class="fas fa-file-import me-2"></i>เครื่องมือนำเข้าข้อมูลงานเก่า</div>
+                            <div class="card-body">
+                                <p class="text-muted">ใช้สำหรับย้ายข้อมูลงานจากระบบเก่ามายังระบบใหม่ **(ทำครั้งเดียวเท่านั้น)**</p>
+                                <form id="importTasksForm" method="post" enctype="multipart/form-data">
+                                    <div class="mb-2">
+                                        <label for="tasks_backup_file" class="form-label">เลือกไฟล์ `tasks_backup.json`</label>
+                                        <input type="file" class="form-control" id="tasks_backup_file" name="tasks_backup_file" required accept=".json">
+                                    </div>
+                                    <button type="submit" class="btn btn-danger w-100"><i class="fas fa-search me-2"></i>ตรวจสอบข้อมูลก่อนนำเข้า</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Tasks Preview Modal -->
+<div class="modal fade" id="importPreviewModal" tabindex="-1" aria-labelledby="importPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importPreviewModalLabel">ตรวจสอบข้อมูลงานก่อนนำเข้า</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>พบข้อมูล <strong id="taskCount">0</strong> รายการ โปรดตรวจสอบความถูกต้องก่อนกดยืนยัน</p>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 5%;">#</th>
+                                <th style="width: 20%;">ชื่องาน (Title)</th>
+                                <th style="width: 15%;">ลูกค้า</th>
+                                <th style="width: 10%;">สถานะ</th>
+                                <th style="width: 15%;">วันที่นัดหมาย</th>
+                                <th style="width: 35%;">รายละเอียดเพิ่มเติม (Notes ที่เหลือ)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewTableBody">
+                            <!-- Data will be injected here by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="confirmImportBtn">ยืนยันการนำเข้า</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        const importForm = document.getElementById('importTasksForm');
+        const fileInput = document.getElementById('tasks_backup_file');
+        const confirmBtn = document.getElementById('confirmImportBtn');
+        let previewModalInstance = null;
+        const previewTableBody = document.getElementById('previewTableBody');
+        const taskCountSpan = document.getElementById('taskCount');
+        let tasksToImport = [];
+
+        if (typeof bootstrap !== 'undefined') {
+            previewModalInstance = new bootstrap.Modal(document.getElementById('importPreviewModal'));
+        } else {
+            console.error('Bootstrap is not defined. Modal functionality will be affected.');
+            return; 
+        }
+
+        importForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            if (!fileInput.files.length) {
+                alert('กรุณาเลือกไฟล์');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('tasks_backup_file', fileInput.files[0]);
+
+            fetch("{{ url_for('preview_tasks_import') }}", {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('เกิดข้อผิดพลาด: ' + data.error);
+                    return;
+                }
+                
+                tasksToImport = data;
+                taskCountSpan.textContent = tasksToImport.length;
+                previewTableBody.innerHTML = '';
+
+                tasksToImport.forEach((task, index) => {
+                    let statusBadge = task.status === 'completed' 
+                        ? '<span class="badge bg-success">เสร็จแล้ว</span>' 
+                        : '<span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>';
+
+                    const row = `<tr>
+                                    <td>${index + 1}</td>
+                                    <td>${task.title || ''}</td>
+                                    <td>${task.customer_name || ''}</td>
+                                    <td>${statusBadge}</td>
+                                    <td>${task.due_date_formatted || '-'}</td>
+                                    <td><pre style="white-space: pre-wrap; word-break: break-all;">${task.cleaned_notes || ''}</pre></td>
+                                 </tr>`;
+                    previewTableBody.insertAdjacentHTML('beforeend', row);
+                });
+
+                if (previewModalInstance) {
+                    previewModalInstance.show();
+                } else {
+                    alert('เกิดข้อผิดพลาดในการแสดงหน้าต่างตรวจสอบข้อมูล');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อตรวจสอบไฟล์');
+            });
+        });
+
+        confirmBtn.addEventListener('click', function() {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังนำเข้า...';
+
+            fetch("{{ url_for('import_tasks_from_backup') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(tasksToImport)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    if(previewModalInstance) previewModalInstance.hide();
+                    window.location.reload();
+                } else {
+                    alert('เกิดข้อผิดพลาดในการนำเข้า: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อนำเข้าข้อมูล');
+            })
+            .finally(() => {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = 'ยืนยันการนำเข้า';
+            });
+        });
+    }, 100);
+});
+</script>
+{% endblock %}
