@@ -323,14 +323,19 @@ def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=None)
         app.logger.error(f'Drive upload error: {e}')
         return None
 
-def create_google_task(title, notes=None, due=None):
-    """Creates a new task in Google Tasks."""
+def create_google_task(title, notes=None, due=None, status=None, completed_at=None):
+    """Creates a new task in Google Tasks, with optional status."""
     service = get_google_tasks_service()
     task_list_id = get_tasks_list_id()
     if not service or not task_list_id: return None
+    
+    task_body = {'title': title, 'notes': notes}
+    if due: task_body['due'] = due
+    if status: task_body['status'] = status
+    if status == 'completed' and completed_at:
+        task_body['completed'] = completed_at
+    
     try:
-        task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
-        if due: task_body['due'] = due
         return service.tasks().insert(tasklist=task_list_id, body=task_body).execute()
     except HttpError as e:
         app.logger.error(f"Error creating Google Task: {e}")
@@ -1102,7 +1107,8 @@ def preview_tasks_import():
                 'due_date_iso': due_date_str, 
                 'due_date_formatted': due_date_formatted,
                 'attachments': attachments,
-                'status': task.get('status', 'needsAction') # NEW: Add status
+                'status': task.get('status', 'needsAction'),
+                'completed_iso': task.get('completed') # NEW: Get completed timestamp
             })
         
         return jsonify(preview_data)
@@ -1144,16 +1150,14 @@ def import_tasks_from_backup():
 
                 final_notes = "\n".join(notes_lines)
                 
-                new_task = create_google_task(
+                # UPDATED: Pass status and completed timestamp on creation
+                create_google_task(
                     title=task_data['title'], 
                     notes=final_notes,
-                    due=task_data.get('due_date_iso')
+                    due=task_data.get('due_date_iso'),
+                    status=task_data.get('status'),
+                    completed_at=task_data.get('completed_iso')
                 )
-
-                # NEW: Update status if it was 'completed'
-                if new_task and task_data.get('status') == 'completed':
-                    update_google_task(new_task['id'], status='completed')
-
                 imported_count += 1
         
         cache.clear()
