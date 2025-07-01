@@ -1030,12 +1030,18 @@ def import_settings():
     file = request.files['settings_file']
     if file and file.filename.endswith('.json'):
         try:
-            uploaded_settings = json.load(file.stream)
+            uploaded_data = json.load(file.stream)
+            
+            # --- FIXED: Check if the uploaded file is a dictionary (object) ---
+            if not isinstance(uploaded_data, dict):
+                flash('ไฟล์ตั้งค่าไม่ถูกต้อง: ข้อมูลต้องเป็นรูปแบบ object (ขึ้นต้นด้วย {) ไม่ใช่ list (ขึ้นต้นด้วย [)', 'danger')
+                return redirect(url_for('settings_page'))
+
             current_settings = get_app_settings()
             google_tasks_list_id = current_settings.get('google_tasks_list_id')
-            uploaded_settings['google_tasks_list_id'] = google_tasks_list_id
+            uploaded_data['google_tasks_list_id'] = google_tasks_list_id
 
-            if save_app_settings(uploaded_settings):
+            if save_app_settings(uploaded_data):
                 flash('นำเข้าและบันทึกการตั้งค่าใหม่เรียบร้อยแล้ว!', 'success')
                 with app.app_context():
                     if _backup_settings_to_drive():
