@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}สรุปสถานะงาน{% endblock %}
+{% block title %}แดชบอร์ดสรุปภาพรวม{% endblock %}
 
 {% block head_extra %}
     <style>
@@ -30,26 +30,12 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="mb-0">สรุปสถานะงาน</h1>
+    <h1 class="mb-0">แดชบอร์ด</h1>
     <a href="{{ url_for('form_page') }}" class="btn btn-success btn-lg">
         <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
     </a>
 </div>
 
-<!-- ADDED: Search form is back! -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="GET" action="{{ url_for('summary') }}">
-            <div class="input-group">
-                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หรือเบอร์โทร..." value="{{ search_query or '' }}">
-                <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-
-<!-- Summary Cards -->
 <div class="row">
     <div class="col-lg-3 col-6 mb-4">
         <a href="{{ url_for('summary', status_filter='all') }}" class="summary-card-link">
@@ -97,9 +83,33 @@
     </div>
 </div>
 
-<!-- Task Table -->
+<div class="row">
+    <div class="col-lg-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <i class="fas fa-chart-bar me-1"></i>
+                จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)
+            </div>
+            <div class="card-body">
+                <canvas id="monthlyTasksChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 <div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
+    </div>
     <div class="card-body">
+        <form method="GET" action="{{ url_for('summary') }}" class="mb-3"> {# Changed to summary #}
+            <div class="input-group">
+                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หรือเบอร์โทร..." value="{{ search_query or '' }}">
+                <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
+            </div>
+        </form>
+
         <div class="table-responsive">
             <table class="table table-hover table-bordered align-middle">
                 <thead class="table-dark">
@@ -113,14 +123,10 @@
                 </thead>
                 <tbody>
                     {% for task in tasks %}
-                    <!-- CHANGED: The onclick now points to the new consolidated route 'task_details' -->
                     <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                         <td>{{ loop.index }}</td>
                         <td>{{ task.customer.name or '-' }}</td>
-                        <td>
-                            {{ task.title }}
-                            <!-- REMOVED: The separate quick-edit pencil icon is gone for simplicity. -->
-                        </td>
+                        <td>{{ task.title }}</td>
                         <td>{{ task.due_formatted or '-' }}</td>
                         <td class="text-center">
                             {% if task.status == 'completed' %}
@@ -144,4 +150,58 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Monthly Tasks Chart
+        const monthlyCtx = document.getElementById('monthlyTasksChart');
+        // Safely parse chart_data from the script tag
+        const chartDataElement = document.querySelector('script[data-chart-data]');
+        let chartData = { labels: [], values: [] };
+        if (chartDataElement) {
+            try {
+                chartData = JSON.parse(chartDataElement.textContent);
+            } catch (e) {
+                console.error("Error parsing chart data from script tag:", e);
+                // Optionally display a message to the user or fallback to no chart
+            }
+        }
+        
+        if (monthlyCtx) {
+            new Chart(monthlyCtx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'จำนวนงานที่เสร็จ',
+                        data: chartData.values,
+                        backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                        borderColor: 'rgba(25, 135, 84, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1 // Ensure integer steps for count
+                            }
+                        }
+                    },
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false // No need for legend if only one dataset
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+<script type="application/json" data-chart-data>{{ chart_data | tojson | safe }}</script>
 {% endblock %}
