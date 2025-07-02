@@ -916,7 +916,7 @@ def task_details(task_id):
             f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
         ]
         map_url = str(request.form.get('latitude_longitude', '')).strip()
-        if map_url: new_base_notes_lines.append(map_url)
+        if map_url: notes_lines.append(map_url)
         new_base_notes = "\n".join(filter(None, new_base_notes_lines))
 
         # Get existing history and feedback
