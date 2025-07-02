@@ -96,6 +96,7 @@
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
                                 // UPDATED: Corrected Google Maps URL format for better compatibility
+                                // This format is common for opening maps directly from coordinates
                                 locationInput.value = `http://maps.google.com/maps?q=${lat},${lon}`;
                                 statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
                                 statusText.classList.remove('text-danger');

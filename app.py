@@ -8,12 +8,12 @@ import mimetypes
 import zipfile
 from io import BytesIO
 from collections import defaultdict
-from datetime import timezone # Added for UTC timezone awareness
+from datetime import timezone
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response
+from flask import Flask, request, render_template, redirect, url_for, abort, flash, jsonify, Response, session
 from werkzeug.utils import secure_filename
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
@@ -87,6 +87,9 @@ cache = TTLCache(maxsize=100, ttl=60)
 # Initialize LINE Bot SDK
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+# Register dateutil_parse filter for Jinja2
+app.jinja_env.filters['dateutil_parse'] = date_parse
 
 # --- Settings Management ---
 SETTINGS_FILE = 'settings.json'
@@ -538,10 +541,14 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
         file_metadata = {'name': filename, 'parents': [drive_folder_id]}
 
         file_obj = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+        # Set permission to anyone with link can view
+        service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
+
         app.logger.info(f"Successfully uploaded backup '{filename}' to Drive (ID: {file_obj['id']})")
         return True
-    except Exception as e:
-        app.logger.error(f'Google Drive backup upload error for {filename}: {e}')
+    except HttpError as e:
+        app.logger.error(f'Drive upload error: {e}')
         return False
 
 #</editor-fold>
@@ -1738,6 +1745,7 @@ def handle_postback(event):
 # Google OAuth2 authorization route
 @app.route('/authorize')
 def authorize():
+    # Store state to prevent CSRF
     flow = InstalledAppFlow.from_client_secrets_file(
         'credentials.json', SCOPES)
     flow.redirect_uri = url_for('oauth2callback', _external=True)
@@ -1751,7 +1759,8 @@ def authorize():
 def oauth2callback():
     state = session.get('oauth_state')
     if not state or state != request.args.get('state'):
-        flash('State mismatch error.', 'danger')
+        flash('State mismatch error. Your session might be invalid or a CSRF attack was attempted.', 'danger')
+        app.logger.error(f"OAuth2 callback state mismatch. Session state: {state}, Request state: {request.args.get('state')}")
         return redirect(url_for('settings_page')) # Redirect to settings or error page
 
     flow = InstalledAppFlow.from_client_secrets_file(
@@ -1762,13 +1771,12 @@ def oauth2callback():
         flow.fetch_token(authorization_response=request.url)
         creds = flow.credentials
 
-        # Save credentials to token.json and GOOGLE_TOKEN_JSON env var
+        # Save credentials to token.json and inform user to update GOOGLE_TOKEN_JSON env var
         token_json_content = creds.to_json()
         with open('token.json', 'w') as token:
             token.write(token_json_content)
         
-        # Important: Inform user to update GOOGLE_TOKEN_JSON on Render
-        flash(f'เชื่อมต่อ Google สำเร็จแล้ว! กรุณาคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com: <textarea class="form-control mt-2" rows="5" readonly>{token_json_content}</textarea>', 'success')
+        flash(f'เชื่อมต่อ Google สำเร็จแล้ว! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com (หรือแพลตฟอร์มอื่นที่คุณใช้) และรีสตาร์ทแอปพลิเคชัน: <textarea class="form-control mt-2" rows="5" readonly>{token_json_content}</textarea>', 'success')
         app.logger.info("Google OAuth successful. Token saved to token.json. Please update GOOGLE_TOKEN_JSON env var.")
         
     except Exception as e:
