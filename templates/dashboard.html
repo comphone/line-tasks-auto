@@ -4,6 +4,7 @@
 
 {% block head_extra %}
     <style>
+        /* เดิม */
         .summary-card-link { text-decoration: none; }
         .summary-card {
             color: white;
@@ -25,6 +26,48 @@
         .table-hover tbody tr { cursor: pointer; }
         .table-hover tbody tr:hover { background-color: #f1f1f1; }
         .badge { font-size: 0.9em; padding: .5em .75em; }
+
+        /* --- เพิ่มเติมสำหรับการแสดงผลตารางบนมือถือ --- */
+        .table-responsive {
+            overflow-x: auto; /* ทำให้ตารางเลื่อนแนวนอนได้ */
+            -webkit-overflow-scrolling: touch; /* ปรับปรุงการเลื่อนบน iOS */
+        }
+        .table {
+            min-width: 600px; /* กำหนดความกว้างขั้นต่ำของตาราง เพื่อให้เกิดการเลื่อน */
+        }
+        .task-title-cell {
+            max-width: 200px; /* กำหนดความกว้างสูงสุดของเซลล์ชื่อเรื่อง */
+            white-space: nowrap; /* ป้องกันการขึ้นบรรทัดใหม่ */
+            overflow: hidden; /* ซ่อนข้อความที่เกิน */
+            text-overflow: ellipsis; /* แสดง ... เมื่อข้อความถูกตัด */
+        }
+        /* ปรับความกว้างของคอลัมน์ให้เหมาะสม */
+        .table th:nth-child(1), .table td:nth-child(1) { /* # */
+            width: 5%;
+        }
+        .table th:nth-child(2), .table td:nth-child(2) { /* ชื่อลูกค้า */
+            width: 25%;
+        }
+        .table th:nth-child(3), .table td:nth-child(3) { /* รายละเอียดงาน */
+            width: 40%; /* เพิ่มพื้นที่ให้รายละเอียดงาน */
+        }
+        .table th:nth-child(4), .table td:nth-child(4) { /* วันเวลานัดหมาย */
+            width: 20%;
+        }
+        .table th:nth-child(5), .table td:nth-child(5) { /* สถานะ */
+            width: 10%;
+        }
+
+        /* ปรับสำหรับหน้าจอขนาดเล็กมาก */
+        @media (max-width: 576px) {
+            .table {
+                min-width: 450px; /* ลด min-width สำหรับหน้าจอที่เล็กกว่า */
+            }
+            .task-title-cell {
+                max-width: 120px; /* ลด max-width ของรายละเอียดงาน */
+            }
+        }
+
     </style>
 {% endblock %}
 
@@ -126,7 +169,7 @@
                     <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                         <td>{{ loop.index }}</td>
                         <td>{{ task.customer.name or '-' }}</td>
-                        <td>{{ task.title }}</td>
+                        <td class="task-title-cell">{{ task.title }}</td> {# เพิ่ม class task-title-cell #}
                         <td>{{ task.due_formatted or '-' }}</td>
                         <td class="text-center">
                             {% if task.status == 'completed' %}
@@ -188,14 +231,14 @@
                         y: {
                             beginAtZero: true,
                             ticks: {
-                                stepSize: 1 // Ensure integer steps for count
+                                stepSize: 1
                             }
                         }
                     },
                     responsive: true,
                     plugins: {
                         legend: {
-                            display: false // No need for legend if only one dataset
+                            display: false
                         }
                     }
                 }
