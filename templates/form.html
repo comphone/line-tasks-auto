@@ -4,6 +4,18 @@
 
 {% block head_extra %}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        /* เพิ่มเติม CSS เพื่อจัดระเบียบฟอร์ม */
+        .form-section-header {
+            background-color: #e9ecef;
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,.125);
+            border-top-left-radius: 0.25rem;
+            border-top-right-radius: 0.25rem;
+            font-weight: bold;
+        }
+    </style>
 {% endblock %}
 
 {% block content %}
@@ -15,28 +27,19 @@
             </div>
             <div class="card-body p-4">
                 <form method="POST" enctype="multipart/form-data" class="needs-validation" novalidate>
-                    
+
+                    <div class="form-section-header bg-light text-dark rounded-top">ข้อมูลลูกค้า</div>
                     <div class="mb-3">
                         <label for="customer" class="form-label"><strong>ชื่อลูกค้า</strong> <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="customer" name="customer" required value="{{ request.form.customer or '' }}">
+                        <input type="text" class="form-control" id="customer" name="customer" required value="{{ request.form.customer or '' }}" autofocus>
+                        <div class="invalid-feedback">
+                            กรุณากรอกชื่อลูกค้า
+                        </div>
                     </div>
 
                     <div class="mb-3">
-                        <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong> <span class="text-danger">*</span></label>
-                        <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ request.form.task_title or '' }}</textarea>
-                    </div>
-
-                    <hr class="my-4">
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
-                            <input type="tel" class="form-control" id="phone" name="phone" value="{{ request.form.phone or '' }}">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="appointment" class="form-label">วันเวลานัดหมาย</label>
-                            <input type="text" class="form-control datetimepicker" id="appointment" name="appointment" placeholder="เลือกวันและเวลา" value="{{ request.form.appointment or '' }}">
-                        </div>
+                        <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
+                        <input type="tel" class="form-control" id="phone" name="phone" value="{{ request.form.phone or '' }}" placeholder="เช่น 08x-xxx-xxxx">
                     </div>
 
                     <div class="mb-3">
@@ -45,21 +48,38 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่</label>
+                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
                         <div class="input-group">
-                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่งปัจจุบัน" value="{{ request.form.latitude_longitude or '' }}">
+                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ request.form.latitude_longitude or '' }}" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่งปัจจุบัน">
                             <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
-                                <i class="fas fa-location-arrow"></i>
+                                <i class="fas fa-location-arrow"></i> แชร์ตำแหน่ง
                             </button>
                         </div>
                         <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
                     </div>
-                    
+
+                    <hr class="my-4">
+
+                    <div class="form-section-header bg-light text-dark rounded-top">ข้อมูลงาน</div>
                     <div class="mb-3">
-                        <label for="files" class="form-label">แนบไฟล์</label>
-                        <input class="form-control" type="file" id="files" name="files[]" multiple>
+                        <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong> <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ request.form.task_title or '' }}</textarea>
+                        <div class="invalid-feedback">
+                            กรุณากรอกรายละเอียดงาน
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="appointment" class="form-label">วันเวลานัดหมาย</label>
+                        <input type="text" class="form-control datetimepicker" id="appointment" name="appointment" placeholder="เลือกวันและเวลา">
                     </div>
                     
+                    <div class="mb-3">
+                        <label for="files" class="form-label">แนบไฟล์ (รูปภาพ)</label>
+                        <input type="file" class="form-control" id="files" name="files[]" multiple accept="image/*">
+                        <div class="form-text">รองรับไฟล์ PNG, JPG, JPEG, GIF</div>
+                    </div>
+
                     <div class="d-grid mt-4">
                         <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
                     </div>
@@ -79,7 +99,6 @@
                 enableTime: true,
                 dateFormat: "Y-m-d H:i",
                 locale: "th",
-                // If form was re-rendered due to error, pre-fill date
                 defaultDate: document.getElementById('appointment').value ? document.getElementById('appointment').value : null
             });
 
@@ -95,9 +114,7 @@
                             (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                // UPDATED: Corrected Google Maps URL format for better compatibility
-                                // This format is common for opening maps directly from coordinates
-                                locationInput.value = `http://maps.google.com/maps?q=${lat},${lon}`;
+                                locationInput.value = `http://maps.google.com/maps?q=${lat},${lon}`; // เปลี่ยนเป็นรูปแบบที่ Google Maps เข้าใจดีที่สุด
                                 statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
                                 statusText.classList.remove('text-danger');
                                 statusText.classList.add('text-success');
@@ -136,6 +153,19 @@
                     }
                 });
             }
+
+            // Bootstrap form validation
+            var forms = document.querySelectorAll('.needs-validation');
+            Array.prototype.slice.call(forms)
+                .forEach(function (form) {
+                    form.addEventListener('submit', function (event) {
+                        if (!form.checkValidity()) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                        form.classList.add('was-validated');
+                    }, false);
+                });
         });
     </script>
 {% endblock %}
