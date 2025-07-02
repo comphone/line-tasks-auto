@@ -79,18 +79,29 @@ def get_google_credentials():
     creds = None
     if os.path.exists(TOKEN_FILE):
         try:
+            app.logger.info("Found token.json. Attempting to load credentials.") # เพิ่ม log
             creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        except Exception: return None
+        except Exception as e:
+            app.logger.error(f"Error loading credentials from token.json: {e}") # เพิ่ม log
+            return None
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
+                app.logger.info("Credentials expired, attempting to refresh token.") # เพิ่ม log
                 creds.refresh(Request())
                 with open(TOKEN_FILE, 'w') as token:
                     token.write(creds.to_json())
-            except Exception:
-                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+                app.logger.info("Token refreshed successfully.") # เพิ่ม log
+            except Exception as e:
+                app.logger.error(f"Error refreshing token: {e}") # เพิ่ม log
+                if os.path.exists(TOKEN_FILE):
+                    os.remove(TOKEN_FILE)
+                    app.logger.info("Removed invalid token.json.") # เพิ่ม log
                 return None
-        else: return None
+        else:
+            app.logger.info("No valid credentials found or refresh token missing/invalid.") # เพิ่ม log
+            return None
+    app.logger.info("Google credentials are valid.") # เพิ่ม log
     return creds
 
 def get_google_service(api_name, api_version):
@@ -98,7 +109,9 @@ def get_google_service(api_name, api_version):
     if not creds: return None
     try:
         return build(api_name, api_version, credentials=creds, cache_discovery=False)
-    except Exception: return None
+    except Exception as e:
+        app.logger.error(f"Error building Google service '{api_name} v{api_version}': {e}") # เพิ่ม log
+        return None
 
 def google_login_required(f):
     @wraps(f)
@@ -160,7 +173,7 @@ def index():
 def dashboard():
     service = get_google_service('tasks', 'v1')
     if not service:
-        # หากไม่สามารถสร้าง service ได้ แสดงว่า creds มีปัญหา หรือ token.json ไม่มี/ไม่ถูกต้อง
+        app.logger.warning("Could not get Google Tasks service in dashboard. Redirecting to authorize.")
         flash("ไม่สามารถเชื่อมต่อบริการ Google Tasks ได้ กรุณาลองเข้าสู่ระบบ Google ใหม่อีกครั้ง", "danger")
         if os.path.exists(TOKEN_FILE): # หาก token.json ยังมีอยู่แต่ใช้ไม่ได้ ให้ลบออก
             os.remove(TOKEN_FILE)
@@ -168,9 +181,11 @@ def dashboard():
 
     app_settings = load_app_settings()
     task_list_id = app_settings.get('google_tasks_list_id')
+    app.logger.info(f"Dashboard loaded. Current google_tasks_list_id from settings: {task_list_id}") # เพิ่ม log
 
     # ตรวจสอบว่ามีการเลือก Google Tasks List หรือยัง
     if not task_list_id:
+        app.logger.warning("No Google Tasks list ID found in settings. Redirecting to settings page.")
         flash("กรุณาเลือก Google Tasks List ในหน้าตั้งค่าก่อน", "warning")
         return redirect(url_for('settings_page'))
 
@@ -179,19 +194,24 @@ def dashboard():
         # วิธีที่ดีกว่าคือตรวจสอบว่า task_list_id นั้นอยู่ใน task_lists ที่ดึงมาได้หรือไม่
         # หรือลองดึงข้อมูลของ tasklist นั้นโดยตรง
         service.tasklists().get(tasklist=task_list_id).execute() # ลองดึงข้อมูลของ tasklist นั้น
+        app.logger.info(f"Successfully verified Google Task list with ID: {task_list_id}") # เพิ่ม log
         tasks_raw = service.tasks().list(tasklist=task_list_id, showCompleted=True, maxResults=100).execute().get('items', [])
+        app.logger.info(f"Successfully fetched {len(tasks_raw)} tasks from Google Task list.") # เพิ่ม log
     except HttpError as e:
+        app.logger.error(f"HttpError fetching tasks or verifying tasklist: {e.resp.status} - {e.reason}")
         if e.resp.status == 404:
             flash("เกิดข้อผิดพลาด: Google Tasks List ที่เลือกไว้ไม่พบแล้ว กรุณาเลือกรายการใหม่ในหน้าตั้งค่า", "danger")
             # ลบ task_list_id ที่ไม่ถูกต้องออกจาก settings เพื่อให้ผู้ใช้เลือกใหม่
             if 'google_tasks_list_id' in app_settings:
                 del app_settings['google_tasks_list_id']
                 save_app_settings(app_settings)
+                app.logger.info("Removed invalid google_tasks_list_id from settings after 404.") # เพิ่ม log
             return redirect(url_for('settings_page'))
         else:
             flash(f"เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Tasks: {e.reason}", "danger")
             return redirect(url_for('settings_page'))
     except Exception as e:
+        app.logger.error(f"Unexpected error in dashboard accessing Google Tasks: {e}")
         flash(f"เกิดข้อผิดพลาดที่ไม่คาดคิดในการเข้าถึง Google Tasks: {e}", "danger")
         return redirect(url_for('settings_page'))
     
@@ -264,11 +284,14 @@ def authorize():
 def oauth2callback():
     state = session.get('state')
     if not state or state != request.args.get('state'):
+        app.logger.error(f"OAuth state mismatch. Session state: {state}, Request state: {request.args.get('state')}") # เพิ่ม log
         return "Authorization failed: State mismatch.", 400
     flow = Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, scopes=SCOPES, state=state, redirect_uri=url_for('oauth2callback', _external=True))
     try:
         flow.fetch_token(authorization_response=request.url)
+        app.logger.info("OAuth token fetched successfully.") # เพิ่ม log
     except Exception as e:
+        app.logger.error(f"OAuth authentication failed: {e}") # เพิ่ม log
         flash(f"การยืนยันตัวตนล้มเหลว: {e}", "danger")
         return redirect(url_for('auth_landing'))
     credentials = flow.credentials
@@ -333,17 +356,22 @@ def import_tasks_from_backup():
 def settings_page():
     task_lists = []
     app_settings = load_app_settings()
+    app.logger.info(f"Current app settings loaded: {app_settings}") # เพิ่ม log
 
     if g.user_logged_in:
+        app.logger.info("User is logged in (token.json exists).") # เพิ่ม log
         service = get_google_service('tasks', 'v1')
         if service:
             try:
                 # ดึงรายการ Task Lists จาก Google Tasks API
                 task_lists_response = service.tasklists().list().execute()
                 task_lists = task_lists_response.get('items', [])
+                app.logger.info(f"Successfully fetched {len(task_lists)} Google Task lists.") # เพิ่ม log
                 if not task_lists:
+                    app.logger.warning("No Google Task lists found in the account.") # เพิ่ม log
                     flash("ไม่พบ Google Tasks List ในบัญชีของคุณ กรุณาสร้างรายการใหม่ใน Google Tasks", "warning")
             except HttpError as e:
+                app.logger.error(f"HttpError fetching Google Task lists: {e.resp.status} - {e.reason}") # เพิ่ม log
                 # จัดการข้อผิดพลาดที่เฉพาะเจาะจง เช่น 404 (Not Found) สำหรับ Task List
                 if e.resp.status == 404:
                     flash("เกิดข้อผิดพลาด: Google Tasks List ที่เลือกไว้ไม่พบแล้ว กรุณาเลือกรายการใหม่", "danger")
@@ -351,24 +379,30 @@ def settings_page():
                     if 'google_tasks_list_id' in app_settings:
                         del app_settings['google_tasks_list_id']
                         save_app_settings(app_settings) # Save immediately to clear invalid ID
+                        app.logger.info("Removed invalid google_tasks_list_id from settings.")
                 else:
                     flash(f"ไม่สามารถดึงรายการ Google Tasks ได้: {e.reason}", "danger")
             except Exception as e:
+                app.logger.error(f"Unexpected error fetching Google Task lists: {e}") # เพิ่ม log
                 flash(f"เกิดข้อผิดพลาดที่ไม่คาดคิดในการดึง Google Tasks List: {e}", "danger")
         else:
+            app.logger.warning("Could not get Google Tasks service. Token might be invalid or missing.") # เพิ่ม log
             flash("ไม่สามารถเชื่อมต่อบริการ Google Tasks ได้ กรุณาลองเข้าสู่ระบบ Google ใหม่อีกครั้ง", "danger")
             # Ensure token.json is removed if service cannot be built, forcing re-auth
             if os.path.exists(TOKEN_FILE):
                 os.remove(TOKEN_FILE)
+                app.logger.info("Removed token.json due to service connection failure.") # เพิ่ม log
             return redirect(url_for('auth_landing')) # Redirect to re-authenticate
 
     if request.method == 'POST':
+        app.logger.info("Received POST request to /settings.") # เพิ่ม log
         # โหลดการตั้งค่าปัจจุบันอีกครั้งเพื่อความแน่ใจว่าได้ค่าล่าสุด
         current_settings = load_app_settings()
 
         # ตรวจสอบว่ามีการเลือก google_tasks_list_id หรือไม่ก่อนบันทึก
         selected_task_list_id = request.form.get('google_tasks_list_id')
         if not selected_task_list_id:
+            app.logger.warning("No Google Task list selected during POST to /settings.") # เพิ่ม log
             flash("กรุณาเลือก Google Tasks List ที่ต้องการใช้", "danger")
             # ต้องคืนค่า render_template เพื่อให้ผู้ใช้เลือกใหม่
             default_keys = {'shop_info': {}, 'technician_list': [], 'line_recipients': {}, 'report_times': {'appointment_reminder_hour_thai': 7, 'customer_followup_hour_thai': 9}, 'sales_offers': {}, 'auto_backup': {'enabled': False, 'hour_thai': 2}}
@@ -386,9 +420,11 @@ def settings_page():
         current_settings['auto_backup'] = {'enabled': 'auto_backup_enabled' in request.form, 'hour_thai': int(request.form.get('auto_backup_hour', 2)), 'folder_id': app_settings.get('auto_backup', {}).get('folder_id')}
 
         if save_app_settings(current_settings):
+            app.logger.info("Settings saved successfully.") # เพิ่ม log
             flash("บันทึกการตั้งค่าเรียบร้อยแล้ว", "success")
             run_scheduler()
         else:
+            app.logger.error("Failed to save settings.") # เพิ่ม log
             flash("เกิดข้อผิดพลาดในการบันทึกการตั้งค่า", "danger")
         return redirect(url_for('settings_page'))
 
@@ -397,6 +433,7 @@ def settings_page():
     for key, default_value in default_keys.items():
         app_settings.setdefault(key, default_value)
 
+    app.logger.info(f"Rendering settings_page. task_lists count: {len(task_lists)}, selected_list_id: {app_settings.get('google_tasks_list_id')}") # เพิ่ม log
     return render_template('settings_page.html', task_lists=task_lists, settings=app_settings, selected_list_id=app_settings.get('google_tasks_list_id'))
 #</editor-fold>
 
