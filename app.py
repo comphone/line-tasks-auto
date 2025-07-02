@@ -8,7 +8,7 @@ import mimetypes
 import zipfile
 from io import BytesIO
 from collections import defaultdict
-from datetime import timezone
+from datetime import timezone # Added for UTC timezone awareness
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -138,33 +138,36 @@ def save_settings_to_file(settings_data):
 def get_google_service(api_name, api_version):
     """Authenticates and returns a Google API service."""
     creds = None
-    token_path = 'token.json'
+    # No longer rely on local token.json for credentials on Render.com,
+    # as Render's filesystem is ephemeral and may not have the file.
+    # We prioritize GOOGLE_TOKEN_JSON env var.
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
 
     if google_token_json_str:
         try:
+            # Use from_authorized_user_info to load credentials from the JSON string
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
         except Exception as e:
-            app.logger.warning(f"Could not load token from env var, falling back to token.json: {e}")
+            # Log specific error if JSON parsing fails or format is incorrect
+            app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Please check format.")
+            creds = None # Ensure creds is None if loading from env var fails
 
-    if not creds and os.path.exists(token_path):
-        creds = Credentials.from_authorized_file(token_path, SCOPES)
-
+    # Handle token refresh if credentials are valid but expired
     if creds and creds.valid and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
             app.logger.info("Refreshed Google access token.")
-            # Only save to token.json if GOOGLE_TOKEN_JSON was not set (local dev scenario)
-            if not google_token_json_str:
-                with open(token_path, 'w') as token: token.write(creds.to_json())
-                app.logger.info(f"Refreshed token saved to {token_path}. Please update GOOGLE_TOKEN_JSON on Render with this content.")
+            # If refreshed, update GOOGLE_TOKEN_JSON env var (in logs, for manual update)
+            # IMPORTANT: Render doesn't let apps modify their own env vars,
+            # so user must manually update if refresh_token works. This log helps.
+            app.logger.info(f"New GOOGLE_TOKEN_JSON after refresh (copy this to Render env var): {creds.to_json()}")
         except Exception as e:
             app.logger.error(f"Error refreshing token: {e}")
-            creds = None
+            creds = None # Ensure creds is None if refresh fails
 
     if not creds or not creds.valid:
         app.logger.error("No valid Google credentials available. API service cannot be built.")
-        app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set or token.json is valid.")
+        app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set and valid, or that authorization was successful.")
         return None
 
     return build(api_name, api_version, credentials=creds)
@@ -1112,7 +1115,7 @@ def export_equipment_catalog():
         df = pd.DataFrame(get_app_settings().get('equipment_catalog', []))
         if df.empty:
             flash('ไม่มีข้อมูลอุปกรณ์ในแคตตาล็อก', 'warning')
-            return redirect(url_for('settings_page'))
+            return redirect(url_for('settings_page') ) # Use redirect instead of abort for user-friendly flow
         output = BytesIO()
         df.to_excel(output, index=False, sheet_name='Equipment_Catalog')
         output.seek(0)
@@ -1773,8 +1776,9 @@ def oauth2callback():
 
         # Save credentials to token.json and inform user to update GOOGLE_TOKEN_JSON env var
         token_json_content = creds.to_json()
-        with open('token.json', 'w') as token:
-            token.write(token_json_content)
+        # No longer save to local file on Render, just inform user for env var update
+        # with open('token.json', 'w') as token:
+        #     token.write(token_json_content)
         
         flash(f'เชื่อมต่อ Google สำเร็จแล้ว! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com (หรือแพลตฟอร์มอื่นที่คุณใช้) และรีสตาร์ทแอปพลิเคชัน: <textarea class="form-control mt-2" rows="5" readonly>{token_json_content}</textarea>', 'success')
         app.logger.info("Google OAuth successful. Token saved to token.json. Please update GOOGLE_TOKEN_JSON env var.")
