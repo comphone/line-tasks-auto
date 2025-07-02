@@ -9,7 +9,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">{{ message }}</div>
+                <div class="alert alert-{{ category }}">{{ message | safe }}</div>
             {% endfor %}
         {% endif %}
     {% endwith %}
@@ -190,9 +190,11 @@
                 </div>
                  <div class="row mb-3">
                     <div class="col-md-8 offset-md-4">
-                        <button type="button" class="btn btn-info" onclick="location.href='{{ url_for('trigger_auto_backup_now') }}'">
-                            เรียกใช้การสำรองข้อมูลเดี๋ยวนี้
-                        </button>
+                        <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-info">
+                                เรียกใช้การสำรองข้อมูลเดี๋ยวนี้
+                            </button>
+                        </form>
                          <div class="form-text">จะทำการสำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive</div>
                     </div>
                 </div>
@@ -214,23 +216,36 @@
         </div>
     </div>
 
+    {# --- NEW: Unified Import Backup Section --- #}
     <div class="card mt-4 mb-4">
         <div class="card-header bg-warning text-white">
-            <h5 class="mb-0">นำเข้าข้อมูลงานเก่า</h5>
+            <h5 class="mb-0">นำเข้าข้อมูลสำรอง (.json)</h5>
         </div>
         <div class="card-body">
-            <form id="importTasksForm" enctype="multipart/form-data">
+            <form id="importBackupForm" enctype="multipart/form-data">
                 <div class="mb-3">
-                    <label for="tasksJsonFile" class="form-label">เลือกไฟล์ JSON งานเก่า (.json)</label>
-                    <input class="form-control" type="file" id="tasksJsonFile" name="json_file" accept=".json">
-                    <div class="form-text">ไฟล์ JSON ควรมีโครงสร้างเป็น Array ของ Task Objects จาก Google Tasks API</div>
+                    <label for="backupFileType" class="form-label">ประเภทไฟล์สำรอง:</label>
+                    <select class="form-select" id="backupFileType" name="file_type" required>
+                        <option value="">-- เลือกประเภทไฟล์ --</option>
+                        <option value="tasks_json">งานเก่า (tasks_backup.json)</option>
+                        <option value="settings_json">ตั้งค่าระบบ (settings_backup.json)</option>
+                    </select>
                 </div>
-                <button type="button" class="btn btn-primary" id="previewImportBtn">ดูตัวอย่างการนำเข้า</button>
-                <button type="submit" class="btn btn-success" id="confirmImportBtn" style="display:none;">ยืนยันการนำเข้า</button>
+
+                <div class="mb-3">
+                    <label for="backupFile" class="form-label">เลือกไฟล์ JSON (.json)</label>
+                    <input class="form-control" type="file" id="backupFile" name="backup_file" accept=".json" required>
+                    <div class="form-text">
+                        อัปโหลดไฟล์ `tasks_backup.json` สำหรับงาน หรือ `settings_backup.json` สำหรับการตั้งค่าระบบ.
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่างการนำเข้า</button>
+                <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยันการนำเข้า</button>
             </form>
-            <div id="importPreview" class="mt-3"></div>
+            <div id="importBackupPreview" class="mt-3"></div>
         </div>
     </div>
+    {# --- END NEW: Unified Import Backup Section --- #}
 
     <div class="card mt-4 mb-4">
         <div class="card-header bg-danger text-white">
@@ -244,6 +259,7 @@
 
 </div>
 
+{# --- Modals (Test Notification, Import Equipment) --- #}
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -290,26 +306,34 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const previewImportBtn = document.getElementById('previewImportBtn');
-        const confirmImportBtn = document.getElementById('confirmImportBtn');
-        const tasksJsonFile = document.getElementById('tasksJsonFile');
-        const importPreview = document.getElementById('importPreview');
-        const importTasksForm = document.getElementById('importTasksForm');
+        // --- ส่วนสำหรับ Import แคตตาล็อกอุปกรณ์ (เดิม) ---
+        // (โค้ดส่วนนี้ยังคงเหมือนเดิม)
+
+        // --- ส่วนสำหรับนำเข้าข้อมูลสำรอง (ใหม่) ---
+        const previewBackupBtn = document.getElementById('previewBackupBtn');
+        const confirmImportBackupBtn = document.getElementById('confirmImportBackupBtn');
+        const backupFile = document.getElementById('backupFile');
+        const backupFileType = document.getElementById('backupFileType');
+        const importBackupPreview = document.getElementById('importBackupPreview');
+        const importBackupForm = document.getElementById('importBackupForm');
 
         // Handle preview import
-        if (previewImportBtn) {
-            previewImportBtn.addEventListener('click', function() {
-                const file = tasksJsonFile.files[0];
-                if (!file) {
-                    importPreview.innerHTML = '<div class="alert alert-danger">กรุณาเลือกไฟล์ JSON.</div>';
-                    confirmImportBtn.style.display = 'none';
+        if (previewBackupBtn) {
+            previewBackupBtn.addEventListener('click', function() {
+                const file = backupFile.files[0];
+                const fileTypeValue = backupFileType.value;
+
+                if (!file || !fileTypeValue) {
+                    importBackupPreview.innerHTML = '<div class="alert alert-danger">กรุณาเลือกประเภทไฟล์และไฟล์ JSON.</div>';
+                    confirmImportBackupBtn.style.display = 'none';
                     return;
                 }
 
                 const formData = new FormData();
-                formData.append('json_file', file);
+                formData.append('backup_file', file);
+                formData.append('file_type', fileTypeValue); // ส่งประเภทไฟล์ไปด้วย
 
-                fetch('/api/preview_tasks_import', {
+                fetch('/api/preview_backup_file', { // เรียกใช้ route ใหม่
                     method: 'POST',
                     body: formData
                 })
@@ -317,38 +341,76 @@
                 .then(data => {
                     if (data.status === 'success') {
                         let previewHtml = `<div class="alert alert-info">${data.message}</div>`;
-                        previewHtml += '<h6>ตัวอย่างงาน:</h6><ul>';
-                        data.example_tasks.forEach(task => {
-                            previewHtml += `<li><strong>${task.title}</strong> (ลูกค้า: ${task.customer_name || 'N/A'}, สถานะ: ${task.status}, ครบกำหนด: ${task.due || 'N/A'})</li>`;
-                        });
-                        previewHtml += '</ul>';
-                        previewHtml += '<div class="alert alert-warning">การนำเข้าจะ <b>เพิ่ม</b> งานเหล่านี้เข้าไปในระบบ Google Tasks ของคุณ. โปรดตรวจสอบให้แน่ใจว่าไม่ใช่การนำเข้าซ้ำ!</div>';
-
-                        importPreview.innerHTML = previewHtml;
-                        confirmImportBtn.style.display = 'inline-block'; // Show confirm button
+                        if (data.type === 'tasks') {
+                            previewHtml += '<h6>ตัวอย่างงาน:</h6><ul>';
+                            data.example_tasks.forEach(task => {
+                                previewHtml += `<li><strong>${task.title}</strong> (ลูกค้า: ${task.customer_name || 'N/A'}, สถานะ: ${task.status}, ครบกำหนด: ${task.due || 'N/A'})</li>`;
+                            });
+                            previewHtml += '</ul>';
+                            previewHtml += '<div class="alert alert-warning">การนำเข้างานจะ <b>เพิ่ม</b> งานเหล่านี้เข้าไปในระบบ Google Tasks ของคุณ. โปรดตรวจสอบให้แน่ใจว่าไม่ใช่การนำเข้าซ้ำ!</div>';
+                        } else if (data.type === 'settings') {
+                            previewHtml += '<h6>ตัวอย่างการตั้งค่าที่สำคัญ:</h6><ul>';
+                            for (const key in data.preview_settings) {
+                                previewHtml += `<li><strong>${key}:</strong> ${data.preview_settings[key]}</li>`;
+                            }
+                            previewHtml += '</ul>';
+                            previewHtml += '<div class="alert alert-warning">การนำเข้าการตั้งค่าจะ <b>เขียนทับ</b> การตั้งค่าปัจจุบันของคุณ. โปรดตรวจสอบให้แน่ใจก่อนยืนยัน!</div>';
+                        }
+                        
+                        importBackupPreview.innerHTML = previewHtml;
+                        confirmImportBackupBtn.style.display = 'inline-block'; // Show confirm button
                     } else {
-                        importPreview.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
-                        confirmImportBtn.style.display = 'none';
+                        importBackupPreview.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                        confirmImportBackupBtn.style.display = 'none';
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    importPreview.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการดูตัวอย่างการนำเข้า.</div>';
-                    confirmImportBtn.style.display = 'none';
+                    importBackupPreview.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการดูตัวอย่างการนำเข้า.</div>';
+                    confirmImportBackupBtn.style.display = 'none';
                 });
             });
         }
 
         // Handle confirmed import
-        if (confirmImportBtn) {
-            confirmImportBtn.addEventListener('click', function() {
-                // Change form action and submit
-                importTasksForm.action = "{{ url_for('import_tasks_from_backup') }}";
-                importTasksForm.method = "POST";
-                importTasksForm.enctype = "multipart/form-data"; // Ensure this is set for file upload
-                importTasksForm.submit();
+        if (confirmImportBackupBtn) {
+            confirmImportBackupBtn.addEventListener('click', function() {
+                const file = backupFile.files[0];
+                const fileTypeValue = backupFileType.value;
+
+                if (!file || !fileTypeValue) {
+                    alert('กรุณาเลือกประเภทไฟล์และไฟล์ JSON.');
+                    return;
+                }
+
+                // เปลี่ยน form action และส่งข้อมูล
+                importBackupForm.action = "/api/import_backup_file"; // ชี้ไปที่ route ใหม่
+                importBackupForm.method = "POST";
+                importBackupForm.enctype = "multipart/form-data"; // ต้องมีสำหรับ file upload
+
+                // สร้าง FormData ใหม่เพื่อแนบไฟล์และประเภทไฟล์
+                const formData = new FormData();
+                formData.append('backup_file', file);
+                formData.append('file_type', fileTypeValue); // ใช้ formData.append เพื่อส่ง file_type
+
+                fetch(importBackupForm.action, {
+                    method: importBackupForm.method,
+                    body: formData // ใช้ formData ที่สร้างขึ้นใหม่
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(data.message);
+                        location.reload(); // รีโหลดหน้าเพื่อแสดงการตั้งค่าใหม่หรือรายการงานใหม่
+                    } else {
+                        alert(`เกิดข้อผิดพลาด: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('เกิดข้อผิดพลาดในการนำเข้า.');
+                });
             });
         }
     });
 </script>
-{% endblock %}
