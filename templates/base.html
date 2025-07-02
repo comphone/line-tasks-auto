@@ -9,19 +9,27 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
     <style>
+        /* Custom style for the logo */
         .navbar-logo {
-            height: 35px;
+            height: 35px; /* Adjust height as needed */
             width: auto;
             margin-right: 10px;
         }
+
+        /* --- ADDED: Mobile Font Size Improvement --- */
+        /* Increase font size for better readability on mobile devices */
         .form-label,
         .form-control,
         .form-select {
-            font-size: 1.1rem;
+            font-size: 1.1rem; /* Adjust this value as needed */
         }
+
+        /* Optional: Slightly larger font for card headers on mobile */
         .card-header {
             font-size: 1.2rem;
         }
+        /* --- End of Mobile Font Size Improvement --- */
+
     </style>
     {% block head_extra %}{% endblock %}
 </head>
@@ -29,7 +37,7 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('summary') }}">
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="navbar-logo">
                 <span class="d-none d-sm-inline">Task Manager</span>
             </a>
@@ -38,25 +46,21 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto align-items-center">
-                    
-                    <!-- Show these links ONLY if the user is logged in -->
-                    {% if g.user_logged_in %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('dashboard') }}"><i class="fas fa-tachometer-alt me-1"></i>แดชบอร์ด</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>
-                        </li>
-                        <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
-                            <a class="btn btn-success" href="{{ url_for('form_page') }}">
-                                <i class="fas fa-plus-circle me-1"></i>สร้างงานใหม่
-                            </a>
-                        </li>
-                    {% endif %}
-
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('summary') }}"><i class="fas fa-list-check me-1"></i>สรุปงาน</a>
+                    </li>
+                    <!-- NEW: Link to Technician Report -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>
+                    </li>
+                    <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
+                        <a class="btn btn-success" href="{{ url_for('form_page') }}">
+                            <i class="fas fa-plus-circle me-1"></i>สร้างงานใหม่
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -79,7 +83,7 @@
     </main>
 
     <footer class="text-center text-muted py-3 bg-light border-top">
-        <small>Task Management System &copy; {{ now.year if now else '' }}</small>
+        <small>Task Management System &copy; {{ now.year }}</small>
     </footer>
 
     <!-- Scripts -->

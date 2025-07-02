@@ -139,12 +139,14 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">รายละเอียดและจัดการงาน</h1>
         <div>
-            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับไปหน้าแดชบอร์ด</a>
+            <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับไปหน้าสรุป</a>
         </div>
     </div>
 
     <div class="row">
+        <!-- Left Column -->
         <div class="col-lg-7">
+            <!-- Task Details Card -->
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-file-alt me-2"></i>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</div>
                 <div class="card-body">
@@ -152,6 +154,7 @@
                 </div>
             </div>
 
+            <!-- Customer Info Card -->
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-user-edit me-2"></i>ข้อมูลลูกค้า</div>
                 <div class="card-body">
@@ -177,7 +180,9 @@
             </div>
         </div>
 
+        <!-- Right Column -->
         <div class="col-lg-5">
+            <!-- Status and Appointment Card -->
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-clipboard-check me-2"></i>สถานะและนัดหมาย</div>
                 <div class="card-body">
@@ -197,6 +202,7 @@
                 </div>
             </div>
 
+            <!-- Work Summary Card -->
             <div class="card border-success mb-4">
                 <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>สรุปการทำงานและอุปกรณ์ที่ใช้</div>
                 <div class="card-body">
@@ -239,6 +245,7 @@
     </div>
 </form>
 
+<!-- History Timeline -->
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -288,7 +295,9 @@
     </div>
 </div>
 
+<!-- Other Cards (Customer Actions, Feedback, Danger Zone) -->
 <div class="row mt-4">
+    <!-- Customer Actions Card -->
     <div class="col-lg-6 mb-4">
         <div class="card border-info h-100">
             <div class="card-header bg-info text-white h5">
@@ -304,6 +313,7 @@
         </div>
     </div>
 
+    <!-- Customer Feedback Card -->
     <div class="col-lg-6 mb-4">
         {% if task.customer_feedback %}
         <div class="card border-secondary h-100">
@@ -351,6 +361,7 @@
 </div>
 
 
+<!-- Danger Zone -->
 <div class="card border-danger my-4">
     <div class="card-header bg-danger text-white h5 d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#dangerZoneCollapse" role="button" aria-expanded="false" aria-controls="dangerZoneCollapse" style="cursor: pointer;">
         <span><i class="fas fa-exclamation-triangle me-2"></i>โซนอันตราย</span>
@@ -366,6 +377,7 @@
     </div>
 </div>
 
+<!-- Delete Modal -->
 <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
