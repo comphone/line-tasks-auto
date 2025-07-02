@@ -72,7 +72,7 @@ LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 # GOOGLE_DRIVE_FOLDER_ID is no longer used for automatic backup
 GOOGLE_DRIVE_FOLDER_ID_FOR_UPLOADS = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') # Keep for task file uploads
 
-SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
+SCOPES = ['[https://www.googleapis.com/auth/tasks](https://www.googleapis.com/auth/tasks)', '[https://www.googleapis.com/auth/calendar](https://www.googleapis.com/auth/calendar)', '[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
@@ -539,7 +539,7 @@ def scheduled_appointment_reminder_job():
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     problem_action = PostbackAction(label='👎 มีปัญหา', data=f'action=customer_feedback&task_id={task_id}&feedback=problem_reported', display_text='ฉันพบปัญหาหลังการซ่อม')
     if LIFF_ID_FORM:
-        problem_action = URIAction(label='👎 มีปัญหา', uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}")
+        problem_action = URIAction(label='👎 มีปัญหา', uri=f"[https://liff.line.me/](https://liff.line.me/){LIFF_ID_FORM}/customer_problem_form?task_id={task_id}")
 
     return BubbleContainer(
         body=BoxComponent(
@@ -924,8 +924,9 @@ def import_settings():
                 return redirect(url_for('settings_page'))
 
             current_settings = get_app_settings()
-            google_tasks_list_id = current_settings.get('google_tasks_list_id')
-            uploaded_data['google_tasks_list_id'] = google_tasks_list_id
+            # Preserve the existing task list ID if the imported file doesn't have one
+            if 'google_tasks_list_id' not in uploaded_data or not uploaded_data['google_tasks_list_id']:
+                uploaded_data['google_tasks_list_id'] = current_settings.get('google_tasks_list_id')
 
             if save_app_settings(uploaded_data):
                 flash('นำเข้าและบันทึกการตั้งค่าใหม่เรียบร้อยแล้ว!', 'success')
@@ -1142,7 +1143,7 @@ def generate_customer_onboarding_qr():
         flash("ไม่สามารถสร้าง QR Code ได้: ไม่พบ LIFF_ID_FORM", 'danger')
         return redirect(url_for('task_details', task_id=task_id))
 
-    onboarding_url = f"https://liff.line.me/{LIFF_ID_FORM}/customer_onboarding.html?task_id={task_id}"
+    onboarding_url = f"[https://liff.line.me/](https://liff.line.me/){LIFF_ID_FORM}/customer_onboarding.html?task_id={task_id}"
     qr_code_base64 = generate_qr_code_base64(onboarding_url, box_size=10)
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code_base64, task=task, customer_info=customer_info, onboarding_url=onboarding_url)
@@ -1380,7 +1381,7 @@ def handle_text_message(event):
         tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('due') and datetime.datetime.fromisoformat(t['due'].replace('Z', '+00:00')).astimezone(THAILAND_TZ).date() == target_date]
         line_bot_api.reply_message(event.reply_token, create_task_list_message(title, tasks))
     elif text == 'สร้างงานใหม่' and LIFF_ID_FORM:
-        quick_reply = QuickReply(items=[QuickReplyButton(action=URIAction(label="เปิดฟอร์มสร้างงาน", uri=f"https://liff.line.me/{LIFF_ID_FORM}"))])
+        quick_reply = QuickReply(items=[QuickReplyButton(action=URIAction(label="เปิดฟอร์มสร้างงาน", uri=f"[https://liff.line.me/](https://liff.line.me/){LIFF_ID_FORM}"))])
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เปิดฟอร์มเพื่อสร้างงานใหม่ครับ 👇", quick_reply=quick_reply))
     elif text.startswith('ดูงาน '):
         name = event.message.text.split(maxsplit=1)[1]
