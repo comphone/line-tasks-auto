@@ -7,7 +7,6 @@
     <h1 class="mb-0">รายงานผลงานช่าง</h1>
 </div>
 
-<!-- Filter Form -->
 <div class="card mb-4">
     <div class="card-body">
         <form method="GET" action="{{ url_for('technician_report') }}" class="row g-3 align-items-end">
@@ -38,7 +37,6 @@
     </div>
 </div>
 
-<!-- Report Results -->
 <div class="card shadow-sm">
     <div class="card-header">
         <h5 class="mb-0">สรุปผลงานประจำเดือน {{ months[selected_month-1].name }} ปี {{ selected_year }}</h5>

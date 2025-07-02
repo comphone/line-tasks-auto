@@ -627,11 +627,6 @@ def run_scheduler():
         scheduler.shutdown(wait=False)
     scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
-    # Automatic backup is disabled
-    # ab = settings.get('auto_backup', {})
-    # if ab.get('enabled'):
-    #     scheduler.add_job(scheduled_backup_job, CronTrigger(hour=ab.get('hour_thai', 2), minute=ab.get('minute_thai', 0)), id='auto_system_backup', replace_existing=True)
-
     rt = settings.get('report_times', {})
     scheduler.add_job(scheduled_appointment_reminder_job, CronTrigger(hour=rt.get('appointment_reminder_hour_thai', 7), minute=0), id='daily_appointment_reminder', replace_existing=True)
     scheduler.add_job(scheduled_customer_follow_up_job, CronTrigger(hour=rt.get('customer_followup_hour_thai', 9), minute=5), id='daily_customer_followup', replace_existing=True)
@@ -644,7 +639,6 @@ def run_scheduler():
 
 # --- Initial app setup calls ---
 with app.app_context():
-    # No longer loading from cloud storage on startup, as it's a manual process now.
     _APP_SETTINGS_STORE = get_app_settings()
     get_tasks_list_id()
     run_scheduler()
@@ -657,8 +651,6 @@ def root_redirect():
 
 @app.route("/dashboard")
 def dashboard():
-    # In the provided 'tasks_summary.html' template, this route is called 'dashboard' not 'summary'.
-    # I have corrected this in the template files as well for consistency.
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
@@ -666,8 +658,6 @@ def dashboard():
     current_time_utc = datetime.datetime.now(pytz.utc)
     final_tasks = []
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw)}
-
-    monthly_completion_data = defaultdict(int)
 
     for task in tasks_raw:
         task_status = task.get('status', 'needsAction')
@@ -680,13 +670,6 @@ def dashboard():
 
         if task_status == 'completed':
             stats['completed'] += 1
-            if task.get('completed'):
-                try:
-                    completed_dt_utc = datetime.datetime.fromisoformat(task['completed'].replace('Z', '+00:00'))
-                    completed_dt_local = completed_dt_utc.astimezone(THAILAND_TZ)
-                    month_key = completed_dt_local.strftime("%Y-%m")
-                    monthly_completion_data[month_key] += 1
-                except (ValueError, TypeError): pass
         else:
             stats['needsAction'] += 1
             if is_overdue: stats['overdue'] += 1
@@ -707,32 +690,11 @@ def dashboard():
 
     final_tasks.sort(key=lambda x: (x.get('status') != 'needsAction', x.get('due') is None, x.get('due', '')))
 
-    # This part was missing from the original dashboard route, but the template 'dashboard.html'
-    # expects chart_data. I've re-added it assuming 'dashboard.html' has a chart.
-    # If not, this part can be removed.
-    chart_labels = []
-    chart_values = []
-    today = datetime.date.today()
-    for i in range(11, -1, -1):
-        month = today - relativedelta(months=i)
-        month_key = month.strftime("%Y-%m")
-        chart_labels.append(month.strftime("%b %y"))
-        chart_values.append(monthly_completion_data[month_key])
-
-    chart_data = {
-        'labels': chart_labels,
-        'values': chart_values
-    }
-
-    # Based on the provided template `tasks_summary.html`, the correct template name is probably `tasks_summary.html`.
-    # However, the `url_for` calls in other templates point to 'dashboard', so I'm rendering a template
-    # named `tasks_summary.html` for the `dashboard` route.
     return render_template("tasks_summary.html",
                            tasks=final_tasks,
                            summary=stats,
                            search_query=search_query,
-                           status_filter=status_filter,
-                           chart_data=json.dumps(chart_data))
+                           status_filter=status_filter)
 
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
@@ -758,7 +720,6 @@ def form_page():
         appointment_str = str(request.form.get('appointment', '')).strip()
         if appointment_str:
             try:
-                # The form.html template isn't provided, assuming this format is correct
                 dt_local = THAILAND_TZ.localize(datetime.datetime.strptime(appointment_str, "%Y-%m-%d %H:%M"))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat()
             except ValueError: app.logger.error(f"Invalid appointment format: {appointment_str}")
@@ -769,7 +730,9 @@ def form_page():
             return redirect(url_for('dashboard'))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
-    # The form.html template isn't provided, assuming this is the correct name.
+
+    # The form.html template wasn't provided, so we assume it exists
+    # and doesn't need any special context variables on GET request.
     return render_template('form.html')
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
@@ -883,17 +846,10 @@ def settings_page():
             'line_recipients': {
                 'admin_group_id': request.form.get('admin_group_id', '').strip(),
                 'technician_group_id': request.form.get('technician_group_id', '').strip(),
-                'manager_user_id': request.form.get('manager_user_id', '').strip() # This field doesn't exist on the form, might be legacy
+                'manager_user_id': current_settings.get('line_recipients', {}).get('manager_user_id', '') # Preserve this value
             },
-            'qrcode_settings': { # These fields don't exist on the form, might be legacy
-                'box_size': int(request.form.get('qr_box_size') or 8),
-                'border': int(request.form.get('qr_border') or 4),
-                'fill_color': request.form.get('qr_fill_color') or '#28a745',
-                'back_color': request.form.get('qr_back_color') or '#FFFFFF',
-                'custom_url': request.form.get('qr_custom_url', '').strip()
-            },
-            # Auto backup is no longer configured via UI
-            'auto_backup': current_settings.get('auto_backup', {'enabled': False}),
+            'qrcode_settings': current_settings.get('qrcode_settings', {}), # Preserve this value
+            'auto_backup': current_settings.get('auto_backup', {'enabled': False}), # Preserve this value
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
@@ -935,7 +891,6 @@ def import_settings():
                 return redirect(url_for('settings_page'))
 
             current_settings = get_app_settings()
-            # Preserve the existing task list ID if the imported file doesn't have one
             if 'google_tasks_list_id' not in uploaded_data or not uploaded_data['google_tasks_list_id']:
                 uploaded_data['google_tasks_list_id'] = current_settings.get('google_tasks_list_id')
 
@@ -1090,6 +1045,26 @@ def backup_data():
     else:
         flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
         return redirect(url_for('settings_page'))
+
+# ========== NEW/FIXED ROUTES START ==========
+@app.route('/export_equipment_catalog')
+def export_equipment_catalog():
+    """
+    Placeholder function for exporting the equipment catalog.
+    The actual implementation would generate an Excel file from the settings.
+    """
+    flash('ฟังก์ชัน "ส่งออกเป็น Excel" ยังไม่ถูกสร้างขึ้น', 'warning')
+    return redirect(url_for('settings_page'))
+
+@app.route('/import_equipment_catalog', methods=['POST'])
+def import_equipment_catalog():
+    """
+    Placeholder function for importing the equipment catalog from an Excel file.
+    The actual implementation would read the file and update the settings.
+    """
+    flash('ฟังก์ชัน "นำเข้าจาก Excel" ยังไม่ถูกสร้างขึ้น', 'warning')
+    return redirect(url_for('settings_page'))
+# ========== NEW/FIXED ROUTES END ==========
 
 @app.route('/technician_report')
 def technician_report():
