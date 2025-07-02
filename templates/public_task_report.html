@@ -17,13 +17,6 @@
                 border: 1px solid #dee2e6 !important;
             }
         }
-        .promotion-box {
-            border: 2px dashed #198754;
-            background-color: #e6f9f0;
-            padding: 1.5rem;
-            border-radius: .5rem;
-            text-align: center;
-        }
     </style>
 {% endblock %}
 
@@ -35,6 +28,7 @@
     <div class="card-body p-4">
         <div class="row mb-4">
             <div class="col-md-7">
+                <!-- CHANGED: Unify label -->
                 <h5>รายละเอียดงาน: {{ task.get('title', 'N/A') }}</h5>
                 <p class="text-muted mb-0">ID งาน: {{ task.id }}</p>
             </div>
@@ -55,12 +49,14 @@
         <div class="row">
             <div class="col-md-6">
                 <h6><i class="fas fa-user-circle me-2"></i>ข้อมูลลูกค้า</h6>
+                <!-- CHANGED: Unify labels -->
                 <p class="mb-1"><strong>ชื่อลูกค้า:</strong> {{ customer_info.name or '-' }}</p>
                 <p class="mb-1"><strong>ที่อยู่ลูกค้า:</strong> {{ customer_info.address or '-' }}</p>
                  <p class="mb-1"><strong>เบอร์โทรศัพท์:</strong> {{ customer_info.phone or '-' }}</p>
             </div>
             <div class="col-md-6">
                  <h6><i class="fas fa-info-circle me-2"></i>รายละเอียด/อาการเบื้องต้น (จากลูกค้า)</h6>
+                 <!-- FIXED: Display the main task title directly as the initial detail -->
                  <p class="text-muted" style="white-space: pre-wrap;">{{ task.title or '-' }}</p>
             </div>
         </div>
@@ -118,14 +114,6 @@
 
         {% else %}
             <p class="text-muted">ยังไม่มีข้อมูลสรุปการทำงานล่าสุด</p>
-        {% endif %}
-        
-        <!-- NEW: Promotion Box -->
-        {% if sales_offers.report_promotion_enabled and sales_offers.report_promotion_text %}
-        <div class="mt-4 promotion-box">
-            <h5 class="text-success"><i class="fas fa-star me-2"></i>โปรโมชันพิเศษสำหรับคุณ!</h5>
-            <p class="lead mb-0">{{ sales_offers.report_promotion_text }}</p>
-        </div>
         {% endif %}
 
         <div class="text-center mt-4 no-print">
