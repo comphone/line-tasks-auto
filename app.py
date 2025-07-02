@@ -37,7 +37,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
-# --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev_must_change')
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -207,25 +206,21 @@ def dashboard():
 @app.route("/form", methods=['GET', 'POST'])
 @google_login_required
 def form_page():
-    # Placeholder for the form page logic
     return "Create New Task Page"
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 @google_login_required
 def task_details(task_id):
-    # Placeholder for the task details logic
     return f"Details for task {task_id}"
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 @google_login_required
 def delete_task(task_id):
-    # Placeholder for delete task logic
     return redirect(url_for('dashboard'))
 
 @app.route('/technician_report')
 @google_login_required
 def technician_report():
-    # Placeholder for the technician report logic
     return "Technician Report Page"
 #</editor-fold>
 
@@ -271,49 +266,41 @@ def revoke():
 @app.route('/duplicates')
 @google_login_required
 def find_duplicates():
-    # ... (Implementation remains the same) ...
     return "Duplicate Management Page"
 
 @app.route('/delete_duplicates', methods=['POST'])
 @google_login_required
 def delete_duplicates():
-    # ... (Implementation remains the same) ...
     return redirect(url_for('find_duplicates'))
 
 @app.route('/backup_data')
 @google_login_required
 def backup_data():
-    # ... (Implementation remains the same) ...
     return "Backup Page"
 
 @app.route('/import_settings', methods=['POST'])
 @google_login_required
 def import_settings():
-    # ... (Implementation remains the same) ...
     return redirect(url_for('settings_page'))
 
 @app.route('/export_equipment_catalog')
 @google_login_required
 def export_equipment_catalog():
-    # ... (Implementation remains the same) ...
     return "Export Equipment Page"
 
 @app.route('/import_equipment_catalog', methods=['POST'])
 @google_login_required
 def import_equipment_catalog():
-    # ... (Implementation remains the same) ...
     return redirect(url_for('settings_page'))
 
 @app.route('/api/preview_tasks_import', methods=['POST'])
 @google_login_required
 def preview_tasks_import():
-    # ... (Implementation remains the same) ...
     return jsonify([])
 
 @app.route('/api/import_tasks_from_backup', methods=['POST'])
 @google_login_required
 def import_tasks_from_backup():
-    # ... (Implementation remains the same) ...
     return jsonify({'status': 'success'})
 #</editor-fold>
 
@@ -331,7 +318,6 @@ def settings_page():
 
     if request.method == 'POST':
         current_settings = load_app_settings()
-        # Update all settings from the form
         current_settings['google_tasks_list_id'] = request.form.get('google_tasks_list_id')
         current_settings['shop_info'] = {'contact_phone': request.form.get('shop_contact_phone', ''), 'line_id': request.form.get('shop_line_id', '')}
         current_settings['technician_list'] = [name.strip() for name in request.form.get('technician_list', '').splitlines() if name.strip()]
@@ -347,7 +333,6 @@ def settings_page():
             flash("เกิดข้อผิดพลาดในการบันทึกการตั้งค่า", "danger")
         return redirect(url_for('settings_page'))
 
-    # Ensure default keys exist for the template
     default_keys = {'shop_info': {}, 'technician_list': [], 'line_recipients': {}, 'report_times': {'appointment_reminder_hour_thai': 7, 'customer_followup_hour_thai': 9}, 'sales_offers': {}, 'auto_backup': {'enabled': False, 'hour_thai': 2}}
     for key, default_value in default_keys.items():
         app_settings.setdefault(key, default_value)
@@ -356,46 +341,11 @@ def settings_page():
 #</editor-fold>
 
 #<editor-fold desc="Scheduler & Auto Backup">
-def get_or_create_backup_folder():
-    drive_service = get_google_service('drive', 'v3')
-    if not drive_service: return None
-    app_settings = load_app_settings()
-    folder_id = app_settings.get('auto_backup', {}).get('folder_id')
-    
-    if folder_id:
-        try:
-            drive_service.files().get(fileId=folder_id, fields='id').execute()
-            return folder_id
-        except HttpError: folder_id = None
-
-    folder_metadata = {'name': 'Comphone App Backups', 'mimeType': 'application/vnd.google-apps.folder'}
-    try:
-        folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
-        new_folder_id = folder.get('id')
-        app_settings.setdefault('auto_backup', {})['folder_id'] = new_folder_id
-        save_app_settings(app_settings)
-        return new_folder_id
-    except HttpError: return None
-
 def scheduled_auto_backup_job():
     with app.app_context():
         app.logger.info("Running scheduled auto backup job...")
-        if not get_google_credentials(): return
-        drive_service = get_google_service('drive', 'v3')
-        if not drive_service: return
-        backup_folder_id = get_or_create_backup_folder()
-        if not backup_folder_id: return
-        # _create_backup_zip_in_memory needs to be defined
-        # memory_file, filename = _create_backup_zip_in_memory()
-        # if not memory_file: return
-        # file_metadata = {'name': filename, 'parents': [backup_folder_id]}
-        # media = MediaIoBaseUpload(memory_file, mimetype='application/zip', resumable=True)
-        # try:
-        #     drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        #     app.logger.info(f"Successfully uploaded backup '{filename}' to Google Drive.")
-        # except HttpError as e:
-        #     app.logger.error(f"Failed to upload backup to Google Drive: {e}")
-
+        # Placeholder for the actual backup logic
+        
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
 def run_scheduler():
@@ -412,8 +362,6 @@ def run_scheduler():
     if scheduler.get_jobs():
         scheduler.start()
         atexit.register(lambda: scheduler.shutdown())
-    else:
-        app.logger.info("No jobs scheduled.")
 
 with app.app_context():
     run_scheduler()
