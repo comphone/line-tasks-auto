@@ -221,7 +221,7 @@
                     {% else %}
                     <div class="alert alert-warning">กรุณาเพิ่มรายชื่อช่างในหน้า "ตั้งค่า" ก่อน</div>
                     {% endif %}
-
+                    
                     <div class="mb-3">
                         <label for="work_summary" class="form-label">สรุปการทำงาน</label>
                         <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงาน..."></textarea>
@@ -271,11 +271,11 @@
                                     <hr>
                                     <div class="timeline-body">
                                         <p class="summary-text">{{ report.work_summary or 'ไม่มีสรุปการทำงาน' }}</p>
-
+                                        
                                         {% if report.equipment_used_display and report.equipment_used_display != 'N/A' %}
                                             <p class="mt-3"><strong><i class="fas fa-tools"></i> อุปกรณ์:</strong> <span class="text-muted">{{ report.equipment_used_display|replace('\n', ', ') }}</span></p>
                                         {% endif %}
-
+                                        
                                         {% if report.attachment_urls %}
                                             <p class="mt-3"><strong><i class="fas fa-paperclip"></i> ไฟล์แนบ:</strong><br>
                                                 {% for url in report.attachment_urls %}
@@ -327,10 +327,10 @@
                 {% else %}
                     <p><strong>เชื่อมต่อ LINE:</strong> <span class="badge bg-secondary">ยังไม่ได้เชื่อมต่อ</span></p>
                 {% endif %}
-
+                
                 {% if task.customer_feedback.feedback_type %}
                     <hr>
-                    <p class="mb-1"><strong>การประเมินล่าสุด:</strong>
+                    <p class="mb-1"><strong>การประเมินล่าสุด:</strong> 
                         {% if task.customer_feedback.feedback_type == 'very_satisfied' %}
                             <span class="text-success fw-bold">พอใจมาก</span>
                         {% elif task.customer_feedback.feedback_type == 'satisfied' %}
@@ -408,13 +408,12 @@
             });
 
             // Populate selected technicians from history if available
-            // This assumes the latest_report has the 'technicians' key
             const technicianSelect = document.getElementById('technicians');
-            if (technicianSelect && {{ task.tech_reports_history | length > 0 | tojson }}) { // Convert Python bool to JS bool
-                const latestReport = {{ task.tech_reports_history[0] | tojson }}; // Get the most recent report
-                const selectedTechs = latestReport.technicians || [];
+            // pre_selected_technicians is passed from Flask context
+            const preSelectedTechs = {{ pre_selected_technicians | tojson | safe }}; 
+            if (technicianSelect && preSelectedTechs && preSelectedTechs.length > 0) {
                 for (let i = 0; i < technicianSelect.options.length; i++) {
-                    if (selectedTechs.includes(technicianSelect.options[i].value)) {
+                    if (preSelectedTechs.includes(technicianSelect.options[i].value)) {
                         technicianSelect.options[i].selected = true;
                     }
                 }
@@ -433,15 +432,42 @@
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
                                 // UPDATED: Corrected Google Maps URL format for better compatibility
-                                locationInput.value = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                                locationInput.value = `http://maps.google.com/maps?q=${lat},${lon}`;
                                 statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                                statusText.classList.remove('text-danger');
+                                statusText.classList.add('text-success');
                             },
                             (error) => {
-                                statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้';
+                                console.error("Geolocation error:", error);
+                                let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                                switch(error.code) {
+                                    case error.PERMISSION_DENIED:
+                                        errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. โปรดอนุญาตในตั้งค่าเบราว์เซอร์.";
+                                        break;
+                                    case error.POSITION_UNAVAILABLE:
+                                        errorMessage = "ไม่สามารถระบุตำแหน่งได้. สัญญาณ GPS อ่อนแอ?";
+                                        break;
+                                    case error.TIMEOUT:
+                                        errorMessage = "ค้นหาตำแหน่งใช้เวลานานเกินไป.";
+                                        break;
+                                    default:
+                                        errorMessage = `เกิดข้อผิดพลาด: ${error.message}`;
+                                        break;
+                                }
+                                statusText.textContent = errorMessage;
+                                statusText.classList.remove('text-success');
+                                statusText.classList.add('text-danger');
+                            },
+                            {
+                                enableHighAccuracy: true,
+                                timeout: 10000, // 10 seconds
+                                maximumAge: 0 // No cached position
                             }
                         );
                     } else {
                         statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                        statusText.classList.remove('text-success');
+                        statusText.classList.add('text-danger');
                     }
                 });
             }
