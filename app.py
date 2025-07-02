@@ -16,7 +16,7 @@ load_dotenv()
 
 from flask import Flask, request, render_template, redirect, url_for, abort, send_from_directory, flash, jsonify, Response, session, g
 from werkzeug.utils import secure_filename
-from cachetools import cached, TTLCache
+from cachetools import TTLCache
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -31,12 +31,13 @@ import base64
 
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import (MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, BubbleContainer, CarouselContainer, BoxComponent, TextComponent, ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton)
+from linebot.models import (MessageEvent, TextMessage, TextSendMessage)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
+# --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev_must_change')
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -55,21 +56,16 @@ THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
-LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 line_bot_api = None
-handler = None
 if LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET:
     line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
     handler = WebhookHandler(LINE_CHANNEL_SECRET)
-else:
-    app.logger.warning("LINE Bot credentials are not set.")
 
 #<editor-fold desc="Settings & Auth">
 def load_app_settings():
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
         except (json.JSONDecodeError, IOError): pass
     return {}
 
@@ -207,7 +203,30 @@ def dashboard():
 
     final_tasks.sort(key=lambda x: (x.get('status') != 'needsAction', x.get('due') is None, x.get('due', '')))
     return render_template("tasks_summary.html", tasks=final_tasks, summary=stats, search_query=search_query, status_filter=status_filter)
-# ... (Other core routes like /form, /task/<id>, etc. would go here) ...
+
+@app.route("/form", methods=['GET', 'POST'])
+@google_login_required
+def form_page():
+    # Placeholder for the form page logic
+    return "Create New Task Page"
+
+@app.route('/task/<task_id>', methods=['GET', 'POST'])
+@google_login_required
+def task_details(task_id):
+    # Placeholder for the task details logic
+    return f"Details for task {task_id}"
+
+@app.route('/delete_task/<task_id>', methods=['POST'])
+@google_login_required
+def delete_task(task_id):
+    # Placeholder for delete task logic
+    return redirect(url_for('dashboard'))
+
+@app.route('/technician_report')
+@google_login_required
+def technician_report():
+    # Placeholder for the technician report logic
+    return "Technician Report Page"
 #</editor-fold>
 
 #<editor-fold desc="OAuth 2.0 Routes">
@@ -307,8 +326,8 @@ def settings_page():
         if service:
             try:
                 task_lists = service.tasklists().list().execute().get('items', [])
-            except Exception:
-                flash("ไม่สามารถดึงรายการ Google Tasks ได้", "danger")
+            except Exception as e:
+                flash(f"ไม่สามารถดึงรายการ Google Tasks ได้: {e}", "danger")
 
     if request.method == 'POST':
         current_settings = load_app_settings()
@@ -366,15 +385,16 @@ def scheduled_auto_backup_job():
         if not drive_service: return
         backup_folder_id = get_or_create_backup_folder()
         if not backup_folder_id: return
-        memory_file, filename = _create_backup_zip_in_memory()
-        if not memory_file: return
-        file_metadata = {'name': filename, 'parents': [backup_folder_id]}
-        media = MediaIoBaseUpload(memory_file, mimetype='application/zip', resumable=True)
-        try:
-            drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-            app.logger.info(f"Successfully uploaded backup '{filename}' to Google Drive.")
-        except HttpError as e:
-            app.logger.error(f"Failed to upload backup to Google Drive: {e}")
+        # _create_backup_zip_in_memory needs to be defined
+        # memory_file, filename = _create_backup_zip_in_memory()
+        # if not memory_file: return
+        # file_metadata = {'name': filename, 'parents': [backup_folder_id]}
+        # media = MediaIoBaseUpload(memory_file, mimetype='application/zip', resumable=True)
+        # try:
+        #     drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        #     app.logger.info(f"Successfully uploaded backup '{filename}' to Google Drive.")
+        # except HttpError as e:
+        #     app.logger.error(f"Failed to upload backup to Google Drive: {e}")
 
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
@@ -403,4 +423,3 @@ if __name__ == '__main__':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
-
