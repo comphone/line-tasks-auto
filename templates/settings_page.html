@@ -5,13 +5,52 @@
 {% block content %}
 <h1 class="mb-4">ตั้งค่าระบบ</h1>
 
-<form action="{{ url_for('settings_page') }}" method="POST">
+<!-- Section 1: Google Account Connection -->
+<div class="card mb-4 border-primary">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="fab fa-google me-2"></i>การเชื่อมต่อบัญชี Google</h5>
+    </div>
+    <div class="card-body">
+        {% if google_authed %}
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle me-2"></i>เชื่อมต่อกับบัญชี Google เรียบร้อยแล้ว
+            </div>
+            <a href="{{ url_for('revoke') }}" class="btn btn-outline-danger float-end" onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการยกเลิกการเชื่อมต่อ? การตั้งค่าทั้งหมดจะถูกลบ')"><i class="fas fa-unlink me-2"></i>ยกเลิกการเชื่อมต่อ</a>
+            <p class="text-muted">คุณได้เชื่อมต่อกับ Google แล้ว สามารถตั้งค่าส่วนอื่นๆ ของแอปพลิเคชันได้</p>
+        {% else %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>ยังไม่ได้เชื่อมต่อกับบัญชี Google
+            </div>
+            <p>กรุณาเชื่อมต่อกับบัญชี Google ของคุณเพื่อเริ่มใช้งานแอปพลิเคชัน</p>
+            <a href="{{ url_for('auth_landing') }}" class="btn btn-primary"><i class="fab fa-google me-2"></i>เชื่อมต่อกับ Google</a>
+        {% endif %}
+    </div>
+</div>
 
-    <div class="card mb-4 border-primary">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="fas fa-store me-2"></i>ตั้งค่าหลักของร้าน</h5>
+<!-- All other settings will only be shown if authenticated -->
+{% if google_authed %}
+<form action="{{ url_for('settings_page') }}" method="POST" id="settingsForm">
+    
+    <!-- Section 2: Core Business & Automation Settings -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>การตั้งค่าหลักและระบบอัตโนมัติ</h5>
         </div>
         <div class="card-body">
+            <!-- Google Tasks List Selection -->
+            <div class="mb-3">
+                <label for="google_tasks_list_id" class="form-label"><strong>เลือก Google Tasks List ที่ต้องการใช้:</strong> <span class="text-danger">*</span></label>
+                <select class="form-select" id="google_tasks_list_id" name="google_tasks_list_id" required>
+                    <option value="">-- กรุณาเลือกรายการ --</option>
+                    {% for list in task_lists %}
+                        <option value="{{ list.id }}" {% if list.id == selected_list_id %}selected{% endif %}>{{ list.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <hr>
+
+            <!-- Shop Info -->
+            <h6 class="mt-4">ตั้งค่าหลักของร้าน</h6>
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label for="shop_contact_phone" class="form-label">เบอร์โทรศัพท์ร้านค้า</label>
@@ -22,19 +61,16 @@
                     <input type="text" class="form-control" id="shop_line_id" name="shop_line_id" value="{{ settings.shop_info.line_id }}">
                 </div>
             </div>
-            <hr>
+
+            <!-- Technician List -->
             <div class="mb-3">
                 <label for="technician_list" class="form-label">รายชื่อช่าง (1 ชื่อต่อ 1 บรรทัด)</label>
-                <textarea class="form-control" id="technician_list" name="technician_list" rows="5" placeholder="ช่าง A&#10;ช่าง B&#10;ช่าง C">{{ settings.technician_list | join('\n') }}</textarea>
-                <small class="form-text text-muted">รายชื่อเหล่านี้จะปรากฏในหน้าบันทึกรายละเอียดงาน</small>
+                <textarea class="form-control" id="technician_list" name="technician_list" rows="4">{{ settings.technician_list | join('\n') }}</textarea>
             </div>
-        </div>
-    </div>
+            <hr>
 
-    <div class="card mb-4">
-        <div class="card-header"><i class="fas fa-robot me-2"></i>ระบบอัตโนมัติและการแจ้งเตือน</div>
-        <div class="card-body">
-            <h6 class="card-title">ตั้งค่าการแจ้งเตือน LINE</h6>
+            <!-- Automation Settings -->
+            <h6 class="mt-4">ระบบอัตโนมัติและการแจ้งเตือน</h6>
             <div class="mb-3">
                 <label for="admin_group_id" class="form-label">LINE Admin Group/User ID</label>
                 <input type="text" class="form-control" id="admin_group_id" name="admin_group_id" value="{{ settings.line_recipients.admin_group_id }}">
@@ -43,8 +79,6 @@
                 <label for="technician_group_id" class="form-label">LINE Technician Group ID</label>
                 <input type="text" class="form-control" id="technician_group_id" name="technician_group_id" value="{{ settings.line_recipients.technician_group_id }}">
             </div>
-             <hr>
-            <h6 class="card-title mt-3">ตั้งเวลาทำงานอัตโนมัติ</h6>
             <div class="row">
                 <div class="col-md-4 mb-3"> 
                     <label for="appointment_reminder_hour" class="form-label">เวลาแจ้งเตือนนัดหมาย (0-23)</label>
@@ -54,16 +88,13 @@
                     <label for="customer_followup_hour" class="form-label">เวลาติดตามลูกค้า (0-23)</label>
                     <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour" value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23">
                 </div>
-                <div class="col-md-4 mb-3"> 
-                    <label for="outstanding_report_hour" class="form-label">เวลารายงานงานค้าง (0-23)</label>
-                    <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour" value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23">
-                </div>
             </div>
         </div>
     </div>
 
-    <div class="card mb-4 border-warning">
-        <div class="card-header bg-warning text-dark">
+    <!-- Section 3: Marketing & Sales Settings -->
+    <div class="card mb-4">
+        <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-bullhorn me-2"></i>การตลาดและส่งเสริมการขาย</h5>
         </div>
         <div class="card-body">
@@ -89,63 +120,67 @@
         </div>
     </div>
 
-    <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด</button>
+    <button type="submit" class="btn btn-success btn-lg w-100"><i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด</button>
 </form>
 
-<div class="accordion" id="systemManagementAccordion">
+<!-- Section 4: Data Management -->
+<div class="accordion mt-4" id="dataManagementAccordion">
     <div class="accordion-item">
-        <h2 class="accordion-header" id="headingOne">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
-                <i class="fas fa-database me-2"></i>จัดการข้อมูลและระบบ
+        <h2 class="accordion-header" id="headingData">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseData" aria-expanded="false" aria-controls="collapseData">
+                <i class="fas fa-database me-2"></i><strong>เครื่องมือจัดการข้อมูลขั้นสูง</strong>
             </button>
         </h2>
-        <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#systemManagementAccordion">
+        <div id="collapseData" class="accordion-collapse collapse" aria-labelledby="headingData" data-bs-parent="#dataManagementAccordion">
             <div class="accordion-body">
                 <div class="row">
-                    <div class="col-lg-6 mb-4">
+                    <!-- Duplicate Management -->
+                    <div class="col-md-6 mb-3">
+                        <a href="{{ url_for('find_duplicates') }}" class="btn btn-info w-100 h-100 d-flex flex-column justify-content-center p-3">
+                            <i class="fas fa-copy fa-2x mb-2"></i>
+                            <span>จัดการข้อมูลซ้ำซ้อน</span>
+                        </a>
+                    </div>
+                    <!-- Backup & Restore -->
+                    <div class="col-md-6 mb-3">
                         <div class="card h-100">
-                            <div class="card-header"><i class="fas fa-archive me-2"></i>สำรองและกู้คืนข้อมูล</div>
                             <div class="card-body">
-                                <p><strong>สำรองข้อมูล (แนะนำ):</strong> กดปุ่มเพื่อดาวน์โหลดไฟล์สำรองข้อมูลทั้งหมดของระบบ (.zip) มาเก็บไว้ในคอมพิวเตอร์ของคุณ</p>
-                                <a href="{{ url_for('backup_data') }}" class="btn btn-warning mb-3 w-100"><i class="fas fa-download me-2"></i>ดาวน์โหลด Backup ทั้งหมด</a>
-                                <hr>
-                                <p><strong>กู้คืนการตั้งค่า:</strong> นำเข้าไฟล์ตั้งค่า (`settings.json`) เพื่อกู้คืนการตั้งค่า</p>
+                                <h6 class="card-title">สำรองและกู้คืนการตั้งค่า</h6>
+                                <a href="{{ url_for('backup_data') }}" class="btn btn-secondary btn-sm w-100 mb-2">ดาวน์โหลด Backup การตั้งค่า</a>
                                 <form action="{{ url_for('import_settings') }}" method="post" enctype="multipart/form-data">
                                     <div class="input-group">
-                                        <input type="file" class="form-control" id="settings_file" name="settings_file" required accept=".json">
-                                        <button type="submit" class="btn btn-success"><i class="fas fa-upload me-2"></i>นำเข้า</button>
+                                        <input type="file" class="form-control form-control-sm" name="settings_file" required accept=".json">
+                                        <button type="submit" class="btn btn-sm btn-outline-success">นำเข้า</button>
                                     </div>
                                 </form>
                             </div>
                         </div>
                     </div>
-                    <div class="col-lg-6 mb-4">
+                     <!-- Equipment Catalog -->
+                    <div class="col-md-6 mb-3">
                         <div class="card h-100">
-                            <div class="card-header"><i class="fas fa-boxes me-2"></i>จัดการแคตตาล็อกอุปกรณ์</div>
                             <div class="card-body">
-                                <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-success mb-3 w-100"><i class="fas fa-file-excel me-2"></i>ส่งออกเป็น Excel</a>
-                                <hr>
+                                <h6 class="card-title">จัดการแคตตาล็อกอุปกรณ์</h6>
+                                <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-secondary btn-sm w-100 mb-2">ส่งออกเป็น Excel</a>
                                 <form action="{{ url_for('import_equipment_catalog') }}" method="post" enctype="multipart/form-data">
-                                    <div class="mb-2">
-                                        <label for="excel_file" class="form-label">นำเข้าไฟล์ Excel (.xlsx)</label>
-                                        <input type="file" class="form-control" id="excel_file" name="excel_file" required accept=".xlsx, .xls">
+                                    <div class="input-group">
+                                        <input type="file" class="form-control form-control-sm" name="excel_file" required accept=".xlsx, .xls">
+                                        <button type="submit" class="btn btn-sm btn-outline-success">นำเข้า</button>
                                     </div>
-                                    <button type="submit" class="btn btn-success w-100"><i class="fas fa-file-import me-2"></i>นำเข้า</button>
                                 </form>
                             </div>
                         </div>
                     </div>
-                    <div class="col-lg-6 mb-4">
-                        <div class="card h-100 border-danger">
-                            <div class="card-header bg-danger text-white"><i class="fas fa-file-import me-2"></i>เครื่องมือนำเข้าข้อมูลงานเก่า</div>
+                    <!-- Old Task Importer -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
                             <div class="card-body">
-                                <p class="text-muted">ใช้สำหรับย้ายข้อมูลงานจากระบบเก่ามายังระบบใหม่ **(ทำครั้งเดียวเท่านั้น)**</p>
+                                <h6 class="card-title">เครื่องมือนำเข้าข้อมูลงานเก่า</h6>
                                 <form id="importTasksForm" method="post" enctype="multipart/form-data">
-                                    <div class="mb-2">
-                                        <label for="tasks_backup_file" class="form-label">เลือกไฟล์ `tasks_backup.json`</label>
-                                        <input type="file" class="form-control" id="tasks_backup_file" name="tasks_backup_file" required accept=".json">
+                                    <div class="input-group">
+                                        <input type="file" class="form-control form-control-sm" name="tasks_backup_file" required accept=".json">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">ตรวจสอบข้อมูล</button>
                                     </div>
-                                    <button type="submit" class="btn btn-danger w-100"><i class="fas fa-search me-2"></i>ตรวจสอบข้อมูลก่อนนำเข้า</button>
                                 </form>
                             </div>
                         </div>
@@ -155,7 +190,9 @@
         </div>
     </div>
 </div>
+{% endif %}
 
+<!-- Import Tasks Preview Modal -->
 <div class="modal fade" id="importPreviewModal" tabindex="-1" aria-labelledby="importPreviewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -169,16 +206,14 @@
                     <table class="table table-bordered table-sm">
                         <thead class="table-light">
                             <tr>
-                                <th style="width: 5%;">#</th>
-                                <th style="width: 20%;">ชื่องาน (Title)</th>
-                                <th style="width: 15%;">ลูกค้า</th>
-                                <th style="width: 10%;">สถานะ</th>
-                                <th style="width: 15%;">วันที่นัดหมาย</th>
-                                <th style="width: 35%;">รายละเอียดเพิ่มเติม (Notes ที่เหลือ)</th>
+                                <th>#</th>
+                                <th>ชื่องาน</th>
+                                <th>ลูกค้า</th>
+                                <th>สถานะ</th>
+                                <th>วันที่นัดหมาย</th>
                             </tr>
                         </thead>
-                        <tbody id="previewTableBody">
-                            </tbody>
+                        <tbody id="previewTableBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -189,35 +224,29 @@
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block body_extra %}
 <script>
+// Your existing JavaScript for the import modal can be placed here
+// This ensures the functionality for the "Old Task Importer" continues to work
 document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(function() {
-        const importForm = document.getElementById('importTasksForm');
-        const fileInput = document.getElementById('tasks_backup_file');
-        const confirmBtn = document.getElementById('confirmImportBtn');
-        let previewModalInstance = null;
+    const importForm = document.getElementById('importTasksForm');
+    if (importForm) {
+        const fileInput = importForm.querySelector('input[type="file"]');
+        let previewModalInstance = new bootstrap.Modal(document.getElementById('importPreviewModal'));
         const previewTableBody = document.getElementById('previewTableBody');
         const taskCountSpan = document.getElementById('taskCount');
+        const confirmBtn = document.getElementById('confirmImportBtn');
         let tasksToImport = [];
 
-        if (typeof bootstrap !== 'undefined') {
-            previewModalInstance = new bootstrap.Modal(document.getElementById('importPreviewModal'));
-        } else {
-            console.error('Bootstrap is not defined. Modal functionality will be affected.');
-            return; 
-        }
-
-        importForm.addEventListener('submit', function(event) {
-            event.preventDefault();
-            
+        importForm.addEventListener('submit', function(e) {
+            e.preventDefault();
             if (!fileInput.files.length) {
                 alert('กรุณาเลือกไฟล์');
                 return;
             }
-
             const formData = new FormData();
             formData.append('tasks_backup_file', fileInput.files[0]);
 
@@ -231,69 +260,48 @@ document.addEventListener('DOMContentLoaded', function() {
                     alert('เกิดข้อผิดพลาด: ' + data.error);
                     return;
                 }
-                
                 tasksToImport = data;
                 taskCountSpan.textContent = tasksToImport.length;
                 previewTableBody.innerHTML = '';
-
                 tasksToImport.forEach((task, index) => {
-                    let statusBadge = task.status === 'completed' 
-                        ? '<span class="badge bg-success">เสร็จแล้ว</span>' 
-                        : '<span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>';
-
                     const row = `<tr>
-                                    <td>${index + 1}</td>
-                                    <td>${task.title || ''}</td>
-                                    <td>${task.customer_name || ''}</td>
-                                    <td>${statusBadge}</td>
-                                    <td>${task.due_date_formatted || '-'}</td>
-                                    <td><pre style="white-space: pre-wrap; word-break: break-all;">${task.cleaned_notes || ''}</pre></td>
-                                 </tr>`;
+                        <td>${index + 1}</td>
+                        <td>${task.title || ''}</td>
+                        <td>${task.customer_name || ''}</td>
+                        <td>${task.status}</td>
+                        <td>${task.due_date_formatted || '-'}</td>
+                    </tr>`;
                     previewTableBody.insertAdjacentHTML('beforeend', row);
                 });
-
-                if (previewModalInstance) {
-                    previewModalInstance.show();
-                } else {
-                    alert('เกิดข้อผิดพลาดในการแสดงหน้าต่างตรวจสอบข้อมูล');
-                }
+                previewModalInstance.show();
             })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อตรวจสอบไฟล์');
-            });
+            .catch(error => alert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error));
         });
 
         confirmBtn.addEventListener('click', function() {
             confirmBtn.disabled = true;
-            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังนำเข้า...';
-
+            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังนำเข้า...';
             fetch("{{ url_for('import_tasks_from_backup') }}", {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(tasksToImport)
             })
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    if(previewModalInstance) previewModalInstance.hide();
-                    window.location.reload();
+                    previewModalInstance.hide();
+                    window.location.reload(); // Reload to see the flash message
                 } else {
                     alert('เกิดข้อผิดพลาดในการนำเข้า: ' + data.message);
                 }
             })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อนำเข้าข้อมูล');
-            })
+            .catch(error => alert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error))
             .finally(() => {
                 confirmBtn.disabled = false;
                 confirmBtn.innerHTML = 'ยืนยันการนำเข้า';
             });
         });
-    }, 100);
+    }
 });
 </script>
 {% endblock %}
