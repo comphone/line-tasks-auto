@@ -3,6 +3,7 @@
 {% block title %}จัดการงาน: {{ task.title }}{% endblock %}
 
 {% block head_extra %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <style>
     /* Custom CSS for Timeline */
     .timeline {
@@ -133,11 +134,21 @@
         margin-right: 5px;
         margin-bottom: 5px;
     }
+    /* เพิ่มเติม CSS เพื่อจัดระเบียบฟอร์ม */
+    .form-section-header {
+        background-color: #e9ecef;
+        padding: 0.75rem 1.25rem;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid rgba(0,0,0,.125);
+        border-top-left-radius: 0.25rem;
+        border-top-right-radius: 0.25rem;
+        font-weight: bold;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<form action="{{ url_for('task_details', task_id=task.id) }}" method="POST" enctype="multipart/form-data">
+<form action="{{ url_for('task_details', task_id=task.id) }}" method="POST" enctype="multipart/form-data" class="needs-validation" novalidate>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">รายละเอียดและจัดการงาน</h1>
         <div>
@@ -150,7 +161,10 @@
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-file-alt me-2"></i>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</div>
                 <div class="card-body">
-                    <textarea class="form-control" id="task_title" name="task_title" rows="6" required>{{ task.title }}</textarea>
+                    <textarea class="form-control" id="task_title" name="task_title" rows="6" required autofocus>{{ task.title }}</textarea>
+                    <div class="invalid-feedback">
+                        กรุณากรอกรายละเอียดงาน
+                    </div>
                 </div>
             </div>
 
@@ -164,7 +178,7 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="customer_phone" class="form-label">เบอร์โทรศัพท์</label>
-                            <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone or '' }}">
+                            <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone or '' }}" placeholder="เช่น 08x-xxx-xxxx">
                         </div>
                     </div>
                     <div class="mb-3">
@@ -174,9 +188,9 @@
                     <div class="mb-3">
                         <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
                         <div class="input-group">
-                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่งปัจจุบัน">
+                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}" placeholder="กดปุ่มเพื่อแชร์ตำแหน่งปัจจุบัน">
                             <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
-                                <i class="fas fa-location-arrow"></i>
+                                <i class="fas fa-location-arrow"></i> แชร์ตำแหน่ง
                             </button>
                         </div>
                         <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
@@ -206,17 +220,20 @@
             </div>
 
             <div class="card border-success mb-4">
-                <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>สรุปการทำงานและอุปกรณ์ที่ใช้</div>
+                <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>บันทึกการทำงาน / อุปกรณ์ที่ใช้</div>
                 <div class="card-body">
                     {% if technician_list %}
                     <div class="mb-3">
                         <label for="technicians" class="form-label"><strong>ช่างผู้รับผิดชอบ</strong> <span class="text-danger">*</span></label>
                         <select class="form-select" id="technicians" name="technicians" multiple required>
                             {% for tech in technician_list %}
-                            <option value="{{ tech }}">{{ tech }}</option>
+                            <option value="{{ tech }}" {% if tech in pre_selected_technicians %}selected{% endif %}>{{ tech }}</option>
                             {% endfor %}
                         </select>
                         <small class="form-text text-muted">กด Ctrl (หรือ Cmd บน Mac) ค้างไว้เพื่อเลือกหลายคน</small>
+                        <div class="invalid-feedback">
+                            กรุณาเลือกช่างผู้รับผิดชอบงาน
+                        </div>
                     </div>
                     {% else %}
                     <div class="alert alert-warning">กรุณาเพิ่มรายชื่อช่างในหน้า "ตั้งค่า" ก่อน</div>
@@ -224,18 +241,20 @@
                     
                     <div class="mb-3">
                         <label for="work_summary" class="form-label">สรุปการทำงาน</label>
-                        <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงาน..."></textarea>
+                        <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงานล่าสุด..."></textarea>
                     </div>
                     <div class="mb-3">
                         <label for="equipment_used" class="form-label">อุปกรณ์ที่ใช้</label>
-                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="4" list="equipment_datalist" placeholder="เช่น สาย LAN, 10 เมตร"></textarea>
+                        <textarea class="form-control" id="equipment_used" name="equipment_used" rows="4" list="equipment_datalist" placeholder="เช่น สาย LAN, 10 เมตร&#10;จอภาพ, 1 ชุด"></textarea>
                         <datalist id="equipment_datalist">
                             {% for item in common_equipment_items %}<option value="{{ item }}">{% endfor %}
                         </datalist>
+                        <div class="form-text">ใส่ชื่ออุปกรณ์และจำนวน (เช่น "สาย LAN, 10 เมตร") แต่ละรายการขึ้นบรรทัดใหม่.</div>
                     </div>
                     <div class="mb-3">
-                        <label for="files" class="form-label">แนบไฟล์</label>
-                        <input type="file" class="form-control" id="files" name="files[]" multiple>
+                        <label for="files" class="form-label">แนบไฟล์ (รูปภาพ)</label>
+                        <input type="file" class="form-control" id="files" name="files[]" multiple accept="image/*">
+                        <div class="form-text">รองรับไฟล์ PNG, JPG, JPEG, GIF</div>
                     </div>
                 </div>
             </div>
@@ -341,11 +360,8 @@
                             <span>{{ task.customer_feedback.feedback_type }}</span>
                         {% endif %}
                     </p>
-                    {% if task.customer_feedback.feedback_date %}
-                         <p class="text-muted small">เมื่อ: {{ task.customer_feedback.feedback_date }}</p>
-                    {% endif %}
-
                     {% if task.customer_feedback.problem_description %}
+                         <p class="text-muted small">เมื่อ: {{ task.customer_feedback.feedback_date }}</p>
                         <p class="mt-2"><strong>รายละเอียดปัญหาที่แจ้ง:</strong><br><span class="text-danger" style="white-space: pre-wrap;">{{ task.customer_feedback.problem_description }}</span></p>
                     {% endif %}
                 {% else %}
@@ -432,6 +448,7 @@
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
                                 // UPDATED: Corrected Google Maps URL format for better compatibility
+                                // This format is common for opening maps directly from coordinates
                                 locationInput.value = `http://maps.google.com/maps?q=${lat},${lon}`;
                                 statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
                                 statusText.classList.remove('text-danger');
@@ -471,6 +488,19 @@
                     }
                 });
             }
+
+            // Bootstrap form validation
+            var forms = document.querySelectorAll('.needs-validation');
+            Array.prototype.slice.call(forms)
+                .forEach(function (form) {
+                    form.addEventListener('submit', function (event) {
+                        if (!form.checkValidity()) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                        form.classList.add('was-validated');
+                    }, false);
+                });
         });
     </script>
 {% endblock %}

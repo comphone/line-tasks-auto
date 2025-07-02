@@ -1159,28 +1159,132 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
-@app.route('/api/preview_tasks_import', methods=['POST'])
-def preview_tasks_import():
-    if 'json_file' not in request.files or not request.files['json_file'].filename:
-        return jsonify({"status": "error", "message": "No JSON file selected."}), 400
+# --- DELETED: Old /api/preview_tasks_import route ---
+# @app.route('/api/preview_tasks_import', methods=['POST'])
+# def preview_tasks_import():
+#     # This route is now replaced by /api/preview_backup_file
+#     pass
+# --- END DELETED ---
 
-    file = request.files['json_file']
-    if file and file.filename.endswith('.json'):
-        try:
-            data = json.load(file.stream)
+# --- DELETED: Old /api/import_tasks_from_backup route ---
+# @app.route('/api/import_tasks_from_backup', methods=['POST'])
+# def import_tasks_from_backup():
+#     # This route is now replaced by /api/import_backup_file
+#     pass
+# --- END DELETED ---
+
+
+# NEW: Combined import route for both tasks and settings JSON files
+@app.route('/api/import_backup_file', methods=['POST'])
+def import_backup_file():
+    if 'backup_file' not in request.files or not request.files['backup_file'].filename:
+        return jsonify({"status": "error", "message": "No backup file selected."}), 400
+
+    file = request.files['backup_file']
+    file_type = request.form.get('file_type') # 'tasks_json' or 'settings_json'
+
+    if file_type not in ['tasks_json', 'settings_json']:
+        return jsonify({"status": "error", "message": "Invalid file type specified."}), 400
+
+    if not file.filename.endswith('.json'):
+        return jsonify({"status": "error", "message": "Only JSON files are allowed for import."}), 400
+
+    try:
+        data = json.load(file.stream)
+
+        if file_type == 'tasks_json':
             if not isinstance(data, list):
-                return jsonify({"status": "error", "message": "JSON file content is not a list of tasks (expected an array of task objects)."}), 400
+                return jsonify({"status": "error", "message": "JSON file content is not a list of tasks."}), 400
 
+            service = get_google_tasks_service()
+            if not service:
+                return jsonify({"status": "error", "message": "Could not connect to Google Tasks service. Check credentials."}), 500
+
+            imported_count = 0
+            skipped_count = 0
+            for task_data in data:
+                try:
+                    # Remove Google-specific read-only fields
+                    read_only_fields = ['id', 'kind', 'selfLink', 'position', 'etag', 'updated']
+                    for field in read_only_fields:
+                        task_data.pop(field, None)
+
+                    if task_data.get('status') not in ['needsAction', 'completed']:
+                        task_data['status'] = 'needsAction'
+
+                    for date_field in ['due', 'completed']:
+                        if date_field in task_data and task_data[date_field]:
+                            try:
+                                dt_obj = date_parse(task_data[date_field])
+                                task_data[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                            except Exception as e:
+                                app.logger.warning(f"Could not parse {date_field} date for task '{task_data.get('title')}': {e}. Skipping {date_field}.")
+                                task_data.pop(date_field, None)
+                    
+                    if not task_data.get('title'):
+                        app.logger.warning(f"Skipping task due to missing title: {task_data}")
+                        skipped_count += 1
+                        continue
+
+                    service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_data).execute()
+                    imported_count += 1
+                except HttpError as e:
+                    app.logger.error(f"Error importing task '{task_data.get('title', 'N/A')}': {e.uri} - {e.content.decode()}", exc_info=True)
+                    skipped_count += 1
+                except Exception as e:
+                    app.logger.error(f"Unexpected error processing task '{task_data.get('title', 'N/A')}': {e}", exc_info=True)
+                    skipped_count += 1
+            cache.clear()
+            return jsonify({"status": "success", "message": f"นำเข้างานสำเร็จ: {imported_count} งาน, ข้าม: {skipped_count} งาน"})
+
+        elif file_type == 'settings_json':
+            if not isinstance(data, dict):
+                return jsonify({"status": "error", "message": "JSON file content is not a settings object."}), 400
+            
+            if save_app_settings(data):
+                run_scheduler() # Reconfigure scheduler with new settings
+                cache.clear()
+                return jsonify({"status": "success", "message": "นำเข้าการตั้งค่าเรียบร้อยแล้ว!"})
+            else:
+                return jsonify({"status": "error", "message": "เกิดข้อผิดพลาดในการบันทึกการตั้งค่าที่นำเข้า"}), 500
+
+    except json.JSONDecodeError:
+        return jsonify({"status": "error", "message": "ไฟล์ JSON ไม่ถูกต้อง"}), 400
+    except Exception as e:
+        app.logger.error(f"Error during import: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาดในการนำเข้า: {e}"}), 500
+
+# NEW: Combined preview route for both tasks and settings
+@app.route('/api/preview_backup_file', methods=['POST'])
+def preview_backup_file():
+    if 'backup_file' not in request.files or not request.files['backup_file'].filename:
+        return jsonify({"status": "error", "message": "No backup file selected."}), 400
+
+    file = request.files['backup_file']
+    file_type = request.form.get('file_type')
+
+    if file_type not in ['tasks_json', 'settings_json']:
+        return jsonify({"status": "error", "message": "Invalid file type specified."}), 400
+
+    if not file.filename.endswith('.json'):
+        return jsonify({"status": "error", "message": "Only JSON files are allowed for preview."}), 400
+
+    try:
+        data = json.load(file.stream)
+
+        if file_type == 'tasks_json':
+            if not isinstance(data, list):
+                return jsonify({"status": "error", "message": "JSON file content is not a list of tasks."}), 400
+            
             task_count = len(data)
             example_tasks = []
-            for i, task in enumerate(data[:5]): # Show first 5 tasks as example
+            for i, task in enumerate(data[:5]):
                 parsed_task_dates = {'due_formatted': 'N/A'}
                 if 'due' in task and task['due']:
                     try:
                         parsed_task_dates = parse_google_task_dates(task)
                     except Exception:
-                        pass # Ignore parsing errors for preview, just show N/A
-
+                        pass
                 example_tasks.append({
                     'id': task.get('id', 'N/A'),
                     'title': task.get('title', 'No Title'),
@@ -1191,86 +1295,35 @@ def preview_tasks_import():
             return jsonify({
                 "status": "success",
                 "message": f"พบ {task_count} งานในไฟล์. แสดงตัวอย่าง {len(example_tasks)} งานแรก.",
+                "type": "tasks",
                 "task_count": task_count,
                 "example_tasks": example_tasks
             })
-        except json.JSONDecodeError:
-            return jsonify({"status": "error", "message": "ไฟล์ JSON ไม่ถูกต้อง หรือไม่สามารถอ่านได้"}), 400
-        except Exception as e:
-            app.logger.error(f"Error previewing tasks import: {e}", exc_info=True)
-            return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาดในการดูตัวอย่าง: {e}"}), 500
-    else:
-        return jsonify({"status": "error", "message": "รองรับเฉพาะไฟล์ JSON เท่านั้น"}), 400
+        
+        elif file_type == 'settings_json':
+            if not isinstance(data, dict):
+                return jsonify({"status": "error", "message": "JSON file content is not a settings object."}), 400
+            
+            # For settings, show a few key settings as preview
+            preview_settings = {
+                "appointment_reminder_hour_thai": data.get('report_times', {}).get('appointment_reminder_hour_thai', 'N/A'),
+                "admin_group_id": data.get('line_recipients', {}).get('admin_group_id', 'N/A'),
+                "shop_contact_phone": data.get('shop_info', {}).get('contact_phone', 'N/A'),
+                "technician_list_count": len(data.get('technician_list', []))
+            }
+            return jsonify({
+                "status": "success",
+                "message": "พบไฟล์การตั้งค่า. นี่คือตัวอย่างการตั้งค่าบางส่วน:",
+                "type": "settings",
+                "preview_settings": preview_settings
+            })
 
-@app.route('/api/import_tasks_from_backup', methods=['POST'])
-def import_tasks_from_backup():
-    if 'json_file' not in request.files or not request.files['json_file'].filename:
-        flash('กรุณาเลือกไฟล์ JSON.', 'danger')
-        return redirect(url_for('settings_page'))
+    except json.JSONDecodeError:
+        return jsonify({"status": "error", "message": "ไฟล์ JSON ไม่ถูกต้อง"}), 400
+    except Exception as e:
+        app.logger.error(f"Error during preview: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาดในการดูตัวอย่าง: {e}"}), 500
 
-    file = request.files['json_file']
-    if file and file.filename.endswith('.json'):
-        try:
-            tasks_to_import = json.load(file.stream)
-            if not isinstance(tasks_to_import, list):
-                flash('เนื้อหาไฟล์ JSON ไม่ใช่ลิสต์ของงาน (คาดหวัง array ของ task objects).', 'danger')
-                return redirect(url_for('settings_page'))
-
-            service = get_google_tasks_service()
-            if not service:
-                flash('ไม่สามารถเชื่อมต่อกับบริการ Google Tasks ได้ โปรดตรวจสอบ Credentials.', 'danger')
-                return redirect(url_for('settings_page'))
-
-            imported_count = 0
-            skipped_count = 0
-            for task_data in tasks_to_import:
-                try:
-                    # Remove Google-specific read-only fields
-                    read_only_fields = ['id', 'kind', 'selfLink', 'position', 'etag', 'updated']
-                    for field in read_only_fields:
-                        task_data.pop(field, None)
-
-                    # Ensure 'status' is valid, default to 'needsAction'
-                    if task_data.get('status') not in ['needsAction', 'completed']:
-                        task_data['status'] = 'needsAction'
-
-                    # Robustly parse and convert 'due' and 'completed' dates to ISO 8601 UTC with 'Z'
-                    for date_field in ['due', 'completed']:
-                        if date_field in task_data and task_data[date_field]:
-                            try:
-                                dt_obj = date_parse(task_data[date_field])
-                                # Convert to UTC and then to ISO format with 'Z' for Google Tasks preference
-                                task_data[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                            except Exception as e:
-                                app.logger.warning(f"Could not parse {date_field} date for task '{task_data.get('title')}': {e}. Skipping {date_field}.")
-                                task_data.pop(date_field, None)
-                    
-                    # Ensure task has a title, required by Google Tasks API
-                    if not task_data.get('title'):
-                        app.logger.warning(f"Skipping task due to missing title: {task_data}")
-                        skipped_count += 1
-                        continue
-
-                    # Insert the task
-                    service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_data).execute()
-                    imported_count += 1
-                except HttpError as e:
-                    app.logger.error(f"Error importing task '{task_data.get('title', 'N/A')}': {e.uri} - {e.content.decode()}", exc_info=True)
-                    skipped_count += 1
-                except Exception as e:
-                    app.logger.error(f"Unexpected error processing task '{task_data.get('title', 'N/A')}': {e}", exc_info=True)
-                    skipped_count += 1
-
-            cache.clear()
-            flash(f'นำเข้างานสำเร็จ: {imported_count} งาน, ข้าม: {skipped_count} งาน', 'success')
-        except json.JSONDecodeError:
-            flash('ไฟล์ JSON ไม่ถูกต้อง', 'danger')
-        except Exception as e:
-            flash(f"เกิดข้อผิดพลาดในการนำเข้างาน: {e}", 'danger')
-            app.logger.error(f"Error during general task import: {e}", exc_info=True)
-    else:
-        flash('รองรับเฉพาะไฟล์ JSON เท่านั้น', 'danger')
-    return redirect(url_for('settings_page'))
 
 @app.route('/technician_report')
 def technician_report():
@@ -1753,7 +1806,7 @@ def authorize():
         'credentials.json', SCOPES)
     flow.redirect_uri = url_for('oauth2callback', _external=True)
     authorization_url, state = flow.authorization_url(
-        access_type='offline',
+        access_type='offline', # นี่คือส่วนสำคัญที่ทำให้ Google ให้ refresh_token มา
         include_granted_scopes='true')
     session['oauth_state'] = state
     return redirect(authorization_url)
