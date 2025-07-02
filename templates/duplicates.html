@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2">จัดการข้อมูลซ้ำซ้อน</h1>
-    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าแดชบอร์ด</a>
+    <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a> {# Changed to summary #}
 </div>
 
 <div class="card">
@@ -32,7 +32,8 @@
                                     <label class="form-check-label" for="task-{{ task.id }}">
                                         <strong>ID:</strong> {{ task.id }} <br>
                                         <small class="text-muted">
-                                            สร้างเมื่อ: {{ task.created|replace('Z', '+00:00')|fromisoformat|astimezone(thaizone)|strftime('%d/%m/%Y %H:%M') }} | 
+                                            {# Accessing 'created' field which should be ISO format string from Google Tasks API #}
+                                            สร้างเมื่อ: {{ task.created | dateutil_parse | astimezone(thaizone) | strftime('%d/%m/%Y %H:%M') }} | 
                                             สถานะ: <span class="badge bg-{{ 'success' if task.status == 'completed' else 'warning' }}">{{ task.status }}</span> |
                                             นัดหมาย: {{ task.due_formatted or '-' }}
                                         </small>

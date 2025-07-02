@@ -56,8 +56,10 @@
         margin-left: 0;
         background-color: #6c757d;
         z-index: 100;
-        border-radius: 50%;
         border: 3px solid #fff;
+        display: flex; /* Added for centering icon vertically */
+        align-items: center; /* Added for centering icon vertically */
+        justify-content: center; /* Added for centering icon horizontally */
     }
     /* Responsive timeline for larger screens */
     @media (min-width: 992px) {
@@ -144,9 +146,7 @@
     </div>
 
     <div class="row">
-        <!-- Left Column -->
         <div class="col-lg-7">
-            <!-- Task Details Card -->
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-file-alt me-2"></i>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</div>
                 <div class="card-body">
@@ -154,7 +154,6 @@
                 </div>
             </div>
 
-            <!-- Customer Info Card -->
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-user-edit me-2"></i>ข้อมูลลูกค้า</div>
                 <div class="card-body">
@@ -174,15 +173,19 @@
                     </div>
                     <div class="mb-3">
                         <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
-                        <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}">
+                        <div class="input-group">
+                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่งปัจจุบัน">
+                            <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
+                                <i class="fas fa-location-arrow"></i>
+                            </button>
+                        </div>
+                        <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Right Column -->
         <div class="col-lg-5">
-            <!-- Status and Appointment Card -->
             <div class="card mb-4">
                 <div class="card-header h5"><i class="fas fa-clipboard-check me-2"></i>สถานะและนัดหมาย</div>
                 <div class="card-body">
@@ -202,7 +205,6 @@
                 </div>
             </div>
 
-            <!-- Work Summary Card -->
             <div class="card border-success mb-4">
                 <div class="card-header bg-success text-white h5"><i class="fas fa-plus-circle me-2"></i>สรุปการทำงานและอุปกรณ์ที่ใช้</div>
                 <div class="card-body">
@@ -219,7 +221,7 @@
                     {% else %}
                     <div class="alert alert-warning">กรุณาเพิ่มรายชื่อช่างในหน้า "ตั้งค่า" ก่อน</div>
                     {% endif %}
-                    
+
                     <div class="mb-3">
                         <label for="work_summary" class="form-label">สรุปการทำงาน</label>
                         <textarea class="form-control" id="work_summary" name="work_summary" rows="4" placeholder="กรอกรายละเอียดการดำเนินงาน..."></textarea>
@@ -245,7 +247,6 @@
     </div>
 </form>
 
-<!-- History Timeline -->
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -270,11 +271,11 @@
                                     <hr>
                                     <div class="timeline-body">
                                         <p class="summary-text">{{ report.work_summary or 'ไม่มีสรุปการทำงาน' }}</p>
-                                        
+
                                         {% if report.equipment_used_display and report.equipment_used_display != 'N/A' %}
                                             <p class="mt-3"><strong><i class="fas fa-tools"></i> อุปกรณ์:</strong> <span class="text-muted">{{ report.equipment_used_display|replace('\n', ', ') }}</span></p>
                                         {% endif %}
-                                        
+
                                         {% if report.attachment_urls %}
                                             <p class="mt-3"><strong><i class="fas fa-paperclip"></i> ไฟล์แนบ:</strong><br>
                                                 {% for url in report.attachment_urls %}
@@ -295,9 +296,7 @@
     </div>
 </div>
 
-<!-- Other Cards (Customer Actions, Feedback, Danger Zone) -->
 <div class="row mt-4">
-    <!-- Customer Actions Card -->
     <div class="col-lg-6 mb-4">
         <div class="card border-info h-100">
             <div class="card-header bg-info text-white h5">
@@ -313,7 +312,6 @@
         </div>
     </div>
 
-    <!-- Customer Feedback Card -->
     <div class="col-lg-6 mb-4">
         {% if task.customer_feedback %}
         <div class="card border-secondary h-100">
@@ -329,10 +327,10 @@
                 {% else %}
                     <p><strong>เชื่อมต่อ LINE:</strong> <span class="badge bg-secondary">ยังไม่ได้เชื่อมต่อ</span></p>
                 {% endif %}
-                
+
                 {% if task.customer_feedback.feedback_type %}
                     <hr>
-                    <p class="mb-1"><strong>การประเมินล่าสุด:</strong> 
+                    <p class="mb-1"><strong>การประเมินล่าสุด:</strong>
                         {% if task.customer_feedback.feedback_type == 'very_satisfied' %}
                             <span class="text-success fw-bold">พอใจมาก</span>
                         {% elif task.customer_feedback.feedback_type == 'satisfied' %}
@@ -361,7 +359,6 @@
 </div>
 
 
-<!-- Danger Zone -->
 <div class="card border-danger my-4">
     <div class="card-header bg-danger text-white h5 d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#dangerZoneCollapse" role="button" aria-expanded="false" aria-controls="dangerZoneCollapse" style="cursor: pointer;">
         <span><i class="fas fa-exclamation-triangle me-2"></i>โซนอันตราย</span>
@@ -377,7 +374,6 @@
     </div>
 </div>
 
-<!-- Delete Modal -->
 <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -398,4 +394,57 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block body_extra %}
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            flatpickr("#appointment_due", {
+                enableTime: true,
+                dateFormat: "Y-m-d H:i",
+                locale: "th",
+            });
+
+            // Populate selected technicians from history if available
+            // This assumes the latest_report has the 'technicians' key
+            const technicianSelect = document.getElementById('technicians');
+            if (technicianSelect && {{ task.tech_reports_history | length > 0 | tojson }}) { // Convert Python bool to JS bool
+                const latestReport = {{ task.tech_reports_history[0] | tojson }}; // Get the most recent report
+                const selectedTechs = latestReport.technicians || [];
+                for (let i = 0; i < technicianSelect.options.length; i++) {
+                    if (selectedTechs.includes(technicianSelect.options[i].value)) {
+                        technicianSelect.options[i].selected = true;
+                    }
+                }
+            }
+
+            const shareBtn = document.getElementById('shareLocationBtn');
+            const locationInput = document.getElementById('latitude_longitude');
+            const statusText = document.getElementById('shareLocationStatus');
+
+            if (shareBtn) {
+                shareBtn.addEventListener('click', function() {
+                    statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                const lat = position.coords.latitude;
+                                const lon = position.coords.longitude;
+                                // UPDATED: Corrected Google Maps URL format for better compatibility
+                                locationInput.value = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                                statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                            },
+                            (error) => {
+                                statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้';
+                            }
+                        );
+                    } else {
+                        statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                    }
+                });
+            }
+        });
+    </script>
 {% endblock %}

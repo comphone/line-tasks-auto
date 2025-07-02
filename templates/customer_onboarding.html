@@ -43,10 +43,15 @@
             function displayStatus(icon, message, isError = false) {
                 loadingDiv.style.display = 'none';
                 statusMessageDiv.innerHTML = `<i class="fas ${icon}"></i><br>${message}`;
-                statusMessageDiv.style.backgroundColor = isError ? '#f8d7da' : '#d4edda';
-                statusMessageDiv.style.color = isError ? '#721c24' : '#155724';
+                statusMessageDiv.className = `message-box alert ${isError ? 'alert-danger' : 'alert-success'}`; // Use Bootstrap classes
                 statusMessageDiv.style.display = 'block';
                 closeButton.style.display = 'block';
+            }
+
+            // Check if LIFF is initialized and in LIFF environment
+            if (!liff.isInClient()) {
+                displayStatus('fa-exclamation-triangle', 'กรุณาเปิดหน้านี้ในแอปพลิเคชัน LINE เพื่อเชื่อมต่อ', true);
+                return; // Exit if not in LIFF client
             }
 
             liff.init({
@@ -54,18 +59,24 @@
             })
             .then(() => {
                 if (!liff.isLoggedIn()) {
-                    liff.login();
+                    liff.login(); // Prompt user to log in if not already
                 } else {
-                    return liff.getProfile();
+                    return liff.getProfile(); // Get profile only if logged in
                 }
             })
             .then(profile => {
-                if (!profile) return; // Exit if profile is not available (e.g., after login redirect)
+                if (!profile) {
+                    // This can happen if liff.login() was just called and is redirecting
+                    // Or if getProfile fails for some reason
+                    console.log("LIFF profile not available yet or failed to retrieve.");
+                    // You might want a different message or a loading state here
+                    displayStatus('fa-exclamation-triangle', 'ไม่สามารถดึงข้อมูลโปรไฟล์ LINE ได้ โปรดลองอีกครั้ง', true);
+                    return;
+                }
 
                 const customerLineUserId = profile.userId;
                 displayStatus('fa-spinner fa-spin', 'กำลังเชื่อมต่อข้อมูลของคุณ...');
                 
-                // FIXED: Send data as JSON
                 fetch('/save_customer_line_id', {
                     method: 'POST',
                     headers: {
@@ -90,16 +101,21 @@
                     }
                 })
                 .catch(error => {
+                    console.error("Error during fetch for saving LINE ID:", error);
                     displayStatus('fa-times-circle', `เกิดข้อผิดพลาดในการส่งข้อมูล: ${error.message}<br>โปรดลองอีกครั้ง`, true);
                 });
             })
             .catch(err => {
+                console.error("Error during LIFF initialization or profile retrieval:", err);
                 displayStatus('fa-times-circle', `เกิดข้อผิดพลาดในการเริ่มต้น LIFF: ${err.message}`, true);
             });
 
             closeButton.addEventListener('click', function() {
                 if (liff.isInClient()) {
                     liff.closeWindow();
+                } else {
+                    // For debugging outside LIFF, close the browser tab
+                    window.close();
                 }
             });
         };
