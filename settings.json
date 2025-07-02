@@ -1,6 +1,40 @@
 {
-  "google_tasks_list_id": "MXUxOTcxMDhQMU5QZ1Iz",
-  "report_times": {
-    ...
-  }
+    "google_tasks_list_id": "ZjEwOFJxMTFucVFRTWl4dQ",
+    "report_times": {
+        "appointment_reminder_hour_thai": 7,
+        "outstanding_report_hour_thai": 20,
+        "customer_followup_hour_thai": 9
+    },
+    "line_recipients": {
+        "admin_group_id": "C8ad22a115f38c9ad3cb5ea5c2ff4863b",
+        "technician_group_id": "",
+        "manager_user_id": ""
+    },
+    "qrcode_settings": {
+        "box_size": 8,
+        "border": 4,
+        "fill_color": "#28a745",
+        "back_color": "#FFFFFF",
+        "custom_url": ""
+    },
+    "equipment_catalog": [],
+    "auto_backup": {
+        "enabled": false,
+        "hour_thai": 2,
+        "minute_thai": 0
+    },
+    "shop_info": {
+        "contact_phone": "081-XXX-XXXX",
+        "line_id": "@YourShopLINE"
+    },
+    "technician_list": [
+        "ช่าง A",
+        "ช่าง B"
+    ],
+    "sales_offers": {
+        "post_feedback_offer_enabled": false,
+        "post_feedback_offer_message": "ขอบคุณสำหรับความไว้วางใจครับ/ค่ะ! สนใจสมัครแพ็กเกจล้างแอร์รายปีในราคาพิเศษหรือไม่ครับ/คะ? ติดต่อสอบถามได้เลย!",
+        "report_promotion_enabled": false,
+        "report_promotion_text": "โปรโมชันพิเศษ! ลด 10% สำหรับการใช้บริการครั้งถัดไปภายใน 3 เดือน เพียงแจ้งรหัสงานนี้"
+    }
 }

@@ -68,8 +68,6 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
-LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
-# GOOGLE_DRIVE_FOLDER_ID is no longer used for automatic backup
 GOOGLE_DRIVE_FOLDER_ID_FOR_UPLOADS = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') # Keep for task file uploads
 
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
@@ -96,7 +94,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
     },
     'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
     'equipment_catalog': [],
-    # Auto backup is disabled as it's not supported with personal Google accounts
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
     'technician_list': [],
@@ -240,8 +237,14 @@ def get_google_tasks_for_report(show_completed=True):
     task_list_id = get_tasks_list_id()
     if not service or not task_list_id: return None
     try:
+        # Fetch up to 2000 tasks to ensure most are covered for duplication checks
         results = service.tasks().list(tasklist=task_list_id, showCompleted=show_completed, maxResults=100).execute()
-        return results.get('items', [])
+        items = results.get('items', [])
+        while 'nextPageToken' in results:
+            page_token = results['nextPageToken']
+            results = service.tasks().list(tasklist=task_list_id, showCompleted=show_completed, maxResults=100, pageToken=page_token).execute()
+            items.extend(results.get('items', []))
+        return items
     except HttpError as err:
         app.logger.error(f"API Error getting tasks: {err}")
         return None
@@ -474,7 +477,6 @@ def _create_backup_zip():
 
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
-                # Exclude virtual environment and cache folders
                 if '.venv' in folder or '__pycache__' in folder:
                     continue
                 for file in files:
@@ -731,8 +733,6 @@ def form_page():
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
 
-    # The form.html template wasn't provided, so we assume it exists
-    # and doesn't need any special context variables on GET request.
     return render_template('form.html')
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
@@ -846,10 +846,10 @@ def settings_page():
             'line_recipients': {
                 'admin_group_id': request.form.get('admin_group_id', '').strip(),
                 'technician_group_id': request.form.get('technician_group_id', '').strip(),
-                'manager_user_id': current_settings.get('line_recipients', {}).get('manager_user_id', '') # Preserve this value
+                'manager_user_id': current_settings.get('line_recipients', {}).get('manager_user_id', '')
             },
-            'qrcode_settings': current_settings.get('qrcode_settings', {}), # Preserve this value
-            'auto_backup': current_settings.get('auto_backup', {'enabled': False}), # Preserve this value
+            'qrcode_settings': current_settings.get('qrcode_settings', {}),
+            'auto_backup': current_settings.get('auto_backup', {'enabled': False}),
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
@@ -976,7 +976,9 @@ def preview_tasks_import():
         app.logger.error(f"Error during task preview: {e}")
         return jsonify({"error": f"เกิดข้อผิดพลาดที่ไม่คาดคิด: {e}"}), 500
 
-
+# ===================================================================
+#  UPDATED FUNCTION TO PREVENT DUPLICATE IMPORTS
+# ===================================================================
 @app.route('/api/import_tasks_from_backup', methods=['POST'])
 def import_tasks_from_backup():
     try:
@@ -984,9 +986,40 @@ def import_tasks_from_backup():
         if not isinstance(tasks_to_import, list):
             return jsonify({"status": "error", "message": "ข้อมูลที่ส่งมาไม่ถูกต้อง"}), 400
 
+        # 1. Fetch all existing tasks to check for duplicates
+        app.logger.info("Fetching existing tasks to prevent duplicates...")
+        existing_tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+        
+        # 2. Create a lookup set for fast searching using (title, customer_name) as a unique key
+        existing_tasks_lookup = set()
+        for task in existing_tasks_raw:
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            key = (
+                task.get('title', '').strip().lower(),
+                customer_info.get('name', '').strip().lower()
+            )
+            existing_tasks_lookup.add(key)
+        
+        app.logger.info(f"Found {len(existing_tasks_lookup)} unique existing tasks for duplication check.")
+
         imported_count = 0
+        skipped_count = 0
+
         for task_data in tasks_to_import:
             if isinstance(task_data, dict) and 'title' in task_data:
+                
+                # 3. Create a key for the task to be imported and check against the existing set
+                import_key = (
+                    task_data.get('title', '').strip().lower(),
+                    task_data.get('customer_name', '').strip().lower()
+                )
+
+                if import_key in existing_tasks_lookup:
+                    # 4. If it's a duplicate, skip it
+                    skipped_count += 1
+                    continue
+                
+                # 5. If not a duplicate, proceed with creating the new task
                 notes_lines = []
                 if task_data.get('customer_name'):
                     notes_lines.append(f"ลูกค้า: {task_data['customer_name']}")
@@ -996,17 +1029,17 @@ def import_tasks_from_backup():
                     notes_lines.append(f"ที่อยู่: {task_data['customer_address']}")
                 if task_data.get('customer_map_url'):
                     notes_lines.append(task_data['customer_map_url'])
-
+                
                 if task_data.get('cleaned_notes'):
                     notes_lines.append(f"\n{task_data['cleaned_notes']}")
-
+                
                 if task_data.get('attachments'):
                     notes_lines.append("\n\n--- ลิงก์ไฟล์แนบจากระบบเก่า (ต้องอัปโหลดใหม่) ---")
                     for link in task_data['attachments']:
                         notes_lines.append(link)
 
                 final_notes = "\n".join(notes_lines)
-
+                
                 create_google_task(
                     title=task_data['title'],
                     notes=final_notes,
@@ -1015,10 +1048,15 @@ def import_tasks_from_backup():
                     completed_at=task_data.get('completed_iso')
                 )
                 imported_count += 1
-
+                # Add the newly imported task to the set to prevent duplicates within the same file
+                existing_tasks_lookup.add(import_key)
+        
         cache.clear()
-        flash(f'นำเข้าข้อมูลงานเก่าจำนวน {imported_count} รายการสำเร็จ!', 'success')
-        return jsonify({"status": "success", "count": imported_count})
+
+        # 6. Create a summary message for the flash message
+        success_message = f'นำเข้าข้อมูลสำเร็จ! เพิ่มใหม่ {imported_count} รายการ, ข้ามรายการที่ซ้ำกัน {skipped_count} รายการ'
+        flash(success_message, 'success')
+        return jsonify({"status": "success", "message": success_message, "imported": imported_count, "skipped": skipped_count})
 
     except Exception as e:
         app.logger.error(f"Error during final task import: {e}")
@@ -1046,25 +1084,69 @@ def backup_data():
         flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
         return redirect(url_for('settings_page'))
 
-# ========== NEW/FIXED ROUTES START ==========
 @app.route('/export_equipment_catalog')
 def export_equipment_catalog():
-    """
-    Placeholder function for exporting the equipment catalog.
-    The actual implementation would generate an Excel file from the settings.
-    """
-    flash('ฟังก์ชัน "ส่งออกเป็น Excel" ยังไม่ถูกสร้างขึ้น', 'warning')
-    return redirect(url_for('settings_page'))
+    """Exports the equipment catalog to an Excel file."""
+    settings = get_app_settings()
+    catalog = settings.get('equipment_catalog', [])
+    if not catalog:
+        flash('ไม่พบข้อมูลอุปกรณ์ในแคตตาล็อก', 'warning')
+        return redirect(url_for('settings_page'))
+    
+    try:
+        df = pd.DataFrame(catalog)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='EquipmentCatalog')
+        output.seek(0)
+        
+        return Response(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment;filename=equipment_catalog.xlsx"}
+        )
+    except Exception as e:
+        app.logger.error(f"Error exporting equipment catalog: {e}")
+        flash('เกิดข้อผิดพลาดในการสร้างไฟล์ Excel', 'danger')
+        return redirect(url_for('settings_page'))
 
 @app.route('/import_equipment_catalog', methods=['POST'])
 def import_equipment_catalog():
-    """
-    Placeholder function for importing the equipment catalog from an Excel file.
-    The actual implementation would read the file and update the settings.
-    """
-    flash('ฟังก์ชัน "นำเข้าจาก Excel" ยังไม่ถูกสร้างขึ้น', 'warning')
+    """Imports the equipment catalog from an Excel file."""
+    if 'excel_file' not in request.files or not request.files['excel_file'].filename:
+        flash('กรุณาเลือกไฟล์ Excel (.xlsx)', 'danger')
+        return redirect(url_for('settings_page'))
+
+    file = request.files['excel_file']
+    if file and (file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
+        try:
+            df = pd.read_excel(file, engine='openpyxl')
+            # Ensure required columns exist, fill missing with defaults
+            if 'item_name' not in df.columns:
+                flash('ไฟล์ Excel ต้องมีคอลัมน์ "item_name"', 'danger')
+                return redirect(url_for('settings_page'))
+            
+            df['price'] = df.get('price', 0)
+            df['unit'] = df.get('unit', '')
+
+            # Convert DataFrame to list of dicts
+            new_catalog = df.to_dict('records')
+            
+            current_settings = get_app_settings()
+            current_settings['equipment_catalog'] = new_catalog
+            
+            if save_app_settings(current_settings):
+                flash(f'นำเข้าแคตตาล็อกอุปกรณ์จำนวน {len(new_catalog)} รายการสำเร็จ!', 'success')
+            else:
+                flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า', 'danger')
+
+        except Exception as e:
+            app.logger.error(f"Error importing equipment catalog: {e}")
+            flash(f'เกิดข้อผิดพลาดในการอ่านไฟล์ Excel: {e}', 'danger')
+    else:
+        flash('รองรับเฉพาะไฟล์ .xlsx หรือ .xls เท่านั้น', 'danger')
+        
     return redirect(url_for('settings_page'))
-# ========== NEW/FIXED ROUTES END ==========
 
 @app.route('/technician_report')
 def technician_report():
@@ -1132,7 +1214,6 @@ def generate_customer_onboarding_qr():
     onboarding_url = f"https://liff.line.me/{LIFF_ID_FORM}/customer_onboarding.html?task_id={task_id}"
     qr_code_base64 = generate_qr_code_base64(onboarding_url, box_size=10)
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-    # The template 'generate_onboarding_qr.html' was not provided. Assuming its existence.
     return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code_base64, task=task, customer_info=customer_info, onboarding_url=onboarding_url)
 
 @app.route('/customer_problem_form')
@@ -1143,7 +1224,6 @@ def customer_problem_form():
 
     parsed_task = parse_google_task_dates(task)
     parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    # The template 'customer_problem_form.html' was not provided. Assuming its existence.
     return render_template('customer_problem_form.html', task=parsed_task, LIFF_ID_FORM=LIFF_ID_FORM)
 
 @app.route('/trigger_customer_follow_up_test', methods=['POST'])
@@ -1215,7 +1295,6 @@ def public_task_report(task_id):
                 'item': item_name, 'quantity': quantity, 'unit': catalog_item.get('unit', ''),
                 'price_per_unit': price_per_unit or 'N/A', 'subtotal': subtotal or 'N/A'
             })
-    # The template 'public_task_report.html' was not provided. Assuming its existence.
     return render_template('public_task_report.html',
                            task=task,
                            customer_info=customer_info,
