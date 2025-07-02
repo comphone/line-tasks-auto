@@ -159,16 +159,40 @@ def index():
 @google_login_required
 def dashboard():
     service = get_google_service('tasks', 'v1')
-    if not service: return redirect(url_for('authorize'))
+    if not service:
+        # หากไม่สามารถสร้าง service ได้ แสดงว่า creds มีปัญหา หรือ token.json ไม่มี/ไม่ถูกต้อง
+        flash("ไม่สามารถเชื่อมต่อบริการ Google Tasks ได้ กรุณาลองเข้าสู่ระบบ Google ใหม่อีกครั้ง", "danger")
+        if os.path.exists(TOKEN_FILE): # หาก token.json ยังมีอยู่แต่ใช้ไม่ได้ ให้ลบออก
+            os.remove(TOKEN_FILE)
+        return redirect(url_for('authorize')) # Redirect ให้ผู้ใช้ยืนยันตัวตนใหม่
+
     app_settings = load_app_settings()
     task_list_id = app_settings.get('google_tasks_list_id')
+
+    # ตรวจสอบว่ามีการเลือก Google Tasks List หรือยัง
     if not task_list_id:
         flash("กรุณาเลือก Google Tasks List ในหน้าตั้งค่าก่อน", "warning")
         return redirect(url_for('settings_page'))
+
     try:
+        # ตรวจสอบความถูกต้องของ task_list_id ก่อนที่จะดึง tasks
+        # วิธีที่ดีกว่าคือตรวจสอบว่า task_list_id นั้นอยู่ใน task_lists ที่ดึงมาได้หรือไม่
+        # หรือลองดึงข้อมูลของ tasklist นั้นโดยตรง
+        service.tasklists().get(tasklist=task_list_id).execute() # ลองดึงข้อมูลของ tasklist นั้น
         tasks_raw = service.tasks().list(tasklist=task_list_id, showCompleted=True, maxResults=100).execute().get('items', [])
     except HttpError as e:
-        flash(f"เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Tasks: {e.reason}", "danger")
+        if e.resp.status == 404:
+            flash("เกิดข้อผิดพลาด: Google Tasks List ที่เลือกไว้ไม่พบแล้ว กรุณาเลือกรายการใหม่ในหน้าตั้งค่า", "danger")
+            # ลบ task_list_id ที่ไม่ถูกต้องออกจาก settings เพื่อให้ผู้ใช้เลือกใหม่
+            if 'google_tasks_list_id' in app_settings:
+                del app_settings['google_tasks_list_id']
+                save_app_settings(app_settings)
+            return redirect(url_for('settings_page'))
+        else:
+            flash(f"เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Tasks: {e.reason}", "danger")
+            return redirect(url_for('settings_page'))
+    except Exception as e:
+        flash(f"เกิดข้อผิดพลาดที่ไม่คาดคิดในการเข้าถึง Google Tasks: {e}", "danger")
         return redirect(url_for('settings_page'))
     
     search_query = str(request.args.get('search_query', '')).strip().lower()
@@ -307,18 +331,53 @@ def import_tasks_from_backup():
 #<editor-fold desc="Settings Route">
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
-    task_lists, app_settings = [], load_app_settings()
+    task_lists = []
+    app_settings = load_app_settings()
+
     if g.user_logged_in:
         service = get_google_service('tasks', 'v1')
         if service:
             try:
-                task_lists = service.tasklists().list().execute().get('items', [])
+                # ดึงรายการ Task Lists จาก Google Tasks API
+                task_lists_response = service.tasklists().list().execute()
+                task_lists = task_lists_response.get('items', [])
+                if not task_lists:
+                    flash("ไม่พบ Google Tasks List ในบัญชีของคุณ กรุณาสร้างรายการใหม่ใน Google Tasks", "warning")
+            except HttpError as e:
+                # จัดการข้อผิดพลาดที่เฉพาะเจาะจง เช่น 404 (Not Found) สำหรับ Task List
+                if e.resp.status == 404:
+                    flash("เกิดข้อผิดพลาด: Google Tasks List ที่เลือกไว้ไม่พบแล้ว กรุณาเลือกรายการใหม่", "danger")
+                    # Clear the invalid task_list_id from settings
+                    if 'google_tasks_list_id' in app_settings:
+                        del app_settings['google_tasks_list_id']
+                        save_app_settings(app_settings) # Save immediately to clear invalid ID
+                else:
+                    flash(f"ไม่สามารถดึงรายการ Google Tasks ได้: {e.reason}", "danger")
             except Exception as e:
-                flash(f"ไม่สามารถดึงรายการ Google Tasks ได้: {e}", "danger")
+                flash(f"เกิดข้อผิดพลาดที่ไม่คาดคิดในการดึง Google Tasks List: {e}", "danger")
+        else:
+            flash("ไม่สามารถเชื่อมต่อบริการ Google Tasks ได้ กรุณาลองเข้าสู่ระบบ Google ใหม่อีกครั้ง", "danger")
+            # Ensure token.json is removed if service cannot be built, forcing re-auth
+            if os.path.exists(TOKEN_FILE):
+                os.remove(TOKEN_FILE)
+            return redirect(url_for('auth_landing')) # Redirect to re-authenticate
 
     if request.method == 'POST':
+        # โหลดการตั้งค่าปัจจุบันอีกครั้งเพื่อความแน่ใจว่าได้ค่าล่าสุด
         current_settings = load_app_settings()
-        current_settings['google_tasks_list_id'] = request.form.get('google_tasks_list_id')
+
+        # ตรวจสอบว่ามีการเลือก google_tasks_list_id หรือไม่ก่อนบันทึก
+        selected_task_list_id = request.form.get('google_tasks_list_id')
+        if not selected_task_list_id:
+            flash("กรุณาเลือก Google Tasks List ที่ต้องการใช้", "danger")
+            # ต้องคืนค่า render_template เพื่อให้ผู้ใช้เลือกใหม่
+            default_keys = {'shop_info': {}, 'technician_list': [], 'line_recipients': {}, 'report_times': {'appointment_reminder_hour_thai': 7, 'customer_followup_hour_thai': 9}, 'sales_offers': {}, 'auto_backup': {'enabled': False, 'hour_thai': 2}}
+            for key, default_value in default_keys.items():
+                app_settings.setdefault(key, default_value)
+            return render_template('settings_page.html', task_lists=task_lists, settings=app_settings, selected_list_id=app_settings.get('google_tasks_list_id'))
+
+
+        current_settings['google_tasks_list_id'] = selected_task_list_id
         current_settings['shop_info'] = {'contact_phone': request.form.get('shop_contact_phone', ''), 'line_id': request.form.get('shop_line_id', '')}
         current_settings['technician_list'] = [name.strip() for name in request.form.get('technician_list', '').splitlines() if name.strip()]
         current_settings['line_recipients'] = {'admin_group_id': request.form.get('admin_group_id', ''), 'technician_group_id': request.form.get('technician_group_id', '')}
@@ -333,6 +392,7 @@ def settings_page():
             flash("เกิดข้อผิดพลาดในการบันทึกการตั้งค่า", "danger")
         return redirect(url_for('settings_page'))
 
+    # ตรวจสอบและกำหนดค่าเริ่มต้นสำหรับการแสดงผล GET request
     default_keys = {'shop_info': {}, 'technician_list': [], 'line_recipients': {}, 'report_times': {'appointment_reminder_hour_thai': 7, 'customer_followup_hour_thai': 9}, 'sales_offers': {}, 'auto_backup': {'enabled': False, 'hour_thai': 2}}
     for key, default_value in default_keys.items():
         app_settings.setdefault(key, default_value)
