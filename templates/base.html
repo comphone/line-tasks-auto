@@ -10,20 +10,22 @@
     <style>
         /* Custom style for the logo */
         .navbar-logo {
-            height: 35px; /* Adjust height as needed */
+            height: 40px; /* REVISED: Increased logo size */
             width: auto;
             margin-right: 10px;
         }
 
+        /* REVISED: Custom navbar color */
+        .bg-custom-black {
+            background-color: #000000 !important;
+        }
+
         /* --- ADDED: Mobile Font Size Improvement --- */
-        /* Increase font size for better readability on mobile devices */
         .form-label,
         .form-control,
         .form-select {
-            font-size: 1.1rem; /* Adjust this value as needed */
+            font-size: 1.1rem; 
         }
-
-        /* Optional: Slightly larger font for card headers on mobile */
         .card-header {
             font-size: 1.2rem;
         }
@@ -33,7 +35,7 @@
     {% block head_extra %}{% endblock %}
 </head>
 <body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-custom-black shadow-sm">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="{{ url_for('summary') }}">
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="navbar-logo">
@@ -49,9 +51,6 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'technician_report' %}active{% endif %}" href="{{ url_for('technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'manage_duplicates' %}active{% endif %}" href="{{ url_for('manage_duplicates') }}"><i class="fas fa-copy me-1"></i>จัดการข้อมูลซ้ำ</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'settings_page' %}active{% endif %}" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>

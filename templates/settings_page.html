@@ -6,14 +6,6 @@
 <div class="container mt-4">
     <h1 class="mb-4">ตั้งค่าระบบ</h1>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">{{ message | safe }}</div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
     <form method="POST" action="{{ url_for('settings_page') }}" class="needs-validation" novalidate>
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
@@ -83,16 +75,135 @@
             </div>
         </div>
 
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">การตั้งค่า QR Code</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <label for="qr_box_size" class="col-md-4 col-form-label">ขนาด Box Size</label>
+                    <div class="col-md-8">
+                        <input type="number" class="form-control" id="qr_box_size" name="qr_box_size"
+                               value="{{ settings.qrcode_settings.box_size }}" min="1" required>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="qr_border" class="col-md-4 col-form-label">ขนาด Border</label>
+                    <div class="col-md-8">
+                        <input type="number" class="form-control" id="qr_border" name="qr_border"
+                               value="{{ settings.qrcode_settings.border }}" min="0" required>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="qr_fill_color" class="col-md-4 col-form-label">สี QR Code</label>
+                    <div class="col-md-8">
+                        <input type="color" class="form-control form-control-color" id="qr_fill_color" name="qr_fill_color"
+                               value="{{ settings.qrcode_settings.fill_color }}" title="เลือกสี">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="qr_back_color" class="col-md-4 col-form-label">สีพื้นหลัง QR Code</label>
+                    <div class="col-md-8">
+                        <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color"
+                               value="{{ settings.qrcode_settings.back_color }}" title="เลือกสี">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="qr_custom_url" class="col-md-4 col-form-label">Custom URL (สำหรับ QR ทั่วไป)</label>
+                    <div class="col-md-8">
+                        <input type="url" class="form-control" id="qr_custom_url" name="qr_custom_url"
+                               value="{{ settings.qrcode_settings.custom_url }}"
+                               placeholder="{{ general_summary_url }}">
+                        <div class="form-text">หากเว้นว่างไว้ จะใช้ URL สรุปงานเริ่มต้น</div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-8 offset-md-4">
+                        <p>QR Code สำหรับเข้าสู่หน้าสรุปงาน:</p>
+                        {% if qr_code_base64_general %}
+                            <img src="{{ qr_code_base64_general }}" alt="QR Code Summary" class="img-thumbnail" style="width: 150px; height: 150px;">
+                        {% else %}
+                            <p class="text-danger">ไม่สามารถสร้าง QR Code ได้</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">ข้อมูลร้านค้า</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <label for="shop_contact_phone" class="col-md-4 col-form-label">เบอร์โทรศัพท์ติดต่อ</label>
+                    <div class="col-md-8">
+                        <input type="text" class="form-control" id="shop_contact_phone" name="shop_contact_phone"
+                               value="{{ settings.shop_info.contact_phone }}">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="shop_line_id" class="col-md-4 col-form-label">LINE ID ร้าน</label>
+                    <div class="col-md-8">
+                        <input type="text" class="form-control" id="shop_line_id" name="shop_line_id"
+                               value="{{ settings.shop_info.line_id }}">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="technician_list" class="col-md-4 col-form-label">รายชื่อช่าง (แยกบรรทัด)</label>
+                    <div class="col-md-8">
+                        <textarea class="form-control" id="technician_list" name="technician_list" rows="5">{{ settings.technician_list | join('\n') }}</textarea>
+                        <div class="form-text">ป้อนชื่อช่างแต่ละคนในบรรทัดใหม่</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">การสำรองข้อมูลอัตโนมัติ</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="auto_backup_enabled" name="auto_backup_enabled" role="switch" {% if settings.auto_backup.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="auto_backup_enabled">เปิดใช้งานการสำรองข้อมูลอัตโนมัติไปยัง Google Drive</label>
+                </div>
+                <div class="row mb-3">
+                    <label for="auto_backup_hour" class="col-md-4 col-form-label">เวลาสำรองข้อมูล (โมงไทย)</label>
+                    <div class="col-md-4">
+                        <input type="number" class="form-control" id="auto_backup_hour" name="auto_backup_hour"
+                               value="{{ settings.auto_backup.hour_thai }}" min="0" max="23" required>
+                    </div>
+                    <label for="auto_backup_minute" class="col-md-1 col-form-label">นาที</label>
+                    <div class="col-md-3">
+                        <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute"
+                               value="{{ settings.auto_backup.minute_thai }}" min="0" max="59" required>
+                    </div>
+                </div>
+                 <div class="row mb-3">
+                    <div class="col-md-8 offset-md-4">
+                        <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-info">
+                                เรียกใช้การสำรองข้อมูลเดี๋ยวนี้
+                            </button>
+                        </form>
+                         <div class="form-text">จะทำการสำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-success">บันทึกการตั้งค่า</button>
     </form>
 
     <div class="card mt-4 mb-4">
         <div class="card-header bg-info text-white">
-            <h5 class="mb-0">จัดการแคตตาล็อกอุปกรณ์</h5>
+            <h5 class="mb-0">เครื่องมือจัดการข้อมูล</h5>
         </div>
         <div class="card-body">
-            <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-secondary me-2">Export แคตตาล็อก (Excel)</a>
-            <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importEquipmentModal">
+            <a href="{{ url_for('manage_duplicates') }}" class="btn btn-primary me-2 mb-2"><i class="fas fa-copy me-1"></i> จัดการข้อมูลซ้ำ</a>
+            <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-secondary me-2 mb-2">Export แคตตาล็อก (Excel)</a>
+            <button type="button" class="btn btn-secondary mb-2" data-bs-toggle="modal" data-bs-target="#importEquipmentModal">
                 Import แคตตาล็อก (Excel)
             </button>
         </div>
@@ -155,8 +266,7 @@
                         <div class="form-text text-danger">ยังไม่ได้ตั้งค่า! โปรดคัดลอกจาก <a href="https://developers.line.biz/console/" target="_blank">LINE Developers Console</a></div>
                     {% endif %}
                 </div>
-
-                <div class="mb-3">
+                 <div class="mb-3">
                     <label class="form-label"><strong>LINE_CHANNEL_SECRET</strong></label>
                     <div class="input-group">
                         <input type="text" class="form-control" value="{{ env_vars.LINE_CHANNEL_SECRET }}" readonly id="env-line-secret">
@@ -166,7 +276,6 @@
                         <div class="form-text text-danger">ยังไม่ได้ตั้งค่า! โปรดคัดลอกจาก <a href="https://developers.line.biz/console/" target="_blank">LINE Developers Console</a></div>
                     {% endif %}
                 </div>
-
                 <div class="mb-3">
                     <label class="form-label"><strong>LIFF_ID_FORM</strong></label>
                     <div class="input-group">
@@ -177,7 +286,6 @@
                         <div class="form-text text-warning">ไม่บังคับ: หากต้องการใช้ฟอร์มสร้างงานผ่าน LIFF โปรดสร้าง LIFF App ใน <a href="https://developers.line.biz/console/" target="_blank">LINE Developers Console</a></div>
                     {% endif %}
                 </div>
-
                 <div class="mb-3">
                     <label class="form-label"><strong>GOOGLE_DRIVE_FOLDER_ID</strong></label>
                     <div class="input-group">
@@ -188,7 +296,6 @@
                         <div class="form-text text-danger">ยังไม่ได้ตั้งค่า! โปรดสร้าง Folder ใน Google Drive แล้วคัดลอก ID จาก URL</div>
                     {% endif %}
                 </div>
-                
                 <div class="mb-3">
                     <label class="form-label"><strong>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</strong></label>
                     <div class="input-group">
@@ -199,7 +306,6 @@
                         <div class="form-text text-danger">ยังไม่ได้ตั้งค่า! โปรดสร้าง Folder ใน Google Drive แล้วคัดลอก ID จาก URL</div>
                     {% endif %}
                 </div>
-
             </div>
         </div>
     </div>
@@ -224,14 +330,19 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // ... existing script for backup import ...
+    // Existing script for backup import
+    const previewBackupBtn = document.getElementById('previewBackupBtn');
+    if (previewBackupBtn) { /* ... existing code ... */ }
 
-    // --- NEW: Copy to clipboard for setup helper ---
+    // Existing script for confirmed import
+    const confirmImportBackupBtn = document.getElementById('confirmImportBackupBtn');
+    if (confirmImportBackupBtn) { /* ... existing code ... */ }
+
+    // Copy to clipboard for setup helper
     document.querySelectorAll('.copy-btn').forEach(button => {
         button.addEventListener('click', () => {
             const target = document.querySelector(button.dataset.copyTarget);
             if (target) {
-                // For textareas, we need to select the content
                 if (target.select) {
                     target.select();
                 }
@@ -251,7 +362,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // --- NEW: Icon toggle for setup helper collapse ---
+    // Icon toggle for setup helper collapse
     const setupHelperHeader = document.getElementById('setupHelperHeader');
     if (setupHelperHeader) {
         setupHelperHeader.addEventListener('click', function() {
