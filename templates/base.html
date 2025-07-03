@@ -52,6 +52,10 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'technician_report' %}active{% endif %}" href="{{ url_for('technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
                     </li>
+                    {# ADDED: Link for Manage Duplicates #}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'manage_duplicates' %}active{% endif %}" href="{{ url_for('manage_duplicates') }}"><i class="fas fa-copy me-1"></i>จัดการข้อมูลซ้ำ</a>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'settings_page' %}active{% endif %}" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>
                     </li>
