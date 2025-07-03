@@ -9,7 +9,11 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">{{ message | safe }}</div>
+                {# UPDATED: Use category for alert color #}
+                <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} alert-dismissible fade show" role="alert">
+                    {{ message | safe }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
             {% endfor %}
         {% endif %}
     {% endwith %}
@@ -140,7 +144,7 @@
 
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">ข้อมูลร้านค้า</h5>
+                <h5 class="mb-0">ข้อมูลร้านค้าและช่าง</h5>
             </div>
             <div class="card-body">
                 <div class="row mb-3">
@@ -201,7 +205,15 @@
             </div>
         </div>
 
-        <button type="submit" class="btn btn-success">บันทึกการตั้งค่า</button>
+        {# ADDED: Clarification text for the save button #}
+        <div class="text-center">
+            <button type="submit" class="btn btn-success btn-lg">
+                <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด
+            </button>
+            <p class="form-text mt-2">
+                การกดปุ่มนี้จะบันทึกการเปลี่ยนแปลงทั้งหมดในหน้านี้ ตั้งแต่การแจ้งเตือน, LINE, QR Code, ข้อมูลร้านค้า, จนถึงการสำรองข้อมูลอัตโนมัติ
+            </p>
+        </div>
     </form>
 
     <div class="card mt-4 mb-4">
@@ -213,14 +225,12 @@
             <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importEquipmentModal">
                 Import แคตตาล็อก (Excel)
             </button>
-            {# ADDED: Link for Manage Equipment Duplicates #}
             <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning ms-2">
                 <i class="fas fa-copy me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ
             </a>
         </div>
     </div>
 
-    {# ADDED: Section for Manage Duplicates (Tasks) #}
     <div class="card mt-4 mb-4">
         <div class="card-header bg-warning text-white">
             <h5 class="mb-0">จัดการข้อมูลงานซ้ำซ้อน</h5>
@@ -232,9 +242,7 @@
             </a>
         </div>
     </div>
-    {# END ADDED: Section for Manage Duplicates (Tasks) #}
 
-    {# --- NEW: Unified Import Backup Section --- #}
     <div class="card mt-4 mb-4">
         <div class="card-header bg-warning text-white">
             <h5 class="mb-0">นำเข้าข้อมูลสำรอง (.json)</h5>
@@ -263,7 +271,6 @@
             <div id="importBackupPreview" class="mt-3"></div>
         </div>
     </div>
-    {# --- END NEW: Unified Import Backup Section --- #}
 
     <div class="card mt-4 mb-4">
         <div class="card-header bg-danger text-white">
@@ -392,7 +399,8 @@
 
         // Handle confirmed import
         if (confirmImportBackupBtn) {
-            confirmImportBackupBtn.addEventListener('click', function() {
+            confirmImportBackupBtn.addEventListener('click', function(event) {
+                event.preventDefault(); // Prevent default form submission
                 const file = backupFile.files[0];
                 const fileTypeValue = backupFileType.value;
 
@@ -401,19 +409,14 @@
                     return;
                 }
 
-                // เปลี่ยน form action และส่งข้อมูล
-                importBackupForm.action = "/api/import_backup_file"; // ชี้ไปที่ route ใหม่
-                importBackupForm.method = "POST";
-                importBackupForm.enctype = "multipart/form-data"; // ต้องมีสำหรับ file upload
-
                 // สร้าง FormData ใหม่เพื่อแนบไฟล์และประเภทไฟล์
                 const formData = new FormData();
                 formData.append('backup_file', file);
-                formData.append('file_type', fileTypeValue); // ใช้ formData.append เพื่อส่ง file_type
+                formData.append('file_type', fileTypeValue);
 
-                fetch(importBackupForm.action, {
-                    method: importBackupForm.method,
-                    body: formData // ใช้ formData ที่สร้างขึ้นใหม่
+                fetch('/api/import_backup_file', {
+                    method: 'POST',
+                    body: formData
                 })
                 .then(response => response.json())
                 .then(data => {
