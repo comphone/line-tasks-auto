@@ -56,6 +56,26 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'settings_page' %}active{% endif %}" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>
                     </li>
+                    
+                    <li class="nav-item dropdown">
+                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            {% if google_api_connected %}
+                                <span class="text-success" title="เชื่อมต่อ Google API สำเร็จ"><i class="fas fa-check-circle"></i> Google API</span>
+                            {% else %}
+                                <span class="text-danger" title="การเชื่อมต่อ Google API ล้มเหลว!"><i class="fas fa-exclamation-triangle"></i> Google API</span>
+                            {% endif %}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            {% if google_api_connected %}
+                                <li><span class="dropdown-item-text">สถานะ: <span class="badge bg-success">เชื่อมต่อแล้ว</span></span></li>
+                            {% else %}
+                                <li><span class="dropdown-item-text">สถานะ: <span class="badge bg-danger">ล้มเหลว</span></span></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('authorize') }}">คลิกเพื่อเชื่อมต่อใหม่</a></li>
+                            {% endif %}
+                        </ul>
+                    </li>
+
                     <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
                         <a class="btn btn-success" href="{{ url_for('form_page') }}">
                             <i class="fas fa-plus-circle me-1"></i>สร้างงานใหม่
