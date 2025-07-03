@@ -129,12 +129,14 @@
 <div class="row">
     <div class="col-lg-12 mb-4">
         <div class="card shadow-sm">
-            <div class="card-header">
-                <i class="fas fa-chart-bar me-1"></i>
-                จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)
+            <div class="card-header d-flex justify-content-between align-items-center" id="chartHeader" data-bs-toggle="collapse" data-bs-target="#monthlyTasksChartCollapse" aria-expanded="true" aria-controls="monthlyTasksChartCollapse" style="cursor: pointer;">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-1"></i>จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)</h5>
+                <i class="fas fa-chevron-down"></i> {# Icon for expand/collapse #}
             </div>
-            <div class="card-body">
-                <canvas id="monthlyTasksChart"></canvas>
+            <div class="collapse show" id="monthlyTasksChartCollapse"> {# 'show' to make it expanded by default #}
+                <div class="card-body">
+                    <canvas id="monthlyTasksChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -142,54 +144,57 @@
 
 
 <div class="card shadow-sm">
-    <div class="card-header">
+    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader" data-bs-toggle="collapse" data-bs-target="#tasksTableCollapse" aria-expanded="true" aria-controls="tasksTableCollapse" style="cursor: pointer;">
         <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
+        <i class="fas fa-chevron-down"></i> {# Icon for expand/collapse #}
     </div>
-    <div class="card-body">
-        <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
-            <div class="input-group">
-                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หรือเบอร์โทร..." value="{{ search_query or '' }}">
-                <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
-            </div>
-        </form>
+    <div class="collapse show" id="tasksTableCollapse"> {# 'show' to make it expanded by default #}
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
+                <div class="input-group">
+                    <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หรือเบอร์โทร..." value="{{ search_query or '' }}">
+                    <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
+                </div>
+            </form>
 
-        <div class="table-responsive">
-            <table class="table table-hover table-bordered align-middle">
-                <thead class="table-dark">
-                    <tr>
-                        <th style="width: 5%;">#</th>
-                        <th>ชื่อลูกค้า</th>
-                        <th>รายละเอียดงาน</th>
-                        <th>วันเวลานัดหมาย</th>
-                        <th class="text-center">สถานะ</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for task in tasks %}
-                    <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
-                        <td>{{ loop.index }}</td>
-                        <td>{{ task.customer.name or '-' }}</td>
-                        <td class="task-title-cell">{{ task.title }}</td> {# เพิ่ม class task-title-cell #}
-                        <td>{{ task.due_formatted or '-' }}</td>
-                        <td class="text-center">
-                            {% if task.status == 'completed' %}
-                                <span class="badge bg-success">เสร็จเรียบร้อย</span>
-                            {% elif task.is_overdue %}
-                                <span class="badge bg-danger">เลยกำหนด</span>
-                            {% else %}
-                                <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" class="text-center p-4">
-                            <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table class="table table-hover table-bordered align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width: 5%;">#</th>
+                            <th>ชื่อลูกค้า</th>
+                            <th>รายละเอียดงาน</th>
+                            <th>วันเวลานัดหมาย</th>
+                            <th class="text-center">สถานะ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                        <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
+                            <td>{{ loop.index }}</td>
+                            <td>{{ task.customer.name or '-' }}</td>
+                            <td class="task-title-cell">{{ task.title }}</td> {# เพิ่ม class task-title-cell #}
+                            <td>{{ task.due_formatted or '-' }}</td>
+                            <td class="text-center">
+                                {% if task.status == 'completed' %}
+                                    <span class="badge bg-success">เสร็จเรียบร้อย</span>
+                                {% elif task.is_overdue %}
+                                    <span class="badge bg-danger">เลยกำหนด</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center p-4">
+                                <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -244,6 +249,44 @@
                 }
             });
         }
+
+        // --- Collapse Icon Toggle ---
+        function setupCollapseToggle(headerId, collapseId) {
+            const header = document.getElementById(headerId);
+            const collapseElement = document.getElementById(collapseId);
+
+            if (header && collapseElement) {
+                // Initial icon state
+                const icon = header.querySelector('.fa-chevron-down, .fa-chevron-up');
+                if (icon) {
+                    if (collapseElement.classList.contains('show')) {
+                        icon.classList.add('fa-chevron-up');
+                        icon.classList.remove('fa-chevron-down');
+                    } else {
+                        icon.classList.add('fa-chevron-down');
+                        icon.classList.remove('fa-chevron-up');
+                    }
+                }
+
+                // Event listener for toggle
+                header.addEventListener('click', function() {
+                    const icon = this.querySelector('.fa-chevron-down, .fa-chevron-up');
+                    if (icon) {
+                        if (icon.classList.contains('fa-chevron-down')) {
+                            icon.classList.remove('fa-chevron-down');
+                            icon.classList.add('fa-chevron-up');
+                        } else {
+                            icon.classList.remove('fa-chevron-up');
+                            icon.classList.add('fa-chevron-down');
+                        }
+                    }
+                });
+            }
+        }
+
+        setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse');
+        setupCollapseToggle('tasksHeader', 'tasksTableCollapse');
+
     });
 </script>
 <script type="application/json" data-chart-data>{{ chart_data | tojson | safe }}</script>
