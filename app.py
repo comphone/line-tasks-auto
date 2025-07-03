@@ -1814,10 +1814,12 @@ def oauth2callback():
         flow.fetch_token(authorization_response=request.url)
         creds = flow.credentials
 
-        token_json_content = creds.to_json()
+        # --- REVISED: Create a compact, single-line JSON string ---
+        token_data = json.loads(creds.to_json())
+        compact_token_json = json.dumps(token_data, separators=(',', ':'))
         
-        flash(f'เชื่อมต่อ Google สำเร็จแล้ว! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com (หรือแพลตฟอร์มอื่นที่คุณใช้) และรีสตาร์ทแอปพลิเคชัน: <textarea class="form-control mt-2" rows="5" readonly>{token_json_content}</textarea>', 'success')
-        app.logger.info("Google OAuth successful. Token saved to token.json. Please update GOOGLE_TOKEN_JSON env var.")
+        flash(f'เชื่อมต่อ Google สำเร็จแล้ว! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com (หรือแพลตฟอร์มอื่นที่คุณใช้) และรีสตาร์ทแอปพลิเคชัน: <textarea class="form-control mt-2" rows="5" readonly>{compact_token_json}</textarea>', 'success')
+        app.logger.info("Google OAuth successful. Please update GOOGLE_TOKEN_JSON env var with the new compact token.")
         
     except Exception as e:
         app.logger.error(f"Error during OAuth2 callback: {e}", exc_info=True)
