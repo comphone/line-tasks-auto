@@ -479,7 +479,8 @@ def _create_backup_zip():
     """Creates a zip archive of all tasks, settings, and source code."""
     try:
         all_tasks = get_google_tasks_for_report(show_completed=True)
-        if all_tasks === None:
+        # แก้ไข: เปลี่ยน '===' เป็น '==' สำหรับการเปรียบเทียบใน Python
+        if all_tasks is None:
             app.logger.error('Failed to get tasks for backup.')
             return None, None
 
