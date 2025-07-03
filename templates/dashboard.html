@@ -133,7 +133,7 @@
                 <h5 class="mb-0"><i class="fas fa-chart-bar me-1"></i>จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)</h5>
                 <i class="fas fa-chevron-down"></i> {# Icon for expand/collapse #}
             </div>
-            <div class="collapse" id="monthlyTasksChartCollapse"> {# Removed 'show' to make it collapsed by default #}
+            <div class="collapse" id="monthlyTasksChartCollapse"> {# Still collapsed by default #}
                 <div class="card-body">
                     <canvas id="monthlyTasksChart"></canvas>
                 </div>
@@ -144,11 +144,11 @@
 
 
 <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader" data-bs-toggle="collapse" data-bs-target="#tasksTableCollapse" aria-expanded="false" aria-controls="tasksTableCollapse" style="cursor: pointer;">
+    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader" data-bs-toggle="collapse" data-bs-target="#tasksTableCollapse" aria-expanded="true" aria-controls="tasksTableCollapse" style="cursor: pointer;">
         <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
-        <i class="fas fa-chevron-down"></i> {# Icon for expand/collapse #}
+        <i class="fas fa-chevron-up"></i> {# Icon for expanded state #}
     </div>
-    <div class="collapse" id="tasksTableCollapse"> {# Removed 'show' to make it collapsed by default #}
+    <div class="collapse show" id="tasksTableCollapse"> {# Always expanded #}
         <div class="card-body">
             <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
                 <div class="input-group">
@@ -251,38 +251,56 @@
         }
 
         // --- Collapse Icon Toggle ---
-        function setupCollapseToggle(headerId, collapseId) {
+        function setupCollapseToggle(headerId, collapseId, isAlwaysExpanded = false) {
             const header = document.getElementById(headerId);
             const collapseElement = document.getElementById(collapseId);
 
             if (header && collapseElement) {
-                // Initial icon state
                 const icon = header.querySelector('.fa-chevron-down, .fa-chevron-up');
+
+                // Initial icon state
                 if (icon) {
-                    // Start collapsed, so icon should be 'down'
-                    icon.classList.add('fa-chevron-down');
-                    icon.classList.remove('fa-chevron-up');
+                    if (collapseElement.classList.contains('show')) {
+                        icon.classList.add('fa-chevron-up');
+                        icon.classList.remove('fa-chevron-down');
+                    } else {
+                        icon.classList.add('fa-chevron-down');
+                        icon.classList.remove('fa-chevron-up');
+                    }
                 }
 
-                // Event listener for toggle
-                header.addEventListener('click', function() {
-                    const icon = this.querySelector('.fa-chevron-down, .fa-chevron-up');
-                    if (icon) {
-                        if (icon.classList.contains('fa-chevron-down')) {
-                            icon.classList.remove('fa-chevron-down');
-                            icon.classList.add('fa-chevron-up');
-                        } else {
-                            icon.classList.remove('fa-chevron-up');
-                            icon.classList.add('fa-chevron-down');
+                // Event listener for toggle, only if not always expanded
+                if (!isAlwaysExpanded) {
+                    header.addEventListener('click', function() {
+                        const currentIcon = this.querySelector('.fa-chevron-down, .fa-chevron-up');
+                        if (currentIcon) {
+                            if (currentIcon.classList.contains('fa-chevron-down')) {
+                                currentIcon.classList.remove('fa-chevron-down');
+                                currentIcon.classList.add('fa-chevron-up');
+                            } else {
+                                currentIcon.classList.remove('fa-chevron-up');
+                                currentIcon.classList.add('fa-chevron-down');
+                            }
                         }
+                    });
+                } else {
+                    // For always expanded sections, remove click listener if it exists
+                    // and ensure the icon is always 'up'
+                    if (icon) {
+                        icon.classList.remove('fa-chevron-down');
+                        icon.classList.add('fa-chevron-up');
                     }
-                });
+                    // Prevent default collapse behavior if the data-bs-toggle is present
+                    header.removeAttribute('data-bs-toggle');
+                    header.style.cursor = 'default'; // Change cursor to indicate no click action
+                }
             }
         }
 
-        // Set up collapse for both sections to be collapsed by default
-        setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse');
-        setupCollapseToggle('tasksHeader', 'tasksTableCollapse');
+        // Set up collapse for chart section (collapsed by default)
+        setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse', false);
+        // Set up collapse for tasks table section (always expanded)
+        setupCollapseToggle('tasksHeader', 'tasksTableCollapse', true);
 
     });
 </script>

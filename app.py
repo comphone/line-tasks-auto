@@ -9,6 +9,7 @@ import zipfile
 from io import BytesIO
 from collections import defaultdict
 from datetime import timezone
+import time # Import for time.sleep
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -39,7 +40,6 @@ from linebot.models import (
 # --- Google API Imports ---
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
@@ -135,6 +135,28 @@ def save_settings_to_file(settings_data):
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
 
+def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
+    """
+    Executes a Google API call with retry logic for transient errors.
+    Retries on 5xx errors (server errors) and 429 (Too Many Requests).
+    """
+    max_retries = 3
+    base_delay = 1 # seconds
+    for i in range(max_retries):
+        try:
+            return api_call(*args, **kwargs).execute()
+        except HttpError as e:
+            if e.resp.status in [500, 502, 503, 504, 429] and i < max_retries - 1:
+                delay = base_delay * (2 ** i) # Exponential backoff
+                app.logger.warning(f"Google API transient error (Status: {e.resp.status}). Retrying in {delay} seconds... (Attempt {i+1}/{max_retries})")
+                time.sleep(delay)
+            else:
+                raise # Re-raise if not a transient error or max retries reached
+        except Exception as e:
+            app.logger.error(f"Unexpected error during Google API call: {e}")
+            raise # Re-raise other unexpected errors
+    return None # Should not reach here if retries are exhausted and error is re-raised
+
 def get_google_service(api_name, api_version):
     """Authenticates and returns a Google API service."""
     creds = None
@@ -150,18 +172,30 @@ def get_google_service(api_name, api_version):
     if creds and creds.valid and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
-            app.logger.info("Refreshed Google access token.")
-            app.logger.info(f"New GOOGLE_TOKEN_JSON after refresh (copy this to Render env var): {creds.to_json()}")
+            # Log the new token prominently for manual update
+            app.logger.info("="*80)
+            app.logger.info("Google access token refreshed successfully!")
+            app.logger.info("PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE ON RENDER.COM WITH THE FOLLOWING:")
+            app.logger.info(f"NEW GOOGLE_TOKEN_JSON: {creds.to_json()}")
+            app.logger.info("="*80)
         except Exception as e:
             app.logger.error(f"Error refreshing token: {e}")
             creds = None
 
-    if not creds or not creds.valid:
+    # Try to build service with retry logic
+    if creds and creds.valid:
+        try:
+            # Use retry helper for building the service
+            service = _execute_google_api_call_with_retry(lambda: build(api_name, api_version, credentials=creds))
+            return service
+        except Exception as e:
+            app.logger.error(f"Failed to build Google API service after retries: {e}")
+            return None
+    else:
         app.logger.error("No valid Google credentials available. API service cannot be built.")
         app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set and valid, or that authorization was successful.")
         return None
 
-    return build(api_name, api_version, credentials=creds)
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
@@ -180,7 +214,7 @@ def load_settings_from_drive_on_startup():
 
     try:
         query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
-        response = service.files().list(q=query, spaces='drive', fields='files(id, name)', orderBy='modifiedTime desc', pageSize=1).execute()
+        response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', orderBy='modifiedTime desc', pageSize=1)
         files = response.get('files', [])
 
         if files:
@@ -253,7 +287,7 @@ def get_google_tasks_for_report(show_completed=True):
     service = get_google_tasks_service()
     if not service: return None
     try:
-        results = service.tasks().list(tasklist=GOOGLE_TASKS_LIST_ID, showCompleted=show_completed, maxResults=100).execute()
+        results = _execute_google_api_call_with_retry(service.tasks().list, tasklist=GOOGLE_TASKS_LIST_ID, showCompleted=show_completed, maxResults=100)
         return results.get('items', [])
     except HttpError as err:
         app.logger.error(f"API Error getting tasks: {err}")
@@ -265,7 +299,7 @@ def get_single_task(task_id):
     service = get_google_tasks_service()
     if not service: return None
     try:
-        return service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        return _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
     except HttpError as err:
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
@@ -278,19 +312,36 @@ def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=None)
     service = get_google_drive_service()
     if not service or not folder_id:
         app.logger.error("Drive service or folder ID is not configured for upload.")
-        return None
+        return False
+
     try:
+        mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
         media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-        file_metadata = {'name': file_name, 'parents': [folder_id]}
-        file_obj = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        file_metadata = {'name': filename, 'parents': [folder_id]}
 
-        service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
+        app.logger.info(f"Attempting to upload file '{filename}' to Drive folder '{folder_id}'.")
+        file_obj = _execute_google_api_call_with_retry(service.files().create, body=file_metadata, media_body=media, fields='id, webViewLink')
 
-        app.logger.info(f"Uploaded to Drive: {file_obj.get('webViewLink')}")
-        return file_obj.get('webViewLink')
+        if not file_obj or 'id' not in file_obj:
+            app.logger.error(f"Drive upload failed for '{filename}': File object or ID is missing after create API call.")
+            return False
+
+        uploaded_file_id = file_obj['id']
+        uploaded_file_link = file_obj.get('webViewLink', 'N/A')
+        app.logger.info(f"File '{filename}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
+
+        # Set permission to anyone with link can view
+        _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
+        app.logger.info(f"Permissions set for '{filename}' (ID: {uploaded_file_id}).")
+
+        app.logger.info(f"Successfully completed backup upload for '{filename}' to Drive.")
+        return True
     except HttpError as e:
-        app.logger.error(f'Drive upload error: {e}')
-        return None
+        app.logger.error(f'Drive upload HttpError for {filename} (Status: {e.resp.status}): {e.content.decode("utf-8") if e.content else e}')
+        return False
+    except Exception as e:
+        app.logger.error(f'Unexpected error during Drive upload for {filename}: {e}', exc_info=True)
+        return False
 
 def create_google_task(title, notes=None, due=None):
     """Creates a new task in Google Tasks."""
@@ -299,7 +350,7 @@ def create_google_task(title, notes=None, due=None):
     try:
         task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
         if due: task_body['due'] = due
-        return service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_body).execute()
+        return _execute_google_api_call_with_retry(service.tasks().insert, tasklist=GOOGLE_TASKS_LIST_ID, body=task_body)
     except HttpError as e:
         app.logger.error(f"Error creating Google Task: {e}")
         return None
@@ -309,7 +360,7 @@ def delete_google_task(task_id):
     service = get_google_tasks_service()
     if not service: return False
     try:
-        service.tasks().delete(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        _execute_google_api_call_with_retry(service.tasks().delete, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
         return True
     except HttpError as err:
         app.logger.error(f"API Error deleting task {task_id}: {err}")
@@ -320,7 +371,7 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
     service = get_google_tasks_service()
     if not service: return None
     try:
-        task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id).execute()
+        task = _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
         if title is not None: task['title'] = title
         if notes is not None: task['notes'] = notes
         if status is not None:
@@ -334,7 +385,7 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
             if due: task['due'] = due
             else: task.pop('due', None)
 
-        return service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task).execute()
+        return _execute_google_api_call_with_retry(service.tasks().update, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task)
     except HttpError as e:
         app.logger.error(f"Failed to update task {task_id}: {e}")
         return None
@@ -514,17 +565,31 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
 
     try:
         mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
-        media = MediaIoBaseUpload(memory_file, mimetype=mime_type, resumable=True)
+        media = MediaFileUpload(memory_path, mimetype=mime_type, resumable=True) # Use memory_path
         file_metadata = {'name': filename, 'parents': [drive_folder_id]}
 
-        file_obj = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        app.logger.info(f"Attempting to upload file '{filename}' to Drive folder '{drive_folder_id}'.")
+        file_obj = _execute_google_api_call_with_retry(service.files().create, body=file_metadata, media_body=media, fields='id, webViewLink')
 
-        service.permissions().create(fileId=file_obj['id'], body={'role': 'reader', 'type': 'anyone'}).execute()
+        if not file_obj or 'id' not in file_obj:
+            app.logger.error(f"Drive upload failed for '{filename}': File object or ID is missing after create API call.")
+            return False
 
-        app.logger.info(f"Successfully uploaded backup '{filename}' to Drive (ID: {file_obj['id']})")
+        uploaded_file_id = file_obj['id']
+        uploaded_file_link = file_obj.get('webViewLink', 'N/A')
+        app.logger.info(f"File '{filename}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
+
+        # Set permission to anyone with link can view
+        _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
+        app.logger.info(f"Permissions set for '{filename}' (ID: {uploaded_file_id}).")
+
+        app.logger.info(f"Successfully completed backup upload for '{filename}' to Drive.")
         return True
     except HttpError as e:
-        app.logger.error(f'Drive upload error: {e}')
+        app.logger.error(f'Drive upload HttpError for {filename} (Status: {e.resp.status}): {e.content.decode("utf-8") if e.content else e}')
+        return False
+    except Exception as e:
+        app.logger.error(f'Unexpected error during Drive upload for {filename}: {e}', exc_info=True)
         return False
 
 def check_google_api_status():
@@ -533,7 +598,7 @@ def check_google_api_status():
     if not service:
         return False
     try:
-        service.about().get(fields='user').execute()
+        _execute_google_api_call_with_retry(service.about().get, fields='user')
         return True
     except HttpError as e:
         if e.resp.status in [401, 403]:
@@ -566,11 +631,22 @@ def scheduled_backup_job():
         # Full system backup (tasks + settings + code)
         memory_file_zip, filename_zip = _create_backup_zip()
         if memory_file_zip and filename_zip:
-            if _upload_backup_to_drive(memory_file_zip, filename_zip, GOOGLE_DRIVE_FOLDER_ID):
-                app.logger.info("Automatic full system backup successful.")
-            else:
-                app.logger.error("Automatic full system backup failed.")
+            # Need to save BytesIO content to a temporary file for MediaFileUpload
+            temp_zip_path = os.path.join(app.config['UPLOAD_FOLDER'], filename_zip)
+            try:
+                with open(temp_zip_path, 'wb') as f:
+                    f.write(memory_file_zip.getvalue())
+                if _upload_backup_to_drive(temp_zip_path, filename_zip, GOOGLE_DRIVE_FOLDER_ID):
+                    app.logger.info("Automatic full system backup successful.")
+                else:
+                    app.logger.error("Automatic full system backup failed.")
+                    overall_success = False
+            except Exception as e:
+                app.logger.error(f"Error saving/uploading full system backup temp file: {e}", exc_info=True)
                 overall_success = False
+            finally:
+                if os.path.exists(temp_zip_path):
+                    os.remove(temp_zip_path)
         else:
             app.logger.error("Failed to create full system backup zip.")
             overall_success = False
@@ -581,24 +657,37 @@ def scheduled_backup_job():
             settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
             settings_backup_filename = "settings_backup.json"
 
-            service = get_google_drive_service()
-            if service:
-                try:
-                    # Delete old settings_backup.json before uploading new one
-                    query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
-                    response = service.files().list(q=query, spaces='drive', fields='files(id)').execute()
-                    for file_item in response.get('files', []):
-                        service.files().delete(fileId=file_item['id']).execute()
-                        app.logger.info(f"Deleted old settings_backup.json (ID: {file_item['id']}) from Drive.")
-                except HttpError as e:
-                    app.logger.warning(f"Could not delete old settings_backup.json from Drive: {e}")
-                    # This warning doesn't necessarily mean overall failure, but good to log.
+            # Need to save BytesIO content to a temporary file for MediaFileUpload
+            temp_settings_path = os.path.join(app.config['UPLOAD_FOLDER'], settings_backup_filename)
+            try:
+                with open(temp_settings_path, 'wb') as f:
+                    f.write(settings_json_bytes.getvalue())
 
-            if _upload_backup_to_drive(settings_json_bytes, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
-                app.logger.info("Automatic settings backup successful.")
-            else:
-                app.logger.error("Automatic settings backup failed.")
+                service = get_google_drive_service()
+                if service:
+                    try:
+                        # Delete old settings_backup.json before uploading new one
+                        query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
+                        response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id)')
+                        for file_item in response.get('files', []):
+                            _execute_google_api_call_with_retry(service.files().delete, fileId=file_item['id'])
+                            app.logger.info(f"Deleted old settings_backup.json (ID: {file_item['id']}) from Drive.")
+                    except HttpError as e:
+                        app.logger.warning(f"Could not delete old settings_backup.json from Drive: {e}")
+                    except Exception as e:
+                        app.logger.warning(f"Unexpected error during old settings_backup.json deletion: {e}")
+
+                if _upload_backup_to_drive(temp_settings_path, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
+                    app.logger.info("Automatic settings backup successful.")
+                else:
+                    app.logger.error("Automatic settings backup failed.")
+                    overall_success = False
+            except Exception as e:
+                app.logger.error(f"Error saving/uploading settings backup temp file: {e}", exc_info=True)
                 overall_success = False
+            finally:
+                if os.path.exists(temp_settings_path):
+                    os.remove(temp_settings_path)
         else:
             app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings backup.")
 
@@ -719,7 +808,7 @@ def scheduled_customer_follow_up_job():
                         if tech_reports_text: new_notes += "\n\n" + tech_reports_text.strip()
                         new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
-                        update_google_task(task['id'], notes=new_notes)
+                        _execute_google_api_call_with_retry(update_google_task, task['id'], notes=new_notes)
                         cache.clear()
 
                         if customer_line_id:
@@ -1130,7 +1219,21 @@ def test_notification():
 def backup_data():
     memory_file, filename = _create_backup_zip()
     if memory_file and filename:
-        return Response(memory_file, mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={filename}'})
+        # Save BytesIO content to a temporary file for Response.
+        # This is needed because Response expects a file path or direct bytes,
+        # and BytesIO might be consumed or closed if not handled carefully.
+        temp_zip_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        try:
+            with open(temp_zip_path, 'wb') as f:
+                f.write(memory_file.getvalue())
+            return Response(memory_file.getvalue(), mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={filename}'})
+        except Exception as e:
+            app.logger.error(f"Error saving/serving backup zip file: {e}", exc_info=True)
+            flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
+            return redirect(url_for('settings_page'))
+        finally:
+            if os.path.exists(temp_zip_path):
+                os.remove(temp_zip_path) # Clean up temp file
     else:
         flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
         return redirect(url_for('settings_page'))
@@ -1248,7 +1351,7 @@ def import_backup_file():
                     existing_task = None
                     if original_id:
                         try:
-                            existing_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=original_id).execute()
+                            existing_task = _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=original_id)
                         except HttpError as e:
                             if e.resp.status == 404:
                                 existing_task = None # Task not found, proceed with insert
@@ -1276,13 +1379,13 @@ def import_backup_file():
                         elif 'completed' in existing_task:
                             update_body['completed'] = None # If status changed from completed, remove completed date
 
-                        service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=original_id, body=update_body).execute()
+                        _execute_google_api_call_with_retry(service.tasks().update, tasklist=GOOGLE_TASKS_LIST_ID, task=original_id, body=update_body)
                         updated_count += 1
                         app.logger.info(f"Import task '{task_title_for_log}' (ID: {original_id}): Updated existing task.")
                     else:
                         # Task does not exist, insert new
                         clean_task_data.pop('id', None) # Ensure no ID is sent for new inserts
-                        service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=clean_task_data).execute()
+                        _execute_google_api_call_with_retry(service.tasks().insert, tasklist=GOOGLE_TASKS_LIST_ID, body=clean_task_data)
                         created_count += 1
                         app.logger.info(f"Import task '{task_title_for_log}': Inserted new task.")
                 
@@ -1615,7 +1718,7 @@ def trigger_customer_follow_up_test():
         if feedback_data:
             updated_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         
-        update_google_task(latest_task['id'],
+        _execute_google_api_call_with_retry(update_google_task, latest_task['id'],
                            notes=updated_notes,
                            status='completed',
                            due=None)
@@ -1703,7 +1806,7 @@ def submit_customer_problem():
 
     final_notes = f"{base_notes.strip()}\n\n{tech_reports_text.strip()}\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
-    update_google_task(task_id=task_id, notes=final_notes, status='needsAction')
+    _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes, status='needsAction')
     cache.clear()
 
     admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
@@ -1748,7 +1851,7 @@ def save_customer_line_id():
         
         final_notes = f"{base_notes.strip()}\n\n{tech_reports_text.strip()}\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         
-        if update_google_task(task_id=task_id, notes=final_notes):
+        if _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes):
             cache.clear()
             shop_info = get_app_settings().get('shop_info', {})
             customer_info = parse_customer_info_from_notes(notes)
@@ -1920,7 +2023,7 @@ def handle_postback(event):
         tech_reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
         final_notes = f"{base_notes.strip()}\n\n{tech_reports_text.strip()}\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         
-        update_google_task(task['id'], notes=final_notes)
+        _execute_google_api_call_with_retry(update_google_task, task['id'], notes=final_notes)
         cache.clear()
         
         reply_text = "ขอบคุณสำหรับความคิดเห็นครับ/ค่ะ 🙏"
