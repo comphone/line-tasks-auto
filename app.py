@@ -1201,7 +1201,8 @@ def import_backup_file():
 
             service = get_google_tasks_service()
             if not service:
-                return jsonify({"status": "error", "message": "Could not connect to Google Tasks service. Check credentials."}), 500
+                app.logger.error("Import failed: Could not connect to Google Tasks service. Check credentials.")
+                return jsonify({"status": "error", "message": "ไม่สามารถเชื่อมต่อ Google Tasks ได้. โปรดตรวจสอบการเชื่อมต่อ Google API."}), 500
 
             created_count, updated_count, skipped_count = 0, 0, 0
             
@@ -1209,53 +1210,67 @@ def import_backup_file():
                 original_id = task_data.get('id')
                 task_title_for_log = task_data.get('title', 'N/A')
 
+                # Filter out read-only fields that cause issues on insert/update
+                read_only_fields = ['kind', 'selfLink', 'position', 'etag', 'updated', 'links', 'webViewLink']
+                clean_task_data = {k: v for k, v in task_data.items() if k not in read_only_fields}
+
                 try:
                     # ---- Process dates first ----
                     for date_field in ['due', 'completed']:
-                        if date_field in task_data and task_data[date_field]:
+                        if date_field in clean_task_data and clean_task_data[date_field]:
                             try:
-                                dt_obj = date_parse(task_data[date_field])
-                                task_data[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                                dt_obj = date_parse(clean_task_data[date_field])
+                                clean_task_data[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
                             except Exception as e:
-                                app.logger.warning(f"Could not parse {date_field} date for task '{task_title_for_log}': {e}. Skipping {date_field}.")
-                                task_data.pop(date_field, None)
+                                app.logger.warning(f"Import task '{task_title_for_log}': Could not parse {date_field} date '{clean_task_data[date_field]}': {e}. Skipping {date_field}.")
+                                clean_task_data.pop(date_field, None)
+                        elif date_field in clean_task_data: # If field exists but is empty/None, remove it
+                            clean_task_data.pop(date_field, None)
                     
-                    if not original_id:
-                        # If no original ID, must be a new task
-                        task_data.pop('id', None) 
-                        service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_data).execute()
-                        created_count += 1
-                        continue
+                    # Try to get the task first to determine if it's an update or insert
+                    existing_task = None
+                    if original_id:
+                        try:
+                            existing_task = service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=original_id).execute()
+                        except HttpError as e:
+                            if e.resp.status == 404:
+                                existing_task = None # Task not found, proceed with insert
+                            else:
+                                app.logger.error(f"Import task '{task_title_for_log}' (ID: {original_id}): API error checking existence: {e}")
+                                skipped_count += 1
+                                continue # Skip this task due to API error
 
-                    # ---- Try to GET the task first ----
-                    try:
-                        service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=original_id).execute()
-                        # If successful, task EXISTS -> UPDATE it
-                        update_google_task(
-                            task_id=original_id,
-                            title=task_data.get('title'),
-                            notes=task_data.get('notes'),
-                            status=task_data.get('status'),
-                            due=task_data.get('due')
-                        )
+                    if existing_task:
+                        # Task exists, update it
+                        # Only update fields that are present in clean_task_data and are allowed to be updated
+                        update_body = {
+                            'id': original_id, # ID is required for update
+                            'title': clean_task_data.get('title', existing_task.get('title')),
+                            'notes': clean_task_data.get('notes', existing_task.get('notes')),
+                            'status': clean_task_data.get('status', existing_task.get('status')),
+                        }
+                        if 'due' in clean_task_data:
+                            update_body['due'] = clean_task_data['due']
+                        elif 'due' in existing_task: # If due was removed in backup, remove it here too
+                            update_body['due'] = None
+
+                        if clean_task_data.get('status') == 'completed':
+                            update_body['completed'] = clean_task_data.get('completed', datetime.datetime.now(pytz.utc).isoformat().replace('+00:00', 'Z'))
+                        elif 'completed' in existing_task:
+                            update_body['completed'] = None # If status changed from completed, remove completed date
+
+                        service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=original_id, body=update_body).execute()
                         updated_count += 1
-
-                    except HttpError as e:
-                        if e.resp.status == 404:
-                            # If 404 Not Found, task does NOT exist -> INSERT it
-                            task_data.pop('id', None) # Remove ID before inserting
-                            read_only_fields = ['kind', 'selfLink', 'position', 'etag', 'updated']
-                            for field in read_only_fields: task_data.pop(field, None)
-                            
-                            service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_data).execute()
-                            created_count += 1
-                        else:
-                            # Other API errors
-                            app.logger.error(f"API error checking task '{task_title_for_log}' (ID: {original_id}): {e}")
-                            skipped_count += 1
+                        app.logger.info(f"Import task '{task_title_for_log}' (ID: {original_id}): Updated existing task.")
+                    else:
+                        # Task does not exist, insert new
+                        clean_task_data.pop('id', None) # Ensure no ID is sent for new inserts
+                        service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=clean_task_data).execute()
+                        created_count += 1
+                        app.logger.info(f"Import task '{task_title_for_log}': Inserted new task.")
                 
                 except Exception as e:
-                    app.logger.error(f"Unexpected error processing task '{task_title_for_log}': {e}", exc_info=True)
+                    app.logger.error(f"Import task '{task_title_for_log}' (ID: {original_id}): Unexpected error processing: {e}", exc_info=True)
                     skipped_count += 1
             
             cache.clear()
@@ -1274,6 +1289,7 @@ def import_backup_file():
                 return jsonify({"status": "error", "message": "เกิดข้อผิดพลาดในการบันทึกการตั้งค่าที่นำเข้า"}), 500
 
     except json.JSONDecodeError:
+        app.logger.error("Import failed: Invalid JSON file.")
         return jsonify({"status": "error", "message": "ไฟล์ JSON ไม่ถูกต้อง"}), 400
     except Exception as e:
         app.logger.error(f"Error during import: {e}", exc_info=True)
@@ -1490,10 +1506,9 @@ def manage_equipment_duplicates():
     potential_duplicate_sets = {}
     for item_name, items_list in duplicates_by_item_name.items():
         if len(items_list) > 1:
-            # For equipment, there's no 'created' date. We'll just present them as is,
-            # or you could sort by 'price' or 'unit' if those are more meaningful for ordering.
-            # For simplicity, we'll keep the order they appeared in the original list.
-            potential_duplicate_sets[item_name] = items_list
+            # Sort by original index (ascending) to keep the first encountered item
+            sorted_items_list = sorted(items_list, key=lambda x: x['original_index'])
+            potential_duplicate_sets[item_name] = sorted_items_list
             
     return render_template('equipment_duplicates.html', duplicates=potential_duplicate_sets)
 
