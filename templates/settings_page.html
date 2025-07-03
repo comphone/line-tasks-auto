@@ -213,22 +213,26 @@
             <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importEquipmentModal">
                 Import แคตตาล็อก (Excel)
             </button>
+            {# ADDED: Link for Manage Equipment Duplicates #}
+            <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning ms-2">
+                <i class="fas fa-copy me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ
+            </a>
         </div>
     </div>
 
-    {# ADDED: Section for Manage Duplicates #}
+    {# ADDED: Section for Manage Duplicates (Tasks) #}
     <div class="card mt-4 mb-4">
         <div class="card-header bg-warning text-white">
-            <h5 class="mb-0">จัดการข้อมูลซ้ำซ้อน</h5>
+            <h5 class="mb-0">จัดการข้อมูลงานซ้ำซ้อน</h5>
         </div>
         <div class="card-body">
             <p>ตรวจสอบและลบงานที่มีชื่องานและชื่อลูกค้าซ้ำกัน เพื่อรักษาความสะอาดของข้อมูล</p>
             <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning">
-                <i class="fas fa-copy me-1"></i> ไปยังหน้าจัดการข้อมูลซ้ำ
+                <i class="fas fa-copy me-1"></i> ไปยังหน้าจัดการข้อมูลงานซ้ำ
             </a>
         </div>
     </div>
-    {# END ADDED: Section for Manage Duplicates #}
+    {# END ADDED: Section for Manage Duplicates (Tasks) #}
 
     {# --- NEW: Unified Import Backup Section --- #}
     <div class="card mt-4 mb-4">
@@ -310,7 +314,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
                     <button type="submit" class="btn btn-primary">นำเข้า</button>
                 </div>
             </form>
