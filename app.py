@@ -1473,6 +1473,60 @@ def delete_duplicates_batch():
 
     return redirect(url_for('manage_duplicates'))
 
+@app.route('/manage_equipment_duplicates', methods=['GET'])
+def manage_equipment_duplicates():
+    app_settings = get_app_settings()
+    equipment_catalog = app_settings.get('equipment_catalog', [])
+    
+    duplicates_by_item_name = defaultdict(list)
+    
+    # Group equipment items by item_name
+    for i, item in enumerate(equipment_catalog):
+        item_name = item.get('item_name', '').strip().lower()
+        if item_name:
+            # Store original index to reconstruct later if needed, or just use the item itself
+            duplicates_by_item_name[item_name].append({'original_index': i, 'data': item})
+            
+    potential_duplicate_sets = {}
+    for item_name, items_list in duplicates_by_item_name.items():
+        if len(items_list) > 1:
+            # For equipment, there's no 'created' date. We'll just present them as is,
+            # or you could sort by 'price' or 'unit' if those are more meaningful for ordering.
+            # For simplicity, we'll keep the order they appeared in the original list.
+            potential_duplicate_sets[item_name] = items_list
+            
+    return render_template('equipment_duplicates.html', duplicates=potential_duplicate_sets)
+
+
+@app.route('/delete_equipment_duplicates_batch', methods=['POST'])
+def delete_equipment_duplicates_batch():
+    selected_indices_to_delete_str = request.form.getlist('item_indices')
+    
+    if not selected_indices_to_delete_str:
+        flash('ไม่พบรายการอุปกรณ์ที่เลือกเพื่อลบ', 'warning')
+        return redirect(url_for('manage_equipment_duplicates'))
+
+    indices_to_delete = sorted([int(idx) for idx in selected_indices_to_delete_str], reverse=True) # Delete from end to avoid index shifts
+    
+    app_settings = get_app_settings()
+    current_catalog = app_settings.get('equipment_catalog', [])
+    
+    deleted_count = 0
+    
+    for idx in indices_to_delete:
+        if 0 <= idx < len(current_catalog):
+            current_catalog.pop(idx)
+            deleted_count += 1
+        else:
+            app.logger.warning(f"Attempted to delete invalid equipment index: {idx}")
+    
+    if save_app_settings({'equipment_catalog': current_catalog}):
+        flash(f'ลบรายการอุปกรณ์ที่เลือกสำเร็จ: {deleted_count} รายการ.', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงแคตตาล็อกอุปกรณ์', 'danger')
+
+    return redirect(url_for('manage_equipment_duplicates'))
+
 
 # --- Customer Onboarding & Feedback Routes ---
 
