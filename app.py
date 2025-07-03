@@ -1006,6 +1006,33 @@ def api_delete_task(task_id):
     else:
         return jsonify({'status': 'error', 'message': 'Failed to delete task.'}), 500
 
+# --- NEW: API route for batch deleting tasks ---
+@app.route('/api/delete_tasks_batch', methods=['POST'])
+def api_delete_tasks_batch():
+    data = request.json
+    task_ids = data.get('task_ids', [])
+    if not isinstance(task_ids, list):
+        return jsonify({'status': 'error', 'message': 'Invalid input format.'}), 400
+    
+    deleted_count = 0
+    failed_count = 0
+    for task_id in task_ids:
+        if delete_google_task(task_id):
+            deleted_count += 1
+        else:
+            failed_count += 1
+    
+    if deleted_count > 0:
+        cache.clear()
+
+    return jsonify({
+        'status': 'success',
+        'message': f'Deleted {deleted_count} tasks, {failed_count} failed.',
+        'deleted_count': deleted_count,
+        'failed_count': failed_count
+    })
+
+
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
