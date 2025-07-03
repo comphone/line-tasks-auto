@@ -135,6 +135,16 @@ def save_settings_to_file(settings_data):
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
 
+def safe_execute(request_object):
+    """
+    Call .execute() if the object has it, else just return the object (for new Google API style).
+    This handles cases where Google API client library might return a direct response object
+    instead of a request object that needs .execute().
+    """
+    if hasattr(request_object, 'execute'):
+        return request_object.execute()
+    return request_object # fallback, for new API
+
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     """
     Executes a Google API call with retry logic for transient errors.
@@ -144,7 +154,7 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     base_delay = 1 # seconds
     for i in range(max_retries):
         try:
-            return api_call(*args, **kwargs).execute()
+            return safe_execute(api_call(*args, **kwargs)) # Use safe_execute here
         except HttpError as e:
             if e.resp.status in [500, 502, 503, 504, 429] and i < max_retries - 1:
                 delay = base_delay * (2 ** i) # Exponential backoff
@@ -169,7 +179,8 @@ def get_google_service(api_name, api_version):
             app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Please check format.")
             creds = None
 
-    if creds and creds.valid and creds.expired and creds.refresh_token:
+    # Corrected token refresh logic
+    if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
             # Log the new token prominently for manual update
@@ -186,7 +197,7 @@ def get_google_service(api_name, api_version):
     if creds and creds.valid:
         try:
             # Use retry helper for building the service
-            service = _execute_google_api_call_with_retry(lambda: build(api_name, api_version, credentials=creds))
+            service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
             return service
         except Exception as e:
             app.logger.error(f"Failed to build Google API service after retries: {e}")
@@ -306,41 +317,42 @@ def get_single_task(task_id):
 
 def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=None):
     """Uploads a file to a specified Google Drive folder."""
+    service = get_google_drive_service()
+    if not service:
+        app.logger.error("Drive service is not configured for upload in upload_file_to_google_drive.")
+        return None
     if folder_id is None:
         folder_id = GOOGLE_DRIVE_FOLDER_ID
-
-    service = get_google_drive_service()
-    if not service or not folder_id:
-        app.logger.error("Drive service or folder ID is not configured for upload.")
-        return False
+    if not folder_id:
+        app.logger.error("Folder ID is not configured for upload in upload_file_to_google_drive.")
+        return None
 
     try:
-        mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
         media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-        file_metadata = {'name': filename, 'parents': [folder_id]}
+        file_metadata = {'name': file_name, 'parents': [folder_id]}
 
-        app.logger.info(f"Attempting to upload file '{filename}' to Drive folder '{folder_id}'.")
+        app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
         file_obj = _execute_google_api_call_with_retry(service.files().create, body=file_metadata, media_body=media, fields='id, webViewLink')
 
         if not file_obj or 'id' not in file_obj:
-            app.logger.error(f"Drive upload failed for '{filename}': File object or ID is missing after create API call.")
+            app.logger.error(f"Drive upload failed for '{file_name}': File object or ID is missing after create API call.")
             return False
 
         uploaded_file_id = file_obj['id']
         uploaded_file_link = file_obj.get('webViewLink', 'N/A')
-        app.logger.info(f"File '{filename}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
+        app.logger.info(f"File '{file_name}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
 
         # Set permission to anyone with link can view
         _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
-        app.logger.info(f"Permissions set for '{filename}' (ID: {uploaded_file_id}).")
+        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
 
-        app.logger.info(f"Successfully completed backup upload for '{filename}' to Drive.")
+        app.logger.info(f"Successfully completed backup upload for '{file_name}' to Drive.")
         return True
     except HttpError as e:
-        app.logger.error(f'Drive upload HttpError for {filename} (Status: {e.resp.status}): {e.content.decode("utf-8") if e.content else e}')
+        app.logger.error(f'Drive upload HttpError for {file_name} (Status: {e.resp.status}): {e.content.decode("utf-8") if e.content else e}')
         return False
     except Exception as e:
-        app.logger.error(f'Unexpected error during Drive upload for {filename}: {e}', exc_info=True)
+        app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
         return False
 
 def create_google_task(title, notes=None, due=None):
@@ -554,42 +566,42 @@ def _create_backup_zip():
         app.logger.error(f"Error creating full system backup zip: {e}")
         return None, None
 
-def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
-    """Uploads the given memory file (zip or json) to Google Drive."""
-    if not all([memory_file, filename, drive_folder_id]):
-        app.logger.error("Missing memory_file, filename, or drive_folder_id for Drive upload.")
+def _upload_backup_to_drive(file_path, file_name, mime_type, folder_id):
+    """Uploads the given file (from disk path) to Google Drive."""
+    service = get_google_drive_service()
+    if not service:
+        app.logger.error("Drive service is not configured for upload in _upload_backup_to_drive.")
+        return False
+    if not folder_id:
+        app.logger.error("Folder ID is not configured for upload in _upload_backup_to_drive.")
         return False
 
-    service = get_google_drive_service()
-    if not service: return False
-
     try:
-        mime_type = 'application/zip' if filename.endswith('.zip') else 'application/json'
-        media = MediaFileUpload(memory_path, mimetype=mime_type, resumable=True) # Use memory_path
-        file_metadata = {'name': filename, 'parents': [drive_folder_id]}
+        media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+        file_metadata = {'name': file_name, 'parents': [folder_id]}
 
-        app.logger.info(f"Attempting to upload file '{filename}' to Drive folder '{drive_folder_id}'.")
+        app.logger.info(f"Attempting to upload file '{file_name}' from path '{file_path}' to Drive folder '{folder_id}'.")
         file_obj = _execute_google_api_call_with_retry(service.files().create, body=file_metadata, media_body=media, fields='id, webViewLink')
 
         if not file_obj or 'id' not in file_obj:
-            app.logger.error(f"Drive upload failed for '{filename}': File object or ID is missing after create API call.")
+            app.logger.error(f"Drive upload failed for '{file_name}': File object or ID is missing after create API call.")
             return False
 
         uploaded_file_id = file_obj['id']
         uploaded_file_link = file_obj.get('webViewLink', 'N/A')
-        app.logger.info(f"File '{filename}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
+        app.logger.info(f"File '{file_name}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
 
         # Set permission to anyone with link can view
         _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
-        app.logger.info(f"Permissions set for '{filename}' (ID: {uploaded_file_id}).")
+        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
 
-        app.logger.info(f"Successfully completed backup upload for '{filename}' to Drive.")
+        app.logger.info(f"Successfully completed backup upload for '{file_name}' to Drive.")
         return True
     except HttpError as e:
-        app.logger.error(f'Drive upload HttpError for {filename} (Status: {e.resp.status}): {e.content.decode("utf-8") if e.content else e}')
+        app.logger.error(f'Drive upload HttpError for {file_name} (Status: {e.resp.status}): {e.content.decode("utf-8") if e.content else e}')
         return False
     except Exception as e:
-        app.logger.error(f'Unexpected error during Drive upload for {filename}: {e}', exc_info=True)
+        app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
         return False
 
 def check_google_api_status():
@@ -631,12 +643,11 @@ def scheduled_backup_job():
         # Full system backup (tasks + settings + code)
         memory_file_zip, filename_zip = _create_backup_zip()
         if memory_file_zip and filename_zip:
-            # Need to save BytesIO content to a temporary file for MediaFileUpload
             temp_zip_path = os.path.join(app.config['UPLOAD_FOLDER'], filename_zip)
             try:
                 with open(temp_zip_path, 'wb') as f:
                     f.write(memory_file_zip.getvalue())
-                if _upload_backup_to_drive(temp_zip_path, filename_zip, GOOGLE_DRIVE_FOLDER_ID):
+                if _upload_backup_to_drive(temp_zip_path, filename_zip, 'application/zip', GOOGLE_DRIVE_FOLDER_ID):
                     app.logger.info("Automatic full system backup successful.")
                 else:
                     app.logger.error("Automatic full system backup failed.")
@@ -657,7 +668,6 @@ def scheduled_backup_job():
             settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
             settings_backup_filename = "settings_backup.json"
 
-            # Need to save BytesIO content to a temporary file for MediaFileUpload
             temp_settings_path = os.path.join(app.config['UPLOAD_FOLDER'], settings_backup_filename)
             try:
                 with open(temp_settings_path, 'wb') as f:
@@ -677,7 +687,7 @@ def scheduled_backup_job():
                     except Exception as e:
                         app.logger.warning(f"Unexpected error during old settings_backup.json deletion: {e}")
 
-                if _upload_backup_to_drive(temp_settings_path, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
+                if _upload_backup_to_drive(temp_settings_path, settings_backup_filename, 'application/json', GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
                     app.logger.info("Automatic settings backup successful.")
                 else:
                     app.logger.error("Automatic settings backup failed.")
