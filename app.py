@@ -1166,7 +1166,7 @@ def settings_page():
         technician_names_text = request.form.get('technician_list', '').strip()
         technician_list = [name.strip() for name in technician_names_text.splitlines() if name.strip()]
 
-        save_app_settings({
+        settings_data = {
             'report_times': {
                 'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')),
                 'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')),
@@ -1192,11 +1192,16 @@ def settings_page():
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
             'technician_list': technician_list
-        })
+        }
 
-        run_scheduler()
-        flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
-        cache.clear()
+        # UPDATED: Check save status and flash appropriate message
+        if save_app_settings(settings_data):
+            run_scheduler()
+            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
+            cache.clear()
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!', 'danger')
+
         return redirect(url_for('settings_page'))
 
     current_settings = get_app_settings()
@@ -2109,6 +2114,7 @@ def handle_postback(event):
 # Google OAuth2 authorization route
 @app.route('/authorize')
 def authorize():
+    from google_auth_oauthlib.flow import InstalledAppFlow
     flow = InstalledAppFlow.from_client_secrets_file(
         'credentials.json', SCOPES)
     flow.redirect_uri = url_for('oauth2callback', _external=True)
@@ -2120,6 +2126,7 @@ def authorize():
 
 @app.route('/oauth2callback')
 def oauth2callback():
+    from google_auth_oauthlib.flow import InstalledAppFlow
     state = session.get('oauth_state')
     if not state or state != request.args.get('state'):
         flash('State mismatch error. Your session might be invalid or a CSRF attack was attempted.', 'danger')

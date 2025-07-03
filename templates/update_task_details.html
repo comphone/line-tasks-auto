@@ -181,7 +181,7 @@
 
         <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
         
-        {# ADDED: Button to generate QR for public report #}
+        {# Button to generate QR for public report #}
         {% if task.status == 'completed' %}
         <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg ms-2">
             <i class="fas fa-qrcode me-2"></i>สร้าง QR Code สำหรับลูกค้าติดตามงาน
