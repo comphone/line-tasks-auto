@@ -973,6 +973,15 @@ def delete_task(task_id):
         flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
     return redirect(url_for('summary'))
 
+# --- NEW: API route for deleting tasks via JS ---
+@app.route('/api/delete_task/<task_id>', methods=['POST'])
+def api_delete_task(task_id):
+    if delete_google_task(task_id):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'Task deleted successfully.'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to delete task.'}), 500
+
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
@@ -1102,6 +1111,7 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
+# --- REVISED: Combined import route with duplicate handling ---
 @app.route('/api/import_backup_file', methods=['POST'])
 def import_backup_file():
     if 'backup_file' not in request.files or not request.files['backup_file'].filename:
@@ -1127,63 +1137,63 @@ def import_backup_file():
             if not service:
                 return jsonify({"status": "error", "message": "Could not connect to Google Tasks service. Check credentials."}), 500
 
-            created_count = 0
-            updated_count = 0
-            skipped_count = 0
+            created_count, updated_count, skipped_count = 0, 0, 0
+            
             for task_data in data:
+                original_id = task_data.get('id')
+                task_title_for_log = task_data.get('title', 'N/A')
+
                 try:
-                    original_task_id = task_data.get('id')
-                    if not original_task_id:
-                        app.logger.warning(f"Skipping task due to missing ID: {task_data.get('title')}")
-                        skipped_count += 1
+                    # ---- Process dates first ----
+                    for date_field in ['due', 'completed']:
+                        if date_field in task_data and task_data[date_field]:
+                            try:
+                                dt_obj = date_parse(task_data[date_field])
+                                task_data[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                            except Exception as e:
+                                app.logger.warning(f"Could not parse {date_field} for task '{task_title_for_log}': {e}. Skipping date.")
+                                task_data.pop(date_field, None)
+                    
+                    if not original_id:
+                        # If no original ID, must be a new task
+                        task_data.pop('id', None) 
+                        service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_data).execute()
+                        created_count += 1
                         continue
 
-                    # Prepare the task body by removing read-only fields
-                    task_body = task_data.copy()
-                    read_only_fields = ['kind', 'selfLink', 'position', 'etag', 'updated', 'created']
-                    for field in read_only_fields:
-                        task_body.pop(field, None)
-                    
-                    if task_body.get('status') not in ['needsAction', 'completed']:
-                        task_body['status'] = 'needsAction'
-                    
-                    for date_field in ['due', 'completed']:
-                        if date_field in task_body and task_body[date_field]:
-                            try:
-                                dt_obj = date_parse(task_body[date_field])
-                                task_body[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                            except Exception as e:
-                                app.logger.warning(f"Could not parse {date_field} for task '{task_body.get('title')}': {e}. Skipping field.")
-                                task_body.pop(date_field, None)
-
-                    # Check if task exists
+                    # ---- Try to GET the task first ----
                     try:
-                        service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=original_task_id).execute()
-                        # If it exists, update it
-                        task_body.pop('id', None)
-                        service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=original_task_id, body=task_body).execute()
+                        service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=original_id).execute()
+                        # If successful, task EXISTS -> UPDATE it
+                        update_google_task(
+                            task_id=original_id,
+                            title=task_data.get('title'),
+                            notes=task_data.get('notes'),
+                            status=task_data.get('status'),
+                            due=task_data.get('due')
+                        )
                         updated_count += 1
-                        app.logger.info(f"Updated existing task: {original_task_id}")
 
                     except HttpError as e:
                         if e.resp.status == 404:
-                            # If it doesn't exist, insert it as a new task
-                            task_body.pop('id', None)
-                            service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_body).execute()
+                            # If 404 Not Found, task does NOT exist -> INSERT it
+                            task_data.pop('id', None) # Remove ID before inserting
+                            read_only_fields = ['kind', 'selfLink', 'position', 'etag', 'updated']
+                            for field in read_only_fields: task_data.pop(field, None)
+                            
+                            service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_data).execute()
                             created_count += 1
-                            app.logger.info(f"Inserted new task for non-existent ID: {original_task_id}")
                         else:
-                            raise e
-
-                except HttpError as e:
-                    app.logger.error(f"API Error processing task '{task_data.get('title', 'N/A')}': {e.uri} - {e.content.decode()}", exc_info=True)
-                    skipped_count += 1
+                            # Other API errors
+                            app.logger.error(f"API error checking task '{task_title_for_log}' (ID: {original_id}): {e}")
+                            skipped_count += 1
+                
                 except Exception as e:
-                    app.logger.error(f"Unexpected error processing task '{task_data.get('title', 'N/A')}': {e}", exc_info=True)
+                    app.logger.error(f"Unexpected error processing task '{task_title_for_log}': {e}", exc_info=True)
                     skipped_count += 1
             
             cache.clear()
-            message = f"นำเข้าสำเร็จ: สร้างใหม่ {created_count} งาน, อัปเดต {updated_count} งาน, ข้าม {skipped_count} งาน"
+            message = f"นำเข้าสำเร็จ! สร้างใหม่: {created_count} งาน, อัปเดต: {updated_count} งาน, ข้าม: {skipped_count} งาน"
             return jsonify({"status": "success", "message": message})
 
         elif file_type == 'settings_json':
@@ -1203,6 +1213,8 @@ def import_backup_file():
         app.logger.error(f"Error during import: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาดในการนำเข้า: {e}"}), 500
 
+
+# NEW: Combined preview route for both tasks and settings
 @app.route('/api/preview_backup_file', methods=['POST'])
 def preview_backup_file():
     if 'backup_file' not in request.files or not request.files['backup_file'].filename:
@@ -1328,6 +1340,38 @@ def technician_report():
                            selected_month=selected_month,
                            years=years,
                            months=all_months)
+
+# --- NEW: Route for managing duplicate tasks ---
+@app.route('/manage_duplicates')
+def manage_duplicates():
+    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    tasks_by_title = defaultdict(list)
+
+    # Group tasks by title
+    for task in tasks_raw:
+        if task.get('title'):
+            tasks_by_title[task['title'].strip()].append(task)
+    
+    # Filter for potential duplicates (groups with more than 1 task)
+    potential_duplicate_sets = {title: tasks for title, tasks in tasks_by_title.items() if len(tasks) > 1}
+
+    # Parse details for display
+    for title, tasks in potential_duplicate_sets.items():
+        for i, task in enumerate(tasks):
+            current_time_utc = datetime.datetime.now(pytz.utc)
+            is_overdue = False
+            if task.get('status') == 'needsAction' and task.get('due'):
+                try:
+                    due_dt_utc = date_parse(task['due'])
+                    if due_dt_utc < current_time_utc: is_overdue = True
+                except (ValueError, TypeError): pass
+
+            parsed_task = parse_google_task_dates(task)
+            parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+            parsed_task['is_overdue'] = is_overdue
+            potential_duplicate_sets[title][i] = parsed_task
+
+    return render_template('manage_duplicates.html', potential_duplicate_sets=potential_duplicate_sets)
 
 
 # --- Customer Onboarding & Feedback Routes ---
