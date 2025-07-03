@@ -316,7 +316,6 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
-# UPDATED: Enhanced _upload_backup_to_drive function
 def _upload_backup_to_drive(file_path, file_name, mime_type, folder_id):
     """
     Uploads the given file (from disk path) to Google Drive with enhanced error checking.
@@ -330,7 +329,6 @@ def _upload_backup_to_drive(file_path, file_name, mime_type, folder_id):
         return False
 
     try:
-        # Step 1: Check if the temp file exists and has content before uploading
         if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
             app.logger.error(f"Backup file '{file_name}' at path '{file_path}' is missing or empty. Aborting upload.")
             return False
@@ -341,7 +339,6 @@ def _upload_backup_to_drive(file_path, file_name, mime_type, folder_id):
         app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
         file_obj = _execute_google_api_call_with_retry(service.files().create, body=file_metadata, media_body=media, fields='id, webViewLink')
 
-        # Step 2: More robust check of the upload result
         if not file_obj or 'id' not in file_obj:
             app.logger.error(f"Drive upload failed for '{file_name}': File object or ID is missing after create API call.")
             return False
@@ -349,12 +346,10 @@ def _upload_backup_to_drive(file_path, file_name, mime_type, folder_id):
         uploaded_file_id = file_obj['id']
         app.logger.info(f"File '{file_name}' uploaded successfully with ID: {uploaded_file_id}. Attempting to set permissions.")
 
-        # Step 3: More robust check of the permission setting result
         permission_result = _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
         
         if not permission_result or 'id' not in permission_result:
             app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). The file may be inaccessible. Permission result: {permission_result}")
-            # Return False because inaccessible file is considered a failure
             return False
 
         app.logger.info(f"Permissions successfully set for '{file_name}' (ID: {uploaded_file_id}).")
@@ -657,7 +652,6 @@ def scheduled_backup_job():
         # Full system backup (tasks + settings + code)
         memory_file_zip, filename_zip = _create_backup_zip()
         if memory_file_zip and filename_zip:
-            # Use a temporary file to use the robust _upload_backup_to_drive function
             with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
                 tmp.write(memory_file_zip.getvalue())
                 temp_zip_path = tmp.name
@@ -760,25 +754,43 @@ def scheduled_appointment_reminder_job():
             except Exception as e:
                 app.logger.error(f"Failed to send appointment reminder for task {task['id']}: {e}")
 
+# UPDATED: Flex message for new feedback workflow
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
-    problem_action = PostbackAction(label='👎 มีปัญหา', data=f'action=customer_feedback&task_id={task_id}&feedback=problem_reported', display_text='ฉันพบปัญหาหลังการซ่อม')
-    if LIFF_ID_FORM:
-        problem_action = URIAction(label='👎 มีปัญหา', uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}")
+    """Creates the new feedback Flex Message with 'OK' and 'Problem' buttons."""
+    
+    # The 'Problem' button now opens the problem reporting LIFF page
+    problem_action = URIAction(
+        label='🚨 ยังมีปัญหาอยู่', 
+        uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}"
+    )
 
     return BubbleContainer(
         body=BoxComponent(
             layout='vertical', spacing='md',
             contents=[
-                TextComponent(text="🙏 แบบสอบถามความพึงพอใจ 🙏", weight='bold', size='lg', color='#1DB446', align='center'),
+                TextComponent(text="สอบถามหลังการซ่อม", weight='bold', size='lg', color='#1DB446', align='center'),
                 SeparatorComponent(margin='md'),
-                TextComponent(text=f"ลูกค้า: {customer_name}", size='sm', wrap=True),
-                TextComponent(text=f"งาน: {task_title}", size='sm', wrap=True, color='#666666'),
+                TextComponent(text=f"เรียนคุณ {customer_name},", size='sm', wrap=True),
+                TextComponent(text=f"เกี่ยวกับงาน: {task_title}", size='sm', wrap=True, color='#666666'),
                 SeparatorComponent(margin='lg'),
-                TextComponent(text="ท่านพอใจกับบริการล่าสุดหรือไม่?", size='md', wrap=True, align='center'),
+                TextComponent(text="ไม่ทราบว่าหลังจากทีมงานของเราเข้าบริการแล้ว ทุกอย่างเรียบร้อยดีหรือไม่ครับ/คะ?", size='md', wrap=True, align='center'),
                 BoxComponent(layout='vertical', spacing='sm', margin='md', contents=[
-                    ButtonComponent(style='primary', height='sm', color='#28a745', action=PostbackAction(label='👍 พอใจมาก', data=f'action=customer_feedback&task_id={task_id}&feedback=very_satisfied', display_text='ขอบคุณสำหรับความคิดเห็นครับ/ค่ะ!')),
-                    ButtonComponent(style='secondary', height='sm', color='#6c757d', action=PostbackAction(label='👌 พอใจ', data=f'action=customer_feedback&task_id={task_id}&feedback=satisfied', display_text='ขอบคุณสำหรับความคิดเห็นครับ/ค่ะ!')),
-                    ButtonComponent(style='danger', height='sm', color='#dc3545', action=problem_action)
+                    ButtonComponent(
+                        style='primary', 
+                        height='sm', 
+                        color='#28a745', 
+                        action=PostbackAction(
+                            label='✅ งานเรียบร้อยดี', 
+                            data=f'action=customer_feedback&task_id={task_id}&feedback=ok', 
+                            display_text='ขอบคุณสำหรับคำยืนยันครับ/ค่ะ!'
+                        )
+                    ),
+                    ButtonComponent(
+                        style='secondary', 
+                        height='sm', 
+                        color='#dc3545', 
+                        action=problem_action
+                    )
                 ]),
             ]
         )
@@ -811,35 +823,33 @@ def scheduled_customer_follow_up_job():
 
                         customer_info = parse_customer_info_from_notes(notes)
                         customer_line_id = feedback_data.get('customer_line_user_id')
+                        
+                        if not customer_line_id:
+                            app.logger.warning(f"Cannot send follow-up for task {task['id']}: Customer LINE User ID not found.")
+                            continue
 
                         flex_content = _create_customer_follow_up_flex_message(
                             task['id'], task['title'], customer_info.get('name', 'N/A'))
-                        flex_message = FlexSendMessage(alt_text="แบบสอบถามความพึงพอใจบริการ", contents=flex_content)
+                        flex_message = FlexSendMessage(alt_text="สอบถามความพึงพอใจหลังการซ่อม", contents=flex_content)
 
-                        feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
+                        try:
+                            line_bot_api.push_message(customer_line_id, flex_message)
+                            app.logger.info(f"Sent follow-up message to customer {customer_line_id} for task {task['id']}.")
+                            
+                            # Update task notes to mark that follow-up has been sent
+                            feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
+                            _, base_notes = parse_tech_report_from_notes(notes)
+                            tech_reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
+                            new_notes = base_notes.strip()
+                            if tech_reports_text: new_notes += "\n\n" + tech_reports_text.strip()
+                            new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+                            _execute_google_api_call_with_retry(update_google_task, task['id'], notes=new_notes)
+                            cache.clear()
 
-                        _, base_notes = parse_tech_report_from_notes(notes)
-                        tech_reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
-
-                        new_notes = base_notes.strip()
-                        if tech_reports_text: new_notes += "\n\n" + tech_reports_text.strip()
-                        new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-                        _execute_google_api_call_with_retry(update_google_task, task['id'], notes=new_notes)
-                        cache.clear()
-
-                        if customer_line_id:
-                            try:
-                                line_bot_api.push_message(customer_line_id, flex_message)
-                                app.logger.info(f"Sent follow-up message to customer {customer_line_id} for task {task['id']}.")
-                            except Exception as e:
-                                app.logger.error(f"Failed to send direct follow-up to {customer_line_id}: {e}. Notifying admin.")
-                                if admin_group_id:
-                                    line_bot_api.push_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} (Task ID: {task['id']}) ไม่สำเร็จ โปรดส่งข้อความนี้แทน:"), flex_message])
-                        elif admin_group_id:
-                            admin_text = f"✅ กรุณาส่งแบบสอบถามนี้ให้ลูกค้า:\nคุณ {customer_info.get('name')} (โทร: {customer_info.get('phone')}, Task ID: {task['id']})"
-                            line_bot_api.push_message(admin_group_id, [TextSendMessage(text=admin_text), flex_message])
-                            app.logger.info(f"Notified admin to manually send follow-up for task {task['id']}.")
+                        except Exception as e:
+                            app.logger.error(f"Failed to send direct follow-up to {customer_line_id}: {e}. Notifying admin.")
+                            if admin_group_id:
+                                line_bot_api.push_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} (Task ID: {task['id']}) ไม่สำเร็จ โปรดส่งข้อความนี้แทน:"), flex_message])
 
                 except Exception as e:
                     app.logger.warning(f"Could not process task {task.get('id')} for follow-up: {e}", exc_info=True)
@@ -1024,7 +1034,7 @@ def task_details(task_id):
                     f"ลูกค้า: {customer_info.get('name', '')}",
                     f"เบอร์โทรศัพท์: {customer_info.get('phone', '')}",
                     f"ที่อยู่: {customer_info.get('address', '')}",
-                    lat_lon_update # Store as plain text, parse_customer_info will handle conversion
+                    lat_lon_update
                 ]
                 base_notes_text = "\n".join(filter(None, notes_lines))
                 app.logger.info(f"Updated map coordinates for task {task_id} to {lat_lon_update}")
@@ -1043,13 +1053,8 @@ def task_details(task_id):
                     temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     try:
                         file.save(temp_filepath)
-                        with open(temp_filepath, 'rb') as f:
-                            if _upload_backup_to_drive(temp_filepath, filename, file.mimetype, GOOGLE_DRIVE_FOLDER_ID):
-                                # This part is tricky as _upload_backup_to_drive does not return a URL
-                                # We would need to construct it or get it from another API call
-                                # For now, we assume success means it's uploaded.
-                                # A better approach would be for the upload function to return the file ID or URL.
-                                pass 
+                        if _upload_backup_to_drive(temp_filepath, filename, file.mimetype, GOOGLE_DRIVE_FOLDER_ID):
+                            pass
                     finally:
                         if os.path.exists(temp_filepath): os.remove(temp_filepath)
                 elif file and not allowed_file(file.filename):
@@ -1644,19 +1649,37 @@ def delete_equipment_duplicates_batch():
 
 # --- Customer Onboarding & Feedback Routes ---
 
-@app.route('/generate_customer_onboarding_qr')
-def generate_customer_onboarding_qr():
-    task_id = request.args.get('task_id')
+# NEW: Route to render the LIFF onboarding page
+@app.route('/customer_onboarding/<task_id>')
+def customer_onboarding_page(task_id):
     task = get_single_task(task_id)
-    if not task: abort(404)
+    if not task:
+        abort(404)
+    return render_template('customer_onboarding.html', task=task, LIFF_ID_FORM=LIFF_ID_FORM)
+
+# NEW: Route to generate the QR code that links to the LIFF onboarding page
+@app.route('/generate_customer_onboarding_qr/<task_id>')
+def generate_customer_onboarding_qr(task_id):
+    task = get_single_task(task_id)
+    if not task:
+        abort(404)
     if not LIFF_ID_FORM:
         flash("ไม่สามารถสร้าง QR Code ได้: ไม่พบ LIFF_ID_FORM ใน Environment Variables", 'danger')
         return redirect(url_for('task_details', task_id=task_id))
 
-    onboarding_url = f"https://liff.line.me/{LIFF_ID_FORM}/customer_onboarding.html?task_id={task_id}"
-    qr_code_base64 = generate_qr_code_base64(onboarding_url, box_size=10)
+    onboarding_url = url_for('customer_onboarding_page', task_id=task_id, _external=True)
+    liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
+
+    qr_code_base64 = generate_qr_code_base64(liff_url, box_size=10)
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code_base64, task=task, customer_info=customer_info, onboarding_url=onboarding_url)
+    
+    # Using a new template for this specific QR code page
+    return render_template('generate_onboarding_qr.html', 
+                           qr_code_base64=qr_code_base64, 
+                           task=task, 
+                           customer_info=customer_info, 
+                           onboarding_url=liff_url)
+
 
 @app.route('/customer_problem_form')
 def customer_problem_form():
@@ -1837,6 +1860,7 @@ def submit_customer_problem():
         
     return jsonify({"status": "success", "message": "Problem reported."})
 
+# UPDATED: This route now sends a welcome message
 @app.route('/save_customer_line_id', methods=['POST'])
 def save_customer_line_id():
     data = request.json
@@ -1866,10 +1890,10 @@ def save_customer_line_id():
             shop_info = get_app_settings().get('shop_info', {})
             customer_info = parse_customer_info_from_notes(notes)
             welcome_msg = (
-                f"เรียน คุณ{customer_info.get('name', 'ลูกค้า')},\n"
-                f"ขอบคุณที่ลงทะเบียนกับ Comphone ครับ/ค่ะ!\n"
-                f"เราจะใช้ LINE นี้เพื่อส่งแบบสอบถามและข้อมูลสำคัญอื่นๆ ครับ\n\n"
-                f"ติดต่อสอบถาม:\n"
+                f"เรียน คุณ{customer_info.get('name', 'ลูกค้า')},\n\n"
+                f"ขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\n"
+                f"เราจะใช้ LINE นี้เพื่อส่งแบบสอบถามและข้อมูลสำคัญเกี่ยวกับบริการ รวมถึงโปรโมชั่นพิเศษให้ท่านในอนาคตครับ\n\n"
+                f"ติดต่อสอบถามเพิ่มเติม:\n"
                 f"โทร: {shop_info.get('contact_phone', '-')}\n"
                 f"LINE ID: {shop_info.get('line_id', '-')}"
             )
@@ -2036,26 +2060,7 @@ def handle_postback(event):
         _execute_google_api_call_with_retry(update_google_task, task['id'], notes=final_notes)
         cache.clear()
         
-        reply_text = "ขอบคุณสำหรับความคิดเห็นครับ/ค่ะ 🙏"
-        if feedback_type == 'problem_reported':
-            reply_text = "รับทราบปัญหาครับ/ค่ะ ทางเราจะรีบติดต่อกลับเพื่อดูแลโดยเร็วที่สุด"
-            admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
-            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-            problem_desc_from_feedback = feedback_data.get('problem_description', 'ไม่ได้ระบุรายละเอียด')
-            if admin_group_id:
-                notif_text = (
-                    f"🚨 ลูกค้าแจ้งปัญหาผ่าน LINE!\n"
-                    f"งาน: {task.get('title', 'N/A')}\n"
-                    f"ลูกค้า: {customer_info.get('name', 'N/A')}\n"
-                    f"การประเมิน: แจ้งปัญหา\n"
-                    f"รายละเอียดปัญหา: {problem_desc_from_feedback}\n"
-                    f"ดูรายละเอียด: {url_for('task_details', task_id=task_id, _external=True)}"
-                )
-                try:
-                    line_bot_api.push_message(admin_group_id, TextSendMessage(text=notif_text))
-                except Exception as e:
-                    app.logger.error(f"Failed to send problem notification to admin from postback: {e}")
-
+        reply_text = "ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏"
         try:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
         except Exception as e:
