@@ -558,16 +558,24 @@ def inject_global_vars():
 #<editor-fold desc="Scheduled Jobs">
 
 def scheduled_backup_job():
+    """Performs scheduled backup of tasks and settings to Google Drive."""
     with app.app_context():
         app.logger.info("Running scheduled backup job...")
+        overall_success = True
 
+        # Full system backup (tasks + settings + code)
         memory_file_zip, filename_zip = _create_backup_zip()
         if memory_file_zip and filename_zip:
             if _upload_backup_to_drive(memory_file_zip, filename_zip, GOOGLE_DRIVE_FOLDER_ID):
                 app.logger.info("Automatic full system backup successful.")
             else:
                 app.logger.error("Automatic full system backup failed.")
+                overall_success = False
+        else:
+            app.logger.error("Failed to create full system backup zip.")
+            overall_success = False
 
+        # Settings-only backup (settings.json)
         if GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
             settings_data = get_app_settings()
             settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
@@ -576,6 +584,7 @@ def scheduled_backup_job():
             service = get_google_drive_service()
             if service:
                 try:
+                    # Delete old settings_backup.json before uploading new one
                     query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
                     response = service.files().list(q=query, spaces='drive', fields='files(id)').execute()
                     for file_item in response.get('files', []):
@@ -583,11 +592,17 @@ def scheduled_backup_job():
                         app.logger.info(f"Deleted old settings_backup.json (ID: {file_item['id']}) from Drive.")
                 except HttpError as e:
                     app.logger.warning(f"Could not delete old settings_backup.json from Drive: {e}")
+                    # This warning doesn't necessarily mean overall failure, but good to log.
 
             if _upload_backup_to_drive(settings_json_bytes, settings_backup_filename, GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
                 app.logger.info("Automatic settings backup successful.")
             else:
                 app.logger.error("Automatic settings backup failed.")
+                overall_success = False
+        else:
+            app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings backup.")
+
+        return overall_success # Return status of the backup operation
 
 def scheduled_appointment_reminder_job():
     with app.app_context():
@@ -1123,8 +1138,10 @@ def backup_data():
 @app.route('/trigger_auto_backup_now', methods=['POST'])
 def trigger_auto_backup_now():
     # This will run the backup job synchronously for immediate feedback
-    scheduled_backup_job()
-    flash('ดำเนินการสำรองข้อมูลอัตโนมัติไปยัง Google Drive แล้ว (โปรดตรวจสอบ logs สำหรับสถานะ)!', 'info')
+    if scheduled_backup_job():
+        flash('สำรองข้อมูลไปที่ Google Drive ทันทีสำเร็จ!', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการสำรองข้อมูลไปที่ Google Drive ทันที. โปรดตรวจสอบ logs!', 'danger')
     return redirect(url_for('settings_page'))
 
 @app.route('/export_equipment_catalog', methods=['GET'])
