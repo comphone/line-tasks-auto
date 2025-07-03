@@ -1054,7 +1054,23 @@ def settings_page():
         qr_url, box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
         fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
     )
-    return render_template('settings_page.html', settings=current_settings, qr_code_base64_general=qr_code_base64_general, general_summary_url=general_summary_url)
+    
+    # --- NEW: Gather ENV VARS for the setup helper ---
+    env_vars = {
+        'GOOGLE_TOKEN_JSON': os.environ.get('GOOGLE_TOKEN_JSON', ''),
+        'LINE_CHANNEL_ACCESS_TOKEN': os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', ''),
+        'LINE_CHANNEL_SECRET': os.environ.get('LINE_CHANNEL_SECRET', ''),
+        'LIFF_ID_FORM': os.environ.get('LIFF_ID_FORM', ''),
+        'GOOGLE_DRIVE_FOLDER_ID': os.environ.get('GOOGLE_DRIVE_FOLDER_ID', ''),
+        'GOOGLE_SETTINGS_BACKUP_FOLDER_ID': os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID', ''),
+    }
+
+    return render_template('settings_page.html', 
+                           settings=current_settings, 
+                           qr_code_base64_general=qr_code_base64_general, 
+                           general_summary_url=general_summary_url,
+                           env_vars=env_vars)
+
 
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
