@@ -479,7 +479,6 @@ def _create_backup_zip():
     """Creates a zip archive of all tasks, settings, and source code."""
     try:
         all_tasks = get_google_tasks_for_report(show_completed=True)
-        # แก้ไข: เปลี่ยน '===' เป็น '==' สำหรับการเปรียบเทียบใน Python
         if all_tasks is None:
             app.logger.error('Failed to get tasks for backup.')
             return None, None
@@ -1408,7 +1407,7 @@ def technician_report():
                            years=years,
                            months=all_months)
 
-@app.route('/manage_duplicates')
+@app.route('/manage_duplicates', methods=['GET'])
 def manage_duplicates():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     tasks_by_title_customer = defaultdict(list)
@@ -1422,25 +1421,57 @@ def manage_duplicates():
             tasks_by_title_customer[(task['title'].strip(), customer_name)].append(task)
     
     # Filter for potential duplicates (groups with more than 1 task)
-    potential_duplicate_sets = {key: tasks for key, tasks in tasks_by_title_customer.items() if len(tasks) > 1}
+    # Sort each group by creation date (newest first) to suggest keeping the latest
+    potential_duplicate_sets = {}
+    for key, tasks in tasks_by_title_customer.items():
+        if len(tasks) > 1:
+            # Sort tasks within each group by 'created' field in descending order
+            # Ensure 'created' field is parsed correctly for sorting
+            sorted_tasks = sorted(tasks, key=lambda t: date_parse(t.get('created', '0000-00-00T00:00:00Z')), reverse=True)
+            
+            processed_tasks = []
+            for task in sorted_tasks:
+                current_time_utc = datetime.datetime.now(pytz.utc)
+                is_overdue = False
+                if task.get('status') == 'needsAction' and task.get('due'):
+                    try:
+                        due_dt_utc = date_parse(task['due'])
+                        if due_dt_utc < current_time_utc: is_overdue = True
+                    except (ValueError, TypeError): pass
 
-    # Parse details for display in the template
-    for key, tasks in potential_duplicate_sets.items():
-        for i, task in enumerate(tasks):
-            current_time_utc = datetime.datetime.now(pytz.utc)
-            is_overdue = False
-            if task.get('status') == 'needsAction' and task.get('due'):
-                try:
-                    due_dt_utc = date_parse(task['due'])
-                    if due_dt_utc < current_time_utc: is_overdue = True
-                except (ValueError, TypeError): pass
+                parsed_task = parse_google_task_dates(task)
+                parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+                parsed_task['is_overdue'] = is_overdue
+                processed_tasks.append(parsed_task)
+            
+            potential_duplicate_sets[key] = processed_tasks
 
-            parsed_task = parse_google_task_dates(task)
-            parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-            parsed_task['is_overdue'] = is_overdue
-            potential_duplicate_sets[key][i] = parsed_task
+    return render_template('duplicates.html', duplicates=potential_duplicate_sets)
 
-    return render_template('duplicates.html', potential_duplicate_sets=potential_duplicate_sets)
+
+@app.route('/delete_duplicates_batch', methods=['POST'])
+def delete_duplicates_batch():
+    selected_task_ids_to_delete = request.form.getlist('task_ids')
+    
+    if not selected_task_ids_to_delete:
+        flash('ไม่พบรายการที่เลือกเพื่อลบ', 'warning')
+        return redirect(url_for('manage_duplicates'))
+
+    deleted_count = 0
+    failed_count = 0
+    for task_id in selected_task_ids_to_delete:
+        if delete_google_task(task_id):
+            deleted_count += 1
+        else:
+            failed_count += 1
+    
+    if deleted_count > 0:
+        cache.clear() # Clear cache to reflect changes
+        flash(f'ลบงานที่เลือกสำเร็จ: {deleted_count} รายการ. ล้มเหลว: {failed_count} รายการ.', 'success')
+    else:
+        flash(f'เกิดข้อผิดพลาดในการลบงาน: ล้มเหลว {failed_count} รายการ.', 'danger')
+
+    return redirect(url_for('manage_duplicates'))
 
 
 # --- Customer Onboarding & Feedback Routes ---
