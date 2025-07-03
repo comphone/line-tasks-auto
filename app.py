@@ -10,6 +10,7 @@ from io import BytesIO
 from collections import defaultdict
 from datetime import timezone
 import time # Import for time.sleep
+import tempfile # Import for tempfile.NamedTemporaryFile
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -320,18 +321,18 @@ def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=None)
     service = get_google_drive_service()
     if not service:
         app.logger.error("Drive service is not configured for upload in upload_file_to_google_drive.")
-        return None
+        return False
     if folder_id is None:
         folder_id = GOOGLE_DRIVE_FOLDER_ID
     if not folder_id:
         app.logger.error("Folder ID is not configured for upload in upload_file_to_google_drive.")
-        return None
+        return False
 
     try:
         media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
         file_metadata = {'name': file_name, 'parents': [folder_id]}
 
-        app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
+        app.logger.info(f"Attempting to upload file '{file_name}' from path '{file_path}' to Drive folder '{folder_id}'.")
         file_obj = _execute_google_api_call_with_retry(service.files().create, body=file_metadata, media_body=media, fields='id, webViewLink')
 
         if not file_obj or 'id' not in file_obj:
@@ -592,9 +593,15 @@ def _upload_backup_to_drive(file_path, file_name, mime_type, folder_id):
         app.logger.info(f"File '{file_name}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
 
         # Set permission to anyone with link can view
-        _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
-        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
+        permission_result = _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
+        
+        if not permission_result:
+            app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). Permission result was {permission_result}.")
+            # Even if permissions fail, the file might still be uploaded. Decide if this counts as overall failure.
+            # For now, we'll return False if permissions fail, as it affects visibility.
+            return False
 
+        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
         app.logger.info(f"Successfully completed backup upload for '{file_name}' to Drive.")
         return True
     except HttpError as e:
@@ -1230,8 +1237,6 @@ def backup_data():
     memory_file, filename = _create_backup_zip()
     if memory_file and filename:
         # Save BytesIO content to a temporary file for Response.
-        # This is needed because Response expects a file path or direct bytes,
-        # and BytesIO might be consumed or closed if not handled carefully.
         temp_zip_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         try:
             with open(temp_zip_path, 'wb') as f:
