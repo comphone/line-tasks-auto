@@ -20,82 +20,60 @@
         {% endif %}
     {% endwith %}
 
+    <!-- Display-only Task Information Card -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">ข้อมูลสรุปของงาน (แสดงผลเท่านั้น)</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-2">
+                <strong class="col-md-3">รายละเอียดงาน:</strong>
+                <div class="col-md-9">{{ task.title }}</div>
+            </div>
+            <div class="row mb-2">
+                <strong class="col-md-3">ลูกค้า:</strong>
+                <div class="col-md-9">{{ task.customer.name or '-' }}</div>
+            </div>
+            <div class="row mb-2">
+                <strong class="col-md-3">เบอร์โทรศัพท์:</strong>
+                <div class="col-md-9">{{ task.customer.phone or '-' }}</div>
+            </div>
+            <div class="row mb-2">
+                <strong class="col-md-3">ที่อยู่:</strong>
+                <div class="col-md-9">{{ task.customer.address or '-' }}</div>
+            </div>
+            <div class="row mb-2">
+                <strong class="col-md-3">ลิงก์ Google Maps:</strong>
+                <div class="col-md-9">
+                    {% if task.customer.map_url %}
+                        <a href="{{ task.customer.map_url }}" target="_blank">{{ task.customer.map_url }}</a>
+                    {% else %}
+                        -
+                    {% endif %}
+                </div>
+            </div>
+             <div class="row mb-2">
+                <strong class="col-md-3">วันเวลานัดหมาย:</strong>
+                <div class="col-md-9">{{ task.due_formatted or '-' }}</div>
+            </div>
+            <div class="row mb-2">
+                <strong class="col-md-3">สร้างเมื่อ:</strong>
+                <div class="col-md-9">{{ task.created_formatted }}</div>
+            </div>
+            {% if task.status == 'completed' %}
+            <div class="row mb-2">
+                <strong class="col-md-3">เสร็จเมื่อ:</strong>
+                <div class="col-md-9">{{ task.completed_formatted }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Technician's Work Report Form -->
     <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" class="needs-validation" novalidate>
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">ข้อมูลงาน</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <label for="task_title" class="col-md-3 col-form-label">รายละเอียดงาน</label>
-                    <div class="col-md-9">
-                        <textarea class="form-control" id="task_title" name="task_title" rows="3" required>{{ task.title }}</textarea>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="customer_name" class="col-md-3 col-form-label">ลูกค้า</label>
-                    <div class="col-md-9">
-                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name }}">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="customer_phone" class="col-md-3 col-form-label">เบอร์โทรศัพท์</label>
-                    <div class="col-md-9">
-                        <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone }}">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="address" class="col-md-3 col-form-label">ที่อยู่</label>
-                    <div class="col-md-9">
-                        <input type="text" class="form-control" id="address" name="address" value="{{ task.customer.address }}">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="latitude_longitude" class="col-md-3 col-form-label">ลิงก์ Google Maps</label>
-                    <div class="col-md-9">
-                        <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}">
-                        {% if task.customer.map_url %}
-                            <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-sm btn-outline-info mt-2">
-                                <i class="fas fa-map-marked-alt me-1"></i> เปิดแผนที่
-                            </a>
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="appointment_due" class="col-md-3 col-form-label">วันเวลานัดหมาย</label>
-                    <div class="col-md-9">
-                        <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="status" class="col-md-3 col-form-label">สถานะ</label>
-                    <div class="col-md-9">
-                        <select class="form-select" id="status" name="status">
-                            <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>ยังไม่เสร็จ</option>
-                            <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>เสร็จเรียบร้อย</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label class="col-md-3 col-form-label">สร้างเมื่อ</label>
-                    <div class="col-md-9">
-                        <p class="form-control-plaintext">{{ task.created_formatted }}</p>
-                    </div>
-                </div>
-                {% if task.status == 'completed' %}
-                <div class="row mb-3">
-                    <label class="col-md-3 col-form-label">เสร็จเมื่อ</label>
-                    <div class="col-md-9">
-                        <p class="form-control-plaintext">{{ task.completed_formatted }}</p>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="card mb-4">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0">รายงานการปฏิบัติงาน</h5>
+                <h5 class="mb-0">รายงานการปฏิบัติงาน (สำหรับช่างกรอก)</h5>
             </div>
             <div class="card-body">
                 <div class="mb-3">
@@ -105,7 +83,6 @@
                 <div class="mb-3">
                     <label for="equipment_used" class="form-label">อุปกรณ์ที่ใช้ (ชื่อ,จำนวน - แยกบรรทัด)</label>
                     <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="เช่น กล้องวงจรปิด, 1&#10;สาย RG6, 20 เมตร&#10;หัว BNC, 2"></textarea>
-                    <div class="form-text">ตัวอย่าง: `ชื่ออุปกรณ์, จำนวน` หรือ `ชื่ออุปกรณ์, จำนวน หน่วย`</div>
                     {% if common_equipment_items %}
                     <div class="mt-2">
                         <small>อุปกรณ์ที่ใช้บ่อย:</small><br>
@@ -116,10 +93,10 @@
                     {% endif %}
                 </div>
                 <div class="mb-3">
-                    <label for="technicians" class="form-label">ช่างผู้รับผิดชอบ</label>
-                    <select class="form-select" id="technicians" name="technicians" multiple size="3">
+                    <label for="technicians" class="form-label">ช่างผู้รับผิดชอบ <span class="text-danger">*</span></label>
+                    <select class="form-select" id="technicians" name="technicians" multiple size="3" required>
                         {% for tech in technician_list %}
-                            <option value="{{ tech }}" {% if tech in pre_selected_technicians %}selected{% endif %}>{{ tech }}</option>
+                            <option value="{{ tech }}">{{ tech }}</option>
                         {% endfor %}
                     </select>
                     <div class="form-text">เลือกช่างที่รับผิดชอบงานนี้ (สามารถเลือกได้หลายคน)</div>
@@ -127,89 +104,146 @@
                 <div class="mb-3">
                     <label for="files" class="form-label">แนบรูปภาพ (ถ้ามี)</label>
                     <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*">
-                    <div class="form-text">รองรับไฟล์ JPG, PNG, GIF</div>
                 </div>
-
-                {% if task.tech_reports_history %}
-                <h6 class="mt-4">ประวัติรายงาน:</h6>
-                <div class="list-group">
-                    {% for report in task.tech_reports_history %}
-                    <div class="list-group-item list-group-item-action flex-column align-items-start">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">รายงานเมื่อ: {{ report.summary_date }}</h6>
-                        </div>
-                        <p class="mb-1"><strong>สรุปงาน:</strong> {{ report.work_summary or '-' }}</p>
-                        <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong> <br>{% if report.equipment_used_display %}{{ report.equipment_used_display | safe }}{% else %}-{% endif %}</p>
-                        <p class="mb-1"><strong>ช่าง:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</p>
-                        {% if report.attachment_urls %}
-                            <div class="mt-2">
-                                <strong>รูปภาพแนบ:</strong>
-                                <div class="d-flex flex-wrap">
-                                    {% for url in report.attachment_urls %}
-                                        <a href="{{ url }}" target="_blank" class="me-2 mb-2">
-                                            <img src="{{ url }}" alt="Attachment" style="width: 80px; height: 80px; object-fit: cover; border-radius: 5px;">
-                                        </a>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        {% endif %}
+                <div class="mb-3">
+                    <label for="latitude_longitude_update" class="form-label">อัปเดตพิกัดแผนที่ (ละติจูด,ลองจิจูด)</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="latitude_longitude_update" name="latitude_longitude_update" placeholder="เช่น 16.049,103.653">
+                        <button class="btn btn-outline-secondary" type="button" id="getLocationBtn"><i class="fas fa-map-marker-alt me-1"></i> รับตำแหน่งปัจจุบัน</button>
                     </div>
-                    {% endfor %}
+                    <div class="form-text">หากบันทึก จะเป็นการอัปเดตพิกัดหลักของงานนี้</div>
                 </div>
-                {% endif %}
+                 <div class="mb-3">
+                    <label for="status" class="form-label">เปลี่ยนสถานะงาน</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>ยังไม่เสร็จ</option>
+                        <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>เสร็จเรียบร้อย</option>
+                    </select>
+                </div>
             </div>
         </div>
 
-        <div class="card mb-4">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0">ข้อมูล Feedback จากลูกค้า</h5>
-            </div>
-            <div class="card-body">
-                {% if task.customer_feedback %}
-                    <p><strong>วันที่ Feedback:</strong> {{ task.customer_feedback.feedback_date or '-' }}</p>
-                    <p><strong>ประเภท Feedback:</strong> {{ task.customer_feedback.feedback_type or '-' }}</p>
-                    {% if task.customer_feedback.problem_description %}
-                        <p><strong>รายละเอียดปัญหา:</strong> {{ task.customer_feedback.problem_description }}</p>
-                    {% endif %}
-                    <p><strong>LINE User ID ลูกค้า:</strong> {{ task.customer_feedback.customer_line_user_id or '-' }}</p>
-                    <p><strong>วันที่บันทึก LINE ID:</strong> {{ task.customer_feedback.id_saved_date or '-' }}</p>
-                {% else %}
-                    <p class="text-muted">ยังไม่มี Feedback จากลูกค้าสำหรับงานนี้</p>
-                {% endif %}
-            </div>
-        </div>
-
-        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
+        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกรายงานและสถานะ</button>
         
-        {# Button to generate QR for public report #}
         {% if task.status == 'completed' %}
         <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg ms-2">
-            <i class="fas fa-qrcode me-2"></i>สร้าง QR Code สำหรับลูกค้าติดตามงาน
+            <i class="fas fa-qrcode me-2"></i>สร้าง QR Code สำหรับลูกค้า
         </a>
         {% endif %}
 
-        <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้? การกระทำนี้ไม่สามารถย้อนกลับได้');">
-            <button type="submit" class="btn btn-danger btn-lg float-end"><i class="fas fa-trash-alt me-2"></i>ลบงานนี้</button>
-        </form>
+        <button type="button" class="btn btn-danger btn-lg float-end" data-bs-toggle="modal" data-bs-target="#deleteTaskModal">
+            <i class="fas fa-trash-alt me-2"></i>ลบงานนี้
+        </button>
     </form>
+    
+    <!-- History and Feedback Section -->
+    <div class="card my-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">ประวัติการดำเนินงานและ Feedback</h5>
+        </div>
+        <div class="card-body">
+            <h6>ประวัติรายงาน:</h6>
+            {% if task.tech_reports_history %}
+            <div class="list-group">
+                {% for report in task.tech_reports_history %}
+                <div class="list-group-item list-group-item-action flex-column align-items-start mb-2">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">รายงานเมื่อ: {{ report.summary_date }}</h6>
+                    </div>
+                    <p class="mb-1"><strong>สรุปงาน:</strong> {{ report.work_summary or '-' }}</p>
+                    <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong> <br>{% if report.equipment_used_display %}{{ report.equipment_used_display | safe }}{% else %}-{% endif %}</p>
+                    <p class="mb-1"><strong>ช่าง:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</p>
+                    {% if report.attachment_urls %}
+                        <div class="mt-2">
+                            <strong>รูปภาพแนบ:</strong>
+                            <div class="d-flex flex-wrap">
+                                {% for url in report.attachment_urls %}
+                                    <a href="{{ url }}" target="_blank" class="me-2 mb-2">
+                                        <img src="{{ url }}" alt="Attachment" style="width: 80px; height: 80px; object-fit: cover; border-radius: 5px;">
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted">ยังไม่มีรายงานการปฏิบัติงาน</p>
+            {% endif %}
+            
+            <hr>
+
+            <h6>Feedback จากลูกค้า:</h6>
+            {% if task.customer_feedback %}
+                <p><strong>วันที่ Feedback:</strong> {{ task.customer_feedback.feedback_date or '-' }}</p>
+                <p><strong>ประเภท Feedback:</strong> {{ task.customer_feedback.feedback_type or '-' }}</p>
+                {% if task.customer_feedback.problem_description %}
+                    <p><strong>รายละเอียดปัญหา:</strong> {{ task.customer_feedback.problem_description }}</p>
+                {% endif %}
+            {% else %}
+                <p class="text-muted">ยังไม่มี Feedback จากลูกค้าสำหรับงานนี้</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteTaskModal" tabindex="-1" aria-labelledby="deleteTaskModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteTaskModalLabel">ยืนยันการลบงาน</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        คุณแน่ใจหรือไม่ว่าต้องการลบงาน "{{task.title}}"? การกระทำนี้ไม่สามารถย้อนกลับได้
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" class="d-inline">
+            <button type="submit" class="btn btn-danger">ยืนยันการลบ</button>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Functionality for common equipment items to be added to textarea
-        const equipmentUsedTextarea = document.getElementById('equipment_used');
-        document.querySelectorAll('.common-item-tag').forEach(tag => {
-            tag.addEventListener('click', function() {
-                const item = this.dataset.item;
-                const currentText = equipmentUsedTextarea.value.trim();
-                if (currentText) {
-                    equipmentUsedTextarea.value = currentText + '\n' + item + ', 1';
-                } else {
-                    equipmentUsedTextarea.value = item + ', 1';
-                }
-                equipmentUsedTextarea.focus();
-            });
+document.addEventListener('DOMContentLoaded', function() {
+    // Add equipment to textarea
+    const equipmentUsedTextarea = document.getElementById('equipment_used');
+    document.querySelectorAll('.common-item-tag').forEach(tag => {
+        tag.addEventListener('click', function() {
+            const item = this.dataset.item;
+            const currentText = equipmentUsedTextarea.value.trim();
+            if (currentText) {
+                equipmentUsedTextarea.value = currentText + '\\n' + item + ', 1';
+            } else {
+                equipmentUsedTextarea.value = item + ', 1';
+            }
+            equipmentUsedTextarea.focus();
         });
     });
+
+    // Get current location
+    const getLocationBtn = document.getElementById('getLocationBtn');
+    const locationInput = document.getElementById('latitude_longitude_update');
+    if (getLocationBtn) {
+        getLocationBtn.addEventListener('click', function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    locationInput.value = `${lat},${lon}`;
+                }, function(error) {
+                    alert(`Error getting location: ${error.message}`);
+                });
+            } else {
+                alert("Geolocation is not supported by this browser.");
+            }
+        });
+    }
+});
 </script>
 {% endblock %}
