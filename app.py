@@ -456,11 +456,6 @@ def _format_equipment_list(equipment_data):
                 lines.append(item)
     return "\n".join(lines) if lines else 'N/A'
 
-@app.context_processor
-def inject_now():
-    """Injects current datetime and timezone into Jinja2 templates."""
-    return {'now': datetime.datetime.now(THAILAND_TZ), 'thaizone': THAILAND_TZ}
-
 def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
     """Generates a base64 encoded QR code image."""
     try:
@@ -526,6 +521,35 @@ def _upload_backup_to_drive(memory_file, filename, drive_folder_id):
     except HttpError as e:
         app.logger.error(f'Drive upload error: {e}')
         return False
+
+def check_google_api_status():
+    """Checks if the Google API connection is valid by making a simple request."""
+    service = get_google_drive_service()
+    if not service:
+        return False
+    try:
+        # A lightweight, simple call to check if the token is valid.
+        service.about().get(fields='user').execute()
+        return True
+    except HttpError as e:
+        # Specifically check for authentication errors
+        if e.resp.status in [401, 403]:
+            app.logger.warning(f"Google API authentication check failed: {e}")
+            return False
+        # For other errors, we might still be "connected" but the call failed. Let's log it.
+        app.logger.error(f"A non-auth HttpError occurred during API status check: {e}")
+        return True # Considered "connected" as it's not an auth issue.
+    except Exception as e:
+        app.logger.error(f"Unexpected error during Google API status check: {e}")
+        return False
+
+@app.context_processor
+def inject_global_vars():
+    """Injects global variables into all Jinja2 templates."""
+    return {
+        'now': datetime.datetime.now(THAILAND_TZ),
+        'google_api_connected': check_google_api_status()
+    }
 
 #</editor-fold>
 
