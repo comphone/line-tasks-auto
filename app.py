@@ -456,6 +456,11 @@ def _format_equipment_list(equipment_data):
                 lines.append(item)
     return "\n".join(lines) if lines else 'N/A'
 
+@app.context_processor
+def inject_now():
+    """Injects current datetime and timezone into Jinja2 templates."""
+    return {'now': datetime.datetime.now(THAILAND_TZ), 'thaizone': THAILAND_TZ}
+
 def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
     """Generates a base64 encoded QR code image."""
     try:
@@ -474,7 +479,7 @@ def _create_backup_zip():
     """Creates a zip archive of all tasks, settings, and source code."""
     try:
         all_tasks = get_google_tasks_for_report(show_completed=True)
-        if all_tasks is None:
+        if all_tasks === None:
             app.logger.error('Failed to get tasks for backup.')
             return None, None
 
@@ -528,17 +533,14 @@ def check_google_api_status():
     if not service:
         return False
     try:
-        # A lightweight, simple call to check if the token is valid.
         service.about().get(fields='user').execute()
         return True
     except HttpError as e:
-        # Specifically check for authentication errors
         if e.resp.status in [401, 403]:
             app.logger.warning(f"Google API authentication check failed: {e}")
             return False
-        # For other errors, we might still be "connected" but the call failed. Let's log it.
         app.logger.error(f"A non-auth HttpError occurred during API status check: {e}")
-        return True # Considered "connected" as it's not an auth issue.
+        return True
     except Exception as e:
         app.logger.error(f"Unexpected error during Google API status check: {e}")
         return False
@@ -997,7 +999,6 @@ def delete_task(task_id):
         flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
     return redirect(url_for('summary'))
 
-# --- NEW: API route for deleting tasks via JS ---
 @app.route('/api/delete_task/<task_id>', methods=['POST'])
 def api_delete_task(task_id):
     if delete_google_task(task_id):
@@ -1006,7 +1007,6 @@ def api_delete_task(task_id):
     else:
         return jsonify({'status': 'error', 'message': 'Failed to delete task.'}), 500
 
-# --- NEW: API route for batch deleting tasks ---
 @app.route('/api/delete_tasks_batch', methods=['POST'])
 def api_delete_tasks_batch():
     data = request.json
@@ -1082,7 +1082,6 @@ def settings_page():
         fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
     )
     
-    # --- NEW: Gather ENV VARS for the setup helper ---
     env_vars = {
         'GOOGLE_TOKEN_JSON': os.environ.get('GOOGLE_TOKEN_JSON', ''),
         'LINE_CHANNEL_ACCESS_TOKEN': os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', ''),
@@ -1178,7 +1177,7 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
-# --- REVISED: Combined import route with duplicate handling ---
+# NEW: Combined import route for both tasks and settings JSON files
 @app.route('/api/import_backup_file', methods=['POST'])
 def import_backup_file():
     if 'backup_file' not in request.files or not request.files['backup_file'].filename:
@@ -1218,7 +1217,7 @@ def import_backup_file():
                                 dt_obj = date_parse(task_data[date_field])
                                 task_data[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
                             except Exception as e:
-                                app.logger.warning(f"Could not parse {date_field} for task '{task_title_for_log}': {e}. Skipping date.")
+                                app.logger.warning(f"Could not parse {date_field} date for task '{task_title_for_log}': {e}. Skipping {date_field}.")
                                 task_data.pop(date_field, None)
                     
                     if not original_id:
@@ -1408,22 +1407,24 @@ def technician_report():
                            years=years,
                            months=all_months)
 
-# --- NEW: Route for managing duplicate tasks ---
 @app.route('/manage_duplicates')
 def manage_duplicates():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
-    tasks_by_title = defaultdict(list)
+    tasks_by_title_customer = defaultdict(list)
 
-    # Group tasks by title
+    # Group tasks by title and customer name
     for task in tasks_raw:
         if task.get('title'):
-            tasks_by_title[task['title'].strip()].append(task)
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            customer_name = customer_info.get('name', '').strip().lower()
+            # Use a tuple (title, customer_name) as key for grouping
+            tasks_by_title_customer[(task['title'].strip(), customer_name)].append(task)
     
     # Filter for potential duplicates (groups with more than 1 task)
-    potential_duplicate_sets = {title: tasks for title, tasks in tasks_by_title.items() if len(tasks) > 1}
+    potential_duplicate_sets = {key: tasks for key, tasks in tasks_by_title_customer.items() if len(tasks) > 1}
 
-    # Parse details for display
-    for title, tasks in potential_duplicate_sets.items():
+    # Parse details for display in the template
+    for key, tasks in potential_duplicate_sets.items():
         for i, task in enumerate(tasks):
             current_time_utc = datetime.datetime.now(pytz.utc)
             is_overdue = False
@@ -1436,9 +1437,9 @@ def manage_duplicates():
             parsed_task = parse_google_task_dates(task)
             parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
             parsed_task['is_overdue'] = is_overdue
-            potential_duplicate_sets[title][i] = parsed_task
+            potential_duplicate_sets[key][i] = parsed_task
 
-    return render_template('manage_duplicates.html', potential_duplicate_sets=potential_duplicate_sets)
+    return render_template('duplicates.html', potential_duplicate_sets=potential_duplicate_sets)
 
 
 # --- Customer Onboarding & Feedback Routes ---
@@ -1857,12 +1858,10 @@ def oauth2callback():
         flow.fetch_token(authorization_response=request.url)
         creds = flow.credentials
 
-        # --- REVISED: Create a compact, single-line JSON string ---
-        token_data = json.loads(creds.to_json())
-        compact_token_json = json.dumps(token_data, separators=(',', ':'))
+        token_json_content = creds.to_json()
         
-        flash(f'เชื่อมต่อ Google สำเร็จแล้ว! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com (หรือแพลตฟอร์มอื่นที่คุณใช้) และรีสตาร์ทแอปพลิเคชัน: <textarea class="form-control mt-2" rows="5" readonly>{compact_token_json}</textarea>', 'success')
-        app.logger.info("Google OAuth successful. Please update GOOGLE_TOKEN_JSON env var with the new compact token.")
+        flash(f'เชื่อมต่อ Google สำเร็จแล้ว! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com (หรือแพลตฟอร์มอื่นที่คุณใช้) และรีสตาร์ทแอปพลิเคชัน: <textarea class="form-control mt-2" rows="5" readonly>{token_json_content}</textarea>', 'success')
+        app.logger.info("Google OAuth successful. Token saved to token.json. Please update GOOGLE_TOKEN_JSON env var.")
         
     except Exception as e:
         app.logger.error(f"Error during OAuth2 callback: {e}", exc_info=True)
