@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการข้อมูลซ้ำ{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0"><i class="fas fa-copy me-2"></i>จัดการข้อมูลซ้ำ</h1>
+    </div>
+
+    {% if not potential_duplicate_sets %}
+    <div class="alert alert-success text-center">
+        <h4><i class="fas fa-check-circle me-2"></i>ไม่พบข้อมูลที่ซ้ำกันในระบบ</h4>
+        <p class="mb-0">ระบบไม่พบงานที่มีรายละเอียด (Title) เหมือนกัน</p>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <p class="mb-0">
+            พบกลุ่มงาน <strong>{{ potential_duplicate_sets | length }} กลุ่ม</strong> ที่มีรายละเอียด (Title) เหมือนกัน
+            โปรดตรวจสอบและลบรายการที่ไม่ต้องการออก
+        </p>
+    </div>
+
+    <div class="accordion" id="duplicatesAccordion">
+        {% for title, tasks in potential_duplicate_sets.items() %}
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="heading-{{ loop.index }}">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#collapse-{{ loop.index }}" aria-expanded="true"
+                    aria-controls="collapse-{{ loop.index }}">
+                    <strong>{{ title }}</strong>&nbsp;<span class="badge bg-danger">{{ tasks | length }} รายการ</span>
+                </button>
+            </h2>
+            <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse show"
+                aria-labelledby="heading-{{ loop.index }}" data-bs-parent="#duplicatesAccordion">
+                <div class="accordion-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ลูกค้า</th>
+                                    <th>วันเวลานัดหมาย</th>
+                                    <th>สถานะ</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in tasks %}
+                                <tr id="task-row-{{ task.id }}">
+                                    <td><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank">{{ task.customer.name or '-' }}</a></td>
+                                    <td>{{ task.due_formatted or '-' }}</td>
+                                    <td>
+                                        {% if task.status == 'completed' %}
+                                            <span class="badge bg-success">เสร็จเรียบร้อย</span>
+                                        {% elif task.is_overdue %}
+                                            <span class="badge bg-danger">เลยกำหนด</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <button class="btn btn-sm btn-danger delete-btn" data-task-id="{{ task.id }}" data-task-title="{{ task.title }}">
+                                            <i class="fas fa-trash-alt"></i> ลบ
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const deleteButtons = document.querySelectorAll('.delete-btn');
+
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const taskId = this.dataset.taskId;
+            const taskTitle = this.dataset.taskTitle;
+
+            if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบงาน:\n"${taskTitle}"\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) {
+                fetch(`/api/delete_task/${taskId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const row = document.getElementById(`task-row-${taskId}`);
+                        if (row) {
+                            row.style.transition = 'opacity 0.5s ease';
+                            row.style.opacity = '0';
+                            setTimeout(() => { 
+                                row.remove();
+                                // Optional: Check if the accordion body is empty and update UI
+                            }, 500);
+                        }
+                        // Simple feedback for now
+                        alert('ลบงานเรียบร้อยแล้ว');
+                    } else {
+                        alert('เกิดข้อผิดพลาดในการลบงาน: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('เกิดข้อผิดพลาดร้ายแรงในการติดต่อเซิร์ฟเวอร์');
+                });
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
