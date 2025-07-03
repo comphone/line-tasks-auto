@@ -14,8 +14,11 @@
     </div>
     <div class="card-body">
         {% if duplicates %}
-            <form action="{{ url_for('delete_duplicates') }}" method="POST" id="deleteForm">
-                <p class="text-muted">ระบบพบกลุ่มข้อมูลที่อาจซ้ำกัน {{ duplicates|length }} กลุ่ม (ตรวจสอบจากชื่องานและชื่อลูกค้าที่ตรงกัน) โปรดเลือกรายการที่ต้องการลบและเก็บไว้เพียงรายการเดียว</p>
+            <form action="{{ url_for('delete_duplicates_batch') }}" method="POST" id="deleteForm">
+                <p class="text-muted">
+                    ระบบพบกลุ่มข้อมูลที่อาจซ้ำกัน {{ duplicates|length }} กลุ่ม (ตรวจสอบจากชื่องานและชื่อลูกค้าที่ตรงกัน)
+                    โปรด **เลือกรายการที่ต้องการลบ** และรายการที่ **ไม่ถูกเลือก** จะถูกเก็บไว้
+                </p>
                 
                 {% for group_key, tasks in duplicates.items() %}
                 <div class="card mb-4 shadow-sm">
@@ -24,19 +27,22 @@
                         <strong>ลูกค้า:</strong> {{ group_key[1]|title }}
                     </div>
                     <ul class="list-group list-group-flush">
-                        {% for task in tasks|sort(attribute='created', reverse=True) %}
+                        {% for task in tasks %} {# tasks are already sorted by creation date in app.py #}
                         <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="task_ids" value="{{ task.id }}" id="task-{{ task.id }}">
+                                    {# Checkbox for deletion - default to checked for older items, unchecked for newest #}
+                                    <input class="form-check-input" type="checkbox" name="task_ids" value="{{ task.id }}" id="task-{{ task.id }}" {% if loop.index > 1 %}checked{% endif %}>
                                     <label class="form-check-label" for="task-{{ task.id }}">
                                         <strong>ID:</strong> {{ task.id }} <br>
                                         <small class="text-muted">
-                                            {# Accessing 'created' field which should be ISO format string from Google Tasks API #}
-                                            สร้างเมื่อ: {{ task.created | dateutil_parse | astimezone(thaizone) | strftime('%d/%m/%Y %H:%M') }} | 
+                                            สร้างเมื่อ: {{ task.created_formatted }} | 
                                             สถานะ: <span class="badge bg-{{ 'success' if task.status == 'completed' else 'warning' }}">{{ task.status }}</span> |
                                             นัดหมาย: {{ task.due_formatted or '-' }}
                                         </small>
+                                        {% if loop.index == 1 %}
+                                            <span class="badge bg-info ms-2">รายการล่าสุด (แนะนำให้เก็บ)</span>
+                                        {% endif %}
                                     </label>
                                 </div>
                             </div>
@@ -63,6 +69,14 @@
 <script>
 // Add a confirmation before submitting the delete form
 document.getElementById('deleteForm').addEventListener('submit', function(e) {
+    // Check if at least one checkbox is checked
+    const checkedCheckboxes = document.querySelectorAll('#deleteForm input[name="task_ids"]:checked');
+    if (checkedCheckboxes.length === 0) {
+        alert('กรุณาเลือกอย่างน้อยหนึ่งรายการที่ต้องการลบ');
+        e.preventDefault();
+        return;
+    }
+
     if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการที่เลือก? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
         e.preventDefault();
     }

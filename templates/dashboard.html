@@ -129,11 +129,11 @@
 <div class="row">
     <div class="col-lg-12 mb-4">
         <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center" id="chartHeader" data-bs-toggle="collapse" data-bs-target="#monthlyTasksChartCollapse" aria-expanded="true" aria-controls="monthlyTasksChartCollapse" style="cursor: pointer;">
+            <div class="card-header d-flex justify-content-between align-items-center" id="chartHeader" data-bs-toggle="collapse" data-bs-target="#monthlyTasksChartCollapse" aria-expanded="false" aria-controls="monthlyTasksChartCollapse" style="cursor: pointer;">
                 <h5 class="mb-0"><i class="fas fa-chart-bar me-1"></i>จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)</h5>
                 <i class="fas fa-chevron-down"></i> {# Icon for expand/collapse #}
             </div>
-            <div class="collapse show" id="monthlyTasksChartCollapse"> {# 'show' to make it expanded by default #}
+            <div class="collapse" id="monthlyTasksChartCollapse"> {# Removed 'show' to make it collapsed by default #}
                 <div class="card-body">
                     <canvas id="monthlyTasksChart"></canvas>
                 </div>
@@ -144,11 +144,11 @@
 
 
 <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader" data-bs-toggle="collapse" data-bs-target="#tasksTableCollapse" aria-expanded="true" aria-controls="tasksTableCollapse" style="cursor: pointer;">
+    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader" data-bs-toggle="collapse" data-bs-target="#tasksTableCollapse" aria-expanded="false" aria-controls="tasksTableCollapse" style="cursor: pointer;">
         <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
         <i class="fas fa-chevron-down"></i> {# Icon for expand/collapse #}
     </div>
-    <div class="collapse show" id="tasksTableCollapse"> {# 'show' to make it expanded by default #}
+    <div class="collapse" id="tasksTableCollapse"> {# Removed 'show' to make it collapsed by default #}
         <div class="card-body">
             <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
                 <div class="input-group">
@@ -259,13 +259,9 @@
                 // Initial icon state
                 const icon = header.querySelector('.fa-chevron-down, .fa-chevron-up');
                 if (icon) {
-                    if (collapseElement.classList.contains('show')) {
-                        icon.classList.add('fa-chevron-up');
-                        icon.classList.remove('fa-chevron-down');
-                    } else {
-                        icon.classList.add('fa-chevron-down');
-                        icon.classList.remove('fa-chevron-up');
-                    }
+                    // Start collapsed, so icon should be 'down'
+                    icon.classList.add('fa-chevron-down');
+                    icon.classList.remove('fa-chevron-up');
                 }
 
                 // Event listener for toggle
@@ -284,6 +280,7 @@
             }
         }
 
+        // Set up collapse for both sections to be collapsed by default
         setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse');
         setupCollapseToggle('tasksHeader', 'tasksTableCollapse');
 
