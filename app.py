@@ -344,9 +344,15 @@ def upload_file_to_google_drive(file_path, file_name, mime_type, folder_id=None)
         app.logger.info(f"File '{file_name}' uploaded successfully with ID: {uploaded_file_id}, Link: {uploaded_file_link}. Attempting to set permissions.")
 
         # Set permission to anyone with link can view
-        _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
-        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
+        permission_result = _execute_google_api_call_with_retry(service.permissions().create, fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'})
+        
+        if not permission_result:
+            app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). Permission result was {permission_result}.")
+            # Even if permissions fail, the file might still be uploaded. Decide if this counts as overall failure.
+            # For now, we'll return False if permissions fail, as it affects visibility.
+            return False
 
+        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
         app.logger.info(f"Successfully completed backup upload for '{file_name}' to Drive.")
         return True
     except HttpError as e:
@@ -1704,6 +1710,35 @@ def customer_problem_form():
     parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('customer_problem_form.html', task=parsed_task, LIFF_ID_FORM=LIFF_ID_FORM)
 
+# NEW: Route to generate QR code for public task report
+@app.route('/generate_public_report_qr/<task_id>')
+def generate_public_report_qr(task_id):
+    task = get_single_task(task_id)
+    if not task: abort(404)
+
+    # Ensure the task is completed before generating a public report QR
+    if task.get('status') != 'completed':
+        flash('ไม่สามารถสร้าง QR Code สำหรับรายงานสาธารณะได้ เนื่องจากงานยังไม่เสร็จสิ้น.', 'warning')
+        return redirect(url_for('task_details', task_id=task_id))
+
+    public_report_url = url_for('public_task_report', task_id=task_id, _external=True)
+    qr_settings = get_app_settings().get('qrcode_settings', {})
+    qr_code_base64_report = generate_qr_code_base64(
+        public_report_url,
+        box_size=qr_settings.get('box_size', 8),
+        border=qr_settings.get('border', 4),
+        fill_color=qr_settings.get('fill_color', '#28a745'),
+        back_color=qr_settings.get('back_color', '#FFFFFF')
+    )
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+
+    return render_template('public_report_qr.html',
+                           task=task,
+                           customer_info=customer_info,
+                           public_report_url=public_report_url,
+                           qr_code_base64_report=qr_code_base64_report)
+
+
 @app.route('/trigger_customer_follow_up_test', methods=['POST'])
 def trigger_customer_follow_up_test():
     with app.app_context():
@@ -1752,6 +1787,11 @@ def trigger_customer_follow_up_test():
 def public_task_report(task_id):
     task = get_single_task(task_id)
     if not task: abort(404)
+
+    # Ensure the task is completed for public view
+    if task.get('status') != 'completed':
+        flash('งานนี้ยังไม่เสร็จสิ้น ไม่สามารถดูรายงานสาธารณะได้', 'danger')
+        return redirect(url_for('summary')) # Redirect to summary or an error page
 
     notes = task.get('notes', '')
     customer_info = parse_customer_info_from_notes(notes)
