@@ -1102,7 +1102,6 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
-# NEW: Combined import route for both tasks and settings JSON files
 @app.route('/api/import_backup_file', methods=['POST'])
 def import_backup_file():
     if 'backup_file' not in request.files or not request.files['backup_file'].filename:
@@ -1128,42 +1127,64 @@ def import_backup_file():
             if not service:
                 return jsonify({"status": "error", "message": "Could not connect to Google Tasks service. Check credentials."}), 500
 
-            imported_count = 0
+            created_count = 0
+            updated_count = 0
             skipped_count = 0
             for task_data in data:
                 try:
-                    # Remove Google-specific read-only fields
-                    read_only_fields = ['id', 'kind', 'selfLink', 'position', 'etag', 'updated']
-                    for field in read_only_fields:
-                        task_data.pop(field, None)
-
-                    if task_data.get('status') not in ['needsAction', 'completed']:
-                        task_data['status'] = 'needsAction'
-
-                    for date_field in ['due', 'completed']:
-                        if date_field in task_data and task_data[date_field]:
-                            try:
-                                dt_obj = date_parse(task_data[date_field])
-                                task_data[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                            except Exception as e:
-                                app.logger.warning(f"Could not parse {date_field} date for task '{task_data.get('title')}': {e}. Skipping {date_field}.")
-                                task_data.pop(date_field, None)
-                    
-                    if not task_data.get('title'):
-                        app.logger.warning(f"Skipping task due to missing title: {task_data}")
+                    original_task_id = task_data.get('id')
+                    if not original_task_id:
+                        app.logger.warning(f"Skipping task due to missing ID: {task_data.get('title')}")
                         skipped_count += 1
                         continue
 
-                    service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_data).execute()
-                    imported_count += 1
+                    # Prepare the task body by removing read-only fields
+                    task_body = task_data.copy()
+                    read_only_fields = ['kind', 'selfLink', 'position', 'etag', 'updated', 'created']
+                    for field in read_only_fields:
+                        task_body.pop(field, None)
+                    
+                    if task_body.get('status') not in ['needsAction', 'completed']:
+                        task_body['status'] = 'needsAction'
+                    
+                    for date_field in ['due', 'completed']:
+                        if date_field in task_body and task_body[date_field]:
+                            try:
+                                dt_obj = date_parse(task_body[date_field])
+                                task_body[date_field] = dt_obj.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                            except Exception as e:
+                                app.logger.warning(f"Could not parse {date_field} for task '{task_body.get('title')}': {e}. Skipping field.")
+                                task_body.pop(date_field, None)
+
+                    # Check if task exists
+                    try:
+                        service.tasks().get(tasklist=GOOGLE_TASKS_LIST_ID, task=original_task_id).execute()
+                        # If it exists, update it
+                        task_body.pop('id', None)
+                        service.tasks().update(tasklist=GOOGLE_TASKS_LIST_ID, task=original_task_id, body=task_body).execute()
+                        updated_count += 1
+                        app.logger.info(f"Updated existing task: {original_task_id}")
+
+                    except HttpError as e:
+                        if e.resp.status == 404:
+                            # If it doesn't exist, insert it as a new task
+                            task_body.pop('id', None)
+                            service.tasks().insert(tasklist=GOOGLE_TASKS_LIST_ID, body=task_body).execute()
+                            created_count += 1
+                            app.logger.info(f"Inserted new task for non-existent ID: {original_task_id}")
+                        else:
+                            raise e
+
                 except HttpError as e:
-                    app.logger.error(f"Error importing task '{task_data.get('title', 'N/A')}': {e.uri} - {e.content.decode()}", exc_info=True)
+                    app.logger.error(f"API Error processing task '{task_data.get('title', 'N/A')}': {e.uri} - {e.content.decode()}", exc_info=True)
                     skipped_count += 1
                 except Exception as e:
                     app.logger.error(f"Unexpected error processing task '{task_data.get('title', 'N/A')}': {e}", exc_info=True)
                     skipped_count += 1
+            
             cache.clear()
-            return jsonify({"status": "success", "message": f"นำเข้างานสำเร็จ: {imported_count} งาน, ข้าม: {skipped_count} งาน"})
+            message = f"นำเข้าสำเร็จ: สร้างใหม่ {created_count} งาน, อัปเดต {updated_count} งาน, ข้าม {skipped_count} งาน"
+            return jsonify({"status": "success", "message": message})
 
         elif file_type == 'settings_json':
             if not isinstance(data, dict):
@@ -1182,7 +1203,6 @@ def import_backup_file():
         app.logger.error(f"Error during import: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาดในการนำเข้า: {e}"}), 500
 
-# NEW: Combined preview route for both tasks and settings
 @app.route('/api/preview_backup_file', methods=['POST'])
 def preview_backup_file():
     if 'backup_file' not in request.files or not request.files['backup_file'].filename:
