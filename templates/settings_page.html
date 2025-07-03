@@ -216,6 +216,20 @@
         </div>
     </div>
 
+    {# ADDED: Section for Manage Duplicates #}
+    <div class="card mt-4 mb-4">
+        <div class="card-header bg-warning text-white">
+            <h5 class="mb-0">จัดการข้อมูลซ้ำซ้อน</h5>
+        </div>
+        <div class="card-body">
+            <p>ตรวจสอบและลบงานที่มีชื่องานและชื่อลูกค้าซ้ำกัน เพื่อรักษาความสะอาดของข้อมูล</p>
+            <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning">
+                <i class="fas fa-copy me-1"></i> ไปยังหน้าจัดการข้อมูลซ้ำ
+            </a>
+        </div>
+    </div>
+    {# END ADDED: Section for Manage Duplicates #}
+
     {# --- NEW: Unified Import Backup Section --- #}
     <div class="card mt-4 mb-4">
         <div class="card-header bg-warning text-white">
@@ -240,7 +254,7 @@
                     </div>
                 </div>
                 <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่างการนำเข้า</button>
-                <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยันการนำเข้า</button>
+                <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยินการนำเข้า</button>
             </form>
             <div id="importBackupPreview" class="mt-3"></div>
         </div>
