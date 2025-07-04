@@ -105,7 +105,7 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
         'manager_user_id': ''
     },
-    'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF', 'custom_url': '' },
+    'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF' },
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
@@ -754,11 +754,9 @@ def scheduled_appointment_reminder_job():
             except Exception as e:
                 app.logger.error(f"Failed to send appointment reminder for task {task['id']}: {e}")
 
-# UPDATED: Flex message for new feedback workflow
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     """Creates the new feedback Flex Message with 'OK' and 'Problem' buttons."""
     
-    # The 'Problem' button now opens the problem reporting LIFF page
     problem_action = URIAction(
         label='🚨 ยังมีปัญหาอยู่', 
         uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}"
@@ -836,7 +834,6 @@ def scheduled_customer_follow_up_job():
                             line_bot_api.push_message(customer_line_id, flex_message)
                             app.logger.info(f"Sent follow-up message to customer {customer_line_id} for task {task['id']}.")
                             
-                            # Update task notes to mark that follow-up has been sent
                             feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
                             _, base_notes = parse_tech_report_from_notes(notes)
                             tech_reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
@@ -1168,9 +1165,10 @@ def settings_page():
                 'manager_user_id': request.form.get('manager_user_id', '').strip()
             },
             'qrcode_settings': {
-                'box_size': int(request.form.get('qr_box_size')), 'border': int(request.form.get('qr_border')),
-                'fill_color': request.form.get('qr_fill_color'), 'back_color': request.form.get('qr_back_color'),
-                'custom_url': request.form.get('qr_custom_url', '').strip()
+                'box_size': int(request.form.get('qr_box_size')), 
+                'border': int(request.form.get('qr_border')),
+                'fill_color': request.form.get('qr_fill_color'), 
+                'back_color': request.form.get('qr_back_color'),
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
@@ -1194,15 +1192,6 @@ def settings_page():
         return redirect(url_for('settings_page'))
 
     current_settings = get_app_settings()
-    general_summary_url = url_for('summary', _external=True)
-    qr_url = current_settings.get('qrcode_settings', {}).get('custom_url') or general_summary_url
-    qr_settings = current_settings.get('qrcode_settings', {})
-
-    qr_code_base64_general = generate_qr_code_base64(
-        qr_url, box_size=qr_settings.get('box_size', 8), border=qr_settings.get('border', 4),
-        fill_color=qr_settings.get('fill_color', '#28a745'), back_color=qr_settings.get('back_color', '#FFFFFF')
-    )
-    
     env_vars = {
         'GOOGLE_TOKEN_JSON': os.environ.get('GOOGLE_TOKEN_JSON', ''),
         'LINE_CHANNEL_ACCESS_TOKEN': os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', ''),
@@ -1214,8 +1203,6 @@ def settings_page():
 
     return render_template('settings_page.html', 
                            settings=current_settings, 
-                           qr_code_base64_general=qr_code_base64_general, 
-                           general_summary_url=general_summary_url,
                            env_vars=env_vars)
 
 
@@ -1649,7 +1636,6 @@ def delete_equipment_duplicates_batch():
 
 # --- Customer Onboarding & Feedback Routes ---
 
-# NEW: Route to render the LIFF onboarding page
 @app.route('/customer_onboarding/<task_id>')
 def customer_onboarding_page(task_id):
     task = get_single_task(task_id)
@@ -1657,7 +1643,6 @@ def customer_onboarding_page(task_id):
         abort(404)
     return render_template('customer_onboarding.html', task=task, LIFF_ID_FORM=LIFF_ID_FORM)
 
-# NEW: Route to generate the QR code that links to the LIFF onboarding page
 @app.route('/generate_customer_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
     task = get_single_task(task_id)
@@ -1670,10 +1655,16 @@ def generate_customer_onboarding_qr(task_id):
     onboarding_url = url_for('customer_onboarding_page', task_id=task_id, _external=True)
     liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
 
-    qr_code_base64 = generate_qr_code_base64(liff_url, box_size=10)
+    qr_settings = get_app_settings().get('qrcode_settings', {})
+    qr_code_base64 = generate_qr_code_base64(
+        liff_url, 
+        box_size=qr_settings.get('box_size', 10),
+        border=qr_settings.get('border', 4),
+        fill_color=qr_settings.get('fill_color', '#28a745'),
+        back_color=qr_settings.get('back_color', '#FFFFFF')
+    )
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     
-    # Using a new template for this specific QR code page
     return render_template('generate_onboarding_qr.html', 
                            qr_code_base64=qr_code_base64, 
                            task=task, 
@@ -1860,7 +1851,6 @@ def submit_customer_problem():
         
     return jsonify({"status": "success", "message": "Problem reported."})
 
-# UPDATED: This route now sends a welcome message
 @app.route('/save_customer_line_id', methods=['POST'])
 def save_customer_line_id():
     data = request.json
