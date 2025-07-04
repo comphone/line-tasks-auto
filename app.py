@@ -419,16 +419,19 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
 
 def parse_customer_info_from_notes(notes):
     """
-    Parses customer information and map URL from task notes robustly.
+    Parses customer information, organization, and map URL from task notes robustly.
     """
-    info = {'name': '', 'phone': '', 'address': '', 'map_url': None}
+    info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
     if not notes: return info
 
+    org_match = re.search(r"หน่วยงาน:\s*(.*)", notes, re.IGNORECASE)
     name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
     phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
     address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
     map_url_match = re.search(r"(https?:\/\/[^\s]+|\-?\d+\.\d+,\s*\-?\d+\.\d+)", notes)
 
+    if org_match:
+        info['organization'] = org_match.group(1).strip()
     if name_match:
         info['name'] = name_match.group(1).strip()
     if phone_match:
@@ -921,17 +924,22 @@ def root_redirect():
 def form_page():
     if request.method == 'POST':
         task_title = str(request.form.get('task_title', '')).strip()
-        customer_name = str(request.form.get('customer', '')).strip()
+        customer_name = str(request.form.get('customer', '')).strip() # Use 'customer' to match user's form
+        organization_name = str(request.form.get('organization_name', '')).strip()
 
         if not task_title or not customer_name:
-            flash('กรุณากรอกชื่อลูกค้าและรายละเอียดงาน', 'danger')
+            flash('กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน', 'danger')
             return redirect(url_for('form_page'))
 
-        notes_lines = [
+        notes_lines = []
+        if organization_name:
+            notes_lines.append(f"หน่วยงาน: {organization_name}")
+        
+        notes_lines.extend([
             f"ลูกค้า: {customer_name}",
             f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
             f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
-        ]
+        ])
         map_url = str(request.form.get('latitude_longitude', '')).strip()
         if map_url: notes_lines.append(map_url)
 
@@ -1155,11 +1163,16 @@ def edit_task(task_id):
             flash('กรุณากรอกรายละเอียดงาน', 'danger')
             return redirect(url_for('edit_task', task_id=task_id))
 
-        notes_lines = [
+        notes_lines = []
+        organization_name = str(request.form.get('organization_name', '')).strip()
+        if organization_name:
+            notes_lines.append(f"หน่วยงาน: {organization_name}")
+
+        notes_lines.extend([
             f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
             f"เบอร์โทรศัพท์: {str(request.form.get('customer_phone', '')).strip()}",
             f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
-        ]
+        ])
         map_url = str(request.form.get('latitude_longitude', '')).strip()
         if map_url:
             notes_lines.append(map_url)
