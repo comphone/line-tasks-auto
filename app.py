@@ -104,7 +104,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
         'manager_user_id': ''
     },
-    'qrcode_settings': { 'box_size': 8, 'border': 4, 'fill_color': '#28a745', 'back_color': '#FFFFFF' },
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
@@ -536,7 +535,7 @@ def inject_now():
     """Injects current datetime and timezone into Jinja2 templates."""
     return {'now': datetime.datetime.now(THAILAND_TZ), 'thaizone': THAILAND_TZ}
 
-def generate_qr_code_base64(data, box_size=8, border=4, fill_color='black', back_color='white'):
+def generate_qr_code_base64(data, box_size=10, border=4, fill_color='#28a745', back_color='#FFFFFF'):
     """Generates a base64 encoded QR code image."""
     try:
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
@@ -1092,7 +1091,6 @@ def task_details(task_id):
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []))
 
-# NEW: Route for editing core task details
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
 def edit_task(task_id):
     task_raw = get_single_task(task_id)
@@ -1105,7 +1103,6 @@ def edit_task(task_id):
             flash('กรุณากรอกรายละเอียดงาน', 'danger')
             return redirect(url_for('edit_task', task_id=task_id))
 
-        # Reconstruct the base notes (customer info)
         notes_lines = [
             f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
             f"เบอร์โทรศัพท์: {str(request.form.get('customer_phone', '')).strip()}",
@@ -1117,7 +1114,6 @@ def edit_task(task_id):
         
         new_base_notes = "\n".join(filter(None, notes_lines))
 
-        # Preserve existing tech reports and feedback
         tech_reports, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
@@ -1129,7 +1125,6 @@ def edit_task(task_id):
         if feedback_data:
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
-        # Handle due date
         due_date_gmt = None
         appointment_str = str(request.form.get('appointment_due', '')).strip()
         if appointment_str:
@@ -1148,7 +1143,6 @@ def edit_task(task_id):
             flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger')
             return redirect(url_for('edit_task', task_id=task_id))
 
-    # GET request
     task = parse_google_task_dates(task_raw)
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('edit_task.html', task=task)
@@ -1213,12 +1207,6 @@ def settings_page():
                 'admin_group_id': request.form.get('admin_group_id', '').strip(),
                 'technician_group_id': request.form.get('technician_group_id', '').strip(),
                 'manager_user_id': request.form.get('manager_user_id', '').strip()
-            },
-            'qrcode_settings': {
-                'box_size': int(request.form.get('qr_box_size')), 
-                'border': int(request.form.get('qr_border')),
-                'fill_color': request.form.get('qr_fill_color'), 
-                'back_color': request.form.get('qr_back_color'),
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
@@ -1705,14 +1693,7 @@ def generate_customer_onboarding_qr(task_id):
     onboarding_url = url_for('customer_onboarding_page', task_id=task_id, _external=True)
     liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
 
-    qr_settings = get_app_settings().get('qrcode_settings', {})
-    qr_code_base64 = generate_qr_code_base64(
-        liff_url, 
-        box_size=qr_settings.get('box_size', 10),
-        border=qr_settings.get('border', 4),
-        fill_color=qr_settings.get('fill_color', '#28a745'),
-        back_color=qr_settings.get('back_color', '#FFFFFF')
-    )
+    qr_code_base64 = generate_qr_code_base64(liff_url)
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     
     return render_template('generate_onboarding_qr.html', 
@@ -1742,14 +1723,7 @@ def generate_public_report_qr(task_id):
         return redirect(url_for('task_details', task_id=task_id))
 
     public_report_url = url_for('public_task_report', task_id=task_id, _external=True)
-    qr_settings = get_app_settings().get('qrcode_settings', {})
-    qr_code_base64_report = generate_qr_code_base64(
-        public_report_url,
-        box_size=qr_settings.get('box_size', 8),
-        border=qr_settings.get('border', 4),
-        fill_color=qr_settings.get('fill_color', '#28a745'),
-        back_color=qr_settings.get('back_color', '#FFFFFF')
-    )
+    qr_code_base64_report = generate_qr_code_base64(public_report_url)
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
 
     return render_template('public_report_qr.html',
@@ -2105,6 +2079,44 @@ def handle_postback(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
         except Exception as e:
             app.logger.error(f"Failed to reply to postback: {e}")
+
+@app.route("/debug_drive")
+def debug_drive():
+    service = get_google_drive_service()
+    if not service:
+        return "❌ **[Authentication Error]** ไม่สามารถสร้าง Google Drive service object ได้. โปรดตรวจสอบ `GOOGLE_TOKEN_JSON` ใน Environment Variables ว่าถูกต้องและยังไม่หมดอายุ. ลองสร้าง Token ใหม่จากหน้า Settings."
+
+    results = []
+    
+    # Check 1: General Drive Folder
+    folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
+    if not folder_id:
+        results.append("❌ **[Config Error]** `GOOGLE_DRIVE_FOLDER_ID` ไม่ได้ถูกตั้งค่าใน Environment Variables.")
+    else:
+        try:
+            # Test creating a dummy file and deleting it to check write permissions
+            file_metadata = {'name': 'permission_test.tmp', 'parents': [folder_id]}
+            test_file = service.files().create(body=file_metadata, fields='id').execute()
+            service.files().delete(fileId=test_file.get('id')).execute()
+            results.append(f"✅ **[OK]** `GOOGLE_DRIVE_FOLDER_ID` ({folder_id[:10]}...) สามารถเชื่อมต่อและเขียนไฟล์ได้สำเร็จ.")
+        except Exception as e:
+            results.append(f"❌ **[Permission Error]** ไม่สามารถเขียนไฟล์ลงใน `GOOGLE_DRIVE_FOLDER_ID` ({folder_id[:10]}...). <br><b>สาเหตุ:</b> {str(e)} <br><b>ข้อแนะนำ:</b> โปรดตรวจสอบว่า Folder ID ถูกต้อง และบัญชี Google ของคุณมีสิทธิ์เป็น 'Editor' ในโฟลเดอร์นี้.")
+
+    # Check 2: Settings Backup Folder
+    settings_folder_id = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID')
+    if not settings_folder_id:
+        results.append("❌ **[Config Error]** `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` ไม่ได้ถูกตั้งค่าใน Environment Variables.")
+    else:
+        try:
+            file_metadata = {'name': 'permission_test.tmp', 'parents': [settings_folder_id]}
+            test_file = service.files().create(body=file_metadata, fields='id').execute()
+            service.files().delete(fileId=test_file.get('id')).execute()
+            results.append(f"✅ **[OK]** `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` ({settings_folder_id[:10]}...) สามารถเชื่อมต่อและเขียนไฟล์ได้สำเร็จ.")
+        except Exception as e:
+            results.append(f"❌ **[Permission Error]** ไม่สามารถเขียนไฟล์ลงใน `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` ({settings_folder_id[:10]}...). <br><b>สาเหตุ:</b> {str(e)} <br><b>ข้อแนะนำ:</b> โปรดตรวจสอบว่า Folder ID ถูกต้อง และบัญชี Google ของคุณมีสิทธิ์เป็น 'Editor' ในโฟลเดอร์นี้.")
+
+    return "<br><br>".join(results)
+
 
 # Google OAuth2 authorization route
 @app.route('/authorize')
