@@ -289,6 +289,48 @@ def save_app_settings(settings_data):
     _APP_SETTINGS_STORE = current_settings
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
+def backup_settings_to_drive():
+    """Saves the current settings file to Google Drive, overwriting the old one."""
+    if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
+        app.logger.error("Cannot back up settings: GOOGLE_SETTINGS_BACKUP_FOLDER_ID is not set.")
+        return False
+
+    service = get_google_drive_service()
+    if not service:
+        app.logger.error("Cannot back up settings: Google Drive service is unavailable.")
+        return False
+
+    try:
+        # Find and delete the old settings file to ensure we're replacing it.
+        query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents and trashed = false"
+        response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id)')
+        for file_item in response.get('files', []):
+            try:
+                _execute_google_api_call_with_retry(service.files().delete, fileId=file_item['id'])
+                app.logger.info(f"Deleted old settings_backup.json (ID: {file_item['id']}) from Drive before saving new one.")
+            except HttpError as e:
+                app.logger.warning(f"Could not delete old settings file {file_item['id']}: {e}. Proceeding with upload attempt.")
+
+        # Prepare the new settings data
+        settings_data = get_app_settings()
+        settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
+        
+        # Upload the new file
+        file_metadata = {'name': 'settings_backup.json', 'parents': [GOOGLE_SETTINGS_BACKUP_FOLDER_ID]}
+        media = MediaIoBaseUpload(settings_json_bytes, mimetype='application/json', resumable=True)
+        
+        _execute_google_api_call_with_retry(
+            service.files().create,
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        )
+        app.logger.info("Successfully saved current settings to settings_backup.json on Google Drive.")
+        return True
+
+    except Exception as e:
+        app.logger.error(f"Failed to backup settings to Google Drive: {e}", exc_info=True)
+        return False
 
 @cached(cache)
 def get_google_tasks_for_report(show_completed=True):
@@ -1287,27 +1329,19 @@ def settings_page():
 
         if save_app_settings(settings_data):
             run_scheduler()
-            flash('บันทึกการตั้งค่าทั้งหมดเรียบร้อยแล้ว!', 'success')
             cache.clear()
+            # Immediately back up the new settings to Google Drive
+            if backup_settings_to_drive():
+                flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
+            else:
+                flash('บันทึกการตั้งค่าสำเร็จ แต่สำรองไปที่ Google Drive ไม่สำเร็จ! การตั้งค่าอาจหายไปหลังจากการ Deploy ใหม่ โปรดตรวจสอบสิทธิ์และ Folder ID ใน Google Drive ผ่านหน้า /debug_drive', 'warning')
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!', 'danger')
 
         return redirect(url_for('settings_page'))
 
     current_settings = get_app_settings()
-    env_vars = {
-        'GOOGLE_TOKEN_JSON': os.environ.get('GOOGLE_TOKEN_JSON', ''),
-        'LINE_CHANNEL_ACCESS_TOKEN': os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', ''),
-        'LINE_CHANNEL_SECRET': os.environ.get('LINE_CHANNEL_SECRET', ''),
-        'LIFF_ID_FORM': os.environ.get('LIFF_ID_FORM', ''),
-        'LINE_LOGIN_CHANNEL_ID': os.environ.get('LINE_LOGIN_CHANNEL_ID', ''),
-        'GOOGLE_DRIVE_FOLDER_ID': os.environ.get('GOOGLE_DRIVE_FOLDER_ID', ''),
-        'GOOGLE_SETTINGS_BACKUP_FOLDER_ID': os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID', ''),
-    }
-
-    return render_template('settings_page.html', 
-                           settings=current_settings, 
-                           env_vars=env_vars)
+    return render_template('settings_page.html', settings=current_settings)
 
 
 @app.route('/test_notification', methods=['POST'])
@@ -2149,38 +2183,95 @@ def handle_postback(event):
 @app.route("/debug_drive")
 def debug_drive():
     service = get_google_drive_service()
+    html_header = f"<h2>ผลการตรวจสอบ Google Drive ณ {datetime.datetime.now(THAILAND_TZ).strftime('%d %b %Y, %H:%M:%S')}</h2><hr>"
+
     if not service:
-        return "❌ **[Authentication Error]** ไม่สามารถสร้าง Google Drive service object ได้. โปรดตรวจสอบ `GOOGLE_TOKEN_JSON` ใน Environment Variables ว่าถูกต้องและยังไม่หมดอายุ. ลองสร้าง Token ใหม่จากหน้า Settings."
+        return html_header + """
+        <div class='alert alert-danger'>
+            <h4>❌ [Authentication Error] ไม่สามารถเชื่อมต่อ Google API ได้</h4>
+            <p><b>สาเหตุที่เป็นไปได้:</b></p>
+            <ul>
+                <li>Environment Variable <code>GOOGLE_TOKEN_JSON</code> ไม่ถูกต้อง, ไม่ได้ตั้งค่า, หรือหมดอายุแล้ว</li>
+                <li>API Credentials (<code>credentials.json</code>) ไม่ถูกต้อง</li>
+            </ul>
+            <p><b>ข้อแนะนำ:</b></p>
+            <ol>
+                <li>ไปที่หน้า 'ตั้งค่า' และกดปุ่ม 'คลิกเพื่อเชื่อมต่อใหม่' (ถ้ามี) เพื่อสร้าง Token ใหม่</li>
+                <li>คัดลอก JSON ที่ได้รับทั้งหมดไปใส่ใน Environment Variable ชื่อ <code>GOOGLE_TOKEN_JSON</code> บน Render.com (หรือ Platform ที่คุณใช้)</li>
+                <li>ทำการ Deploy แอปพลิเคชันใหม่อีกครั้ง</li>
+            </ol>
+        </div>
+        """
 
     results = []
     
-    # Check 1: General Drive Folder
-    folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
-    if not folder_id:
-        results.append("❌ **[Config Error]** `GOOGLE_DRIVE_FOLDER_ID` ไม่ได้ถูกตั้งค่าใน Environment Variables.")
-    else:
-        try:
-            file_metadata = {'name': 'permission_test.tmp', 'parents': [folder_id]}
-            test_file = service.files().create(body=file_metadata, fields='id').execute()
-            service.files().delete(fileId=test_file.get('id')).execute()
-            results.append(f"✅ **[OK]** `GOOGLE_DRIVE_FOLDER_ID` ({folder_id[:10]}...) สามารถเชื่อมต่อและเขียนไฟล์ได้สำเร็จ.")
-        except Exception as e:
-            results.append(f"❌ **[Permission Error]** ไม่สามารถเขียนไฟล์ลงใน `GOOGLE_DRIVE_FOLDER_ID` ({folder_id[:10]}...). <br><b>สาเหตุ:</b> {str(e)} <br><b>ข้อแนะนำ:</b> โปรดตรวจสอบว่า Folder ID ถูกต้อง และบัญชี Google ของคุณมีสิทธิ์เป็น 'Editor' ในโฟลเดอร์นี้.")
-
-    # Check 2: Settings Backup Folder
+    # Check 1: Settings Backup Folder and File
     settings_folder_id = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID')
     if not settings_folder_id:
-        results.append("❌ **[Config Error]** `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` ไม่ได้ถูกตั้งค่าใน Environment Variables.")
+        results.append("<div class='alert alert-warning'><h4>⚠️ [Config Error] ไม่ได้ตั้งค่า <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code></h4><p>ระบบจะไม่สามารถสำรองข้อมูลหรือกู้คืน 'การตั้งค่า' ได้โดยอัตโนมัติ ทำให้การตั้งค่าหายไปเมื่อมีการ deploy ใหม่.</p></div>")
     else:
         try:
-            file_metadata = {'name': 'permission_test.tmp', 'parents': [settings_folder_id]}
+            query = f"name = 'settings_backup.json' and '{settings_folder_id}' in parents and trashed = false"
+            response = service.files().list(q=query, spaces='drive', fields='files(id, modifiedTime)', orderBy='modifiedTime desc', pageSize=1).execute()
+            files = response.get('files', [])
+            if files:
+                last_modified_utc = date_parse(files[0]['modifiedTime'])
+                last_modified_local = last_modified_utc.astimezone(THAILAND_TZ)
+                results.append(f"<div class='alert alert-info'><h4>🕒 [Settings Backup] สถานะการสำรองข้อมูลตั้งค่า</h4><p>พบไฟล์ <code>settings_backup.json</code> และมีการสำรองข้อมูลล่าสุดเมื่อ: <b>{last_modified_local.strftime('%d %b %Y, %H:%M:%S')}</b></p></div>")
+            else:
+                results.append("<div class='alert alert-warning'><h4>⚠️ [Settings Backup] ไม่พบไฟล์สำรองข้อมูล</h4><p>ไม่พบไฟล์ <code>settings_backup.json</code> ใน Google Drive Folder ที่กำหนด. การตั้งค่าล่าสุดที่ท่านทำอาจยังไม่ได้ถูกสำรองไว้.</p></div>")
+        except Exception as e:
+            results.append(f"<div class='alert alert-danger'><h4>❌ [Settings Backup] เกิดข้อผิดพลาด</h4><p>เกิดข้อผิดพลาดในการตรวจสอบไฟล์สำรองข้อมูลการตั้งค่า: {str(e)}</p></div>")
+
+
+    # Check 2: Test write permissions
+    test_folder_id = settings_folder_id or os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
+    if not test_folder_id:
+        results.append("<div class='alert alert-danger'><h4>❌ [Config Error] ไม่ได้ตั้งค่า Folder ID</h4><p>ไม่ได้ตั้งค่าทั้ง <code>GOOGLE_DRIVE_FOLDER_ID</code> และ <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code>. ไม่สามารถทดสอบการเขียนหรือสำรองข้อมูลใดๆ ได้เลย.</p></div>")
+    else:
+        try:
+            file_metadata = {'name': 'permission_test.tmp', 'parents': [test_folder_id]}
             test_file = service.files().create(body=file_metadata, fields='id').execute()
             service.files().delete(fileId=test_file.get('id')).execute()
-            results.append(f"✅ **[OK]** `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` ({settings_folder_id[:10]}...) สามารถเชื่อมต่อและเขียนไฟล์ได้สำเร็จ.")
+            results.append(f"""
+            <div class='alert alert-success'>
+                <h4>✅ [Drive Permissions] การเชื่อมต่อสำเร็จ!</h4>
+                <p>ระบบสามารถเชื่อมต่อและเขียนไฟล์ลงใน Google Drive Folder (ID: <code>...{test_folder_id[-12:]}</code>) ได้สำเร็จ.</p>
+                <hr>
+                <h5>ทำอย่างไรให้บันทึกสำเร็จ 100%?</h5>
+                <p>สถานะตอนนี้ดูดีมาก! การตั้งค่าของคุณควรจะถูกบันทึกอย่างถาวรแล้ว ตราบใดที่เงื่อนไขเหล่านี้ยังเป็นจริง:</p>
+                <ol>
+                    <li><b>Token ไม่หมดอายุ:</b> <code>GOOGLE_TOKEN_JSON</code> ของคุณยังใช้งานได้ (ระบบจะพยายามต่ออายุอัตโนมัติ)</li>
+                    <li><b>Folder ID ถูกต้อง:</b> Environment Variables <code>GOOGLE_DRIVE_FOLDER_ID</code> และ <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code> ชี้ไปยังโฟลเดอร์ที่ถูกต้อง</li>
+                    <li><b>Permissions ไม่เปลี่ยนแปลง:</b> บัญชี Google ที่ใช้เชื่อมต่อ ยังคงมีสิทธิ์เป็น <b>"Editor" (ผู้มีสิทธิ์แก้ไข)</b> ในโฟลเดอร์ Google Drive ทั้งสอง</li>
+                </ol>
+            </div>
+            """)
         except Exception as e:
-            results.append(f"❌ **[Permission Error]** ไม่สามารถเขียนไฟล์ลงใน `GOOGLE_SETTINGS_BACKUP_FOLDER_ID` ({settings_folder_id[:10]}...). <br><b>สาเหตุ:</b> {str(e)} <br><b>ข้อแนะนำ:</b> โปรดตรวจสอบว่า Folder ID ถูกต้อง และบัญชี Google ของคุณมีสิทธิ์เป็น 'Editor' ในโฟลเดอร์นี้.")
+            results.append(f"""
+            <div class='alert alert-danger'>
+                <h4>❌ [Permission Error] ไม่สามารถเขียนไฟล์ลง Drive ได้!</h4>
+                <p>นี่คือสาเหตุหลักที่ทำให้การตั้งค่าไม่ถูกบันทึกข้ามการ Deploy ใหม่ โปรดทำตามขั้นตอนต่อไปนี้:</p>
+                <p><b>Folder ที่พบปัญหา:</b> ID <code>...{test_folder_id[-12:]}</code></p>
+                <p><b>Error Message:</b> <code>{str(e)}</code></p>
+                <hr>
+                <h5>ขั้นตอนแก้ไข</h5>
+                <ol>
+                    <li><b>ตรวจสอบ Folder ID:</b> ตรวจสอบให้แน่ใจว่าค่าของ Folder ID ใน Environment Variables ถูกต้อง 100% (ไม่มีการเว้นวรรค, ไม่สลับกัน)</li>
+                    <li><b>ตรวจสอบสิทธิ์ใน Google Drive:</b>
+                        <ul>
+                            <li>เปิดโฟลเดอร์นั้นใน Google Drive</li>
+                            <li>คลิกที่ปุ่ม "Share" (แชร์) ด้านบนขวา</li>
+                            <li>ตรวจสอบว่าอีเมลที่ผูกกับ Google API ของคุณ (ที่คุณใช้ตอนสร้าง <code>credentials.json</code>) อยู่ในรายชื่อ และมีสิทธิ์เป็น <b>"Editor" (ผู้มีสิทธิ์แก้ไข)</b></li>
+                            <li>หากไม่มีสิทธิ์ หรือไม่มีชื่ออยู่ ให้เพิ่มอีเมลและตั้งค่าสิทธิ์ให้ถูกต้อง</li>
+                        </ul>
+                    </li>
+                     <li><b>สร้าง Token ใหม่:</b> หาก 2 ข้อบนถูกต้องแล้ว แต่ยังคงมีปัญหา ให้ลองสร้าง Token ใหม่อีกครั้งจากหน้าตั้งค่า เพราะ Token เก่าอาจมีปัญหา</li>
+                </ol>
+            </div>
+            """)
 
-    return "<br><br>".join(results)
+    return html_header + "<br>".join(results)
 
 
 # Google OAuth2 authorization route
