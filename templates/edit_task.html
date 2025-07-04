@@ -33,7 +33,13 @@
                     </div>
                 </div>
                 <div class="row mb-3">
-                    <label for="customer_name" class="col-md-3 col-form-label">ลูกค้า</label>
+                    <label for="organization_name" class="col-md-3 col-form-label">ชื่อหน่วยงาน/บริษัท</label>
+                    <div class="col-md-9">
+                        <input type="text" class="form-control" id="organization_name" name="organization_name" value="{{ task.customer.organization or '' }}">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="customer_name" class="col-md-3 col-form-label">ชื่อผู้ติดต่อ</label>
                     <div class="col-md-9">
                         <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name }}">
                     </div>
