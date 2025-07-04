@@ -4,17 +4,27 @@
 
 {% block head_extra %}
 <style>
-    /* เพิ่มสไตล์สำหรับฟอร์มรายงาน */
+    /* Add styles for the report form section */
+    .report-form-section .form-label {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }
     .report-form-section .form-control,
     .report-form-section .form-select {
-        background-color: #f8f9fa; /* สีพื้นหลังเทาอ่อน */
-        border: 1px solid #dee2e6; /* เพิ่มขอบให้ชัดเจน */
+        background-color: #f8f9fa; /* Light grey background */
+        border: 1px solid #dee2e6; /* Clearer border */
     }
     .report-form-section .form-control:focus,
     .report-form-section .form-select:focus {
         background-color: #ffffff;
         border-color: #86b7fe;
         box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    .report-form-section .input-group .btn {
+        border-color: #dee2e6;
+    }
+    .report-form-section .mb-4 { /* Add more space between form groups */
+        margin-bottom: 1.5rem !important;
     }
 </style>
 {% endblock %}
@@ -94,16 +104,15 @@
     <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" class="needs-validation" novalidate>
         <div class="card mb-4 report-form-section">
             <div class="card-header bg-primary text-white">
-                <!-- REMOVED: "(สำหรับช่างกรอก)" -->
-                <h5 class="mb-0">รายงานการปฏิบัติงาน</h5>
+                <h5 class="mb-0"><i class="fas fa-wrench me-2"></i>รายงานการปฏิบัติงาน</h5>
             </div>
             <div class="card-body">
-                <div class="mb-3">
-                    <label for="work_summary" class="form-label">สรุปงานที่ทำ (เพิ่มรายงานใหม่)</label>
+                <div class="mb-4">
+                    <label for="work_summary" class="form-label"><i class="fas fa-clipboard-list me-2"></i>สรุปงานที่ทำ (เพิ่มรายงานใหม่)</label>
                     <textarea class="form-control" id="work_summary" name="work_summary" rows="3" placeholder="เช่น เปลี่ยนอะไหล่, ติดตั้งกล้องวงจรปิด..."></textarea>
                 </div>
-                <div class="mb-3">
-                    <label for="equipment_used" class="form-label">อุปกรณ์ที่ใช้ (ชื่อ,จำนวน - แยกบรรทัด)</label>
+                <div class="mb-4">
+                    <label for="equipment_used" class="form-label"><i class="fas fa-tools me-2"></i>อุปกรณ์ที่ใช้ (ชื่อ,จำนวน - แยกบรรทัด)</label>
                     <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="เช่น กล้องวงจรปิด, 1&#10;สาย RG6, 20 เมตร&#10;หัว BNC, 2"></textarea>
                     {% if common_equipment_items %}
                     <div class="mt-2">
@@ -114,8 +123,8 @@
                     </div>
                     {% endif %}
                 </div>
-                <div class="mb-3">
-                    <label for="technicians" class="form-label">ช่างผู้รับผิดชอบ <span class="text-danger">*</span></label>
+                <div class="mb-4">
+                    <label for="technicians" class="form-label"><i class="fas fa-user-hard-hat me-2"></i>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></label>
                     <select class="form-select" id="technicians" name="technicians" multiple size="3" required>
                         {% for tech in technician_list %}
                             <option value="{{ tech }}">{{ tech }}</option>
@@ -123,20 +132,20 @@
                     </select>
                     <div class="form-text">เลือกช่างที่รับผิดชอบงานนี้ (สามารถเลือกได้หลายคน)</div>
                 </div>
-                <div class="mb-3">
-                    <label for="files" class="form-label">แนบรูปภาพ (ถ้ามี)</label>
+                <div class="mb-4">
+                    <label for="files" class="form-label"><i class="fas fa-camera me-2"></i>แนบรูปภาพ (ถ้ามี)</label>
                     <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*">
                 </div>
-                <div class="mb-3">
-                    <label for="latitude_longitude_update" class="form-label">อัปเดตพิกัดแผนที่ (ละติจูด,ลองจิจูด)</label>
+                <div class="mb-4">
+                    <label for="latitude_longitude_update" class="form-label"><i class="fas fa-map-marked-alt me-2"></i>อัปเดตพิกัดแผนที่ (ละติจูด,ลองจิจูด)</label>
                     <div class="input-group">
                         <input type="text" class="form-control" id="latitude_longitude_update" name="latitude_longitude_update" placeholder="เช่น 16.049,103.653">
-                        <button class="btn btn-outline-secondary" type="button" id="getLocationBtn"><i class="fas fa-map-marker-alt me-1"></i> รับตำแหน่งปัจจุบัน</button>
+                        <button class="btn btn-outline-secondary" type="button" id="getLocationBtn"><i class="fas fa-crosshairs me-1"></i> รับตำแหน่งปัจจุบัน</button>
                     </div>
                     <div class="form-text">หากบันทึก จะเป็นการอัปเดตพิกัดหลักของงานนี้</div>
                 </div>
-                 <div class="mb-3">
-                    <label for="status" class="form-label">เปลี่ยนสถานะงาน</label>
+                 <div class="mb-4">
+                    <label for="status" class="form-label"><i class="fas fa-check-circle me-2"></i>เปลี่ยนสถานะงาน</label>
                     <select class="form-select" id="status" name="status">
                         <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>ยังไม่เสร็จ</option>
                         <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>เสร็จเรียบร้อย</option>
