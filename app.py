@@ -649,6 +649,31 @@ def send_completion_notification(task, technicians):
     except Exception as e:
         app.logger.error(f"Failed to send completion notification for task {task['id']}: {e}")
 
+def send_reschedule_notification(task, new_due_date_str, technicians):
+    """Sends a LINE notification when a task is rescheduled."""
+    settings = get_app_settings()
+    admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
+    if not admin_group_id:
+        app.logger.info(f"No admin recipient for reschedule notification of task {task['id']}.")
+        return
+
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
+    
+    message_text = (
+        f"🗓️ เลื่อนนัดหมาย\n\n"
+        f"ชื่องาน: {task.get('title', '-')}\n"
+        f"ลูกค้า: {customer_info.get('name', '-')}\n"
+        f"ช่างผู้รับผิดชอบ: {technician_str}\n"
+        f"นัดหมายใหม่: {new_due_date_str}\n\n"
+        f"ดูรายละเอียด: {url_for('task_details', task_id=task.get('id'), _external=True)}"
+    )
+    try:
+        line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
+        app.logger.info(f"Sent reschedule notification for task {task['id']} to admin group.")
+    except Exception as e:
+        app.logger.error(f"Failed to send reschedule notification for task {task['id']}: {e}")
+
 
 def scheduled_backup_job():
     """Performs scheduled backup of tasks and settings to Google Drive from memory."""
@@ -1015,6 +1040,19 @@ def task_details(task_id):
         selected_technicians = request.form.getlist('technicians')
         new_status = request.form.get('status')
         lat_lon_update = str(request.form.get('latitude_longitude_update', '')).strip()
+        reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
+        
+        new_due_date_gmt = None
+        new_due_date_formatted = None
+
+        if new_status == 'needsAction' and reschedule_due_str:
+            try:
+                dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
+                new_due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
+            except ValueError:
+                flash('รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง โปรดตรวจสอบ', 'warning')
+                return redirect(url_for('task_details', task_id=task_id))
 
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         customer_info = parse_customer_info_from_notes(base_notes_text)
@@ -1071,7 +1109,7 @@ def task_details(task_id):
         if feedback_data:
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
-        updated_task = update_google_task(task_id, notes=final_notes, status=new_status)
+        updated_task = update_google_task(task_id, notes=final_notes, status=new_status, due=new_due_date_gmt)
 
         if updated_task:
             cache.clear()
@@ -1080,6 +1118,10 @@ def task_details(task_id):
             if task_raw.get('status') != 'completed' and new_status == 'completed':
                 app.logger.info(f"Task {task_id} status changed to completed. Sending notification.")
                 send_completion_notification(updated_task, selected_technicians)
+            elif new_due_date_gmt:
+                app.logger.info(f"Task {task_id} rescheduled. Sending notification.")
+                send_reschedule_notification(updated_task, new_due_date_formatted, selected_technicians)
+
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลง', 'danger')
         
