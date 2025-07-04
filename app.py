@@ -529,10 +529,23 @@ def parse_tech_report_from_notes(notes):
     for json_str in report_blocks:
         try:
             report_data = json.loads(json_str)
+            
+            # === NEW: Backward compatibility for attachments ===
+            if 'attachments' in report_data:
+                pass # New format is already good
+            elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
+                # Handle old format: list of strings (URLs)
+                report_data['attachments'] = []
+                for url in report_data['attachment_urls']:
+                    if isinstance(url, str):
+                        report_data['attachments'].append({'id': None, 'url': url})
+                report_data.pop('attachment_urls', None) # Remove old key to prevent confusion
+            
             if isinstance(report_data.get('equipment_used'), str):
                 report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
             else:
                 report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
+            
             history.append(report_data)
         except json.JSONDecodeError:
             app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
@@ -1037,7 +1050,6 @@ def summary():
 
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             
-            # === UPDATED: Added 'organization' to the searchable text ===
             searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
 
             if not search_query or search_query in searchable_text:
@@ -1128,7 +1140,8 @@ def task_details(task_id):
                 flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
-            new_attachment_urls = []
+            # === UPDATED: Attachment handling for thumbnails ===
+            new_attachments = []
             for file in files:
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
@@ -1136,8 +1149,11 @@ def task_details(task_id):
                     try:
                         file.save(temp_filepath)
                         drive_file = upload_file_from_path_to_drive(temp_filepath, filename, file.mimetype, GOOGLE_DRIVE_FOLDER_ID)
-                        if drive_file and drive_file.get('webViewLink'):
-                            new_attachment_urls.append(drive_file.get('webViewLink'))
+                        if drive_file and drive_file.get('id') and drive_file.get('webViewLink'):
+                            new_attachments.append({
+                                'id': drive_file.get('id'),
+                                'url': drive_file.get('webViewLink')
+                            })
                         else:
                             flash(f'อัปโหลดไฟล์ {filename} ไปยัง Google Drive ล้มเหลว', 'danger')
                     finally:
@@ -1149,7 +1165,7 @@ def task_details(task_id):
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
-                'attachment_urls': new_attachment_urls,
+                'attachments': new_attachments,
                 'technicians': selected_technicians
             })
             history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
@@ -1332,7 +1348,7 @@ def settings_page():
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
-            # === UPDATED: Flash message logic ===
+            # === THIS IS THE FIX FOR THE NOTIFICATION PROBLEM ===
             if backup_settings_to_drive():
                 flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
             else:
@@ -2186,32 +2202,29 @@ def handle_postback(event):
 def debug_drive():
     service = get_google_drive_service()
     html_header = f"<h2>ผลการตรวจสอบ Google Drive ณ {datetime.datetime.now(THAILAND_TZ).strftime('%d %b %Y, %H:%M:%S')}</h2><hr>"
+    log_entries = []
 
+    def log_info(msg): log_entries.append(f"<li class='list-group-item list-group-item-info'>{msg}</li>")
+    def log_success(msg): log_entries.append(f"<li class='list-group-item list-group-item-success'>{msg}</li>")
+    def log_warning(msg): log_entries.append(f"<li class='list-group-item list-group-item-warning'>{msg}</li>")
+    def log_error(msg): log_entries.append(f"<li class='list-group-item list-group-item-danger'>{msg}</li>")
+
+    log_info("▶️ เริ่มการตรวจสอบการเชื่อมต่อ Google Drive...")
     if not service:
-        return html_header + """
-        <div class='alert alert-danger'>
-            <h4>❌ [Authentication Error] ไม่สามารถเชื่อมต่อ Google API ได้</h4>
-            <p><b>สาเหตุที่เป็นไปได้:</b></p>
-            <ul>
-                <li>Environment Variable <code>GOOGLE_TOKEN_JSON</code> ไม่ถูกต้อง, ไม่ได้ตั้งค่า, หรือหมดอายุแล้ว</li>
-                <li>API Credentials (<code>credentials.json</code>) ไม่ถูกต้อง</li>
-            </ul>
-            <p><b>ข้อแนะนำ:</b></p>
-            <ol>
-                <li>ไปที่หน้า 'ตั้งค่า' และกดปุ่ม 'คลิกเพื่อเชื่อมต่อใหม่' (ถ้ามี) เพื่อสร้าง Token ใหม่</li>
-                <li>คัดลอก JSON ที่ได้รับทั้งหมดไปใส่ใน Environment Variable ชื่อ <code>GOOGLE_TOKEN_JSON</code> บน Render.com (หรือ Platform ที่คุณใช้)</li>
-                <li>ทำการ Deploy แอปพลิเคชันใหม่อีกครั้ง</li>
-            </ol>
-        </div>
-        """
+        log_error("❌ **[Authentication Error]** ไม่สามารถเชื่อมต่อ Google API ได้")
+        log_entries.append("<div class='alert alert-danger mt-3'><b>สาเหตุและข้อแนะนำ:</b> โปรดตรวจสอบ Environment Variable <code>GOOGLE_TOKEN_JSON</code> ว่าถูกต้องและยังไม่หมดอายุ หรือลองสร้าง Token ใหม่จากหน้า 'ตั้งค่า'</div>")
+        return html_header + f"<ul class='list-group'>{''.join(log_entries)}</ul>"
+    else:
+        log_success("✅ **[Authentication]** เชื่อมต่อ Google API Service สำเร็จแล้ว")
 
-    results = []
-    
     # Check 1: Settings Backup Folder and File
+    log_info("▶️ ตรวจสอบโฟลเดอร์สำหรับสำรองข้อมูลการตั้งค่า...")
     settings_folder_id = os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID')
     if not settings_folder_id:
-        results.append("<div class='alert alert-warning'><h4>⚠️ [Config Error] ไม่ได้ตั้งค่า <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code></h4><p>ระบบจะไม่สามารถสำรองข้อมูลหรือกู้คืน 'การตั้งค่า' ได้โดยอัตโนมัติ ทำให้การตั้งค่าหายไปเมื่อมีการ deploy ใหม่.</p></div>")
+        log_warning("⚠️ **[Config Error]** ไม่ได้ตั้งค่า <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code>. การตั้งค่าจะหายไปเมื่อ Deploy ใหม่")
     else:
+        log_success(f"✅ **[Config]** พบค่า <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code>: ...{settings_folder_id[-12:]}")
+        log_info(f"▶️ ค้นหาไฟล์ <code>settings_backup.json</code> ในโฟลเดอร์นี้...")
         try:
             query = f"name = 'settings_backup.json' and '{settings_folder_id}' in parents and trashed = false"
             response = service.files().list(q=query, spaces='drive', fields='files(id, modifiedTime)', orderBy='modifiedTime desc', pageSize=1).execute()
@@ -2219,61 +2232,31 @@ def debug_drive():
             if files:
                 last_modified_utc = date_parse(files[0]['modifiedTime'])
                 last_modified_local = last_modified_utc.astimezone(THAILAND_TZ)
-                results.append(f"<div class='alert alert-info'><h4>🕒 [Settings Backup] สถานะการสำรองข้อมูลตั้งค่า</h4><p>พบไฟล์ <code>settings_backup.json</code> และมีการสำรองข้อมูลล่าสุดเมื่อ: <b>{last_modified_local.strftime('%d %b %Y, %H:%M:%S')}</b></p></div>")
+                log_success(f"✅ **[File Check]** พบไฟล์สำรองข้อมูล! แก้ไขล่าสุดเมื่อ: <b>{last_modified_local.strftime('%d %b %Y, %H:%M:%S')}</b>")
             else:
-                results.append("<div class='alert alert-warning'><h4>⚠️ [Settings Backup] ไม่พบไฟล์สำรองข้อมูล</h4><p>ไม่พบไฟล์ <code>settings_backup.json</code> ใน Google Drive Folder ที่กำหนด. การตั้งค่าล่าสุดที่ท่านทำอาจยังไม่ได้ถูกสำรองไว้.</p></div>")
+                log_warning("⚠️ **[File Check]** ไม่พบไฟล์ <code>settings_backup.json</code> ในโฟลเดอร์ที่กำหนด")
         except Exception as e:
-            results.append(f"<div class='alert alert-danger'><h4>❌ [Settings Backup] เกิดข้อผิดพลาด</h4><p>เกิดข้อผิดพลาดในการตรวจสอบไฟล์สำรองข้อมูลการตั้งค่า: {str(e)}</p></div>")
-
+            log_error(f"❌ **[File Check]** เกิดข้อผิดพลาดขณะค้นหาไฟล์: {str(e)}")
 
     # Check 2: Test write permissions
+    log_info("▶️ เริ่มการทดสอบสิทธิ์การเขียนไฟล์...")
     test_folder_id = settings_folder_id or os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
     if not test_folder_id:
-        results.append("<div class='alert alert-danger'><h4>❌ [Config Error] ไม่ได้ตั้งค่า Folder ID</h4><p>ไม่ได้ตั้งค่าทั้ง <code>GOOGLE_DRIVE_FOLDER_ID</code> และ <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code>. ไม่สามารถทดสอบการเขียนหรือสำรองข้อมูลใดๆ ได้เลย.</p></div>")
+        log_error("❌ **[Permission Test]** ไม่สามารถทดสอบได้เนื่องจากไม่ได้ตั้งค่า <code>GOOGLE_DRIVE_FOLDER_ID</code> หรือ <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code>")
     else:
+        log_info(f"▶️ เตรียมทดสอบการเขียนไฟล์ลงในโฟลเดอร์ ID: ...{test_folder_id[-12:]}")
         try:
             file_metadata = {'name': 'permission_test.tmp', 'parents': [test_folder_id]}
             test_file = service.files().create(body=file_metadata, fields='id').execute()
+            log_success("✅ **[Permission Test]** สร้างไฟล์ทดสอบสำเร็จ (Create: OK)")
             service.files().delete(fileId=test_file.get('id')).execute()
-            results.append(f"""
-            <div class='alert alert-success'>
-                <h4>✅ [Drive Permissions] การเชื่อมต่อสำเร็จ!</h4>
-                <p>ระบบสามารถเชื่อมต่อและเขียนไฟล์ลงใน Google Drive Folder (ID: <code>...{test_folder_id[-12:]}</code>) ได้สำเร็จ.</p>
-                <hr>
-                <h5>ทำอย่างไรให้บันทึกสำเร็จ 100%?</h5>
-                <p>สถานะตอนนี้ดูดีมาก! การตั้งค่าของคุณควรจะถูกบันทึกอย่างถาวรแล้ว ตราบใดที่เงื่อนไขเหล่านี้ยังเป็นจริง:</p>
-                <ol>
-                    <li><b>Token ไม่หมดอายุ:</b> <code>GOOGLE_TOKEN_JSON</code> ของคุณยังใช้งานได้ (ระบบจะพยายามต่ออายุอัตโนมัติ)</li>
-                    <li><b>Folder ID ถูกต้อง:</b> Environment Variables <code>GOOGLE_DRIVE_FOLDER_ID</code> และ <code>GOOGLE_SETTINGS_BACKUP_FOLDER_ID</code> ชี้ไปยังโฟลเดอร์ที่ถูกต้อง</li>
-                    <li><b>Permissions ไม่เปลี่ยนแปลง:</b> บัญชี Google ที่ใช้เชื่อมต่อ ยังคงมีสิทธิ์เป็น <b>"Editor" (ผู้มีสิทธิ์แก้ไข)</b> ในโฟลเดอร์ Google Drive ทั้งสอง</li>
-                </ol>
-            </div>
-            """)
+            log_success("✅ **[Permission Test]** ลบไฟล์ทดสอบสำเร็จ (Delete: OK)")
+            log_entries.append("<div class='alert alert-success mt-3'><b>สรุป:</b> การเชื่อมต่อและสิทธิ์การใช้งาน Google Drive ของคุณสมบูรณ์!</div>")
         except Exception as e:
-            results.append(f"""
-            <div class='alert alert-danger'>
-                <h4>❌ [Permission Error] ไม่สามารถเขียนไฟล์ลง Drive ได้!</h4>
-                <p>นี่คือสาเหตุหลักที่ทำให้การตั้งค่าไม่ถูกบันทึกข้ามการ Deploy ใหม่ โปรดทำตามขั้นตอนต่อไปนี้:</p>
-                <p><b>Folder ที่พบปัญหา:</b> ID <code>...{test_folder_id[-12:]}</code></p>
-                <p><b>Error Message:</b> <code>{str(e)}</code></p>
-                <hr>
-                <h5>ขั้นตอนแก้ไข</h5>
-                <ol>
-                    <li><b>ตรวจสอบ Folder ID:</b> ตรวจสอบให้แน่ใจว่าค่าของ Folder ID ใน Environment Variables ถูกต้อง 100% (ไม่มีการเว้นวรรค, ไม่สลับกัน)</li>
-                    <li><b>ตรวจสอบสิทธิ์ใน Google Drive:</b>
-                        <ul>
-                            <li>เปิดโฟลเดอร์นั้นใน Google Drive</li>
-                            <li>คลิกที่ปุ่ม "Share" (แชร์) ด้านบนขวา</li>
-                            <li>ตรวจสอบว่าอีเมลที่ผูกกับ Google API ของคุณ (ที่คุณใช้ตอนสร้าง <code>credentials.json</code>) อยู่ในรายชื่อ และมีสิทธิ์เป็น <b>"Editor" (ผู้มีสิทธิ์แก้ไข)</b></li>
-                            <li>หากไม่มีสิทธิ์ หรือไม่มีชื่ออยู่ ให้เพิ่มอีเมลและตั้งค่าสิทธิ์ให้ถูกต้อง</li>
-                        </ul>
-                    </li>
-                     <li><b>สร้าง Token ใหม่:</b> หาก 2 ข้อบนถูกต้องแล้ว แต่ยังคงมีปัญหา ให้ลองสร้าง Token ใหม่อีกครั้งจากหน้าตั้งค่า เพราะ Token เก่าอาจมีปัญหา</li>
-                </ol>
-            </div>
-            """)
+            log_error(f"❌ **[Permission Test]** การทดสอบเขียนไฟล์ล้มเหลว! Error: <code>{str(e)}</code>")
+            log_entries.append("<div class='alert alert-danger mt-3'><b>ข้อแนะนำ:</b> นี่คือสาเหตุหลักที่ทำให้ข้อมูลไม่ถูกบันทึก โปรดตรวจสอบว่าบัญชี Google ของคุณได้รับสิทธิ์เป็น **'Editor' (ผู้มีสิทธิ์แก้ไข)** ใน Google Drive Folder ที่ระบุไว้</div>")
 
-    return html_header + "<br>".join(results)
+    return html_header + f"<ul class='list-group'>{''.join(log_entries)}</ul>"
 
 
 # Google OAuth2 authorization route
