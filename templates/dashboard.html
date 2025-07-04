@@ -33,7 +33,7 @@
             -webkit-overflow-scrolling: touch; /* ปรับปรุงการเลื่อนบน iOS */
         }
         .table {
-            min-width: 600px; /* กำหนดความกว้างขั้นต่ำของตาราง เพื่อให้เกิดการเลื่อน */
+            min-width: 650px; /* กำหนดความกว้างขั้นต่ำของตาราง เพื่อให้เกิดการเลื่อน */
         }
         .task-title-cell {
             max-width: 200px; /* กำหนดความกว้างสูงสุดของเซลล์ชื่อเรื่อง */
@@ -42,26 +42,17 @@
             text-overflow: ellipsis; /* แสดง ... เมื่อข้อความถูกตัด */
         }
         /* ปรับความกว้างของคอลัมน์ให้เหมาะสม */
-        .table th:nth-child(1), .table td:nth-child(1) { /* # */
-            width: 5%;
-        }
-        .table th:nth-child(2), .table td:nth-child(2) { /* ชื่อลูกค้า */
-            width: 25%;
-        }
-        .table th:nth-child(3), .table td:nth-child(3) { /* รายละเอียดงาน */
-            width: 40%; /* เพิ่มพื้นที่ให้รายละเอียดงาน */
-        }
-        .table th:nth-child(4), .table td:nth-child(4) { /* วันเวลานัดหมาย */
-            width: 20%;
-        }
-        .table th:nth-child(5), .table td:nth-child(5) { /* สถานะ */
-            width: 10%;
-        }
+        .table th:nth-child(1), .table td:nth-child(1) { width: 5%; }
+        .table th:nth-child(2), .table td:nth-child(2) { width: 20%; }
+        .table th:nth-child(3), .table td:nth-child(3) { width: 35%; }
+        .table th:nth-child(4), .table td:nth-child(4) { width: 15%; }
+        .table th:nth-child(5), .table td:nth-child(5) { width: 10%; text-align: center; }
+        .table th:nth-child(6), .table td:nth-child(6) { width: 15%; text-align: center; } /* NEW: Manage Column Width */
 
         /* ปรับสำหรับหน้าจอขนาดเล็กมาก */
         @media (max-width: 576px) {
             .table {
-                min-width: 450px; /* ลด min-width สำหรับหน้าจอที่เล็กกว่า */
+                min-width: 500px; /* ลด min-width สำหรับหน้าจอที่เล็กกว่า */
             }
             .task-title-cell {
                 max-width: 120px; /* ลด max-width ของรายละเอียดงาน */
@@ -131,9 +122,9 @@
         <div class="card shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center" id="chartHeader" data-bs-toggle="collapse" data-bs-target="#monthlyTasksChartCollapse" aria-expanded="false" aria-controls="monthlyTasksChartCollapse" style="cursor: pointer;">
                 <h5 class="mb-0"><i class="fas fa-chart-bar me-1"></i>จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)</h5>
-                <i class="fas fa-chevron-down"></i> {# Icon for expand/collapse #}
+                <i class="fas fa-chevron-down"></i>
             </div>
-            <div class="collapse" id="monthlyTasksChartCollapse"> {# Still collapsed by default #}
+            <div class="collapse" id="monthlyTasksChartCollapse">
                 <div class="card-body">
                     <canvas id="monthlyTasksChart"></canvas>
                 </div>
@@ -146,9 +137,9 @@
 <div class="card shadow-sm">
     <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader" data-bs-toggle="collapse" data-bs-target="#tasksTableCollapse" aria-expanded="true" aria-controls="tasksTableCollapse" style="cursor: pointer;">
         <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
-        <i class="fas fa-chevron-up"></i> {# Icon for expanded state #}
+        <i class="fas fa-chevron-up"></i>
     </div>
-    <div class="collapse show" id="tasksTableCollapse"> {# Always expanded #}
+    <div class="collapse show" id="tasksTableCollapse">
         <div class="card-body">
             <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
                 <div class="input-group">
@@ -166,14 +157,15 @@
                             <th>รายละเอียดงาน</th>
                             <th>วันเวลานัดหมาย</th>
                             <th class="text-center">สถานะ</th>
+                            <th class="text-center">จัดการ</th> <!-- NEW: Manage Column Header -->
                         </tr>
                     </thead>
                     <tbody>
                         {% for task in tasks %}
-                        <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
+                        <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}">
                             <td>{{ loop.index }}</td>
                             <td>{{ task.customer.name or '-' }}</td>
-                            <td class="task-title-cell">{{ task.title }}</td> {# เพิ่ม class task-title-cell #}
+                            <td class="task-title-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.title }}</td>
                             <td>{{ task.due_formatted or '-' }}</td>
                             <td class="text-center">
                                 {% if task.status == 'completed' %}
@@ -184,10 +176,19 @@
                                     <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
                                 {% endif %}
                             </td>
+                            <!-- NEW: Action Buttons Cell -->
+                            <td class="text-center">
+                                <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+                                    <i class="fas fa-file-alt"></i>
+                                </a>
+                            </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="5" class="text-center p-4">
+                            <td colspan="6" class="text-center p-4"> <!-- UPDATED: colspan to 6 -->
                                 <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
                             </td>
                         </tr>
@@ -206,7 +207,6 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Monthly Tasks Chart
         const monthlyCtx = document.getElementById('monthlyTasksChart');
-        // Safely parse chart_data from the script tag
         const chartDataElement = document.querySelector('script[data-chart-data]');
         let chartData = { labels: [], values: [] };
         if (chartDataElement) {
@@ -214,7 +214,6 @@
                 chartData = JSON.parse(chartDataElement.textContent);
             } catch (e) {
                 console.error("Error parsing chart data from script tag:", e);
-                // Optionally display a message to the user or fallback to no chart
             }
         }
         
@@ -250,7 +249,6 @@
             });
         }
 
-        // --- Collapse Icon Toggle ---
         function setupCollapseToggle(headerId, collapseId, isAlwaysExpanded = false) {
             const header = document.getElementById(headerId);
             const collapseElement = document.getElementById(collapseId);
@@ -258,7 +256,6 @@
             if (header && collapseElement) {
                 const icon = header.querySelector('.fa-chevron-down, .fa-chevron-up');
 
-                // Initial icon state
                 if (icon) {
                     if (collapseElement.classList.contains('show')) {
                         icon.classList.add('fa-chevron-up');
@@ -269,7 +266,6 @@
                     }
                 }
 
-                // Event listener for toggle, only if not always expanded
                 if (!isAlwaysExpanded) {
                     header.addEventListener('click', function() {
                         const currentIcon = this.querySelector('.fa-chevron-down, .fa-chevron-up');
@@ -284,22 +280,17 @@
                         }
                     });
                 } else {
-                    // For always expanded sections, remove click listener if it exists
-                    // and ensure the icon is always 'up'
                     if (icon) {
                         icon.classList.remove('fa-chevron-down');
                         icon.classList.add('fa-chevron-up');
                     }
-                    // Prevent default collapse behavior if the data-bs-toggle is present
                     header.removeAttribute('data-bs-toggle');
-                    header.style.cursor = 'default'; // Change cursor to indicate no click action
+                    header.style.cursor = 'default';
                 }
             }
         }
 
-        // Set up collapse for chart section (collapsed by default)
         setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse', false);
-        // Set up collapse for tasks table section (always expanded)
         setupCollapseToggle('tasksHeader', 'tasksTableCollapse', true);
 
     });

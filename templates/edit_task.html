@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}แก้ไขข้อมูลงาน: {{ task.title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2">แก้ไขข้อมูลหลักของงาน</h1>
+        <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message | safe }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('edit_task', task_id=task.id) }}" class="needs-validation" novalidate>
+        <div class="card mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">ฟอร์มแก้ไขข้อมูลหลัก</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <label for="task_title" class="col-md-3 col-form-label">รายละเอียดงาน</label>
+                    <div class="col-md-9">
+                        <textarea class="form-control" id="task_title" name="task_title" rows="3" required>{{ task.title }}</textarea>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="customer_name" class="col-md-3 col-form-label">ลูกค้า</label>
+                    <div class="col-md-9">
+                        <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name }}">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="customer_phone" class="col-md-3 col-form-label">เบอร์โทรศัพท์</label>
+                    <div class="col-md-9">
+                        <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone }}">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="address" class="col-md-3 col-form-label">ที่อยู่</label>
+                    <div class="col-md-9">
+                        <input type="text" class="form-control" id="address" name="address" value="{{ task.customer.address }}">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="latitude_longitude" class="col-md-3 col-form-label">ลิงก์ Google Maps / พิกัด</label>
+                    <div class="col-md-9">
+                        <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <label for="appointment_due" class="col-md-3 col-form-label">วันเวลานัดหมาย</label>
+                    <div class="col-md-9">
+                        <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
+            <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -308,7 +308,6 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
-# NEW: Refactored base upload logic
 def _perform_drive_upload(media_body, file_name, folder_id):
     """Base logic to upload a file to Drive and set permissions."""
     service = get_google_drive_service()
@@ -351,7 +350,6 @@ def _perform_drive_upload(media_body, file_name, folder_id):
         app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
         return None
 
-# NEW: Upload function for files from a path (e.g., task attachments)
 def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
     """Uploads a file from a local path to Google Drive."""
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
@@ -360,12 +358,11 @@ def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
     media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
     return _perform_drive_upload(media, file_name, folder_id)
 
-# NEW: Upload function for data from memory (e.g., backups)
 def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
     """Uploads a file-like object from memory to Google Drive."""
     media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
     file_obj = _perform_drive_upload(media, file_name, folder_id)
-    return file_obj is not None # Returns True on success, False on failure
+    return file_obj is not None
 
 
 def create_google_task(title, notes=None, due=None):
@@ -648,7 +645,6 @@ def send_completion_notification(task, technicians):
         app.logger.error(f"Failed to send completion notification for task {task['id']}: {e}")
 
 
-# UPDATED: scheduled_backup_job now uses in-memory upload
 def scheduled_backup_job():
     """Performs scheduled backup of tasks and settings to Google Drive from memory."""
     with app.app_context():
@@ -673,7 +669,6 @@ def scheduled_backup_job():
             settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
             settings_backup_filename = "settings_backup.json"
             
-            # Delete old settings_backup.json before uploading new one
             service = get_google_drive_service()
             if service:
                 try:
@@ -1096,6 +1091,67 @@ def task_details(task_id):
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []))
+
+# NEW: Route for editing core task details
+@app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
+def edit_task(task_id):
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        abort(404)
+
+    if request.method == 'POST':
+        new_title = str(request.form.get('task_title', '')).strip()
+        if not new_title:
+            flash('กรุณากรอกรายละเอียดงาน', 'danger')
+            return redirect(url_for('edit_task', task_id=task_id))
+
+        # Reconstruct the base notes (customer info)
+        notes_lines = [
+            f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
+            f"เบอร์โทรศัพท์: {str(request.form.get('customer_phone', '')).strip()}",
+            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
+        ]
+        map_url = str(request.form.get('latitude_longitude', '')).strip()
+        if map_url:
+            notes_lines.append(map_url)
+        
+        new_base_notes = "\n".join(filter(None, notes_lines))
+
+        # Preserve existing tech reports and feedback
+        tech_reports, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        
+        all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in tech_reports])
+        
+        final_notes = new_base_notes
+        if all_reports_text:
+            final_notes += all_reports_text
+        if feedback_data:
+            final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+        # Handle due date
+        due_date_gmt = None
+        appointment_str = str(request.form.get('appointment_due', '')).strip()
+        if appointment_str:
+            try:
+                dt_local = THAILAND_TZ.localize(date_parse(appointment_str))
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            except ValueError:
+                flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง โปรดตรวจสอบ', 'warning')
+                return redirect(url_for('edit_task', task_id=task_id))
+
+        if update_google_task(task_id, title=new_title, notes=final_notes, due=due_date_gmt):
+            cache.clear()
+            flash('บันทึกข้อมูลหลักของงานเรียบร้อยแล้ว!', 'success')
+            return redirect(url_for('summary'))
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger')
+            return redirect(url_for('edit_task', task_id=task_id))
+
+    # GET request
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    return render_template('edit_task.html', task=task)
 
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
