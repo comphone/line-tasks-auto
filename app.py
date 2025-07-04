@@ -55,7 +55,7 @@ import atexit
 
 # --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -96,6 +96,9 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # Register dateutil_parse filter for Jinja2
 app.jinja_env.filters['dateutil_parse'] = date_parse
+
+# === CHANGE 1: Initialize scheduler once at the global scope ===
+scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
 # --- Settings Management ---
 SETTINGS_FILE = 'settings.json'
@@ -530,7 +533,7 @@ def parse_tech_report_from_notes(notes):
         try:
             report_data = json.loads(json_str)
             
-            # === NEW: Backward compatibility for attachments ===
+            # Backward compatibility for attachments
             if 'attachments' in report_data:
                 pass # New format is already good
             elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
@@ -929,8 +932,6 @@ def scheduled_customer_follow_up_job():
                 except Exception as e:
                     app.logger.warning(f"Could not process task {task.get('id')} for follow-up: {e}", exc_info=True)
 
-scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
 def run_scheduler():
     """Initializes and runs the APScheduler jobs."""
     global scheduler
@@ -940,6 +941,8 @@ def run_scheduler():
     if scheduler.running:
         app.logger.info("Scheduler already running, shutting down before reconfiguring...")
         scheduler.shutdown(wait=False)
+    
+    # Re-initialize scheduler to clear old jobs
     scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
     ab = settings.get('auto_backup', {})
@@ -956,11 +959,17 @@ def run_scheduler():
     scheduler.add_job(scheduled_customer_follow_up_job, CronTrigger(hour=rt.get('customer_followup_hour_thai', 9), minute=5), id='daily_customer_followup', replace_existing=True)
     app.logger.info(f"Scheduled appointment reminders for {rt.get('appointment_reminder_hour_thai', 7)}:00 and customer follow-up for {rt.get('customer_followup_hour_thai', 9)}:05 Thai time.")
 
-
     scheduler.start()
     app.logger.info("APScheduler started/reconfigured.")
-    atexit.register(lambda: scheduler.shutdown(wait=False))
 
+# === CHANGE 2: Create a robust shutdown function ===
+def cleanup_scheduler():
+    """A clean shutdown function to be called upon application exit."""
+    if scheduler is not None and scheduler.running:
+        app.logger.info("Scheduler is running, shutting it down.")
+        scheduler.shutdown(wait=False)
+    else:
+        app.logger.info("Scheduler not running or not initialized, skipping shutdown.")
 #</editor-fold>
 
 # --- Initial app setup calls ---
@@ -969,6 +978,8 @@ with app.app_context():
     _APP_SETTINGS_STORE = get_app_settings()
     run_scheduler()
 
+# === CHANGE 3: Register the cleanup function with atexit ONCE ===
+atexit.register(cleanup_scheduler)
 
 # --- Flask Routes ---
 @app.route("/")
@@ -1140,7 +1151,6 @@ def task_details(task_id):
                 flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
-            # === UPDATED: Attachment handling for thumbnails ===
             new_attachments = []
             for file in files:
                 if file and allowed_file(file.filename):
@@ -1348,7 +1358,6 @@ def settings_page():
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
-            # === THIS IS THE FIX FOR THE NOTIFICATION PROBLEM ===
             if backup_settings_to_drive():
                 flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
             else:
