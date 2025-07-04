@@ -70,6 +70,9 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
+# NEW: Add LINE Login Channel ID for LIFF initialization
+LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID') 
+
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
@@ -79,6 +82,11 @@ if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
 if not GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
     app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID environment variable is not set. Automatic settings backup/restore will not work.")
+if not LIFF_ID_FORM:
+    app.logger.warning("LIFF_ID_FORM environment variable is not set. LIFF features will not work.")
+if not LINE_LOGIN_CHANNEL_ID:
+    app.logger.warning("LINE_LOGIN_CHANNEL_ID environment variable is not set. LIFF initialization might fail.")
+
 
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -1235,6 +1243,7 @@ def settings_page():
         'LINE_CHANNEL_ACCESS_TOKEN': os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', ''),
         'LINE_CHANNEL_SECRET': os.environ.get('LINE_CHANNEL_SECRET', ''),
         'LIFF_ID_FORM': os.environ.get('LIFF_ID_FORM', ''),
+        'LINE_LOGIN_CHANNEL_ID': os.environ.get('LINE_LOGIN_CHANNEL_ID', ''),
         'GOOGLE_DRIVE_FOLDER_ID': os.environ.get('GOOGLE_DRIVE_FOLDER_ID', ''),
         'GOOGLE_SETTINGS_BACKUP_FOLDER_ID': os.environ.get('GOOGLE_SETTINGS_BACKUP_FOLDER_ID', ''),
     }
@@ -1679,7 +1688,7 @@ def customer_onboarding_page(task_id):
     task = get_single_task(task_id)
     if not task:
         abort(404)
-    return render_template('customer_onboarding.html', task=task, LIFF_ID_FORM=LIFF_ID_FORM)
+    return render_template('customer_onboarding.html', task=task, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
 
 @app.route('/generate_customer_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
@@ -1711,7 +1720,7 @@ def customer_problem_form():
     
     parsed_task = parse_google_task_dates(task)
     parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('customer_problem_form.html', task=parsed_task, LIFF_ID_FORM=LIFF_ID_FORM)
+    return render_template('customer_problem_form.html', task=parsed_task, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
 
 @app.route('/generate_public_report_qr/<task_id>')
 def generate_public_report_qr(task_id):
@@ -2094,7 +2103,6 @@ def debug_drive():
         results.append("❌ **[Config Error]** `GOOGLE_DRIVE_FOLDER_ID` ไม่ได้ถูกตั้งค่าใน Environment Variables.")
     else:
         try:
-            # Test creating a dummy file and deleting it to check write permissions
             file_metadata = {'name': 'permission_test.tmp', 'parents': [folder_id]}
             test_file = service.files().create(body=file_metadata, fields='id').execute()
             service.files().delete(fileId=test_file.get('id')).execute()
