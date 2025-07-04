@@ -29,33 +29,33 @@
 
         /* --- เพิ่มเติมสำหรับการแสดงผลตารางบนมือถือ --- */
         .table-responsive {
-            overflow-x: auto; /* ทำให้ตารางเลื่อนแนวนอนได้ */
-            -webkit-overflow-scrolling: touch; /* ปรับปรุงการเลื่อนบน iOS */
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
         .table {
-            min-width: 650px; /* กำหนดความกว้างขั้นต่ำของตาราง เพื่อให้เกิดการเลื่อน */
+            min-width: 650px;
         }
         .task-title-cell {
-            max-width: 200px; /* กำหนดความกว้างสูงสุดของเซลล์ชื่อเรื่อง */
-            white-space: nowrap; /* ป้องกันการขึ้นบรรทัดใหม่ */
-            overflow: hidden; /* ซ่อนข้อความที่เกิน */
-            text-overflow: ellipsis; /* แสดง ... เมื่อข้อความถูกตัด */
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         /* ปรับความกว้างของคอลัมน์ให้เหมาะสม */
         .table th:nth-child(1), .table td:nth-child(1) { width: 5%; }
-        .table th:nth-child(2), .table td:nth-child(2) { width: 20%; }
-        .table th:nth-child(3), .table td:nth-child(3) { width: 35%; }
-        .table th:nth-child(4), .table td:nth-child(4) { width: 15%; }
-        .table th:nth-child(5), .table td:nth-child(5) { width: 10%; text-align: center; }
-        .table th:nth-child(6), .table td:nth-child(6) { width: 15%; text-align: center; } /* NEW: Manage Column Width */
+        .table th:nth-child(2), .table td:nth-child(2) { width: 25%; } /* ลูกค้า / หน่วยงาน */
+        .table th:nth-child(3), .table td:nth-child(3) { width: 30%; } /* รายละเอียดงาน */
+        .table th:nth-child(4), .table td:nth-child(4) { width: 15%; } /* วันเวลานัดหมาย */
+        .table th:nth-child(5), .table td:nth-child(5) { width: 10%; text-align: center; } /* สถานะ */
+        .table th:nth-child(6), .table td:nth-child(6) { width: 15%; text-align: center; } /* จัดการ */
 
         /* ปรับสำหรับหน้าจอขนาดเล็กมาก */
         @media (max-width: 576px) {
             .table {
-                min-width: 500px; /* ลด min-width สำหรับหน้าจอที่เล็กกว่า */
+                min-width: 500px;
             }
             .task-title-cell {
-                max-width: 120px; /* ลด max-width ของรายละเอียดงาน */
+                max-width: 120px;
             }
         }
 
@@ -143,7 +143,7 @@
         <div class="card-body">
             <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
                 <div class="input-group">
-                    <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หรือเบอร์โทร..." value="{{ search_query or '' }}">
+                    <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หน่วยงาน หรือเบอร์โทร..." value="{{ search_query or '' }}">
                     <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
                 </div>
             </form>
@@ -153,18 +153,23 @@
                     <thead class="table-dark">
                         <tr>
                             <th style="width: 5%;">#</th>
-                            <th>ชื่อลูกค้า</th>
+                            <th>ลูกค้า / หน่วยงาน</th>
                             <th>รายละเอียดงาน</th>
                             <th>วันเวลานัดหมาย</th>
                             <th class="text-center">สถานะ</th>
-                            <th class="text-center">จัดการ</th> <!-- NEW: Manage Column Header -->
+                            <th class="text-center">จัดการ</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for task in tasks %}
                         <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}">
                             <td>{{ loop.index }}</td>
-                            <td>{{ task.customer.name or '-' }}</td>
+                            <td>
+                                <strong>{{ task.customer.name or '-' }}</strong>
+                                {% if task.customer.organization %}
+                                    <br><small class="text-muted">{{ task.customer.organization }}</small>
+                                {% endif %}
+                            </td>
                             <td class="task-title-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.title }}</td>
                             <td>{{ task.due_formatted or '-' }}</td>
                             <td class="text-center">
@@ -176,7 +181,6 @@
                                     <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
                                 {% endif %}
                             </td>
-                            <!-- NEW: Action Buttons Cell -->
                             <td class="text-center">
                                 <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
                                     <i class="fas fa-edit"></i>
@@ -188,7 +192,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="6" class="text-center p-4"> <!-- UPDATED: colspan to 6 -->
+                            <td colspan="6" class="text-center p-4">
                                 <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
                             </td>
                         </tr>
