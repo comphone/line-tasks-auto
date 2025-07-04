@@ -70,9 +70,7 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
-# NEW: Add LINE Login Channel ID for LIFF initialization
 LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID') 
-
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
@@ -1230,7 +1228,7 @@ def settings_page():
 
         if save_app_settings(settings_data):
             run_scheduler()
-            flash('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success')
+            flash('บันทึกการตั้งค่าทั้งหมดเรียบร้อยแล้ว!', 'success')
             cache.clear()
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!', 'danger')
@@ -1278,9 +1276,9 @@ def backup_data():
 @app.route('/trigger_auto_backup_now', methods=['POST'])
 def trigger_auto_backup_now():
     if scheduled_backup_job():
-        flash('สำรองข้อมูลไปที่ Google Drive ทันทีสำเร็จ!', 'success')
+        flash('สำรองข้อมูลไปที่ Google Drive สำเร็จ!', 'success')
     else:
-        flash('เกิดข้อผิดพลาดในการสำรองข้อมูลไปที่ Google Drive ทันที. โปรดตรวจสอบ logs!', 'danger')
+        flash('เกิดข้อผิดพลาดในการสำรองข้อมูลไปที่ Google Drive! โปรดตรวจสอบ logs', 'danger')
     return redirect(url_for('settings_page'))
 
 @app.route('/export_equipment_catalog', methods=['GET'])
