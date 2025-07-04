@@ -86,46 +86,6 @@
             </div>
         </div>
 
-        <!-- UPDATED: Simplified QR Code Style Settings -->
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">การตั้งค่าสไตล์ QR Code</h5>
-            </div>
-            <div class="card-body">
-                <div class="form-text mb-3">
-                    สไตล์เหล่านี้จะถูกนำไปใช้กับ QR Code ทั้งหมดที่ระบบสร้างขึ้น (เช่น QR สำหรับเชื่อมต่อ LINE, QR สำหรับดูรายงาน)
-                </div>
-                <div class="row mb-3">
-                    <label for="qr_box_size" class="col-md-4 col-form-label">ขนาด Box Size</label>
-                    <div class="col-md-8">
-                        <input type="number" class="form-control" id="qr_box_size" name="qr_box_size"
-                               value="{{ settings.qrcode_settings.box_size }}" min="1" required>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="qr_border" class="col-md-4 col-form-label">ขนาด Border</label>
-                    <div class="col-md-8">
-                        <input type="number" class="form-control" id="qr_border" name="qr_border"
-                               value="{{ settings.qrcode_settings.border }}" min="0" required>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="qr_fill_color" class="col-md-4 col-form-label">สี QR Code</label>
-                    <div class="col-md-8">
-                        <input type="color" class="form-control form-control-color" id="qr_fill_color" name="qr_fill_color"
-                               value="{{ settings.qrcode_settings.fill_color }}" title="เลือกสี">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="qr_back_color" class="col-md-4 col-form-label">สีพื้นหลัง QR Code</label>
-                    <div class="col-md-8">
-                        <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color"
-                               value="{{ settings.qrcode_settings.back_color }}" title="เลือกสี">
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0">ข้อมูลร้านค้าและช่าง</h5>
