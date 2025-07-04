@@ -653,7 +653,8 @@ def send_completion_notification(task, technicians):
 def scheduled_backup_job():
     """Performs scheduled backup of tasks and settings to Google Drive from memory."""
     with app.app_context():
-        app.logger.info("Running scheduled backup job...")
+        start_time = datetime.datetime.now(THAILAND_TZ)
+        app.logger.info(f"--- Starting Scheduled Backup Job at {start_time.strftime('%Y-%m-%d %H:%M:%S')} ---")
         overall_success = True
 
         # Full system backup (tasks + settings + code)
@@ -693,6 +694,9 @@ def scheduled_backup_job():
         else:
             app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings-only backup.")
 
+        end_time = datetime.datetime.now(THAILAND_TZ)
+        duration = end_time - start_time
+        app.logger.info(f"--- Finished Scheduled Backup Job at {end_time.strftime('%Y-%m-%d %H:%M:%S')} (Duration: {duration}) ---")
         return overall_success
 
 def scheduled_appointment_reminder_job():
