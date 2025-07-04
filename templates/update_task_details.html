@@ -145,11 +145,17 @@
                     <div class="form-text">หากบันทึก จะเป็นการอัปเดตพิกัดหลักของงานนี้</div>
                 </div>
                  <div class="mb-4">
-                    <label for="status" class="form-label"><i class="fas fa-check-circle me-2"></i>เปลี่ยนสถานะงาน</label>
+                    <label for="status" class="form-label"><i class="fas fa-tasks me-2"></i>เปลี่ยนสถานะงาน</label>
                     <select class="form-select" id="status" name="status">
                         <option value="needsAction" {% if task.status == 'needsAction' %}selected{% endif %}>ยังไม่เสร็จ</option>
                         <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>เสร็จเรียบร้อย</option>
                     </select>
+                </div>
+                <!-- NEW: Reschedule Section -->
+                <div id="reschedule-section" class="mb-4" style="display: none;">
+                    <label for="reschedule_due" class="form-label text-danger"><i class="fas fa-calendar-alt me-2"></i>กำหนดวันนัดหมายใหม่</label>
+                    <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due">
+                    <div class="form-text">กำหนดวันนัดหมายใหม่สำหรับงานที่ยังไม่เสร็จ</div>
                 </div>
             </div>
         </div>
@@ -281,6 +287,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Show/hide reschedule section based on status
+    const statusSelect = document.getElementById('status');
+    const rescheduleSection = document.getElementById('reschedule-section');
+    
+    function toggleReschedule() {
+        if (statusSelect.value === 'needsAction') {
+            rescheduleSection.style.display = 'block';
+        } else {
+            rescheduleSection.style.display = 'none';
+        }
+    }
+
+    statusSelect.addEventListener('change', toggleReschedule);
+    // Initial check on page load
+    toggleReschedule();
 });
 </script>
 {% endblock %}
