@@ -51,7 +51,6 @@
         {% endif %}
     {% endwith %}
 
-    <!-- Display-only Task Information Card -->
     <div class="card mb-4">
         <div class="card-header bg-secondary text-white">
             <h5 class="mb-0">ข้อมูลสรุปของงาน (แสดงผลเท่านั้น)</h5>
@@ -62,7 +61,11 @@
                 <div class="col-md-9">{{ task.title }}</div>
             </div>
             <div class="row mb-2">
-                <strong class="col-md-3">ลูกค้า:</strong>
+                <strong class="col-md-3">หน่วยงาน:</strong>
+                <div class="col-md-9">{{ task.customer.organization or '-' }}</div>
+            </div>
+            <div class="row mb-2">
+                <strong class="col-md-3">ลูกค้า (ผู้ติดต่อ):</strong>
                 <div class="col-md-9">{{ task.customer.name or '-' }}</div>
             </div>
             <div class="row mb-2">
@@ -100,7 +103,6 @@
         </div>
     </div>
 
-    <!-- Technician's Work Report Form -->
     <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" class="needs-validation" novalidate>
         <div class="card mb-4 report-form-section">
             <div class="card-header bg-primary text-white">
@@ -151,7 +153,6 @@
                         <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>เสร็จเรียบร้อย</option>
                     </select>
                 </div>
-                <!-- NEW: Reschedule Section -->
                 <div id="reschedule-section" class="mb-4" style="display: none;">
                     <label for="reschedule_due" class="form-label text-danger"><i class="fas fa-calendar-alt me-2"></i>กำหนดวันนัดหมายใหม่</label>
                     <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due">
@@ -179,7 +180,6 @@
         </div>
     </form>
     
-    <!-- History and Feedback Section -->
     <div class="card my-4">
         <div class="card-header bg-light">
             <h5 class="mb-0">ประวัติการดำเนินงานและ Feedback</h5>
@@ -231,7 +231,6 @@
     </div>
 </div>
 
-<!-- Delete Confirmation Modal -->
 <div class="modal fade" id="deleteTaskModal" tabindex="-1" aria-labelledby="deleteTaskModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
