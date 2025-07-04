@@ -1332,6 +1332,7 @@ def settings_page():
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
+            # === UPDATED: Flash message logic ===
             if backup_settings_to_drive():
                 flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
             else:
