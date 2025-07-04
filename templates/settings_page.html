@@ -9,7 +9,6 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                {# UPDATED: Use category for alert color #}
                 <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} alert-dismissible fade show" role="alert">
                     {{ message | safe }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -87,11 +86,15 @@
             </div>
         </div>
 
+        <!-- UPDATED: Simplified QR Code Style Settings -->
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">การตั้งค่า QR Code</h5>
+                <h5 class="mb-0">การตั้งค่าสไตล์ QR Code</h5>
             </div>
             <div class="card-body">
+                <div class="form-text mb-3">
+                    สไตล์เหล่านี้จะถูกนำไปใช้กับ QR Code ทั้งหมดที่ระบบสร้างขึ้น (เช่น QR สำหรับเชื่อมต่อ LINE, QR สำหรับดูรายงาน)
+                </div>
                 <div class="row mb-3">
                     <label for="qr_box_size" class="col-md-4 col-form-label">ขนาด Box Size</label>
                     <div class="col-md-8">
@@ -118,25 +121,6 @@
                     <div class="col-md-8">
                         <input type="color" class="form-control form-control-color" id="qr_back_color" name="qr_back_color"
                                value="{{ settings.qrcode_settings.back_color }}" title="เลือกสี">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="qr_custom_url" class="col-md-4 col-form-label">Custom URL (สำหรับ QR ทั่วไป)</label>
-                    <div class="col-md-8">
-                        <input type="url" class="form-control" id="qr_custom_url" name="qr_custom_url"
-                               value="{{ settings.qrcode_settings.custom_url }}"
-                               placeholder="{{ general_summary_url }}">
-                        <div class="form-text">หากเว้นว่างไว้ จะใช้ URL สรุปงานเริ่มต้น</div>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-8 offset-md-4">
-                        <p>QR Code สำหรับเข้าสู่หน้าสรุปงาน:</p>
-                        {% if qr_code_base64_general %}
-                            <img src="{{ qr_code_base64_general }}" alt="QR Code Summary" class="img-thumbnail" style="width: 150px; height: 150px;">
-                        {% else %}
-                            <p class="text-danger">ไม่สามารถสร้าง QR Code ได้</p>
-                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -205,13 +189,12 @@
             </div>
         </div>
 
-        {# ADDED: Clarification text for the save button #}
         <div class="text-center">
             <button type="submit" class="btn btn-success btn-lg">
                 <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด
             </button>
             <p class="form-text mt-2">
-                การกดปุ่มนี้จะบันทึกการเปลี่ยนแปลงทั้งหมดในหน้านี้ ตั้งแต่การแจ้งเตือน, LINE, QR Code, ข้อมูลร้านค้า, จนถึงการสำรองข้อมูลอัตโนมัติ
+                การกดปุ่มนี้จะบันทึกการเปลี่ยนแปลงทั้งหมดในหน้านี้
             </p>
         </div>
     </form>
@@ -331,10 +314,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // --- ส่วนสำหรับ Import แคตตาล็อกอุปกรณ์ (เดิม) ---
-        // (โค้ดส่วนนี้ยังคงเหมือนเดิม)
-
-        // --- ส่วนสำหรับนำเข้าข้อมูลสำรอง (ใหม่) ---
         const previewBackupBtn = document.getElementById('previewBackupBtn');
         const confirmImportBackupBtn = document.getElementById('confirmImportBackupBtn');
         const backupFile = document.getElementById('backupFile');
@@ -342,7 +321,6 @@
         const importBackupPreview = document.getElementById('importBackupPreview');
         const importBackupForm = document.getElementById('importBackupForm');
 
-        // Handle preview import
         if (previewBackupBtn) {
             previewBackupBtn.addEventListener('click', function() {
                 const file = backupFile.files[0];
@@ -356,9 +334,9 @@
 
                 const formData = new FormData();
                 formData.append('backup_file', file);
-                formData.append('file_type', fileTypeValue); // ส่งประเภทไฟล์ไปด้วย
+                formData.append('file_type', fileTypeValue);
 
-                fetch('/api/preview_backup_file', { // เรียกใช้ route ใหม่
+                fetch('/api/preview_backup_file', {
                     method: 'POST',
                     body: formData
                 })
@@ -383,7 +361,7 @@
                         }
                         
                         importBackupPreview.innerHTML = previewHtml;
-                        confirmImportBackupBtn.style.display = 'inline-block'; // Show confirm button
+                        confirmImportBackupBtn.style.display = 'inline-block';
                     } else {
                         importBackupPreview.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
                         confirmImportBackupBtn.style.display = 'none';
@@ -397,10 +375,9 @@
             });
         }
 
-        // Handle confirmed import
         if (confirmImportBackupBtn) {
             confirmImportBackupBtn.addEventListener('click', function(event) {
-                event.preventDefault(); // Prevent default form submission
+                event.preventDefault();
                 const file = backupFile.files[0];
                 const fileTypeValue = backupFileType.value;
 
@@ -409,7 +386,6 @@
                     return;
                 }
 
-                // สร้าง FormData ใหม่เพื่อแนบไฟล์และประเภทไฟล์
                 const formData = new FormData();
                 formData.append('backup_file', file);
                 formData.append('file_type', fileTypeValue);
@@ -422,7 +398,7 @@
                 .then(data => {
                     if (data.status === 'success') {
                         alert(data.message);
-                        location.reload(); // รีโหลดหน้าเพื่อแสดงการตั้งค่าใหม่หรือรายการงานใหม่
+                        location.reload();
                     } else {
                         alert(`เกิดข้อผิดพลาด: ${data.message}`);
                     }
