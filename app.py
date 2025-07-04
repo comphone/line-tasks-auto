@@ -1036,7 +1036,9 @@ def summary():
             (status_filter == 'overdue' and is_overdue)):
 
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-            searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('phone', '')}".lower()
+            
+            # === UPDATED: Added 'organization' to the searchable text ===
+            searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
 
             if not search_query or search_query in searchable_text:
                 parsed_task = parse_google_task_dates(task)
@@ -1330,7 +1332,6 @@ def settings_page():
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
-            # Immediately back up the new settings to Google Drive
             if backup_settings_to_drive():
                 flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
             else:
