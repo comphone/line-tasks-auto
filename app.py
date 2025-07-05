@@ -1125,6 +1125,7 @@ def summary():
                            search_query=search_query, status_filter=status_filter,
                            chart_data=chart_data)
 
+# REVISED: Refactored logic to prevent duplicate flash messages and simplify updates.
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
@@ -1140,11 +1141,18 @@ def task_details(task_id):
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
+        # Get the destination folder for attachments
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
         
-        created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
-        monthly_folder_name = created_dt_local.strftime('%Y-%m')
-        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        # --- REVISED: Handle tasks without a created date ---
+        monthly_folder_id = None
+        if task_raw.get('created'):
+            created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+            monthly_folder_name = created_dt_local.strftime('%Y-%m')
+            monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        else:
+            # Fallback for old tasks without a creation date
+            monthly_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
 
         customer_info = parse_customer_info_from_notes(base_notes_text)
         sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
@@ -1293,9 +1301,6 @@ def task_details(task_id):
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []))
 
-# ===================================================================
-# ========== NEW: ROUTE TO HANDLE REPORT ATTACHMENT EDITING ==========
-# ===================================================================
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(task_id, report_index):
     task_raw = get_single_task(task_id)
@@ -1312,7 +1317,6 @@ def edit_report_attachments(task_id, report_index):
 
     report_to_edit = history[report_index]
     
-    # --- Deletion Logic ---
     attachments_to_keep_ids = request.form.getlist('attachments_to_keep')
     original_attachments = report_to_edit.get('attachments', [])
     updated_attachments = []
@@ -1329,16 +1333,17 @@ def edit_report_attachments(task_id, report_index):
                 except HttpError as e:
                     app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
     else:
-        # If drive service fails, keep all original attachments to prevent data loss
         updated_attachments = original_attachments
         flash('ไม่สามารถเชื่อมต่อ Google Drive เพื่อลบไฟล์ได้', 'warning')
     
-    # --- Addition Logic ---
     new_files = request.files.getlist('new_files[]')
     if new_files:
-        # Get the destination folder again
-        created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
-        monthly_folder_name = created_dt_local.strftime('%Y-%m')
+        if task_raw.get('created'):
+            created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+            monthly_folder_name = created_dt_local.strftime('%Y-%m')
+        else:
+            monthly_folder_name = "Uncategorized"
+
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
         monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
         customer_info = parse_customer_info_from_notes(base_notes_text)
@@ -1359,11 +1364,9 @@ def edit_report_attachments(task_id, report_index):
         else:
             flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
 
-    # Update the specific report in the history list
     report_to_edit['attachments'] = updated_attachments
     history[report_index] = report_to_edit
 
-    # Reconstruct and save the notes
     all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
     final_notes = base_notes_text
     if all_reports_text: final_notes += all_reports_text
@@ -1697,7 +1700,7 @@ def manage_duplicates():
             parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
             parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
             processed_tasks.append(parsed)
-        processed_sets[key] = processed_tasks
+        processed_sets[key] = processed_sets
 
     return render_template('duplicates.html', duplicates=processed_sets)
 
@@ -2080,7 +2083,6 @@ def organize_files():
         return redirect(url_for('organize_files'))
 
     return render_template('organize_files.html')
-
 
 if __name__ == '__main__':
     if not os.path.exists('credentials.json'):
