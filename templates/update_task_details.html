@@ -21,8 +21,8 @@
     {% endwith %}
 
     <div class="info-hero-card shadow-lg">
-        <div class="d-flex justify-content-between align-items-start">
-             <h4 class="mb-3">{{ task.title }}</h4>
+        <div class="d-flex justify-content-between align-items-start mb-3">
+             <h4 class="mb-0">ข้อมูลลูกค้าและนัดหมาย</h4>
              <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-light"><i class="fas fa-edit"></i></a>
         </div>
         <div class="row">
@@ -31,12 +31,16 @@
                 <h5 class="info-value">{{ task.customer.name or '-' }}</h5>
                 <p class="info-label">เบอร์โทร</p>
                 <h5 class="info-value">{{ task.customer.phone or '-' }}</h5>
+                <p class="info-label">ที่อยู่</p>
+                <h5 class="info-value">{{ task.customer.address or '-' }}</h5>
             </div>
             <div class="col-md-6">
-                 <p class="info-label">ที่อยู่</p>
-                <h5 class="info-value">{{ task.customer.address or '-' }}</h5>
-                <p class="info-label">นัดหมาย</p>
+                 <p class="info-label">นัดหมาย</p>
                 <h5 class="info-value {% if task.is_overdue %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</h5>
+                 <p class="info-label">แผนที่</p>
+                <h5 class="info-value">{% if task.customer.map_url %}<a href="{{ task.customer.map_url }}" target="_blank">เปิด Google Maps</a>{% else %}-{% endif %}</h5>
+                <p class="info-label">รายละเอียดงาน</p>
+                <h5 class="info-value">{{ task.title }}</h5>
             </div>
         </div>
     </div>
@@ -125,34 +129,37 @@
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
                 </form>
             </div>
-            <div class="tab-pane fade show active" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
-                 <h5 class="mb-3">ประวัติการดำเนินงานทั้งหมด</h5>
+            <div class="tab-pane fade show active p-2" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
                 {% if task.tech_reports_history %}
-                <div class="list-group list-group-flush">
                     {% for report in task.tech_reports_history %}
-                    <div class="list-group-item px-0">
-                        {% if report.type == 'reschedule' %}
-                            <div class="d-flex w-100 justify-content-between"><h6 class="mb-1 text-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</h6><small class="text-muted">{{ report.summary_date }}</small></div>
-                            <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
-                            <p class="mb-1"><strong>เหตุผล:</strong> {{ report.reason or '-' }}</p>
-                            <p class="mb-1"><small><strong>ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
-                        {% else %}
-                            <div class="d-flex w-100 justify-content-between"><h6 class="mb-1 text-primary"><i class="fas fa-wrench me-2"></i>รายงานการปฏิบัติงาน</h6><small class="text-muted">{{ report.summary_date }}</small></div>
-                            <p class="mb-1"><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
-                            <p class="mb-1"><small><strong>ช่าง:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
-                        {% endif %}
+                    <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}">
+                        <div class="history-entry-header">
+                            {% if report.type == 'reschedule' %}
+                                <span class="history-entry-title text-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</span>
+                            {% else %}
+                                <span class="history-entry-title text-primary"><i class="fas fa-wrench me-2"></i>รายงานการปฏิบัติงาน</span>
+                            {% endif %}
+                            <small class="text-muted">{{ report.summary_date }}</small>
+                        </div>
+                        <div class="history-entry-body">
+                             {% if report.type == 'reschedule' %}
+                                <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
+                                <p class="mb-1"><strong>เหตุผล:</strong> {{ report.reason or 'ไม่ได้ระบุ' }}</p>
+                             {% else %}
+                                <p class="mb-1"><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
+                             {% endif %}
+                             <p class="mb-0"><small class="text-muted"><strong>ช่าง/ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
+                        </div>
                     </div>
                     {% endfor %}
-                </div>
                 {% else %}
-                <p class="text-muted">ยังไม่มีประวัติการดำเนินงาน</p>
+                    <p class="text-muted text-center mt-3">ยังไม่มีประวัติการดำเนินงาน</p>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
-
 
 {% block body_extra %}
 <script>

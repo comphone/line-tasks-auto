@@ -36,3 +36,29 @@
 .action-card {
     display: none; /* Hidden by default */
 }
+
+/* --- NEW: History Entry Styling --- */
+.history-entry {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-left: 5px solid #dee2e6; /* Default border color */
+    background-color: #f8f9fa;
+    border-radius: 0.25rem;
+}
+
+.history-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.history-entry-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
+.history-entry-body p {
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
