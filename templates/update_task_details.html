@@ -20,6 +20,15 @@
         {% endif %}
     {% endwith %}
 
+    {# New: Upload Status Box #}
+    <div id="upload-status-box" class="alert alert-info mt-3" style="display:none;">
+        <i class="fas fa-spinner fa-spin me-2"></i> กำลังอัปโหลดไฟล์... <span id="upload-progress-text"></span>
+        <div class="progress mt-2">
+            <div class="progress-bar" role="progressbar" id="upload-progress-bar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+    </div>
+    {# End New #}
+
     <div class="info-hero-card shadow-lg">
         <div class="row">
             <div class="col-md-6">
@@ -60,7 +69,8 @@
     <div class="card shadow-sm action-card" id="finalReportCard">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="showLoading(this)">
+            {# Modified form: added id and changed onsubmit #}
+            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="completeForm" onsubmit="handleFormSubmission(event, this, 'complete')">
                 <input type="hidden" name="action" value="complete_task">
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
@@ -86,6 +96,7 @@
     <div class="card shadow-sm action-card" id="rescheduleCard">
         <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
         <div class="card-body">
+            {# Original form, kept onsubmit for general loading indicator #}
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" onsubmit="showLoading(this)">
                 <input type="hidden" name="action" value="reschedule_task">
                 <div class="mb-3">
@@ -113,7 +124,8 @@
         <div class="card-header">
             <ul class="nav nav-tabs card-header-tabs" id="secondaryActionsTab" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i>เพิ่มรายงานย่อย</button>
+                    {# MODIFIED: Changed text and added style for font size #}
+                    <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i><span style="font-size: 0.9em;">เพิ่มประวัติงาน</span></button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-pane" type="button" role="tab" aria-controls="history-pane" aria-selected="true"><i class="fas fa-history me-2"></i>ประวัติงาน</button>
@@ -122,7 +134,8 @@
         </div>
         <div class="card-body tab-content">
             <div class="tab-pane fade" id="progress-report-pane" role="tabpanel" aria-labelledby="progress-report-tab">
-                 <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="showLoading(this)">
+                 {# Modified form: added id and changed onsubmit #}
+                 <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="reportForm" onsubmit="handleFormSubmission(event, this, 'report')">
                     <input type="hidden" name="action" value="save_report">
                     <h5 class="mb-3">เพิ่มรายงานความคืบหน้า (งานยังไม่เสร็จ)</h5>
                     <div class="mb-3"><label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
@@ -186,8 +199,8 @@
             <input class="form-control" type="file" name="new_files[]" multiple accept="image/*">
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
           <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
         </div>
       </form>
     </div>
@@ -211,7 +224,7 @@ function showActionCard(cardIdToShow) {
     }
 }
 
-// Function to show loading state on form submission
+// Original showLoading, for non-file submissions (e.g., reschedule)
 function showLoading(form) {
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) {
@@ -223,7 +236,129 @@ function showLoading(form) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
+// New function for handling AJAX form submissions for file uploads
+async function handleFormSubmission(event, form, formType) {
+    event.preventDefault(); // Prevent default form submission
+
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...`;
+    }
+
+    const uploadStatusBox = document.getElementById('upload-status-box');
+    const uploadProgressBar = document.getElementById('upload-progress-bar');
+    const uploadProgressText = document.getElementById('upload-progress-text');
+    
+    const filesInput = form.querySelector('input[type="file"][name="files[]"]');
+    const files = filesInput ? Array.from(filesInput.files) : [];
+    const totalFiles = files.length;
+    let uploadedFilesCount = 0;
+    let attachmentUrls = []; // To collect URLs of uploaded files
+
+    if (totalFiles > 0) {
+        uploadStatusBox.style.display = 'block'; // Show status box
+        
+        for (let i = 0; i < totalFiles; i++) {
+            const file = files[i];
+            uploadProgressText.textContent = `กำลังอัปโหลดไฟล์ ${i + 1} จาก ${totalFiles}...`;
+            uploadProgressBar.style.width = `${((i + 1) / totalFiles) * 100}%`;
+            uploadProgressBar.setAttribute('aria-valuenow', ((i + 1) / totalFiles) * 100);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('task_id', '{{ task.id }}');
+
+            try {
+                const response = await fetch('/api/upload_attachment', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    uploadedFilesCount++;
+                    attachmentUrls.push(result.file_info); // Collect URL/ID for the report
+                } else {
+                    console.error('File upload failed:', result.message);
+                    flashMessage('อัปโหลดไฟล์ไม่สำเร็จ: ' + result.message, 'danger');
+                }
+            } catch (error) {
+                console.error('Error during file upload:', error);
+                flashMessage('เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์', 'danger');
+            }
+        }
+        uploadProgressText.textContent = `อัปโหลดครบทุกไฟล์แล้ว (${uploadedFilesCount} จาก ${totalFiles})`;
+        // Give a brief moment for the user to see the "complete" status
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Now, submit the rest of the form data (including collected attachmentUrls)
+    // This will be a standard AJAX submission for the main report content
+    const mainFormData = new FormData(form);
+    // Remove the files from the main form data as they were uploaded separately
+    if (filesInput) mainFormData.delete('files[]');
+
+    // Add the collected attachment URLs to the main form data
+    mainFormData.append('uploaded_attachments_json', JSON.stringify(attachmentUrls));
+
+    try {
+        const response = await fetch(form.action, {
+            method: 'POST',
+            body: mainFormData // Send the new FormData without files, but with attachment info
+        });
+        const result = await response.json(); // Assuming your Flask endpoint returns JSON for AJAX
+        if (result.status === 'success') {
+            // Flash success message and then reload the page
+            window.location.reload(); // Or redirect to summary
+        } else {
+            flashMessage(result.message, 'danger'); // Display error from server
+            submitButton.disabled = false;
+            submitButton.innerHTML = submitButton.getAttribute('data-original-html'); // Restore original button text
+        }
+    } catch (error) {
+        console.error('Error submitting main form:', error);
+        flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger');
+        submitButton.disabled = false;
+        submitButton.innerHTML = submitButton.getAttribute('data-original-html'); // Restore original button text
+    } finally {
+        uploadStatusBox.style.display = 'none'; // Hide status box
+    }
+}
+
+// Helper function to display flash messages (since Flask's flash won't work with AJAX directly)
+function flashMessage(message, category) {
+    // Check if the message is already present to avoid duplicates
+    const existingAlerts = document.querySelectorAll('.container.mt-4.mb-5 .alert');
+    let messageExists = false;
+    existingAlerts.forEach(alert => {
+        if (alert.textContent.includes(message)) {
+            messageExists = true;
+        }
+    });
+
+    if (messageExists) {
+        return; // Don't add duplicate messages
+    }
+    
+    // Create new message container if needed, or clear existing one
+    const mainContainer = document.querySelector('.container.mt-4.mb-5');
+    if (!mainContainer) return;
+
+    const newMessage = document.createElement('div');
+    newMessage.className = `alert alert-${category} alert-dismissible fade show mt-3`; // Added mt-3 for spacing
+    newMessage.setAttribute('role', 'alert');
+    newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
+    
+    // Prepend (add to top) to the container
+    mainContainer.prepend(newMessage); 
+}
+
+// Store original button HTML for re-enabling
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('button[type="submit"]').forEach(btn => {
+        btn.setAttribute('data-original-html', btn.innerHTML);
+    });
+
     const editAttachmentsModal = document.getElementById('editAttachmentsModal');
     if(editAttachmentsModal) {
         editAttachmentsModal.addEventListener('show.bs.modal', function (event) {
