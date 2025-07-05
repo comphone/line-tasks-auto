@@ -9,8 +9,8 @@ import zipfile
 from io import BytesIO
 from collections import defaultdict
 from datetime import timezone
-import time # Import for time.sleep
-import tempfile # Import for tempfile.NamedTemporaryFile
+import time # ADDED: For retry delay
+import tempfile # ADDED: For temporary file handling during uploads
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -70,7 +70,7 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
-LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID') 
+LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
 LINE_ADMIN_GROUP_ID = os.environ.get('LINE_ADMIN_GROUP_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
@@ -143,6 +143,7 @@ def save_settings_to_file(settings_data):
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
 
+# --- REVISED: Centralized Google API call execution with retry logic ---
 def safe_execute(request_object):
     """
     Call .execute() if the object has it, else just return the object (for new Google API style).
@@ -256,24 +257,27 @@ def load_settings_from_drive_on_startup():
         app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
         return False
 
+# --- REVISED: Settings are now loaded once and kept in memory ---
 def get_app_settings():
     """Get current application settings, loading from file or using defaults."""
     global _APP_SETTINGS_STORE
     if not _APP_SETTINGS_STORE:
         loaded = load_settings_from_file()
+        # Start with a deep copy of the defaults
         _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
         if loaded:
+            # Recursively update the dictionary to preserve new default keys
             for key, default_value in _APP_SETTINGS_STORE.items():
                 if key in loaded:
                     if isinstance(default_value, dict) and isinstance(loaded[key], dict):
                         _APP_SETTINGS_STORE[key].update(loaded[key])
-                    elif isinstance(default_value, list) and isinstance(loaded[key], list):
-                        _APP_SETTINGS_STORE[key] = loaded[key]
-                    else:
+                    else: # Overwrite lists, strings, numbers
                         _APP_SETTINGS_STORE[key] = loaded[key]
         else:
+            # If no file exists, save the defaults
             save_settings_to_file(_APP_SETTINGS_STORE)
 
+    # Always ensure computed properties are up-to-date
     equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
     _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
     return _APP_SETTINGS_STORE
@@ -282,13 +286,13 @@ def save_app_settings(settings_data):
     """Save application settings, merging with current settings."""
     global _APP_SETTINGS_STORE
     current_settings = get_app_settings()
+    # Recursively update to merge nested dictionaries
     for key, value in settings_data.items():
         if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
             current_settings[key].update(value)
-        elif isinstance(value, list) and key in current_settings and isinstance(current_settings[key], list):
-            current_settings[key] = value
         else:
             current_settings[key] = value
+    # Update the in-memory store before saving to file
     _APP_SETTINGS_STORE = current_settings
     return save_settings_to_file(_APP_SETTINGS_STORE)
 
@@ -391,7 +395,8 @@ def _perform_drive_upload(media_body, file_name, folder_id):
         
         if not permission_result or 'id' not in permission_result:
             app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File may be inaccessible.")
-            return None
+            # Return file object anyway, but with a warning
+            return file_obj
 
         app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
         return file_obj
@@ -412,7 +417,7 @@ def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folde
     """Uploads a file-like object from memory to Google Drive."""
     media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
     file_obj = _perform_drive_upload(media, file_name, folder_id)
-    return file_obj is not None
+    return file_obj
 
 
 def create_google_task(title, notes=None, due=None):
@@ -486,7 +491,7 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords):
-            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords}"
+            info['map_url'] = f"https://www.google.com/maps?q={coords}"
         else:
             info['map_url'] = coords
     
@@ -541,8 +546,11 @@ def parse_tech_report_from_notes(notes):
                 report_data['attachments'] = []
                 for url in report_data['attachment_urls']:
                     if isinstance(url, str):
-                        report_data['attachments'].append({'id': None, 'url': url})
-                report_data.pop('attachment_urls', None) # Remove old key to prevent confusion
+                        # Extract Google Drive file ID from URL if possible
+                        match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+                        file_id = match.group(1) if match else None
+                        report_data['attachments'].append({'id': file_id, 'url': url})
+                report_data.pop('attachment_urls', None) # Remove old key
             
             if isinstance(report_data.get('equipment_used'), str):
                 report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
@@ -595,7 +603,7 @@ def _format_equipment_list(equipment_data):
                 lines.append(line)
             elif isinstance(item, str):
                 lines.append(item)
-    return "\n".join(lines) if lines else 'N/A'
+    return "<br>".join(lines) if lines else 'N/A'
 
 @app.context_processor
 def inject_now():
@@ -627,7 +635,7 @@ def _create_backup_zip():
         memory_file = BytesIO()
         with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
             zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
-            zf.writestr('data/settings.json', json.dumps(get_app_settings(), indent=4, ensure_ascii=False))
+            zf.writestr('data/settings_backup.json', json.dumps(get_app_settings(), indent=4, ensure_ascii=False))
 
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
@@ -673,6 +681,16 @@ def inject_global_vars():
 #</editor-fold>
 
 #<editor-fold desc="Scheduled Jobs and Notifications">
+
+# --- ADDED: Centralized error notification function ---
+def notify_admin_error(message):
+    """Sends an error notification to the LINE Admin Group."""
+    try:
+        admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
+        if admin_group_id:
+            line_bot_api.push_message(admin_group_id, TextSendMessage(text=f"‼️ เกิดข้อผิดพลาดร้ายแรงในระบบ ‼️\n\n{message[:900]}"))
+    except Exception as e:
+        app.logger.error(f"Failed to send critical error notification: {e}")
 
 def send_completion_notification(task, technicians):
     """Sends a LINE notification when a task is marked as completed."""
@@ -746,7 +764,8 @@ def scheduled_backup_job():
         # Full system backup (tasks + settings + code)
         memory_file_zip, filename_zip = _create_backup_zip()
         if memory_file_zip and filename_zip:
-            if upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', GOOGLE_DRIVE_FOLDER_ID):
+            drive_file_obj = upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', GOOGLE_DRIVE_FOLDER_ID)
+            if drive_file_obj:
                 app.logger.info("Automatic full system backup successful.")
             else:
                 app.logger.error("Automatic full system backup failed.")
@@ -756,29 +775,11 @@ def scheduled_backup_job():
             overall_success = False
 
         # Settings-only backup (settings.json)
-        if GOOGLE_SETTINGS_BACKUP_FOLDER_ID:
-            settings_data = get_app_settings()
-            settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
-            settings_backup_filename = "settings_backup.json"
-            
-            service = get_google_drive_service()
-            if service:
-                try:
-                    query = f"name = 'settings_backup.json' and '{GOOGLE_SETTINGS_BACKUP_FOLDER_ID}' in parents"
-                    response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id)')
-                    for file_item in response.get('files', []):
-                        _execute_google_api_call_with_retry(service.files().delete, fileId=file_item['id'])
-                        app.logger.info(f"Deleted old settings_backup.json (ID: {file_item['id']}) from Drive.")
-                except Exception as e:
-                    app.logger.warning(f"Could not delete old settings_backup.json from Drive: {e}")
-
-            if upload_data_from_memory_to_drive(settings_json_bytes, settings_backup_filename, 'application/json', GOOGLE_SETTINGS_BACKUP_FOLDER_ID):
-                app.logger.info("Automatic settings backup successful.")
-            else:
-                app.logger.error("Automatic settings backup failed.")
-                overall_success = False
+        if backup_settings_to_drive():
+            app.logger.info("Automatic settings-only backup successful.")
         else:
-            app.logger.warning("GOOGLE_SETTINGS_BACKUP_FOLDER_ID not set. Skipping settings-only backup.")
+            app.logger.error("Automatic settings-only backup failed.")
+            overall_success = False
 
         end_time = datetime.datetime.now(THAILAND_TZ)
         duration = end_time - start_time
@@ -975,6 +976,7 @@ def cleanup_scheduler():
 # --- Initial app setup calls ---
 with app.app_context():
     load_settings_from_drive_on_startup()
+    # --- REVISED: Eagerly load settings into memory on startup ---
     _APP_SETTINGS_STORE = get_app_settings()
     run_scheduler()
 
@@ -1069,7 +1071,7 @@ def summary():
                 parsed_task['is_overdue'] = is_overdue
                 final_tasks.append(parsed_task)
 
-    final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, x.get('due', '')))
+    final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, date_parse(x.get('due', '9999-12-31T23:59:59Z'))))
 
     completed_tasks_for_chart = [t for t in tasks_raw if t.get('status') == 'completed' and t.get('completed')]
     monthly_counts = defaultdict(int)
@@ -1078,9 +1080,9 @@ def summary():
     chart_values = []
 
     for i in range(12):
-        target_date = today_thai - datetime.timedelta(days=30 * (11 - i))
+        target_date = today_thai - datetime.timedelta(days=30 * (11 - i)) # Go back from 11 months ago to current month
         month_key = target_date.strftime('%Y-%m')
-        month_labels.append(target_date.strftime('%b %Y'))
+        month_labels.append(target_date.strftime('%b %y'))
         
         count = 0
         for task in completed_tasks_for_chart:
@@ -1102,6 +1104,7 @@ def summary():
                            chart_data=chart_data)
 
 
+# --- REVISED: Major changes to handle file uploads to Google Drive ---
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
@@ -1111,7 +1114,7 @@ def task_details(task_id):
             abort(404)
 
         work_summary = str(request.form.get('work_summary', '')).strip()
-        files = request.files.getlist('files[]')
+        files = request.files.getlist('files[]') # Get list of uploaded files
         selected_technicians = request.form.getlist('technicians')
         new_status = request.form.get('status')
         lat_lon_update = str(request.form.get('latitude_longitude_update', '')).strip()
@@ -1135,26 +1138,36 @@ def task_details(task_id):
 
         if lat_lon_update:
             if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", lat_lon_update):
-                notes_lines = [
-                    f"ลูกค้า: {customer_info.get('name', '')}",
-                    f"เบอร์โทรศัพท์: {customer_info.get('phone', '')}",
-                    f"ที่อยู่: {customer_info.get('address', '')}",
-                    lat_lon_update
-                ]
+                # Reconstruct base notes with new coordinate
+                updated_customer_info = customer_info.copy()
+                updated_customer_info['map_url'] = f"https://www.google.com/maps?q={lat_lon_update}"
+                
+                notes_lines = []
+                if updated_customer_info.get('organization'):
+                     notes_lines.append(f"หน่วยงาน: {updated_customer_info['organization']}")
+                notes_lines.extend([
+                    f"ลูกค้า: {updated_customer_info.get('name', '')}",
+                    f"เบอร์โทรศัพท์: {updated_customer_info.get('phone', '')}",
+                    f"ที่อยู่: {updated_customer_info.get('address', '')}",
+                    updated_customer_info['map_url']
+                ])
                 base_notes_text = "\n".join(filter(None, notes_lines))
                 app.logger.info(f"Updated map coordinates for task {task_id} to {lat_lon_update}")
             else:
                 flash('รูปแบบพิกัดแผนที่ไม่ถูกต้อง (ต้องเป็น "ละติจูด,ลองจิจูด")', 'warning')
 
+        # Check if there is a new report summary or new files to process
         if work_summary or any(f.filename for f in files):
             if not selected_technicians:
                 flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
+            # --- ADDED: Logic to upload files to Google Drive ---
             new_attachments = []
             for file in files:
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
+                    # Use a temporary file path for saving before upload
                     temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     try:
                         file.save(temp_filepath)
@@ -1164,13 +1177,17 @@ def task_details(task_id):
                                 'id': drive_file.get('id'),
                                 'url': drive_file.get('webViewLink')
                             })
+                            flash(f'อัปโหลดไฟล์ {filename} สำเร็จ!', 'info')
                         else:
                             flash(f'อัปโหลดไฟล์ {filename} ไปยัง Google Drive ล้มเหลว', 'danger')
                     finally:
-                        if os.path.exists(temp_filepath): os.remove(temp_filepath)
+                        # Clean up the temporary file from the server
+                        if os.path.exists(temp_filepath):
+                            os.remove(temp_filepath)
                 elif file and not allowed_file(file.filename):
                     flash(f'ไฟล์ {file.filename} ไม่อนุญาตให้แนบ', 'warning')
 
+            # Append new report entry to history
             history.append({
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'work_summary': work_summary,
@@ -1180,6 +1197,7 @@ def task_details(task_id):
             })
             history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
 
+        # Reconstruct the entire notes field
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
         final_notes = base_notes_text
         if all_reports_text:
@@ -1193,6 +1211,7 @@ def task_details(task_id):
             cache.clear()
             flash('บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว!', 'success')
             
+            # Send notifications if status changed or task was rescheduled
             if task_raw.get('status') != 'completed' and new_status == 'completed':
                 app.logger.info(f"Task {task_id} status changed to completed. Sending notification.")
                 send_completion_notification(updated_task, selected_technicians)
@@ -1205,6 +1224,7 @@ def task_details(task_id):
         
         return redirect(url_for('task_details', task_id=task_id))
 
+    # --- GET Request Logic (no changes) ---
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
     
@@ -1220,6 +1240,7 @@ def task_details(task_id):
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []))
+
 
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
 def edit_task(task_id):
@@ -2062,8 +2083,10 @@ def callback():
     except InvalidSignatureError:
         app.logger.error("Invalid LINE signature. Aborting request.")
         abort(400)
+    # --- REVISED: Added critical error handling and notification ---
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
+        notify_admin_error(f"Webhook Handler Error: {e}")
         abort(500)
     return 'OK'
 
@@ -2295,13 +2318,14 @@ def oauth2callback():
     flow.redirect_uri = url_for('oauth2callback', _external=True)
 
     try:
+        # Use the full URL from the request to fetch the token
         flow.fetch_token(authorization_response=request.url)
         creds = flow.credentials
 
         token_json_content = creds.to_json()
         
         flash(f'เชื่อมต่อ Google สำเร็จแล้ว! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON บน Render.com (หรือแพลตฟอร์มอื่นที่คุณใช้) และรีสตาร์ทแอปพลิเคชัน: <textarea class="form-control mt-2" rows="5" readonly>{token_json_content}</textarea>', 'success')
-        app.logger.info("Google OAuth successful. Token saved to token.json. Please update GOOGLE_TOKEN_JSON env var.")
+        app.logger.info("Google OAuth successful. Please update GOOGLE_TOKEN_JSON env var.")
         
     except Exception as e:
         app.logger.error(f"Error during OAuth2 callback: {e}", exc_info=True)

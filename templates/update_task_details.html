@@ -115,7 +115,7 @@
                 </div>
                 <div class="mb-4">
                     <label for="equipment_used" class="form-label"><i class="fas fa-tools me-2"></i>อุปกรณ์ที่ใช้ (ชื่อ,จำนวน - แยกบรรทัด)</label>
-                    <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="เช่น กล้องวงจรปิด, 1&#10;สาย RG6, 20 เมตร&#10;หัว BNC, 2"></textarea>
+                    <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="เช่น กล้องวงจรปิด, 1&#10;สาย RG6, 20&#10;หัว BNC, 2"></textarea>
                     {% if common_equipment_items %}
                     <div class="mt-2">
                         <small>อุปกรณ์ที่ใช้บ่อย:</small><br>
@@ -185,7 +185,7 @@
             <h5 class="mb-0">ประวัติการดำเนินงานและ Feedback</h5>
         </div>
         <div class="card-body">
-            <h6>ประวัติรายงาน:</h6>
+            <h6><i class="fas fa-history me-2"></i>ประวัติรายงาน:</h6>
             {% if task.tech_reports_history %}
             <div class="list-group">
                 {% for report in task.tech_reports_history %}
@@ -196,13 +196,20 @@
                     <p class="mb-1"><strong>สรุปงาน:</strong> {{ report.work_summary or '-' }}</p>
                     <p class="mb-1"><strong>อุปกรณ์ที่ใช้:</strong> <br>{% if report.equipment_used_display %}{{ report.equipment_used_display | safe }}{% else %}-{% endif %}</p>
                     <p class="mb-1"><strong>ช่าง:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</p>
-                    {% if report.attachment_urls %}
+                    
+                    {% if report.attachments %}
                         <div class="mt-2">
                             <strong>รูปภาพแนบ:</strong>
-                            <div class="d-flex flex-wrap">
-                                {% for url in report.attachment_urls %}
-                                    <a href="{{ url }}" target="_blank" class="me-2 mb-2">
-                                        <img src="{{ url }}" alt="Attachment" style="width: 80px; height: 80px; object-fit: cover; border-radius: 5px;">
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for attachment in report.attachments %}
+                                    <a href="{{ attachment.url }}" target="_blank" class="me-2 mb-2" title="คลิกเพื่อดูรูปภาพขนาดเต็ม">
+                                        {% if attachment.id %}
+                                            <img src="https://drive.google.com/thumbnail?id={{ attachment.id }}&sz=w200" alt="Attachment Thumbnail" style="width: 80px; height: 80px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd;">
+                                        {% else %}
+                                            <div class="d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background-color: #e9ecef; border-radius: 5px;">
+                                                <i class="fas fa-file-image fa-2x text-muted"></i>
+                                            </div>
+                                        {% endif %}
                                     </a>
                                 {% endfor %}
                             </div>
@@ -217,7 +224,7 @@
             
             <hr>
 
-            <h6>Feedback จากลูกค้า:</h6>
+            <h6><i class="fas fa-comment-dots me-2"></i>Feedback จากลูกค้า:</h6>
             {% if task.customer_feedback %}
                 <p><strong>วันที่ Feedback:</strong> {{ task.customer_feedback.feedback_date or '-' }}</p>
                 <p><strong>ประเภท Feedback:</strong> {{ task.customer_feedback.feedback_type or '-' }}</p>
@@ -251,6 +258,7 @@
   </div>
 </div>
 
+{% block body_extra %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Add equipment to textarea
@@ -260,7 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const item = this.dataset.item;
             const currentText = equipmentUsedTextarea.value.trim();
             if (currentText) {
-                equipmentUsedTextarea.value = currentText + '\\n' + item + ', 1';
+                equipmentUsedTextarea.value = currentText + '\n' + item + ', 1';
             } else {
                 equipmentUsedTextarea.value = item + ', 1';
             }
@@ -268,19 +276,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Get current location
+    // --- ADDED: Get current location ---
     const getLocationBtn = document.getElementById('getLocationBtn');
     const locationInput = document.getElementById('latitude_longitude_update');
     if (getLocationBtn) {
         getLocationBtn.addEventListener('click', function() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
+                    const lat = position.coords.latitude.toFixed(6);
+                    const lon = position.coords.longitude.toFixed(6);
                     locationInput.value = `${lat},${lon}`;
                 }, function(error) {
                     alert(`Error getting location: ${error.message}`);
-                });
+                }, { enableHighAccuracy: true });
             } else {
                 alert("Geolocation is not supported by this browser.");
             }

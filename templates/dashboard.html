@@ -4,7 +4,7 @@
 
 {% block head_extra %}
     <style>
-        /* เดิม */
+        /* Base styles */
         .summary-card-link { text-decoration: none; }
         .summary-card {
             color: white;
@@ -23,42 +23,34 @@
         .summary-card .text-content { margin-left: 1rem; }
         .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
         .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
-        .table-hover tbody tr { cursor: pointer; }
         .table-hover tbody tr:hover { background-color: #f1f1f1; }
         .badge { font-size: 0.9em; padding: .5em .75em; }
 
-        /* --- เพิ่มเติมสำหรับการแสดงผลตารางบนมือถือ --- */
+        /* --- REVISED: For responsive table on mobile --- */
         .table-responsive {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
         }
         .table {
-            min-width: 650px;
+            min-width: 700px; /* Force horizontal scroll on smaller screens */
         }
         .task-title-cell {
-            max-width: 200px;
+            max-width: 220px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            cursor: pointer;
         }
-        /* ปรับความกว้างของคอลัมน์ให้เหมาะสม */
+        .clickable-cell {
+            cursor: pointer;
+        }
+        /* Column width adjustments for better layout */
         .table th:nth-child(1), .table td:nth-child(1) { width: 5%; }
-        .table th:nth-child(2), .table td:nth-child(2) { width: 25%; } /* ลูกค้า / หน่วยงาน */
-        .table th:nth-child(3), .table td:nth-child(3) { width: 30%; } /* รายละเอียดงาน */
-        .table th:nth-child(4), .table td:nth-child(4) { width: 15%; } /* วันเวลานัดหมาย */
-        .table th:nth-child(5), .table td:nth-child(5) { width: 10%; text-align: center; } /* สถานะ */
-        .table th:nth-child(6), .table td:nth-child(6) { width: 15%; text-align: center; } /* จัดการ */
-
-        /* ปรับสำหรับหน้าจอขนาดเล็กมาก */
-        @media (max-width: 576px) {
-            .table {
-                min-width: 500px;
-            }
-            .task-title-cell {
-                max-width: 120px;
-            }
-        }
-
+        .table th:nth-child(2), .table td:nth-child(2) { width: 25%; } /* Customer/Org */
+        .table th:nth-child(3), .table td:nth-child(3) { width: 30%; } /* Task Title */
+        .table th:nth-child(4), .table td:nth-child(4) { width: 20%; } /* Due Date */
+        .table th:nth-child(5), .table td:nth-child(5) { width: 10%; text-align: center; } /* Status */
+        .table th:nth-child(6), .table td:nth-child(6) { width: 10%; text-align: center; } /* Manage */
     </style>
 {% endblock %}
 
@@ -135,9 +127,8 @@
 
 
 <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader" data-bs-toggle="collapse" data-bs-target="#tasksTableCollapse" aria-expanded="true" aria-controls="tasksTableCollapse" style="cursor: pointer;">
+    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader">
         <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
-        <i class="fas fa-chevron-up"></i>
     </div>
     <div class="collapse show" id="tasksTableCollapse">
         <div class="card-body">
@@ -152,8 +143,8 @@
                 <table class="table table-hover table-bordered align-middle">
                     <thead class="table-dark">
                         <tr>
-                            <th style="width: 5%;">#</th>
-                            <th>ลูกค้า / หน่วยงาน</th>
+                            <th>#</th>
+                            <th>หน่วยงาน / ลูกค้า</th>
                             <th>รายละเอียดงาน</th>
                             <th>วันเวลานัดหมาย</th>
                             <th class="text-center">สถานะ</th>
@@ -163,16 +154,18 @@
                     <tbody>
                         {% for task in tasks %}
                         <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}">
-                            <td>{{ loop.index }}</td>
-                            <td>
-                                <strong>{{ task.customer.name or '-' }}</strong>
+                            <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ loop.index }}</td>
+                            <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                                 {% if task.customer.organization %}
-                                    <br><small class="text-muted">{{ task.customer.organization }}</small>
+                                    <strong>{{ task.customer.organization }}</strong>
+                                    <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
+                                {% else %}
+                                    <strong>{{ task.customer.name or '-' }}</strong>
                                 {% endif %}
                             </td>
-                            <td class="task-title-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.title }}</td>
-                            <td>{{ task.due_formatted or '-' }}</td>
-                            <td class="text-center">
+                            <td class="task-title-cell" title="{{ task.title }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.title }}</td>
+                            <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
+                            <td class="text-center clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                                 {% if task.status == 'completed' %}
                                     <span class="badge bg-success">เสร็จเรียบร้อย</span>
                                 {% elif task.is_overdue %}
@@ -194,6 +187,7 @@
                         <tr>
                             <td colspan="6" class="text-center p-4">
                                 <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
+                                <p>ลอง<a href="{{ url_for('form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
                             </td>
                         </tr>
                         {% endfor %}
@@ -209,26 +203,46 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Monthly Tasks Chart
-        const monthlyCtx = document.getElementById('monthlyTasksChart');
-        const chartDataElement = document.querySelector('script[data-chart-data]');
-        let chartData = { labels: [], values: [] };
-        if (chartDataElement) {
-            try {
-                chartData = JSON.parse(chartDataElement.textContent);
-            } catch (e) {
-                console.error("Error parsing chart data from script tag:", e);
-            }
+        // --- Re-usable function to handle collapse icon toggling ---
+        function setupCollapseToggle(headerId, collapseId) {
+            const header = document.getElementById(headerId);
+            const collapseElement = document.getElementById(collapseId);
+            
+            if (!header || !collapseElement) return;
+
+            const icon = header.querySelector('.fa-chevron-down, .fa-chevron-up');
+            if (!icon) return;
+
+            const updateIcon = () => {
+                if (collapseElement.classList.contains('show')) {
+                    icon.classList.remove('fa-chevron-down');
+                    icon.classList.add('fa-chevron-up');
+                } else {
+                    icon.classList.remove('fa-chevron-up');
+                    icon.classList.add('fa-chevron-down');
+                }
+            };
+            
+            // Set initial state
+            updateIcon(); 
+            
+            // Add listeners for bootstrap events
+            collapseElement.addEventListener('shown.bs.collapse', updateIcon);
+            collapseElement.addEventListener('hidden.bs.collapse', updateIcon);
         }
-        
+
+        setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse');
+
+        // --- Monthly Tasks Chart Initialization ---
+        const monthlyCtx = document.getElementById('monthlyTasksChart');
         if (monthlyCtx) {
             new Chart(monthlyCtx, {
                 type: 'bar',
                 data: {
-                    labels: chartData.labels,
+                    labels: {{ chart_data.labels | tojson | safe }},
                     datasets: [{
                         label: 'จำนวนงานที่เสร็จ',
-                        data: chartData.values,
+                        data: {{ chart_data.values | tojson | safe }},
                         backgroundColor: 'rgba(25, 135, 84, 0.6)',
                         borderColor: 'rgba(25, 135, 84, 1)',
                         borderWidth: 1
@@ -239,11 +253,13 @@
                         y: {
                             beginAtZero: true,
                             ticks: {
-                                stepSize: 1
+                                stepSize: 1,
+                                precision: 0
                             }
                         }
                     },
                     responsive: true,
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: {
                             display: false
@@ -252,52 +268,6 @@
                 }
             });
         }
-
-        function setupCollapseToggle(headerId, collapseId, isAlwaysExpanded = false) {
-            const header = document.getElementById(headerId);
-            const collapseElement = document.getElementById(collapseId);
-
-            if (header && collapseElement) {
-                const icon = header.querySelector('.fa-chevron-down, .fa-chevron-up');
-
-                if (icon) {
-                    if (collapseElement.classList.contains('show')) {
-                        icon.classList.add('fa-chevron-up');
-                        icon.classList.remove('fa-chevron-down');
-                    } else {
-                        icon.classList.add('fa-chevron-down');
-                        icon.classList.remove('fa-chevron-up');
-                    }
-                }
-
-                if (!isAlwaysExpanded) {
-                    header.addEventListener('click', function() {
-                        const currentIcon = this.querySelector('.fa-chevron-down, .fa-chevron-up');
-                        if (currentIcon) {
-                            if (currentIcon.classList.contains('fa-chevron-down')) {
-                                currentIcon.classList.remove('fa-chevron-down');
-                                currentIcon.classList.add('fa-chevron-up');
-                            } else {
-                                currentIcon.classList.remove('fa-chevron-up');
-                                currentIcon.classList.add('fa-chevron-down');
-                            }
-                        }
-                    });
-                } else {
-                    if (icon) {
-                        icon.classList.remove('fa-chevron-down');
-                        icon.classList.add('fa-chevron-up');
-                    }
-                    header.removeAttribute('data-bs-toggle');
-                    header.style.cursor = 'default';
-                }
-            }
-        }
-
-        setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse', false);
-        setupCollapseToggle('tasksHeader', 'tasksTableCollapse', true);
-
     });
 </script>
-<script type="application/json" data-chart-data>{{ chart_data | tojson | safe }}</script>
 {% endblock %}
