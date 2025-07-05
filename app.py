@@ -792,12 +792,13 @@ def send_reschedule_notification(task, new_due_date_str, reason, technicians):
     except Exception as e:
         app.logger.error(f"Failed to send reschedule notification for task {task['id']}: {e}")
 
-
+# REVISED: scheduled_backup_job to correctly report success/failure
 def scheduled_backup_job():
     """Performs scheduled backup of tasks and settings to Google Drive from memory."""
     with app.app_context():
         app.logger.info(f"--- Starting Scheduled Backup Job ---")
-        
+        overall_success = True
+
         # System Backup
         system_backup_folder_id = find_or_create_drive_folder("System_Backups", GOOGLE_DRIVE_FOLDER_ID)
         if system_backup_folder_id:
@@ -805,17 +806,26 @@ def scheduled_backup_job():
             if memory_file_zip and filename_zip:
                 if upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', system_backup_folder_id):
                     app.logger.info("Automatic full system backup successful.")
-                else: app.logger.error("Automatic full system backup failed.")
-            else: app.logger.error("Failed to create full system backup zip.")
-        else: app.logger.error("Could not find/create System_Backups folder for backup.")
+                else: 
+                    app.logger.error("Automatic full system backup failed.")
+                    overall_success = False
+            else:
+                app.logger.error("Failed to create full system backup zip.")
+                overall_success = False
+        else:
+            app.logger.error("Could not find/create System_Backups folder for backup.")
+            overall_success = False
 
         # Settings-only Backup
-        if backup_settings_to_drive():
-            app.logger.info("Automatic settings-only backup successful.")
-        else:
+        if not backup_settings_to_drive():
             app.logger.error("Automatic settings-only backup failed.")
+            overall_success = False
+        else:
+            app.logger.info("Automatic settings-only backup successful.")
         
         app.logger.info(f"--- Finished Scheduled Backup Job ---")
+        return overall_success
+
 
 def scheduled_appointment_reminder_job():
     with app.app_context():
@@ -1115,9 +1125,6 @@ def summary():
                            search_query=search_query, status_filter=status_filter,
                            chart_data=chart_data)
 
-# ===================================================================
-# ========== REVISED /task/<task_id> ROUTE (FINAL VERSION) ==========
-# ===================================================================
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
@@ -1133,7 +1140,6 @@ def task_details(task_id):
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
-        # --- Get the destination folder for attachments ---
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
         
         created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
@@ -1145,7 +1151,6 @@ def task_details(task_id):
         customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
         final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
 
-        # --- ACTION: Add a new work report (progress) ---
         if action == 'save_report':
             work_summary = str(request.form.get('work_summary', '')).strip()
             files = request.files.getlist('files[]')
@@ -1178,7 +1183,6 @@ def task_details(task_id):
             })
             flash('เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!', 'success')
         
-        # --- ACTION: Reschedule the task ---
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
             reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
@@ -1206,7 +1210,6 @@ def task_details(task_id):
             notification_to_send = ('reschedule', new_due_date_formatted, reschedule_reason, selected_technicians)
             flash('เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว', 'success')
 
-        # --- ACTION: Complete the task ---
         elif action == 'complete_task':
             work_summary = str(request.form.get('work_summary', '')).strip()
             if not work_summary:
@@ -1246,7 +1249,6 @@ def task_details(task_id):
             flash('ไม่พบการกระทำที่ร้องขอ', 'danger')
             return redirect(url_for('task_details', task_id=task_id))
             
-        # --- Final Step: Reconstruct notes and perform a SINGLE update ---
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
         
@@ -1269,7 +1271,6 @@ def task_details(task_id):
 
         return redirect(url_for('task_details', task_id=task_id))
 
-    # --- GET request logic ---
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
     
@@ -1291,9 +1292,6 @@ def task_details(task_id):
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []))
-# ===================================================================
-# ========== END: REVISED /task/<task_id> ROUTE ==========
-# ===================================================================
 
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
 def edit_task(task_id):
@@ -1934,7 +1932,6 @@ def organize_files():
             
         moved_count, skipped_count, error_count = 0, 0, 0
         
-        # Ensure the base 'Task_Attachments' folder exists
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
         if not attachments_base_folder_id:
             flash('ไม่สามารถสร้างหรือค้นหาโฟลเดอร์หลัก "Task_Attachments" ได้', 'danger')
@@ -1942,13 +1939,18 @@ def organize_files():
 
         for task in all_tasks:
             try:
+                # REVISED: Add check for task creation date
+                if not task.get('created'):
+                    app.logger.warning(f"Skipping task {task.get('id')} for organization because it has no 'created' date.")
+                    skipped_count += 1
+                    continue
+
                 task_id = task.get('id')
                 history, _ = parse_tech_report_from_notes(task.get('notes', ''))
                 
                 if not history or not any(r.get('attachments') for r in history):
-                    continue # Skip tasks with no reports or no attachments
+                    continue
 
-                # Determine destination folder
                 created_dt_local = date_parse(task.get('created')).astimezone(THAILAND_TZ)
                 monthly_folder_name = created_dt_local.strftime('%Y-%m')
                 customer_info = parse_customer_info_from_notes(task.get('notes', ''))
@@ -1971,7 +1973,6 @@ def organize_files():
                         if not file_id:
                             continue
 
-                        # Get current file metadata to check its parent
                         file_meta = service.files().get(fileId=file_id, fields='parents').execute()
                         current_parents = file_meta.get('parents', [])
 
@@ -1980,7 +1981,6 @@ def organize_files():
                             app.logger.info(f"File {file_id} is already in the correct folder. Skipping.")
                             continue
                         
-                        # Move the file by updating its parents
                         previous_parents = ",".join(current_parents)
                         service.files().update(
                             fileId=file_id,
@@ -1995,67 +1995,10 @@ def organize_files():
                 error_count += 1
                 app.logger.error(f"Error processing task {task.get('id')} for organization: {e}")
 
-        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} ไฟล์.', 'success')
+        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว/ไม่มีวันที่): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} ไฟล์.', 'success')
         return redirect(url_for('organize_files'))
 
     return render_template('organize_files.html')
-
-
-@app.route("/debug_drive")
-def debug_drive():
-    service = get_google_drive_service()
-    html = f"<h2>ผลการตรวจสอบ Google Drive ณ {datetime.datetime.now(THAILAND_TZ).strftime('%d %b %Y, %H:%M:%S')}</h2><hr>"
-    logs = []
-
-    def log_info(m): logs.append(f"<li class='list-group-item list-group-item-info'>{m}</li>")
-    def log_success(m): logs.append(f"<li class='list-group-item list-group-item-success'>{m}</li>")
-    def log_warning(m): logs.append(f"<li class='list-group-item list-group-item-warning'>{m}</li>")
-    def log_error(m): logs.append(f"<li class='list-group-item list-group-item-danger'>{m}</li>")
-
-    if not service:
-        log_error("❌ **[Authentication Error]** ไม่สามารถเชื่อมต่อ Google API ได้")
-        return html + f"<ul class='list-group'>{''.join(logs)}</ul>"
-    else: log_success("✅ **[Authentication]** เชื่อมต่อ Google API Service สำเร็จแล้ว")
-
-    # Test write permissions to main folder
-    main_folder_id = GOOGLE_DRIVE_FOLDER_ID
-    log_info(f"▶️ เริ่มการทดสอบสิทธิ์การเขียนในโฟลเดอร์หลัก ...{main_folder_id[-12:]}")
-    try:
-        file_meta = {'name': 'permission_test.tmp', 'parents': [main_folder_id]}
-        test_file = service.files().create(body=file_meta, fields='id').execute()
-        log_success("✅ **[Permission Test]** สร้างไฟล์ทดสอบสำเร็จ (Create: OK)")
-        service.files().delete(fileId=test_file.get('id')).execute()
-        log_success("✅ **[Permission Test]** ลบไฟล์ทดสอบสำเร็จ (Delete: OK)")
-        logs.append("<div class='alert alert-success mt-3'><b>สรุป:</b> การเชื่อมต่อและสิทธิ์สมบูรณ์!</div>")
-    except Exception as e:
-        log_error(f"❌ **[Permission Test]** การทดสอบเขียนไฟล์ล้มเหลว! Error: <code>{str(e)}</code>")
-    return html + f"<ul class='list-group'>{''.join(logs)}</ul>"
-
-@app.route('/authorize')
-def authorize():
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES, redirect_uri=url_for('oauth2callback', _external=True))
-    url, state = flow.authorization_url(access_type='offline', include_granted_scopes='true')
-    session['oauth_state'] = state
-    return redirect(url)
-
-@app.route('/oauth2callback')
-def oauth2callback():
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    state = session.get('oauth_state')
-    if not state or state != request.args.get('state'):
-        flash('State mismatch error.', 'danger')
-        return redirect(url_for('settings_page'))
-    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES, state=state, redirect_uri=url_for('oauth2callback', _external=True))
-    try:
-        flow.fetch_token(authorization_response=request.url)
-        creds = flow.credentials
-        token_json = creds.to_json()
-        flash(f'เชื่อมต่อ Google สำเร็จ! โปรดคัดลอกข้อความด้านล่างนี้ไปใส่ใน Environment Variable ชื่อ GOOGLE_TOKEN_JSON: <textarea class="form-control mt-2" rows="5" readonly>{token_json}</textarea>', 'success')
-    except Exception as e:
-        flash(f'เกิดข้อผิดพลาดในการเชื่อมต่อ Google: {e}', 'danger')
-    session.pop('oauth_state', None)
-    return redirect(url_for('settings_page'))
 
 if __name__ == '__main__':
     if not os.path.exists('credentials.json'):
