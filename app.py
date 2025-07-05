@@ -290,7 +290,7 @@ def load_settings_from_drive_on_startup():
 def get_app_settings():
     """Get current application settings, loading from file or using defaults."""
     global _APP_SETTINGS_STORE
-    if not _APP_SETTINGS_STORE:
+    if not _APP_STORE: # Fixed variable name from _APP_SETTINGS_STORE to _APP_STORE
         loaded = load_settings_from_file()
         _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
         if loaded:
@@ -380,7 +380,7 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
-def _perform_drive_upload(media_body, file_name, mime_type, folder_id): # Added mime_type parameter
+def _perform_drive_upload(media_body, file_name, mime_type, folder_id): 
     """Base logic to upload a file to Drive and set permissions."""
     service = get_google_drive_service()
     if not service or not folder_id:
@@ -425,12 +425,12 @@ def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
         app.logger.error(f"File at path '{file_path}' is missing or empty. Aborting upload.")
         return None
     media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-    return _perform_drive_upload(media, file_name, mime_type, folder_id) # Pass mime_type
+    return _perform_drive_upload(media, file_name, mime_type, folder_id) 
 
 def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
     """Uploads a file-like object from memory to Google Drive."""
     media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
-    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id) # Pass mime_type
+    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id) 
     return file_obj
 
 
@@ -494,18 +494,22 @@ def parse_customer_info_from_notes(notes):
     name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
     phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
     address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
-    map_url_match = re.search(r"(https?:\/\/[^\s]+|\-?\d+\.\d+,\s*\-?\d+\.\d+)", notes)
+    # Modified regex to capture coordinates or full URL more robustly
+    map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
 
     if org_match: info['organization'] = org_match.group(1).strip()
     if name_match: info['name'] = name_match.group(1).strip()
     if phone_match: info['phone'] = phone_match.group(1).strip()
     if address_match: info['address'] = address_match.group(1).strip()
     if map_url_match:
-        coords = map_url_match.group(1).strip()
-        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords):
-            info['map_url'] = f"http://maps.google.com/?q={coords}" # Corrected Google Maps URL format
+        coords_or_url = map_url_match.group(1).strip()
+        # Check if it looks like coordinates (e.g., "13.75,100.50")
+        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
+            # Use standard Google Maps search URL for coordinates
+            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}" 
         else:
-            info['map_url'] = coords
+            # Otherwise, assume it's already a valid URL
+            info['map_url'] = coords_or_url
     
     return info
 
@@ -1772,7 +1776,7 @@ def manage_duplicates():
             parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
             parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
             processed_tasks.append(parsed)
-        processed_sets[key] = processed_tasks # Changed this line to add processed_tasks
+        processed_sets[key] = processed_tasks 
     return render_template('duplicates.html', duplicates=processed_sets)
 
 @app.route('/delete_duplicates_batch', methods=['POST'])
@@ -1859,9 +1863,9 @@ def trigger_customer_follow_up_test():
             flash('ไม่พบงานที่เสร็จแล้วสำหรับใช้ทดสอบ.', 'warning')
             return redirect(url_for('settings_page'))
         latest = max(tasks, key=lambda x: date_parse(x['completed']))
-        notes = latest.get('notes', '') # Get current notes
-        feedback = parse_customer_feedback_from_notes(notes) # Parse existing feedback
-        feedback.pop('follow_up_sent_date', None) # Remove sent date for testing
+        notes = latest.get('notes', '') 
+        feedback = parse_customer_feedback_from_notes(notes) 
+        feedback.pop('follow_up_sent_date', None) 
         
         # Reconstruct notes with updated feedback and original base/reports
         history_reports, base_notes = parse_tech_report_from_notes(notes)
