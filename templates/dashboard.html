@@ -4,7 +4,6 @@
 
 {% block head_extra %}
     <style>
-        /* Base styles */
         .summary-card-link { text-decoration: none; }
         .summary-card {
             color: white;
@@ -26,7 +25,6 @@
         .table-hover tbody tr:hover { background-color: #f1f1f1; }
         .badge { font-size: 0.9em; padding: .5em .75em; }
 
-        /* For responsive table on mobile */
         .table-responsive {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -44,7 +42,6 @@
         .clickable-cell {
             cursor: pointer;
         }
-        /* Column width adjustments for better layout */
         .table th:nth-child(1), .table td:nth-child(1) { width: 5%; }
         .table th:nth-child(2), .table td:nth-child(2) { width: 25%; } /* Customer/Org */
         .table th:nth-child(3), .table td:nth-child(3) { width: 30%; } /* Task Title */
@@ -64,7 +61,7 @@
 
 <div class="row">
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='all') }}" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='all') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-primary h-100">
                 <div class="icon"><i class="fas fa-globe-asia"></i></div>
                 <div class="text-content">
@@ -75,7 +72,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='needsAction') }}" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-warning h-100">
                 <div class="icon"><i class="fas fa-hourglass-half"></i></div>
                 <div class="text-content">
@@ -86,7 +83,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='completed') }}" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='completed') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-success h-100">
                 <div class="icon"><i class="fas fa-check-double"></i></div>
                 <div class="text-content">
@@ -97,7 +94,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='overdue') }}" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='overdue') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-danger h-100">
                 <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
                 <div class="text-content">
@@ -126,7 +123,7 @@
 </div>
 
 
-<div class="card shadow-sm">
+<div class="card shadow-sm" id="task-list-section">
     <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader">
         <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
     </div>
