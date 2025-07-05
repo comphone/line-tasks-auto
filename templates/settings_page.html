@@ -6,6 +6,17 @@
 <div class="container mt-4">
     <h1 class="mb-4">ตั้งค่าระบบ</h1>
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message | safe }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
     <form method="POST" action="{{ url_for('settings_page') }}" class="needs-validation" novalidate>
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
@@ -125,14 +136,6 @@
                                value="{{ settings.auto_backup.minute_thai }}" min="0" max="59" required>
                     </div>
                 </div>
-                 <div class="row mb-3">
-                    <div class="col-md-8 offset-md-4">
-                        <button type="button" id="backupNowBtn" class="btn btn-info">
-                            สำรองข้อมูลไปที่ Google Drive ทันที
-                        </button>
-                         <div class="form-text">จะทำการสำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive</div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -145,9 +148,13 @@
             </p>
         </div>
     </form>
+    
+    <hr class="my-5">
+
+    <h2 class="mb-3">เครื่องมือและการจัดการข้อมูล</h2>
 
     <div class="card mt-4 mb-4">
-        <div class="card-header bg-info text-white">
+        <div class="card-header bg-info text-dark">
             <h5 class="mb-0">จัดการแคตตาล็อกอุปกรณ์</h5>
         </div>
         <div class="card-body">
@@ -160,55 +167,60 @@
             </a>
         </div>
     </div>
-
+    
     <div class="card mt-4 mb-4">
-        <div class="card-header bg-warning text-white">
-            <h5 class="mb-0">จัดการข้อมูลงานซ้ำซ้อน</h5>
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือผู้ดูแลระบบ</h5>
         </div>
         <div class="card-body">
-            <p>ตรวจสอบและลบงานที่มีชื่องานและชื่อลูกค้าซ้ำกัน เพื่อรักษาความสะอาดของข้อมูล</p>
-            <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning">
+            <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
+            <a href="{{ url_for('organize_files') }}" class="btn btn-info">
+                <i class="fas fa-folder-tree me-1"></i> ไปยังหน้าจัดระเบียบไฟล์ใน Drive
+            </a>
+            <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning ms-2">
                 <i class="fas fa-copy me-1"></i> ไปยังหน้าจัดการข้อมูลงานซ้ำ
             </a>
         </div>
     </div>
 
     <div class="card mt-4 mb-4">
-        <div class="card-header bg-warning text-white">
-            <h5 class="mb-0">นำเข้าข้อมูลสำรอง (.json)</h5>
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">นำเข้า / ส่งออก ข้อมูล</h5>
         </div>
         <div class="card-body">
-            <form id="importBackupForm" enctype="multipart/form-data">
-                <div class="mb-3">
-                    <label for="backupFileType" class="form-label">ประเภทไฟล์สำรอง:</label>
-                    <select class="form-select" id="backupFileType" name="file_type" required>
-                        <option value="">-- เลือกประเภทไฟล์ --</option>
-                        <option value="tasks_json">งานเก่า (tasks_backup.json)</option>
-                        <option value="settings_json">ตั้งค่าระบบ (settings_backup.json)</option>
-                    </select>
+            <div class="row">
+                <div class="col-md-6 border-end">
+                    <h6><i class="fas fa-upload me-1"></i> นำเข้าข้อมูลสำรอง (.json)</h6>
+                    <form id="importBackupForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="backupFileType" class="form-label">ประเภทไฟล์:</label>
+                            <select class="form-select" id="backupFileType" name="file_type" required>
+                                <option value="">-- เลือกประเภท --</option>
+                                <option value="tasks_json">งานเก่า (tasks_backup.json)</option>
+                                <option value="settings_json">ตั้งค่าระบบ (settings_backup.json)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="backupFile" class="form-label">เลือกไฟล์ .json</label>
+                            <input class="form-control" type="file" id="backupFile" name="backup_file" accept=".json" required>
+                        </div>
+                        <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่าง</button>
+                        <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยันการนำเข้า</button>
+                    </form>
+                    <div id="importBackupPreview" class="mt-3"></div>
                 </div>
-
-                <div class="mb-3">
-                    <label for="backupFile" class="form-label">เลือกไฟล์ JSON (.json)</label>
-                    <input class="form-control" type="file" id="backupFile" name="backup_file" accept=".json" required>
-                    <div class="form-text">
-                        อัปโหลดไฟล์ `tasks_backup.json` สำหรับงาน หรือ `settings_backup.json` สำหรับการตั้งค่าระบบ.
-                    </div>
+                <div class="col-md-6">
+                    <h6><i class="fas fa-download me-1"></i> ส่งออกข้อมูลทั้งหมด</h6>
+                    <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงาน, การตั้งค่า, และซอร์สโค้ดปัจจุบันทั้งหมด</p>
+                    <a href="{{ url_for('backup_data') }}" class="btn btn-danger">ดาวน์โหลด Full Backup (.zip)</a>
+                    <hr>
+                     <h6><i class="fas fa-cloud-upload-alt me-1"></i> สำรองข้อมูลขึ้น Google Drive</h6>
+                     <p>สำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive ทันที</p>
+                    <button type="button" id="backupNowBtn" class="btn btn-info">
+                        Backup to Drive Now
+                    </button>
                 </div>
-                <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่างการนำเข้า</button>
-                <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยินการนำเข้า</button>
-            </form>
-            <div id="importBackupPreview" class="mt-3"></div>
-        </div>
-    </div>
-
-    <div class="card mt-4 mb-4">
-        <div class="card-header bg-danger text-white">
-            <h5 class="mb-0">สำรองข้อมูลระบบทั้งหมด</h5>
-        </div>
-        <div class="card-body">
-            <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงานทั้งหมด (.json), การตั้งค่าระบบ, และซอร์สโค้ดปัจจุบัน</p>
-            <a href="{{ url_for('backup_data') }}" class="btn btn-danger">ดาวน์โหลดไฟล์สำรองข้อมูลทั้งหมด</a>
+            </div>
         </div>
     </div>
 
@@ -261,11 +273,9 @@
 {% endblock %}
 
 
-{# REVISED: The 'body_extra' block is now correctly placed OUTSIDE and AFTER the 'content' block #}
 {% block body_extra %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // --- JavaScript to handle the "Backup Now" button to avoid nested forms ---
         const backupNowBtn = document.getElementById('backupNowBtn');
         if (backupNowBtn) {
             backupNowBtn.addEventListener('click', function() {

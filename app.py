@@ -208,12 +208,10 @@ def get_google_service(api_name, api_version):
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
 
-# NEW: Function to sanitize strings for use as filenames/foldernames
 def sanitize_filename(name):
     """Removes invalid characters from a string to make it a valid filename."""
     if not name:
         return "Unnamed"
-    # Remove invalid characters for Windows/Linux/Mac filesystems
     return re.sub(r'[\\/*?:"<>|]', "", name).strip()
 
 @cached(cache)
@@ -1917,6 +1915,91 @@ def handle_postback(event):
         cache.clear()
         try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏"))
         except Exception: pass
+
+# ===================================================================
+# ========== NEW: ADMIN ROUTE FOR ORGANIZING DRIVE FILES ==========
+# ===================================================================
+@app.route('/admin/organize_files', methods=['GET', 'POST'])
+def organize_files():
+    if request.method == 'POST':
+        service = get_google_drive_service()
+        if not service:
+            flash('ไม่สามารถเชื่อมต่อ Google Drive API ได้', 'danger')
+            return redirect(url_for('organize_files'))
+
+        all_tasks = get_google_tasks_for_report(show_completed=True)
+        if all_tasks is None:
+            flash('ไม่สามารถดึงข้อมูลงานทั้งหมดได้', 'danger')
+            return redirect(url_for('organize_files'))
+            
+        moved_count, skipped_count, error_count = 0, 0, 0
+        
+        # Ensure the base 'Task_Attachments' folder exists
+        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        if not attachments_base_folder_id:
+            flash('ไม่สามารถสร้างหรือค้นหาโฟลเดอร์หลัก "Task_Attachments" ได้', 'danger')
+            return redirect(url_for('organize_files'))
+
+        for task in all_tasks:
+            try:
+                task_id = task.get('id')
+                history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                
+                if not history or not any(r.get('attachments') for r in history):
+                    continue # Skip tasks with no reports or no attachments
+
+                # Determine destination folder
+                created_dt_local = date_parse(task.get('created')).astimezone(THAILAND_TZ)
+                monthly_folder_name = created_dt_local.strftime('%Y-%m')
+                customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+                sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
+                customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+
+                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+                if not monthly_folder_id:
+                    error_count += len([att for r in history for att in r.get('attachments', [])])
+                    continue
+                    
+                destination_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+                if not destination_folder_id:
+                    error_count += len([att for r in history for att in r.get('attachments', [])])
+                    continue
+
+                for report in history:
+                    for attachment in report.get('attachments', []):
+                        file_id = attachment.get('id')
+                        if not file_id:
+                            continue
+
+                        # Get current file metadata to check its parent
+                        file_meta = service.files().get(fileId=file_id, fields='parents').execute()
+                        current_parents = file_meta.get('parents', [])
+
+                        if destination_folder_id in current_parents:
+                            skipped_count += 1
+                            app.logger.info(f"File {file_id} is already in the correct folder. Skipping.")
+                            continue
+                        
+                        # Move the file by updating its parents
+                        previous_parents = ",".join(current_parents)
+                        service.files().update(
+                            fileId=file_id,
+                            addParents=destination_folder_id,
+                            removeParents=previous_parents,
+                            fields='id, parents'
+                        ).execute()
+                        moved_count += 1
+                        app.logger.info(f"Moved file {file_id} to folder {destination_folder_id}")
+
+            except Exception as e:
+                error_count += 1
+                app.logger.error(f"Error processing task {task.get('id')} for organization: {e}")
+
+        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} ไฟล์.', 'success')
+        return redirect(url_for('organize_files'))
+
+    return render_template('organize_files.html')
+
 
 @app.route("/debug_drive")
 def debug_drive():

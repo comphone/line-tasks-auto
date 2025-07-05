@@ -37,7 +37,7 @@
     display: none; /* Hidden by default */
 }
 
-/* --- NEW: History Entry Styling --- */
+/* --- History Entry Styling --- */
 .history-entry {
     padding: 1rem;
     margin-bottom: 1rem;
@@ -60,5 +60,23 @@
 
 .history-entry-body p {
     margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
+
+/* --- NEW: Secondary Actions Tab Styling --- */
+#secondaryActionsTab .nav-link {
+    font-size: 1.1rem; /* Increase tab button font size */
+    font-weight: 500;
+}
+
+#secondaryActionsTab .tab-pane {
+    padding-top: 1rem;
+}
+
+#secondaryActionsTab .form-label {
+    font-size: 1rem;
+}
+
+#secondaryActionsTab .form-control, #secondaryActionsTab .form-select {
     font-size: 1rem;
 }
