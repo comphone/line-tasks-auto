@@ -129,11 +129,9 @@
                 </div>
                  <div class="row mb-3">
                     <div class="col-md-8 offset-md-4">
-                        <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST" style="display:inline;">
-                            <button type="submit" class="btn btn-info">
-                                สำรองข้อมูลไปที่ Google Drive ทันที
-                            </button>
-                        </form>
+                        <button type="button" id="backupNowBtn" class="btn btn-info">
+                            สำรองข้อมูลไปที่ Google Drive ทันที
+                        </button>
                          <div class="form-text">จะทำการสำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive</div>
                     </div>
                 </div>
@@ -263,8 +261,33 @@
     </div>
 </div>
 
+{% block body_extra %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // --- ADDED: JavaScript to handle the "Backup Now" button to avoid nested forms ---
+        const backupNowBtn = document.getElementById('backupNowBtn');
+        if (backupNowBtn) {
+            backupNowBtn.addEventListener('click', function() {
+                if (confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')) {
+                    // Create a temporary form to submit the POST request
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = "{{ url_for('trigger_auto_backup_now') }}";
+                    
+                    // Add CSRF token if you are using Flask-WTF
+                    // const csrfInput = document.createElement('input');
+                    // csrfInput.type = 'hidden';
+                    // csrfInput.name = 'csrf_token';
+                    // csrfInput.value = '{{ csrf_token() if csrf_token else "" }}';
+                    // form.appendChild(csrfInput);
+
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            });
+        }
+
+
         const previewBackupBtn = document.getElementById('previewBackupBtn');
         const confirmImportBackupBtn = document.getElementById('confirmImportBackupBtn');
         const backupFile = document.getElementById('backupFile');
@@ -326,14 +349,19 @@
             });
         }
 
-        if (confirmImportBackupBtn) {
-            confirmImportBackupBtn.addEventListener('click', function(event) {
-                event.preventDefault();
+        if (importBackupForm) {
+            importBackupForm.addEventListener('submit', function(event) {
+                // This handles the final import confirmation
+                event.preventDefault(); 
                 const file = backupFile.files[0];
                 const fileTypeValue = backupFileType.value;
 
                 if (!file || !fileTypeValue) {
                     alert('กรุณาเลือกประเภทไฟล์และไฟล์ JSON.');
+                    return;
+                }
+                
+                if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการนำเข้าข้อมูลนี้? การกระทำนี้อาจเขียนทับข้อมูลที่มีอยู่!')) {
                     return;
                 }
 
