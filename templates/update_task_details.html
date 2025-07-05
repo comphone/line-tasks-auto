@@ -30,14 +30,14 @@
         <div class="card-body">
             <div class="row">
                 <div class="col-md-6">
-                    <p class="mb-1"><strong>ชื่องาน:</strong> {{ task.title }}</p>
-                    <p class="mb-1"><strong>ลูกค้า:</strong> {{ task.customer.name or '-' }}</p>
-                    <p class="mb-1"><strong>เบอร์โทร:</strong> {{ task.customer.phone or '-' }}</p>
+                    <p class="mb-2"><strong>ชื่องาน:</strong> <span class="fs-6">{{ task.title }}</span></p>
+                    <p class="mb-2"><strong>ลูกค้า:</strong> <span class="fs-6">{{ task.customer.name or '-' }}</span></p>
+                    <p class="mb-2"><strong>เบอร์โทร:</strong> <span class="fs-6">{{ task.customer.phone or '-' }}</span></p>
                 </div>
                 <div class="col-md-6">
-                    <p class="mb-1"><strong>ที่อยู่:</strong> {{ task.customer.address or '-' }}</p>
-                    <p class="mb-1"><strong>นัดหมาย:</strong> <span class="fw-bold {% if task.is_overdue %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</span></p>
-                    <p class="mb-1"><strong>แผนที่:</strong> {% if task.customer.map_url %}<a href="{{ task.customer.map_url }}" target="_blank">เปิด Google Maps</a>{% else %}-{% endif %}</p>
+                    <p class="mb-2"><strong>ที่อยู่:</strong> <span class="fs-6">{{ task.customer.address or '-' }}</span></p>
+                    <p class="mb-2"><strong>นัดหมาย:</strong> <span class="fs-6 fw-bold {% if task.is_overdue %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</span></p>
+                    <p class="mb-2"><strong>แผนที่:</strong> {% if task.customer.map_url %}<a href="{{ task.customer.map_url }}" target="_blank">เปิด Google Maps</a>{% else %}-{% endif %}</p>
                 </div>
             </div>
         </div>
@@ -236,8 +236,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Geolocation button
     const getLocationBtn = document.getElementById('getLocationBtn');
-    const locationInput = document.getElementById('latitude_longitude_update');
     if (getLocationBtn) {
+        const locationInput = document.getElementById('latitude_longitude_update');
         getLocationBtn.addEventListener('click', function() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
@@ -261,6 +261,8 @@ function showMainTab() {
     const rescheduleTabContainer = document.getElementById('reschedule-tab-button');
     const mainTab = new bootstrap.Tab(mainTabBtn);
     mainTab.show();
+    
+    // Hide the action-specific tabs again
     finalReportTabContainer.style.display = 'none';
     rescheduleTabContainer.style.display = 'none';
 }
