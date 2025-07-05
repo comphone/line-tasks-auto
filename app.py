@@ -2186,28 +2186,99 @@ def create_task_flex_message(task):
         ])
     )
 
+# ========== START: โค้ดส่วนที่ 1 ที่เพิ่มเข้ามา ==========
+def create_full_summary_message(title, tasks):
+    """Creates a single summary message with all tasks, no limit."""
+    if not tasks:
+        return TextSendMessage(text=f"ไม่พบรายการ{title}ในขณะนี้")
+
+    # Sort tasks: by due date if available, otherwise by creation time.
+    tasks.sort(key=lambda x: date_parse(x.get('due')) if x.get('due') else date_parse(x.get('created', '9999-12-31T23:59:59Z')))
+
+    message_lines = [f"📋 {title} (ทั้งหมด {len(tasks)} งาน)\n"]
+    for i, task in enumerate(tasks):
+        customer = parse_customer_info_from_notes(task.get('notes', ''))
+        due_dt = parse_google_task_dates(task).get('due_formatted', 'ยังไม่ระบุ')
+        
+        line = f"{i+1}. {task.get('title', 'N/A')}"
+        if customer.get('name'):
+            line += f"\n   - 👤 {customer.get('name')}"
+        line += f"\n   - 🗓️ {due_dt}"
+        message_lines.append(line)
+
+    full_message = "\n\n".join(message_lines)
+
+    # Split message if it's too long for LINE (5000 chars limit)
+    if len(full_message) > 4900:
+        return TextSendMessage(text=full_message[:4900] + "\n\n... (ข้อความยาวเกินไป โปรดดูต่อในเว็บ)")
+        
+    return TextSendMessage(text=full_message)
+# ========== END: โค้ดส่วนที่ 1 ที่เพิ่มเข้ามา ==========
+
+
+# ========== START: โค้ดส่วนที่ 2 ที่แก้ไขแล้ว ==========
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     text = event.message.text.strip().lower()
 
-    command_handlers = {
-        'งานค้าง': lambda: [t for t in (get_google_tasks_for_report(False) or []) if t.get('status') == 'needsAction'],
-        'งานเสร็จ': lambda: sorted([t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed'], key=lambda x: date_parse(x['completed']) if x.get('completed') else datetime.datetime.min.replace(tzinfo=pytz.utc), reverse=True),
-        'งานวันนี้': lambda: [t for t in (get_google_tasks_for_report(False) or []) if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == datetime.datetime.now(THAILAND_TZ).date() and t.get('status') == 'needsAction'],
-        'งานพรุ่งนี้': lambda: [t for t in (get_google_tasks_for_report(False) or []) if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == (datetime.datetime.now(THAILAND_TZ) + datetime.timedelta(days=1)).date() and t.get('status') == 'needsAction'],
-    }
+    # --- Command: งานวันนี้ (Today's jobs) ---
+    if text == 'งานวันนี้':
+        tasks_today = [t for t in (get_google_tasks_for_report(False) or []) 
+                       if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == datetime.datetime.now(THAILAND_TZ).date() and t.get('status') == 'needsAction']
 
-    if text in command_handlers:
-        tasks = command_handlers[text]()
-        title_map = {
-            'งานค้าง': 'รายการงานค้าง',
-            'งานเสร็จ': 'รายการงานเสร็จ',
-            'งานวันนี้': 'งานวันนี้',
-            'งานพรุ่งนี้': 'งานพรุ่งนี้',
-        }
-        reply = create_task_list_message(title_map.get(text, text), tasks)
+        if not tasks_today:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่พบงานสำหรับวันนี้"))
+            return
+
+        tasks_today.sort(key=lambda x: date_parse(x['due']))
+        
+        reply_messages = []
+        for task in tasks_today:
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            parsed_dates = parse_google_task_dates(task)
+            location_info = f"พิกัด: {customer_info.get('map_url')}" if customer_info.get('map_url') else "พิกัด: - (ไม่มีข้อมูล)"
+            
+            message_text = (
+                f"🔔 งานสำหรับวันนี้\n\n"
+                f"ชื่องาน: {task.get('title', '-')}\n"
+                f"👤 ลูกค้า: {customer_info.get('name', '-')}\n"
+                f"📞 โทร: {customer_info.get('phone', '-')}\n"
+                f"🗓️ นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n"
+                f"📍 {location_info}\n\n"
+                f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
+            )
+            reply_messages.append(TextSendMessage(text=message_text))
+        
+        # LINE allows replying with up to 5 messages at once
+        line_bot_api.reply_message(event.reply_token, reply_messages[:5])
+        return
+
+    # --- Command: งานค้าง (Pending jobs) ---
+    if text == 'งานค้าง':
+        pending_tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('status') == 'needsAction']
+        reply = create_full_summary_message('รายการงานค้าง', pending_tasks)
         line_bot_api.reply_message(event.reply_token, reply)
-    elif text == 'สร้างงานใหม่' and LIFF_ID_FORM:
+        return
+
+    # --- Command: งานเสร็จ (Completed jobs) ---
+    if text == 'งานเสร็จ':
+        completed_tasks = sorted([t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed'], 
+                                 key=lambda x: date_parse(x['completed']) if x.get('completed') else datetime.datetime.min.replace(tzinfo=pytz.utc), 
+                                 reverse=True)
+        reply = create_task_list_message('รายการงานเสร็จล่าสุด', completed_tasks) # Uses the old simple summary
+        line_bot_api.reply_message(event.reply_token, reply)
+        return
+
+    # --- Command: งานพรุ่งนี้ (Tomorrow's jobs) ---
+    if text == 'งานพรุ่งนี้':
+        tomorrow_tasks = [t for t in (get_google_tasks_for_report(False) or []) 
+                          if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == (datetime.datetime.now(THAILAND_TZ) + datetime.timedelta(days=1)).date() and t.get('status') == 'needsAction']
+        reply = create_task_list_message('งานพรุ่งนี้', tomorrow_tasks)
+        line_bot_api.reply_message(event.reply_token, reply)
+        return
+
+    # --- Other commands ---
+    if text == 'สร้างงานใหม่' and LIFF_ID_FORM:
         quick_reply = QuickReply(items=[QuickReplyButton(action=URIAction(label="เปิดฟอร์มสร้างงาน", uri=f"https://liff.line.me/{LIFF_ID_FORM}"))])
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เปิดฟอร์มเพื่อสร้างงานใหม่ครับ 👇", quick_reply=quick_reply))
     elif text.startswith('ดูงาน '):
@@ -2217,15 +2288,12 @@ def handle_text_message(event):
             return
 
         all_tasks = get_google_tasks_for_report(show_completed=True) or []
-        
-        filtered_tasks = [t for t in all_tasks
-                          if name_query in parse_customer_info_from_notes(t.get('notes', '')).get('name', '').lower()]
+        filtered_tasks = [t for t in all_tasks if name_query in parse_customer_info_from_notes(t.get('notes', '')).get('name', '').lower()]
         
         if not filtered_tasks:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ไม่พบงานของลูกค้า: {name_query}"))
         else:
             filtered_tasks.sort(key=lambda x: (x.get('status') == 'completed', date_parse(x['due']) if x.get('due') else datetime.datetime.max.replace(tzinfo=pytz.utc)))
-            
             bubbles = [create_task_flex_message(t) for t in filtered_tasks[:10]]
             if bubbles:
                 line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text=f"ผลการค้นหา: {name_query}", contents=CarouselContainer(contents=bubbles)))
@@ -2234,18 +2302,19 @@ def handle_text_message(event):
     elif text == 'comphone':
         help_text = (
             "พิมพ์คำสั่งเพื่อดูรายงานหรือจัดการงาน:\n"
-            "- *งานค้าง*: ดูรายการงานที่ยังไม่เสร็จ\n"
-            "- *งานเสร็จ*: ดูรายการงานที่ทำเสร็จแล้ว\n"
-            "- *งานวันนี้*: ดูงานที่นัดหมายไว้สำหรับวันนี้\n"
-            "- *งานพรุ่งนี้*: ดูงานที่นัดหมายไว้สำหรับพรุ่งนี้\n"
-            "- *สร้างงานใหม่*: เปิดฟอร์มสำหรับสร้างงานใหม่ (ผ่าน LIFF)\n"
+            "- *งานค้าง*: ดูรายการงานที่ยังไม่เสร็จทั้งหมด\n"
+            "- *งานเสร็จ*: ดูรายการงานที่ทำเสร็จแล้ว 5 รายการล่าสุด\n"
+            "- *งานวันนี้*: ดูงานที่นัดหมายสำหรับวันนี้ (แยกข้อความ)\n"
+            "- *งานพรุ่งนี้*: ดูสรุปงานที่นัดหมายสำหรับพรุ่งนี้\n"
+            "- *สร้างงานใหม่*: เปิดฟอร์มสำหรับสร้างงานใหม่\n"
             "- *ดูงาน [ชื่อลูกค้า]*: ค้นหางานตามชื่อลูกค้า\n\n"
-            f"ข้อมูลเพิ่มเติม: {url_for('summary', _external=True)}"
+            f"ดูข้อมูลทั้งหมด: {url_for('summary', _external=True)}"
         )
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_text))
     else:
         # ทำให้บอทเงียบเมื่อไม่เจอคำสั่งที่กำหนด
         pass
+# ========== END: โค้ดส่วนที่ 2 ที่แก้ไขแล้ว ==========
 
 
 @handler.add(PostbackEvent)
