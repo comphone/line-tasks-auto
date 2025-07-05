@@ -1293,6 +1293,91 @@ def task_details(task_id):
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []))
 
+# ===================================================================
+# ========== NEW: ROUTE TO HANDLE REPORT ATTACHMENT EDITING ==========
+# ===================================================================
+@app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
+def edit_report_attachments(task_id, report_index):
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
+        abort(404)
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        flash('ไม่พบรายงานที่ต้องการแก้ไข', 'danger')
+        return redirect(url_for('task_details', task_id=task_id))
+
+    report_to_edit = history[report_index]
+    
+    # --- Deletion Logic ---
+    attachments_to_keep_ids = request.form.getlist('attachments_to_keep')
+    original_attachments = report_to_edit.get('attachments', [])
+    updated_attachments = []
+    
+    drive_service = get_google_drive_service()
+    if drive_service:
+        for att in original_attachments:
+            if att['id'] in attachments_to_keep_ids:
+                updated_attachments.append(att)
+            else:
+                try:
+                    drive_service.files().delete(fileId=att['id']).execute()
+                    app.logger.info(f"Deleted attachment {att['id']} from Drive.")
+                except HttpError as e:
+                    app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
+    else:
+        # If drive service fails, keep all original attachments to prevent data loss
+        updated_attachments = original_attachments
+        flash('ไม่สามารถเชื่อมต่อ Google Drive เพื่อลบไฟล์ได้', 'warning')
+    
+    # --- Addition Logic ---
+    new_files = request.files.getlist('new_files[]')
+    if new_files:
+        # Get the destination folder again
+        created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+        monthly_folder_name = created_dt_local.strftime('%Y-%m')
+        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        customer_info = parse_customer_info_from_notes(base_notes_text)
+        sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
+        customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+        final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+        
+        if final_upload_folder_id:
+            for file in new_files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
+                        file.save(tmp.name)
+                        drive_file = upload_file_from_path_to_drive(tmp.name, filename, file.mimetype, final_upload_folder_id)
+                        if drive_file:
+                            updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+                        os.unlink(tmp.name)
+        else:
+            flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
+
+    # Update the specific report in the history list
+    report_to_edit['attachments'] = updated_attachments
+    history[report_index] = report_to_edit
+
+    # Reconstruct and save the notes
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        flash('แก้ไขรูปภาพในรายงานเรียบร้อยแล้ว!', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงรูปภาพ', 'danger')
+
+    return redirect(url_for('task_details', task_id=task_id))
+
+
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
 def edit_task(task_id):
     task_raw = get_single_task(task_id)
@@ -1914,10 +1999,7 @@ def handle_postback(event):
         try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏"))
         except Exception: pass
 
-# ===================================================================
-# ========== NEW: ADMIN ROUTE FOR ORGANIZING DRIVE FILES ==========
-# ===================================================================
-@app.route('/admin/organize_files', methods=['GET', 'POST'])
+@app.route("/admin/organize_files", methods=['GET', 'POST'])
 def organize_files():
     if request.method == 'POST':
         service = get_google_drive_service()
@@ -1939,7 +2021,6 @@ def organize_files():
 
         for task in all_tasks:
             try:
-                # REVISED: Add check for task creation date
                 if not task.get('created'):
                     app.logger.warning(f"Skipping task {task.get('id')} for organization because it has no 'created' date.")
                     skipped_count += 1
@@ -1999,6 +2080,7 @@ def organize_files():
         return redirect(url_for('organize_files'))
 
     return render_template('organize_files.html')
+
 
 if __name__ == '__main__':
     if not os.path.exists('credentials.json'):
