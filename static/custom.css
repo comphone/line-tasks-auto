@@ -1,0 +1,38 @@
+/* static/custom.css */
+
+/* Hero Card for Task Info */
+.info-hero-card {
+    background-color: #343a40; /* bg-dark */
+    color: white;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.info-hero-card .info-label {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-hero-card .info-value {
+    font-size: 1.25rem; /* Larger font size for values */
+    font-weight: 500;
+    margin-bottom: 1rem;
+    word-wrap: break-word;
+}
+
+.info-hero-card .info-value a {
+    color: #1e90ff; /* dodgerblue */
+    text-decoration: none;
+}
+.info-hero-card .info-value a:hover {
+    text-decoration: underline;
+}
+
+/* Action Cards */
+.action-card {
+    display: none; /* Hidden by default */
+}

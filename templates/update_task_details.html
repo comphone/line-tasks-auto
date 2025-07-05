@@ -20,73 +20,47 @@
         {% endif %}
     {% endwith %}
 
-    <div class="card mb-4">
-        <div class="card-header bg-light">
-            <div class="d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>ข้อมูลหลักของงาน</h5>
-                <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit me-1"></i>แก้ไข</a>
-            </div>
+    <div class="info-hero-card shadow-lg">
+        <div class="d-flex justify-content-between align-items-start">
+             <h4 class="mb-3">{{ task.title }}</h4>
+             <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-light"><i class="fas fa-edit"></i></a>
         </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="mb-2"><strong>ชื่องาน:</strong> <span class="fs-6">{{ task.title }}</span></p>
-                    <p class="mb-2"><strong>ลูกค้า:</strong> <span class="fs-6">{{ task.customer.name or '-' }}</span></p>
-                    <p class="mb-2"><strong>เบอร์โทร:</strong> <span class="fs-6">{{ task.customer.phone or '-' }}</span></p>
-                </div>
-                <div class="col-md-6">
-                    <p class="mb-2"><strong>ที่อยู่:</strong> <span class="fs-6">{{ task.customer.address or '-' }}</span></p>
-                    <p class="mb-2"><strong>นัดหมาย:</strong> <span class="fs-6 fw-bold {% if task.is_overdue %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</span></p>
-                    <p class="mb-2"><strong>แผนที่:</strong> {% if task.customer.map_url %}<a href="{{ task.customer.map_url }}" target="_blank">เปิด Google Maps</a>{% else %}-{% endif %}</p>
-                </div>
+        <div class="row">
+            <div class="col-md-6">
+                <p class="info-label">ลูกค้า</p>
+                <h5 class="info-value">{{ task.customer.name or '-' }}</h5>
+                <p class="info-label">เบอร์โทร</p>
+                <h5 class="info-value">{{ task.customer.phone or '-' }}</h5>
+            </div>
+            <div class="col-md-6">
+                 <p class="info-label">ที่อยู่</p>
+                <h5 class="info-value">{{ task.customer.address or '-' }}</h5>
+                <p class="info-label">นัดหมาย</p>
+                <h5 class="info-value {% if task.is_overdue %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</h5>
             </div>
         </div>
     </div>
 
-    <ul class="nav nav-tabs" id="taskActionTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="status-tab" data-bs-toggle="tab" data-bs-target="#status-pane" type="button" role="tab" aria-controls="status-pane" aria-selected="true"><i class="fas fa-flag me-2"></i>จัดการสถานะ</button>
-        </li>
-        <li class="nav-item" role="presentation" id="final-report-tab-button" style="display: none;">
-            <button class="nav-link" id="final-report-tab" data-bs-toggle="tab" data-bs-target="#final-report-pane" type="button" role="tab" aria-controls="final-report-pane" aria-selected="false"><i class="fas fa-check-circle me-2"></i>บันทึกรายงานสรุป</button>
-        </li>
-        <li class="nav-item" role="presentation" id="reschedule-tab-button" style="display: none;">
-            <button class="nav-link" id="reschedule-tab" data-bs-toggle="tab" data-bs-target="#reschedule-pane" type="button" role="tab" aria-controls="reschedule-pane" aria-selected="false"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i>เพิ่มรายงานย่อย</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-pane" type="button" role="tab" aria-controls="history-pane" aria-selected="false"><i class="fas fa-history me-2"></i>ประวัติงาน</button>
-        </li>
-    </ul>
-
-    <div class="tab-content border border-top-0 p-3" id="taskActionTabsContent">
-        <div class="tab-pane fade show active" id="status-pane" role="tabpanel" aria-labelledby="status-tab">
-            <h5 class="mb-3">เลือกการกระทำหลักสำหรับงานนี้</h5>
-            <div class="d-grid gap-2 d-md-flex">
-                <button type="button" id="goToFinalReportTabBtn" class="btn btn-success btn-lg"><i class="fas fa-check-circle me-2"></i>ปิดงานและบันทึกรายงานสรุป</button>
-                <button type="button" id="goToRescheduleTabBtn" class="btn btn-warning btn-lg"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</button>
+    <div class="card shadow-sm" id="chooseActionCard">
+        <div class="card-body text-center">
+            <h5 class="card-title mb-3">เลือกการกระทำหลักสำหรับงานนี้</h5>
+             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+                <button type="button" onclick="showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงานและบันทึกรายงานสรุป</button>
+                <button type="button" onclick="showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</button>
             </div>
-            <p class="form-text mt-3">
-                - กด **"ปิดงาน"** หากต้องการสรุปงานและเปลี่ยนสถานะเป็น "เสร็จเรียบร้อย"<br>
-                - กด **"เลื่อนนัดหมาย"** หากต้องการกำหนดวันนัดใหม่และบันทึกเหตุผล
-            </p>
         </div>
-
-        <div class="tab-pane fade" id="final-report-pane" role="tabpanel" aria-labelledby="final-report-tab">
+    </div>
+    
+    <div class="card shadow-sm action-card" id="finalReportCard">
+        <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
+        <div class="card-body">
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="complete_task">
-                <h5 class="mb-3">บันทึกรายงานสรุปเพื่อปิดงาน</h5>
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
                     <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
                 </div>
-                <div class="mb-3">
-                    <label for="equipment_used_final" class="form-label"><strong>อุปกรณ์ที่ใช้ (ถ้ามี)</strong></label>
-                    <textarea class="form-control" id="equipment_used_final" name="equipment_used" rows="3"></textarea>
-                </div>
-                <div class="mb-3">
+                 <div class="mb-3">
                     <label for="technicians_final" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
                     <select class="form-select" id="technicians_final" name="technicians_report" multiple required size="3">
                         {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
@@ -96,24 +70,19 @@
                     <label for="files_final" class="form-label"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*">
                 </div>
-                <div class="mb-3">
-                    <label for="latitude_longitude_update" class="form-label"><strong>อัปเดตพิกัดแผนที่ (ถ้ามีการเปลี่ยนแปลง)</strong></label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="latitude_longitude_update" name="latitude_longitude_update" placeholder="เช่น 16.049,103.653">
-                        <button class="btn btn-outline-secondary" type="button" id="getLocationBtn"><i class="fas fa-crosshairs me-1"></i> รับตำแหน่งปัจจุบัน</button>
-                    </div>
-                </div>
                 <hr>
                 <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
-                <button type="button" class="btn btn-secondary" onclick="showMainTab()">ยกเลิก</button>
+                <button type="button" class="btn btn-secondary" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
             </form>
         </div>
+    </div>
 
-        <div class="tab-pane fade" id="reschedule-pane" role="tabpanel" aria-labelledby="reschedule-tab">
-             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}">
+    <div class="card shadow-sm action-card" id="rescheduleCard">
+        <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}">
                 <input type="hidden" name="action" value="reschedule_task">
-                <h5 class="mb-3">เลื่อนนัดหมาย</h5>
-                 <div class="mb-3">
+                <div class="mb-3">
                     <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
                     <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
                 </div>
@@ -127,78 +96,58 @@
                         {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
                     </select>
                 </div>
+                <hr>
                 <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
-                <button type="button" class="btn btn-secondary" onclick="showMainTab()">ยกเลิก</button>
+                <button type="button" class="btn btn-secondary" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
             </form>
         </div>
+    </div>
 
-        <div class="tab-pane fade" id="progress-report-pane" role="tabpanel" aria-labelledby="progress-report-tab">
-             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data">
-                <input type="hidden" name="action" value="save_report">
-                <h5 class="mb-3">เพิ่มรายงานความคืบหน้า (งานยังไม่เสร็จ)</h5>
-                <div class="mb-3">
-                    <label for="work_summary_progress" class="form-label"><strong>สรุปความคืบหน้า</strong></label>
-                    <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3" placeholder="เช่น ติดตั้งกล้องภายนอกเสร็จแล้ว 2 ตัว เหลือภายในอีก 2 ตัว"></textarea>
-                </div>
-                <div class="mb-3">
-                    <label for="equipment_used_progress" class="form-label"><strong>อุปกรณ์ที่ใช้ในรอบนี้ (ชื่อ,จำนวน)</strong></label>
-                    <textarea class="form-control" id="equipment_used_progress" name="equipment_used" rows="3"></textarea>
-                </div>
-                <div class="mb-3">
-                    <label for="technicians_progress" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
-                    <select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">
-                        {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label for="files_progress" class="form-label"><strong>แนบรูปภาพความคืบหน้า</strong></label>
-                    <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*">
-                </div>
-                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
-            </form>
+    <div class="card shadow-sm mt-4">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" id="secondaryActionsTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i>เพิ่มรายงานย่อย</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-pane" type="button" role="tab" aria-controls="history-pane" aria-selected="true"><i class="fas fa-history me-2"></i>ประวัติงาน</button>
+                </li>
+            </ul>
         </div>
-
-        <div class="tab-pane fade" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
-            <h5 class="mb-3">ประวัติการดำเนินงานทั้งหมด</h5>
-            {% if task.tech_reports_history %}
-            <div class="list-group list-group-flush">
-                {% for report in task.tech_reports_history %}
-                <div class="list-group-item px-0">
-                    {% if report.type == 'reschedule' %}
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1 text-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</h6>
-                            <small class="text-muted">{{ report.summary_date }}</small>
-                        </div>
-                        <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
-                        <p class="mb-1"><strong>เหตุผล:</strong> {{ report.reason or 'ไม่ได้ระบุ' }}</p>
-                        <p class="mb-1"><small><strong>ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
-                    {% else %}
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1 text-primary"><i class="fas fa-wrench me-2"></i>รายงานการปฏิบัติงาน</h6>
-                             <small class="text-muted">{{ report.summary_date }}</small>
-                        </div>
-                        <p class="mb-1"><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
-                        <p class="mb-1"><strong>อุปกรณ์:</strong><br>{% if report.equipment_used_display %}{{ report.equipment_used_display | safe }}{% else %}-{% endif %}</p>
-                        <p class="mb-1"><small><strong>ช่าง:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
-                        
-                        {% if report.attachments %}
-                        <div class="mt-2">
-                            <div class="d-flex flex-wrap gap-2">
-                                {% for attachment in report.attachments %}
-                                <a href="{{ attachment.url }}" target="_blank">
-                                    <img src="https://drive.google.com/thumbnail?id={{ attachment.id }}&sz=w200" alt="Attachment" style="width: 80px; height: 80px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd;">
-                                </a>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endif %}
-                    {% endif %}
-                </div>
-                {% endfor %}
+        <div class="card-body tab-content">
+            <div class="tab-pane fade" id="progress-report-pane" role="tabpanel" aria-labelledby="progress-report-tab">
+                 <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data">
+                    <input type="hidden" name="action" value="save_report">
+                    <h5 class="mb-3">เพิ่มรายงานความคืบหน้า (งานยังไม่เสร็จ)</h5>
+                    <div class="mb-3"><label for="work_summary_progress" class="form-label"><strong>สรุปความคืบหน้า</strong></label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
+                    <div class="mb-3"><label for="technicians_progress" class="form-label"><strong>ช่าง <span class="text-danger">*</span></strong></label><select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">{% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}</select></div>
+                    <div class="mb-3"><label for="files_progress" class="form-label"><strong>แนบรูป</strong></label><input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*"></div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+                </form>
             </div>
-            {% else %}
-            <p class="text-muted">ยังไม่มีประวัติการดำเนินงาน</p>
-            {% endif %}
+            <div class="tab-pane fade show active" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
+                 <h5 class="mb-3">ประวัติการดำเนินงานทั้งหมด</h5>
+                {% if task.tech_reports_history %}
+                <div class="list-group list-group-flush">
+                    {% for report in task.tech_reports_history %}
+                    <div class="list-group-item px-0">
+                        {% if report.type == 'reschedule' %}
+                            <div class="d-flex w-100 justify-content-between"><h6 class="mb-1 text-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</h6><small class="text-muted">{{ report.summary_date }}</small></div>
+                            <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
+                            <p class="mb-1"><strong>เหตุผล:</strong> {{ report.reason or '-' }}</p>
+                            <p class="mb-1"><small><strong>ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
+                        {% else %}
+                            <div class="d-flex w-100 justify-content-between"><h6 class="mb-1 text-primary"><i class="fas fa-wrench me-2"></i>รายงานการปฏิบัติงาน</h6><small class="text-muted">{{ report.summary_date }}</small></div>
+                            <p class="mb-1"><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
+                            <p class="mb-1"><small><strong>ช่าง:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">ยังไม่มีประวัติการดำเนินงาน</p>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
@@ -207,64 +156,18 @@
 
 {% block body_extra %}
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    // Tab controls
-    const mainTabBtn = document.getElementById('status-tab');
-    const finalReportTabBtn = document.getElementById('final-report-tab');
-    const rescheduleTabBtn = document.getElementById('reschedule-tab');
-    const finalReportTabContainer = document.getElementById('final-report-tab-button');
-    const rescheduleTabContainer = document.getElementById('reschedule-tab-button');
-    const goToFinalReportBtn = document.getElementById('goToFinalReportTabBtn');
-    const goToRescheduleBtn = document.getElementById('goToRescheduleTabBtn');
+// Function to switch between the main action chooser and specific action forms
+function showActionCard(cardIdToShow) {
+    // Hide all action cards first
+    document.getElementById('chooseActionCard').style.display = 'none';
+    document.getElementById('finalReportCard').style.display = 'none';
+    document.getElementById('rescheduleCard').style.display = 'none';
 
-    const finalReportTab = new bootstrap.Tab(finalReportTabBtn);
-    const rescheduleTab = new bootstrap.Tab(rescheduleTabBtn);
-
-    goToFinalReportBtn.addEventListener('click', function(event) {
-        event.preventDefault();
-        finalReportTabContainer.style.display = 'list-item';
-        rescheduleTabContainer.style.display = 'none';
-        finalReportTab.show();
-    });
-
-    goToRescheduleBtn.addEventListener('click', function(event) {
-        event.preventDefault();
-        rescheduleTabContainer.style.display = 'list-item';
-        finalReportTabContainer.style.display = 'none';
-        rescheduleTab.show();
-    });
-
-    // Geolocation button
-    const getLocationBtn = document.getElementById('getLocationBtn');
-    if (getLocationBtn) {
-        const locationInput = document.getElementById('latitude_longitude_update');
-        getLocationBtn.addEventListener('click', function() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    locationInput.value = `${lat.toFixed(6)},${lon.toFixed(6)}`;
-                }, function(error) {
-                    alert(`Error getting location: ${error.message}`);
-                });
-            } else {
-                alert("Geolocation is not supported by this browser.");
-            }
-        });
+    // Show the requested card
+    const cardToShow = document.getElementById(cardIdToShow);
+    if (cardToShow) {
+        cardToShow.style.display = 'block';
     }
-});
-
-// Function to go back to the main status tab, called by "Cancel" buttons
-function showMainTab() {
-    const mainTabBtn = document.getElementById('status-tab');
-    const finalReportTabContainer = document.getElementById('final-report-tab-button');
-    const rescheduleTabContainer = document.getElementById('reschedule-tab-button');
-    const mainTab = new bootstrap.Tab(mainTabBtn);
-    mainTab.show();
-    
-    // Hide the action-specific tabs again
-    finalReportTabContainer.style.display = 'none';
-    rescheduleTabContainer.style.display = 'none';
 }
 </script>
 {% endblock %}
