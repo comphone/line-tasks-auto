@@ -4,15 +4,14 @@
 
 {% block head_extra %}
 <style>
-    /* Add styles for the report form section */
     .report-form-section .form-label {
         font-weight: 500;
         margin-bottom: 0.5rem;
     }
     .report-form-section .form-control,
     .report-form-section .form-select {
-        background-color: #f8f9fa; /* Light grey background */
-        border: 1px solid #dee2e6; /* Clearer border */
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
     }
     .report-form-section .form-control:focus,
     .report-form-section .form-select:focus {
@@ -23,7 +22,7 @@
     .report-form-section .input-group .btn {
         border-color: #dee2e6;
     }
-    .report-form-section .mb-4 { /* Add more space between form groups */
+    .report-form-section .mb-4 {
         margin-bottom: 1.5rem !important;
     }
 </style>
@@ -115,7 +114,9 @@
                 </div>
                 <div class="mb-4">
                     <label for="equipment_used" class="form-label"><i class="fas fa-tools me-2"></i>อุปกรณ์ที่ใช้ (ชื่อ,จำนวน - แยกบรรทัด)</label>
-                    <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="เช่น กล้องวงจรปิด, 1&#10;สาย RG6, 20&#10;หัว BNC, 2"></textarea>
+                    <textarea class="form-control" id="equipment_used" name="equipment_used" rows="3" placeholder="เช่น กล้องวงจรปิด, 1
+สาย RG6, 20
+หัว BNC, 2"></textarea>
                     {% if common_equipment_items %}
                     <div class="mt-2">
                         <small>อุปกรณ์ที่ใช้บ่อย:</small><br>
@@ -185,7 +186,7 @@
             <h5 class="mb-0">ประวัติการดำเนินงานและ Feedback</h5>
         </div>
         <div class="card-body">
-            <h6><i class="fas fa-history me-2"></i>ประวัติรายงาน:</h6>
+            <h6>ประวัติรายงาน:</h6>
             {% if task.tech_reports_history %}
             <div class="list-group">
                 {% for report in task.tech_reports_history %}
@@ -200,11 +201,11 @@
                     {% if report.attachments %}
                         <div class="mt-2">
                             <strong>รูปภาพแนบ:</strong>
-                            <div class="d-flex flex-wrap gap-2">
+                            <div class="d-flex flex-wrap">
                                 {% for attachment in report.attachments %}
-                                    <a href="{{ attachment.url }}" target="_blank" class="me-2 mb-2" title="คลิกเพื่อดูรูปภาพขนาดเต็ม">
+                                    <a href="{{ attachment.url }}" target="_blank" class="me-2 mb-2">
                                         {% if attachment.id %}
-                                            <img src="https://drive.google.com/thumbnail?id={{ attachment.id }}&sz=w200" alt="Attachment Thumbnail" style="width: 80px; height: 80px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd;">
+                                            <img src="https://drive.google.com/thumbnail?id={{ attachment.id }}&sz=w200" alt="Attachment" style="width: 80px; height: 80px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd;">
                                         {% else %}
                                             <div class="d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background-color: #e9ecef; border-radius: 5px;">
                                                 <i class="fas fa-file-image fa-2x text-muted"></i>
@@ -224,7 +225,7 @@
             
             <hr>
 
-            <h6><i class="fas fa-comment-dots me-2"></i>Feedback จากลูกค้า:</h6>
+            <h6>Feedback จากลูกค้า:</h6>
             {% if task.customer_feedback %}
                 <p><strong>วันที่ Feedback:</strong> {{ task.customer_feedback.feedback_date or '-' }}</p>
                 <p><strong>ประเภท Feedback:</strong> {{ task.customer_feedback.feedback_type or '-' }}</p>
@@ -257,7 +258,10 @@
     </div>
   </div>
 </div>
+{% endblock %}
 
+
+{# REVISED: The 'body_extra' block is now correctly placed OUTSIDE and AFTER the 'content' block #}
 {% block body_extra %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -268,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const item = this.dataset.item;
             const currentText = equipmentUsedTextarea.value.trim();
             if (currentText) {
-                equipmentUsedTextarea.value = currentText + '\n' + item + ', 1';
+                equipmentUsedTextarea.value = currentText + '\\n' + item + ', 1';
             } else {
                 equipmentUsedTextarea.value = item + ', 1';
             }
@@ -276,19 +280,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // --- ADDED: Get current location ---
+    // Get current location
     const getLocationBtn = document.getElementById('getLocationBtn');
     const locationInput = document.getElementById('latitude_longitude_update');
     if (getLocationBtn) {
         getLocationBtn.addEventListener('click', function() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
-                    const lat = position.coords.latitude.toFixed(6);
-                    const lon = position.coords.longitude.toFixed(6);
-                    locationInput.value = `${lat},${lon}`;
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    locationInput.value = `${lat.toFixed(6)},${lon.toFixed(6)}`;
                 }, function(error) {
                     alert(`Error getting location: ${error.message}`);
-                }, { enableHighAccuracy: true });
+                });
             } else {
                 alert("Geolocation is not supported by this browser.");
             }
