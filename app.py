@@ -1141,14 +1141,17 @@ def task_details(task_id):
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
-        # --- REVISED: Handle tasks without a created date ---
+        # Get the destination folder for attachments
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        
+        # --- REVISED: Handle tasks without a created date ---
         monthly_folder_id = None
         if task_raw.get('created'):
             created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
             monthly_folder_name = created_dt_local.strftime('%Y-%m')
             monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
         else:
+            # Fallback for old tasks without a creation date
             monthly_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
 
         customer_info = parse_customer_info_from_notes(base_notes_text)
@@ -1697,7 +1700,7 @@ def manage_duplicates():
             parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
             parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
             processed_tasks.append(parsed)
-        processed_sets[key] = processed_tasks
+        processed_sets[key] = processed_sets
 
     return render_template('duplicates.html', duplicates=processed_sets)
 
