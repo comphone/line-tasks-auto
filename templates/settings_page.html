@@ -6,8 +6,6 @@
 <div class="container mt-4">
     <h1 class="mb-4">ตั้งค่าระบบ</h1>
 
-    {# Flashed messages are now handled by the base.html template after redirect #}
-
     <form method="POST" action="{{ url_for('settings_page') }}" class="needs-validation" novalidate>
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
@@ -260,33 +258,26 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+
+{# REVISED: The 'body_extra' block is now correctly placed OUTSIDE and AFTER the 'content' block #}
 {% block body_extra %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // --- ADDED: JavaScript to handle the "Backup Now" button to avoid nested forms ---
+        // --- JavaScript to handle the "Backup Now" button to avoid nested forms ---
         const backupNowBtn = document.getElementById('backupNowBtn');
         if (backupNowBtn) {
             backupNowBtn.addEventListener('click', function() {
                 if (confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')) {
-                    // Create a temporary form to submit the POST request
                     const form = document.createElement('form');
                     form.method = 'POST';
                     form.action = "{{ url_for('trigger_auto_backup_now') }}";
-                    
-                    // Add CSRF token if you are using Flask-WTF
-                    // const csrfInput = document.createElement('input');
-                    // csrfInput.type = 'hidden';
-                    // csrfInput.name = 'csrf_token';
-                    // csrfInput.value = '{{ csrf_token() if csrf_token else "" }}';
-                    // form.appendChild(csrfInput);
-
                     document.body.appendChild(form);
                     form.submit();
                 }
             });
         }
-
 
         const previewBackupBtn = document.getElementById('previewBackupBtn');
         const confirmImportBackupBtn = document.getElementById('confirmImportBackupBtn');
@@ -351,7 +342,6 @@
 
         if (importBackupForm) {
             importBackupForm.addEventListener('submit', function(event) {
-                // This handles the final import confirmation
                 event.preventDefault(); 
                 const file = backupFile.files[0];
                 const fileTypeValue = backupFileType.value;
