@@ -26,7 +26,7 @@
         .table-hover tbody tr:hover { background-color: #f1f1f1; }
         .badge { font-size: 0.9em; padding: .5em .75em; }
 
-        /* --- REVISED: For responsive table on mobile --- */
+        /* For responsive table on mobile */
         .table-responsive {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -203,7 +203,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // --- Re-usable function to handle collapse icon toggling ---
         function setupCollapseToggle(headerId, collapseId) {
             const header = document.getElementById(headerId);
             const collapseElement = document.getElementById(collapseId);
@@ -223,26 +222,24 @@
                 }
             };
             
-            // Set initial state
             updateIcon(); 
-            
-            // Add listeners for bootstrap events
             collapseElement.addEventListener('shown.bs.collapse', updateIcon);
             collapseElement.addEventListener('hidden.bs.collapse', updateIcon);
         }
 
         setupCollapseToggle('chartHeader', 'monthlyTasksChartCollapse');
 
-        // --- Monthly Tasks Chart Initialization ---
         const monthlyCtx = document.getElementById('monthlyTasksChart');
         if (monthlyCtx) {
             new Chart(monthlyCtx, {
                 type: 'bar',
                 data: {
-                    labels: {{ chart_data.labels | tojson | safe }},
+                    // --- REVISED: Use explicit key access to avoid ambiguity ---
+                    labels: {{ chart_data['labels'] | tojson | safe }},
                     datasets: [{
                         label: 'จำนวนงานที่เสร็จ',
-                        data: {{ chart_data.values | tojson | safe }},
+                        // --- REVISED: Use explicit key access to avoid ambiguity ---
+                        data: {{ chart_data['values'] | tojson | safe }},
                         backgroundColor: 'rgba(25, 135, 84, 0.6)',
                         borderColor: 'rgba(25, 135, 84, 1)',
                         borderWidth: 1
