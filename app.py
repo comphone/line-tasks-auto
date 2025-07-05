@@ -2121,83 +2121,149 @@ def organize_files():
             flash('ไม่สามารถสร้างหรือค้นหาโฟลเดอร์หลัก "Task_Attachments" ได้', 'danger')
             return redirect(url_for('organize_files'))
 
+        # Fetch all files from the base attachments folder to identify unorganized ones
+        # This is a more robust approach to find files that might be in "Uncategorized" or directly in base
+        unorganized_files_query = (
+            f"'{attachments_base_folder_id}' in parents "
+            f"and mimeType != 'application/vnd.google-apps.folder' and trashed = false"
+        )
+        # Also query for files within "Uncategorized" folder if it exists
+        uncategorized_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
+        if uncategorized_folder_id:
+            unorganized_files_query += (
+                f" or '{uncategorized_folder_id}' in parents "
+                f"and mimeType != 'application/vnd.google-apps.folder' and trashed = false"
+            )
+
+        all_files_in_base_and_uncategorized = []
+        try:
+            # Use pageSize and pageToken for large number of files
+            page_token = None
+            while True:
+                response = _execute_google_api_call_with_retry(
+                    service.files().list, 
+                    q=unorganized_files_query, 
+                    spaces='drive', 
+                    fields='nextPageToken, files(id, name, parents)', 
+                    pageSize=100, # Fetch in chunks
+                    pageToken=page_token
+                )
+                all_files_in_base_and_uncategorized.extend(response.get('files', []))
+                page_token = response.get('nextPageToken', None)
+                if not page_token:
+                    break
+        except HttpError as e:
+            app.logger.error(f"Error listing files for organization: {e}")
+            flash('เกิดข้อผิดพลาดในการดึงรายการไฟล์จาก Google Drive', 'danger')
+            return redirect(url_for('organize_files'))
+
+        # Create a mapping of file_id to its current parents for quick lookup
+        file_parents_map = {f['id']: f.get('parents', []) for f in all_files_in_base_and_uncategorized}
+
+        # Create a mapping of task_id to its expected folder ID
+        task_folder_map = {}
         for task in all_tasks:
             try:
-                if not task.get('created'):
-                    app.logger.warning(f"Skipping task {task.get('id')} for organization because it has no 'created' date.")
-                    skipped_count += 1
-                    continue
+                # Ensure task has a created date, otherwise use current time for folder naming
+                created_dt_local = None
+                if task.get('created'):
+                    created_dt_local = date_parse(task.get('created')).astimezone(THAILAND_TZ)
+                else:
+                    # If no created date, use current time for monthly folder, but log a warning
+                    app.logger.warning(f"Task {task.get('id')} has no 'created' date. Using current date for monthly folder naming.")
+                    created_dt_local = datetime.datetime.now(THAILAND_TZ)
 
-                task_id = task.get('id')
-                history, _ = parse_tech_report_from_notes(task.get('notes', ''))
-                
-                if not history or not any(r.get('attachments') for r in history):
-                    continue
-
-                created_dt_local = date_parse(task.get('created')).astimezone(THAILAND_TZ)
                 monthly_folder_name = created_dt_local.strftime('%Y-%m')
+                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+                
+                if not monthly_folder_id:
+                    app.logger.error(f"Could not create/find monthly folder {monthly_folder_name} for task {task.get('id')}.")
+                    continue # Skip this task if monthly folder can't be determined
+
                 customer_info = parse_customer_info_from_notes(task.get('notes', ''))
                 sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
-                customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
-
-                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-                if not monthly_folder_id:
-                    error_count += len([att for r in history for att in r.get('attachments', [])])
-                    continue
-                    
+                customer_task_folder_name = f"{sanitized_customer_name} - {task.get('id')}"
+                
                 destination_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
-                if not destination_folder_id:
-                    error_count += len([att for r in history for att in r.get('attachments', [])])
-                    continue
-
-                for report in history:
-                    for attachment in report.get('attachments', []):
-                        file_id = attachment.get('id')
-                        if not file_id:
-                            continue
-
-                        # It's better to fetch parents only if needed, to minimize API calls
-                        # Check if file needs to be moved
-                        try:
-                            file_meta = service.files().get(fileId=file_id, fields='parents').execute()
-                            current_parents = file_meta.get('parents', [])
-
-                            if destination_folder_id in current_parents:
-                                # File is already in the correct folder or one of its parents
-                                skipped_count += 1
-                                app.logger.info(f"File {file_id} is already in the correct folder. Skipping.")
-                                continue
-                            
-                            # Move the file: remove from old parents, add to new
-                            previous_parents = ",".join(current_parents) # Comma-separated list for removeParents
-                            service.files().update(
-                                fileId=file_id,
-                                addParents=destination_folder_id,
-                                removeParents=previous_parents,
-                                fields='id, parents'
-                            ).execute()
-                            moved_count += 1
-                            app.logger.info(f"Moved file {file_id} to folder {destination_folder_id}")
-
-                        except HttpError as file_error:
-                            # Handle cases where the file might have been deleted or inaccessible
-                            if file_error.resp.status == 404:
-                                app.logger.warning(f"File {file_id} not found on Drive, skipping. Error: {file_error}")
-                                skipped_count += 1 # Count as skipped if not found
-                            else:
-                                app.logger.error(f"Error moving file {file_id} for task {task_id}: {file_error}")
-                                error_count += 1
-                        except Exception as file_other_error:
-                            app.logger.error(f"Unexpected error when processing file {file_id} for task {task_id}: {file_other_error}")
-                            error_count += 1
-
+                if destination_folder_id:
+                    task_folder_map[task.get('id')] = destination_folder_id
+                else:
+                    app.logger.error(f"Could not create/find task folder {customer_task_folder_name} for task {task.get('id')}.")
 
             except Exception as e:
-                app.logger.error(f"Error processing task {task.get('id')} for organization: {e}")
-                # Increment error count for the task itself, not per attachment
-                error_count += 1 
+                app.logger.error(f"Error processing task {task.get('id')} for folder mapping: {e}")
 
-        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว/ไม่มีวันที่/ไม่พบ): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} งาน.', 'success')
+
+        # Now iterate through all files found and try to move them
+        for file_item in all_files_in_base_and_uncategorized:
+            file_id = file_item.get('id')
+            file_name = file_item.get('name', 'Unnamed File')
+            current_parents = file_parents_map.get(file_id, [])
+
+            # Try to link file to a task based on its name (if it contains a task ID)
+            # This is a heuristic and might need refinement based on actual file naming conventions
+            matched_task_id = None
+            for task_id_candidate in task_folder_map.keys():
+                if task_id_candidate in file_name: # Simple check if task ID is in file name
+                    matched_task_id = task_id_candidate
+                    break
+            
+            # If a task ID is found in the filename, or if it's an attachment linked via notes
+            # prioritize moving it to the correct task folder.
+            # Otherwise, check if it's an attachment from a report.
+            expected_folder_id = None
+            if matched_task_id and task_folder_map.get(matched_task_id):
+                expected_folder_id = task_folder_map[matched_task_id]
+            else:
+                # Fallback: Check if this file is an attachment in any task's notes
+                for task in all_tasks:
+                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                    for report in history:
+                        for attachment in report.get('attachments', []):
+                            if attachment.get('id') == file_id:
+                                # Found a matching attachment in a task's notes
+                                if task.get('id') in task_folder_map:
+                                    expected_folder_id = task_folder_map[task.get('id')]
+                                break
+                        if expected_folder_id: break
+                    if expected_folder_id: break
+
+            if not expected_folder_id:
+                app.logger.info(f"File {file_id} ('{file_name}') could not be linked to any task. Skipping.")
+                skipped_count += 1
+                continue # Cannot determine destination, skip this file
+
+            if expected_folder_id in current_parents:
+                skipped_count += 1
+                app.logger.info(f"File {file_id} ('{file_name}') is already in the correct folder. Skipping.")
+                continue
+            
+            try:
+                # Remove any current parents that are not the target folder
+                parents_to_remove = [p for p in current_parents if p != expected_folder_id]
+                
+                _execute_google_api_call_with_retry(
+                    service.files().update,
+                    fileId=file_id,
+                    addParents=expected_folder_id,
+                    removeParents=",".join(parents_to_remove), # Join list for removeParents
+                    fields='id, parents'
+                )
+                moved_count += 1
+                app.logger.info(f"Moved file {file_id} ('{file_name}') to folder {expected_folder_id}")
+
+            except HttpError as file_error:
+                if file_error.resp.status == 404:
+                    app.logger.warning(f"File {file_id} ('{file_name}') not found on Drive during move, skipping. Error: {file_error}")
+                    skipped_count += 1 
+                else:
+                    app.logger.error(f"Error moving file {file_id} ('{file_name}'): {file_error}")
+                    error_count += 1
+            except Exception as file_other_error:
+                app.logger.error(f"Unexpected error when processing file {file_id} ('{file_name}'): {file_other_error}")
+                error_count += 1
+
+        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว/ไม่มีข้อมูล/ไม่พบ): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} ไฟล์.', 'success')
         return redirect(url_for('organize_files'))
 
     return render_template('organize_files.html')
@@ -2206,3 +2272,4 @@ if __name__ == '__main__':
     if not os.path.exists('credentials.json'):
         app.logger.error("credentials.json not found! Google API functions will not work.")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
+
