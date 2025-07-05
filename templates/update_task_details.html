@@ -20,7 +20,7 @@
         {% endif %}
     {% endwith %}
 
-    {# New: Upload Status Box #}
+    {# New: Upload Status Box - กล่องสถานะการอัปโหลด #}
     <div id="upload-status-box" class="alert alert-info mt-3" style="display:none;">
         <i class="fas fa-spinner fa-spin me-2"></i> กำลังอัปโหลดไฟล์... <span id="upload-progress-text"></span>
         <div class="progress mt-2">
@@ -62,28 +62,29 @@
              <div class="d-grid gap-3 d-md-flex justify-content-md-center">
                 <button type="button" onclick="showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงานและบันทึกรายงานสรุป</button>
                 <button type="button" onclick="showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</button>
+                <button type="button" onclick="showActionCard('qrCodeCard')" class="btn btn-info btn-lg px-4"><i class="fas fa-qrcode me-2"></i>สร้าง QR Code</button> {# Added button to show QR Code card #}
             </div>
         </div>
     </div>
     
-    <div class="card shadow-sm action-card" id="finalReportCard">
+    {# Section: บันทึกรายงานสรุปเพื่อปิดงาน - มีกรอบและปรับขนาดตัวอักษร #}
+    <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;"> {# Hidden by default #}
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
-            {# Modified form: added id and changed onsubmit #}
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="completeForm" onsubmit="handleFormSubmission(event, this, 'complete')">
                 <input type="hidden" name="action" value="complete_task">
                 <div class="mb-3">
-                    <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
+                    <label for="work_summary_final" class="form-label form-label-custom"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
                     <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
                 </div>
                  <div class="mb-3">
-                    <label for="technicians_final" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
+                    <label for="technicians_final" class="form-label form-label-custom"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
                     <select class="form-select" id="technicians_final" name="technicians_report" multiple required size="3">
                         {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label for="files_final" class="form-label"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
+                    <label for="files_final" class="form-label form-label-custom"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*">
                 </div>
                 <hr>
@@ -93,22 +94,21 @@
         </div>
     </div>
 
-    <div class="card shadow-sm action-card" id="rescheduleCard">
+    <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;"> {# Hidden by default #}
         <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
         <div class="card-body">
-            {# Original form, kept onsubmit for general loading indicator #}
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" onsubmit="showLoading(this)">
                 <input type="hidden" name="action" value="reschedule_task">
                 <div class="mb-3">
-                    <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
+                    <label for="reschedule_due" class="form-label form-label-custom"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
                     <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
                 </div>
                 <div class="mb-3">
-                    <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
+                    <label for="reschedule_reason" class="form-label form-label-custom"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
                     <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
                 </div>
                 <div class="mb-3">
-                    <label for="technicians_reschedule" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
+                    <label for="technicians_reschedule" class="form-label form-label-custom"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
                      <select class="form-select" id="technicians_reschedule" name="technicians_reschedule" multiple required size="3">
                         {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
                     </select>
@@ -120,11 +120,26 @@
         </div>
     </div>
 
+    {# New: QR Code Actions Card - เมนูสร้าง QR Code #}
+    <div class="card shadow-sm mt-4" id="qrCodeCard" style="display:none;"> {# Hidden by default #}
+        <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
+        <div class="card-body text-center">
+            <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+                <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
+                {% if task.status == 'completed' %}
+                <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
+                {% endif %}
+            </div>
+            <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button> {# Added cancel button #}
+        </div>
+    </div>
+    {# End New #}
+
     <div class="card shadow-sm mt-4">
         <div class="card-header">
             <ul class="nav nav-tabs card-header-tabs" id="secondaryActionsTab" role="tablist">
                 <li class="nav-item" role="presentation">
-                    {# MODIFIED: Changed text and added style for font size #}
+                    {# MODIFIED: Changed text to "เพิ่มประวัติงาน" and added style for font size #}
                     <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i><span style="font-size: 0.9em;">เพิ่มประวัติงาน</span></button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -138,9 +153,9 @@
                  <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="reportForm" onsubmit="handleFormSubmission(event, this, 'report')">
                     <input type="hidden" name="action" value="save_report">
                     <h5 class="mb-3">เพิ่มรายงานความคืบหน้า (งานยังไม่เสร็จ)</h5>
-                    <div class="mb-3"><label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
-                    <div class="mb-3"><label for="technicians_progress" class="form-label">ช่าง <span class="text-danger">*</span></label><select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">{% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}</select></div>
-                    <div class="mb-3"><label for="files_progress" class="form-label">แนบรูป</label><input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*"></div>
+                    <div class="mb-3"><label for="work_summary_progress" class="form-label form-label-custom">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
+                    <div class="mb-3"><label for="technicians_progress" class="form-label form-label-custom">ช่าง <span class="text-danger">*</span></label><select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">{% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}</select></div>
+                    <div class="mb-3"><label for="files_progress" class="form-label form-label-custom">แนบรูป</label><input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*"></div>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
                 </form>
             </div>
@@ -209,6 +224,20 @@
 {% endblock %}
 
 {% block body_extra %}
+<style>
+    /* Custom style for form labels to match the desired font size */
+    .form-label-custom {
+        font-size: 0.95em; /* Adjust as needed, e.g., 0.9em, 0.85em */
+    }
+
+    /* Ensure card headers and body text are consistent */
+    .card-header h5 {
+        font-size: 1.1em; /* Adjust as needed */
+    }
+    .card-body {
+        font-size: 0.95em; /* Adjust as needed for general body text */
+    }
+</style>
 <script>
 // Pass Flask data to JavaScript
 const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
@@ -218,6 +247,8 @@ function showActionCard(cardIdToShow) {
     document.getElementById('chooseActionCard').style.display = 'none';
     document.getElementById('finalReportCard').style.display = 'none';
     document.getElementById('rescheduleCard').style.display = 'none';
+    document.getElementById('qrCodeCard').style.display = 'none'; // Hide QR code card
+
     const cardToShow = document.getElementById(cardIdToShow);
     if (cardToShow) {
         cardToShow.style.display = 'block';
@@ -256,6 +287,9 @@ async function handleFormSubmission(event, form, formType) {
     let uploadedFilesCount = 0;
     let attachmentUrls = []; // To collect URLs of uploaded files
 
+    // Ensure taskId is a string and correctly passed
+    const taskId = '{{ task.id }}'; 
+
     if (totalFiles > 0) {
         uploadStatusBox.style.display = 'block'; // Show status box
         
@@ -267,7 +301,7 @@ async function handleFormSubmission(event, form, formType) {
 
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('task_id', '{{ task.id }}');
+            formData.append('task_id', taskId); // Use the string taskId
 
             try {
                 const response = await fetch('/api/upload_attachment', {
@@ -302,7 +336,10 @@ async function handleFormSubmission(event, form, formType) {
     mainFormData.append('uploaded_attachments_json', JSON.stringify(attachmentUrls));
 
     try {
-        const response = await fetch(form.action, {
+        // Ensure the action URL is correct, using taskId directly if needed
+        const finalFormAction = `{{ url_for('task_details', task_id='') }}${taskId}`; 
+        
+        const response = await fetch(finalFormAction, { // Use the string taskId in the URL
             method: 'POST',
             body: mainFormData // Send the new FormData without files, but with attachment info
         });
