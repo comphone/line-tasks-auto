@@ -456,11 +456,21 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
 
         if status == 'completed':
             task['completed'] = datetime.datetime.now(pytz.utc).isoformat().replace('+00:00', 'Z')
-            task.pop('due', None)
-        else:
-            task.pop('completed', None)
-            if due: task['due'] = due
-            else: task.pop('due', None)
+            task['due'] = None # Explicitly set due to None on completion
+        else: # status == 'needsAction'
+            task.pop('completed', None) # Remove completed timestamp
+            if due is not None:
+                # If a specific due date is provided (e.g., rescheduling), use it.
+                task['due'] = due
+            # If due is None, it means we are just changing status without rescheduling, so we leave the existing due date.
+            # No need for an `else` clause here.
+            
+        # The API documentation implies that providing 'due' as None/null should clear it.
+        # However, to be safe, if we want to clear the due date when not rescheduling,
+        # we might need to explicitly pop it, but current logic handles this.
+        if due is None and status == 'needsAction':
+             # This case could be ambiguous. Assuming we don't want to clear due date unless specified.
+             pass
 
         return _execute_google_api_call_with_retry(service.tasks().update, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task)
     except HttpError as e:
@@ -491,7 +501,7 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords):
-            info['map_url'] = f"https://www.google.com/maps?q={coords}"
+            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords}"
         else:
             info['map_url'] = coords
     
@@ -557,6 +567,10 @@ def parse_tech_report_from_notes(notes):
             else:
                 report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
             
+            # NEW: Add a 'type' field if it doesn't exist, defaulting to 'report'
+            if 'type' not in report_data:
+                report_data['type'] = 'report'
+
             history.append(report_data)
         except json.JSONDecodeError:
             app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
@@ -564,6 +578,7 @@ def parse_tech_report_from_notes(notes):
     original_notes_text = re.sub(r"--- (?:TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*?--- (?:TECH_REPORT_END|CUSTOMER_FEEDBACK_END) ---", "", notes, flags=re.DOTALL).strip()
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
+
 
 def allowed_file(filename):
     """Checks if a filename has an allowed extension."""
@@ -761,7 +776,7 @@ def send_completion_notification(task, technicians):
         app.logger.error(f"Failed to send completion notification for task {task['id']}: {e}")
 
 # REVISED: Reschedule notification format
-def send_reschedule_notification(task, new_due_date_str, technicians):
+def send_reschedule_notification(task, new_due_date_str, reason, technicians):
     """Sends a LINE notification when a task is rescheduled."""
     settings = get_app_settings()
     admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
@@ -771,6 +786,7 @@ def send_reschedule_notification(task, new_due_date_str, technicians):
 
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
+    reason_str = f"เหตุผล: {reason}\n" if reason else ""
     
     # --- REVISED MESSAGE FORMAT ---
     message_text = (
@@ -779,6 +795,7 @@ def send_reschedule_notification(task, new_due_date_str, technicians):
         f"ลูกค้า: {customer_info.get('name', '-')}\n"
         f"📞 โทร: {customer_info.get('phone', '-')}\n"
         f"นัดหมายใหม่: {new_due_date_str}\n"
+        f"{reason_str}"
         f"ช่าง: {technician_str}\n\n"
         f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
     )
@@ -1157,69 +1174,47 @@ def summary():
                            chart_data=chart_data)
 
 
-# REVISED: Consolidated flash messages
+# ===================================================================
+# ========== START: REVISED /task/<task_id> ROUTE ==========
+# ===================================================================
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
+    # --- This block handles the POST request (when a form is submitted) ---
     if request.method == 'POST':
         task_raw = get_single_task(task_id)
         if not task_raw:
             flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
             abort(404)
-
-        work_summary = str(request.form.get('work_summary', '')).strip()
-        files = request.files.getlist('files[]') # Get list of uploaded files
-        selected_technicians = request.form.getlist('technicians')
-        new_status = request.form.get('status')
-        lat_lon_update = str(request.form.get('latitude_longitude_update', '')).strip()
-        reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
         
-        new_due_date_gmt = None
-        new_due_date_formatted = None
-
-        if new_status == 'needsAction' and reschedule_due_str:
-            try:
-                dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
-                new_due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
-            except ValueError:
-                flash('รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง โปรดตรวจสอบ', 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
-
+        # Determine which action the user took based on the submitted button
+        action = request.form.get('action')
+        
+        # Get current data from the task notes
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        customer_info = parse_customer_info_from_notes(base_notes_text)
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
-        upload_messages = []
-        upload_has_errors = False
+        final_notes = None
+        updated_task = None
+        
+        # --- ACTION 1: Add a new work report ---
+        if action == 'save_report':
+            work_summary = str(request.form.get('work_summary', '')).strip()
+            files = request.files.getlist('files[]')
+            selected_technicians = request.form.getlist('technicians_report')
 
-        if lat_lon_update:
-            if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", lat_lon_update):
-                # Reconstruct base notes with new coordinate
-                updated_customer_info = customer_info.copy()
-                updated_customer_info['map_url'] = f"https://www.google.com/maps?q={lat_lon_update}"
-                
-                notes_lines = []
-                if updated_customer_info.get('organization'):
-                     notes_lines.append(f"หน่วยงาน: {updated_customer_info['organization']}")
-                notes_lines.extend([
-                    f"ลูกค้า: {updated_customer_info.get('name', '')}",
-                    f"เบอร์โทรศัพท์: {updated_customer_info.get('phone', '')}",
-                    f"ที่อยู่: {updated_customer_info.get('address', '')}",
-                    updated_customer_info['map_url']
-                ])
-                base_notes_text = "\n".join(filter(None, notes_lines))
-                app.logger.info(f"Updated map coordinates for task {task_id} to {lat_lon_update}")
-            else:
-                flash('รูปแบบพิกัดแผนที่ไม่ถูกต้อง (ต้องเป็น "ละติจูด,ลองจิจูด")', 'warning')
-
-        # Check if there is a new report summary or new files to process
-        if work_summary or any(f.filename for f in files):
+            # A report must have a summary or an attachment
+            if not work_summary and not any(f.filename for f in files):
+                flash('กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่', 'warning')
+                return redirect(url_for('task_details', task_id=task_id))
+            
             if not selected_technicians:
                 flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
             # --- Logic to upload files to Google Drive ---
             new_attachments = []
+            upload_messages = []
+            upload_has_errors = False
             for file in files:
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
@@ -1228,10 +1223,7 @@ def task_details(task_id):
                         file.save(temp_filepath)
                         drive_file = upload_file_from_path_to_drive(temp_filepath, filename, file.mimetype, GOOGLE_DRIVE_FOLDER_ID)
                         if drive_file and drive_file.get('id') and drive_file.get('webViewLink'):
-                            new_attachments.append({
-                                'id': drive_file.get('id'),
-                                'url': drive_file.get('webViewLink')
-                            })
+                            new_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
                             upload_messages.append(f'✓ อัปโหลดไฟล์ {filename} สำเร็จ!')
                         else:
                             upload_messages.append(f'✗ อัปโหลดไฟล์ {filename} ล้มเหลว')
@@ -1245,49 +1237,94 @@ def task_details(task_id):
             
             # Append new report entry to history
             history.append({
+                'type': 'report', # This is a standard work report
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
-            history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+            flash_message = "เพิ่มรายงานการปฏิบัติงานเรียบร้อยแล้ว!"
+            if upload_messages:
+                flash_message += "<br>" + "<br>".join(upload_messages)
+            flash(flash_message, 'warning' if upload_has_errors else 'success')
+        
+        # --- ACTION 2: Reschedule the task ---
+        elif action == 'reschedule_task':
+            reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
+            reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
+            selected_technicians = request.form.getlist('technicians_reschedule')
 
-        # Reconstruct the entire notes field
+            if not reschedule_due_str:
+                flash('กรุณากำหนดวันนัดหมายใหม่', 'warning')
+                return redirect(url_for('task_details', task_id=task_id))
+            
+            new_due_date_gmt = None
+            new_due_date_formatted = None
+            try:
+                dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
+                new_due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
+            except ValueError:
+                flash('รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง โปรดตรวจสอบ', 'warning')
+                return redirect(url_for('task_details', task_id=task_id))
+
+            # Add a reschedule event to the history
+            history.append({
+                'type': 'reschedule', # Special type for reschedule events
+                'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+                'reason': reschedule_reason,
+                'new_due_date': new_due_date_formatted,
+                'technicians': selected_technicians
+            })
+            
+            # Update the task with new status and due date
+            updated_task = update_google_task(task_id, status='needsAction', due=new_due_date_gmt)
+            if updated_task:
+                send_reschedule_notification(updated_task, new_due_date_formatted, reschedule_reason, selected_technicians)
+            flash('เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว', 'success')
+
+        # --- ACTION 3: Complete the task ---
+        elif action == 'complete_task':
+            # Simply update the status to 'completed'
+            technicians_on_completion = []
+            if history:
+                technicians_on_completion = history[0].get('technicians', [])
+
+            updated_task = update_google_task(task_id, status='completed')
+            if updated_task:
+                 send_completion_notification(updated_task, technicians_on_completion)
+            flash('ปิดงานเรียบร้อยแล้ว!', 'success')
+        
+        else:
+            flash('ไม่พบการกระทำที่ร้องขอ', 'danger')
+            return redirect(url_for('task_details', task_id=task_id))
+            
+        # --- Reconstruct notes and save the task IF an update happened ---
+        history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+        
         final_notes = base_notes_text
         if all_reports_text:
             final_notes += all_reports_text
         if feedback_data:
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-        updated_task = update_google_task(task_id, notes=final_notes, status=new_status, due=new_due_date_gmt)
-
-        if updated_task:
-            cache.clear()
-            
-            final_message = "บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว!"
-            if upload_messages:
-                final_message += "<br>" + "<br>".join(upload_messages)
-            
-            flash(final_message, 'warning' if upload_has_errors else 'success')
-            
-            # Send notifications if status changed or task was rescheduled
-            if task_raw.get('status') != 'completed' and new_status == 'completed':
-                app.logger.info(f"Task {task_id} status changed to completed. Sending notification.")
-                send_completion_notification(updated_task, selected_technicians)
-            elif new_due_date_gmt:
-                app.logger.info(f"Task {task_id} rescheduled. Sending notification.")
-                send_reschedule_notification(updated_task, new_due_date_formatted, selected_technicians)
-
-        else:
-            flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลง', 'danger')
         
+        # Update notes only, as status/due might have been set already
+        final_updated_task = update_google_task(task_id, notes=final_notes)
+
+        if final_updated_task:
+            cache.clear() # Clear cache after any successful update
+        else:
+            # This is a fallback flash message in case the final notes update fails
+            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงใน Notes ของ Task', 'danger')
+
         return redirect(url_for('task_details', task_id=task_id))
 
-    # --- GET Request Logic (no changes) ---
+    # --- This block handles the GET request (when the page is loaded) ---
     task_raw = get_single_task(task_id)
-    if not task_raw: abort(404)
+    if not task_raw: 
+        abort(404)
     
     task = parse_google_task_dates(task_raw)
     notes = task.get('notes', '')
@@ -1301,6 +1338,9 @@ def task_details(task_id):
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []))
+# ===================================================================
+# ========== END: REVISED /task/<task_id> ROUTE ==========
+# ===================================================================
 
 
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
