@@ -792,7 +792,7 @@ def send_reschedule_notification(task, new_due_date_str, reason, technicians):
     except Exception as e:
         app.logger.error(f"Failed to send reschedule notification for task {task['id']}: {e}")
 
-# REVISED: scheduled_backup_job to correctly report success/failure
+
 def scheduled_backup_job():
     """Performs scheduled backup of tasks and settings to Google Drive from memory."""
     with app.app_context():
@@ -1125,7 +1125,6 @@ def summary():
                            search_query=search_query, status_filter=status_filter,
                            chart_data=chart_data)
 
-# REVISED: Refactored logic to prevent duplicate flash messages and simplify updates.
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
@@ -1141,17 +1140,14 @@ def task_details(task_id):
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
-        # Get the destination folder for attachments
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
         
-        # --- REVISED: Handle tasks without a created date ---
         monthly_folder_id = None
         if task_raw.get('created'):
             created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
             monthly_folder_name = created_dt_local.strftime('%Y-%m')
             monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
         else:
-            # Fallback for old tasks without a creation date
             monthly_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
 
         customer_info = parse_customer_info_from_notes(base_notes_text)
