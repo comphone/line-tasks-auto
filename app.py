@@ -114,7 +114,7 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
     'technician_list': []
 }
-_APP_SETTINGS_STORE = {}
+_APP_SETTINGS_STORE = {} # This is the global variable
 
 #<editor-fold desc="Helper and Utility Functions">
 
@@ -290,7 +290,8 @@ def load_settings_from_drive_on_startup():
 def get_app_settings():
     """Get current application settings, loading from file or using defaults."""
     global _APP_SETTINGS_STORE
-    if not _APP_STORE: # Fixed variable name from _APP_SETTINGS_STORE to _APP_STORE
+    # Corrected variable name from _APP_STORE to _APP_SETTINGS_STORE
+    if not _APP_SETTINGS_STORE: 
         loaded = load_settings_from_file()
         _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
         if loaded:
@@ -1668,7 +1669,7 @@ def import_equipment_catalog():
     return redirect(url_for('settings_page'))
 
 @app.route('/api/import_backup_file', methods=['POST'])
-def import_backup_file():
+def api_import_backup_file():
     if 'backup_file' not in request.files:
         return jsonify({"status": "error", "message": "No backup file selected."}), 400
     file, file_type = request.files['backup_file'], request.form.get('file_type')
