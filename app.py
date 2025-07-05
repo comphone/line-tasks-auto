@@ -692,6 +692,38 @@ def notify_admin_error(message):
     except Exception as e:
         app.logger.error(f"Failed to send critical error notification: {e}")
 
+# REVISED: Added function for new task notification
+def send_new_task_notification(task):
+    """Sends a LINE notification when a new task is created."""
+    settings = get_app_settings()
+    recipients = settings.get('line_recipients', {})
+    admin_group_id = recipients.get('admin_group_id')
+    
+    if not admin_group_id:
+        return
+
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    parsed_dates = parse_google_task_dates(task)
+    
+    due_info = f"นัดหมาย: {parsed_dates.get('due_formatted')}" if parsed_dates.get('due_formatted') else "นัดหมาย: - (ยังไม่ระบุ)"
+    location_info = f"พิกัด: {customer_info.get('map_url')}" if customer_info.get('map_url') else "พิกัด: - (ไม่มีข้อมูล)"
+
+    message_text = (
+        f"✨ มีงานใหม่เข้า!\n\n"
+        f"ชื่องาน: {task.get('title', '-')}\n"
+        f"ลูกค้า: {customer_info.get('name', '-')}\n"
+        f"📞 โทร: {customer_info.get('phone', '-')}\n"
+        f"🗓️ {due_info}\n"
+        f"📍 {location_info}\n\n"
+        f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
+    )
+    
+    try:
+        line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
+        app.logger.info(f"Sent new task notification for task {task['id']} to admin group.")
+    except Exception as e:
+        app.logger.error(f"Failed to send new task notification for task {task['id']}: {e}")
+
 def send_completion_notification(task, technicians):
     """Sends a LINE notification when a task is marked as completed."""
     settings = get_app_settings()
@@ -728,6 +760,7 @@ def send_completion_notification(task, technicians):
     except Exception as e:
         app.logger.error(f"Failed to send completion notification for task {task['id']}: {e}")
 
+# REVISED: Reschedule notification format
 def send_reschedule_notification(task, new_due_date_str, technicians):
     """Sends a LINE notification when a task is rescheduled."""
     settings = get_app_settings()
@@ -739,13 +772,15 @@ def send_reschedule_notification(task, new_due_date_str, technicians):
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
     
+    # --- REVISED MESSAGE FORMAT ---
     message_text = (
         f"🗓️ เลื่อนนัดหมาย\n\n"
         f"ชื่องาน: {task.get('title', '-')}\n"
         f"ลูกค้า: {customer_info.get('name', '-')}\n"
-        f"ช่างผู้รับผิดชอบ: {technician_str}\n"
-        f"นัดหมายใหม่: {new_due_date_str}\n\n"
-        f"ดูรายละเอียด: {url_for('task_details', task_id=task.get('id'), _external=True)}"
+        f"📞 โทร: {customer_info.get('phone', '-')}\n"
+        f"นัดหมายใหม่: {new_due_date_str}\n"
+        f"ช่าง: {technician_str}\n\n"
+        f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
     )
     try:
         line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
@@ -786,6 +821,7 @@ def scheduled_backup_job():
         app.logger.info(f"--- Finished Scheduled Backup Job at {end_time.strftime('%Y-%m-%d %H:%M:%S')} (Duration: {duration}) ---")
         return overall_success
 
+# REVISED: Appointment reminder job format
 def scheduled_appointment_reminder_job():
     with app.app_context():
         app.logger.info("Running scheduled appointment reminder job...")
@@ -819,12 +855,17 @@ def scheduled_appointment_reminder_job():
         for task in upcoming_appointments:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             parsed_dates = parse_google_task_dates(task)
+            
+            # --- REVISED MESSAGE FORMAT ---
+            location_info = f"พิกัด: {customer_info.get('map_url')}" if customer_info.get('map_url') else "พิกัด: - (ไม่มีข้อมูล)"
+            
             message_text = (
-                f"🔔 แจ้งเตือนงานวันนี้:\n"
+                f"🔔 งานวันนี้ ({parsed_dates.get('due_formatted', '-')})\n\n"
+                f"ชื่องาน: {task.get('title', '-')}\n"
                 f"ลูกค้า: {customer_info.get('name', '-')}\n"
-                f"รายละเอียด: {task.get('title', '-')}\n"
-                f"นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n\n"
-                f"ดูรายละเอียด: {url_for('task_details', task_id=task.get('id'), _external=True)}"
+                f"📞 โทร: {customer_info.get('phone', '-')}\n"
+                f"📍 {location_info}\n\n"
+                f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
             )
             try:
                 if recipients.get('admin_group_id'):
@@ -988,6 +1029,7 @@ atexit.register(cleanup_scheduler)
 def root_redirect():
     return redirect(url_for('summary'))
 
+# REVISED: Call notification function on new task creation
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
@@ -1024,9 +1066,11 @@ def form_page():
                 flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง โปรดตรวจสอบ', 'warning')
                 return render_template('form.html', form_data=request.form)
 
-        if create_google_task(task_title, notes=notes, due=due_date_gmt):
+        new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
+        if new_task:
             cache.clear()
             flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
+            send_new_task_notification(new_task) # <<< ADDED
             return redirect(url_for('summary'))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
@@ -1104,7 +1148,7 @@ def summary():
                            chart_data=chart_data)
 
 
-# --- REVISED: Major changes to handle file uploads to Google Drive ---
+# REVISED: Consolidated flash messages
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
@@ -1135,6 +1179,9 @@ def task_details(task_id):
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         customer_info = parse_customer_info_from_notes(base_notes_text)
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        
+        upload_messages = []
+        upload_has_errors = False
 
         if lat_lon_update:
             if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", lat_lon_update):
@@ -1162,12 +1209,11 @@ def task_details(task_id):
                 flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
-            # --- ADDED: Logic to upload files to Google Drive ---
+            # --- Logic to upload files to Google Drive ---
             new_attachments = []
             for file in files:
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
-                    # Use a temporary file path for saving before upload
                     temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     try:
                         file.save(temp_filepath)
@@ -1177,16 +1223,17 @@ def task_details(task_id):
                                 'id': drive_file.get('id'),
                                 'url': drive_file.get('webViewLink')
                             })
-                            flash(f'อัปโหลดไฟล์ {filename} สำเร็จ!', 'info')
+                            upload_messages.append(f'✓ อัปโหลดไฟล์ {filename} สำเร็จ!')
                         else:
-                            flash(f'อัปโหลดไฟล์ {filename} ไปยัง Google Drive ล้มเหลว', 'danger')
+                            upload_messages.append(f'✗ อัปโหลดไฟล์ {filename} ล้มเหลว')
+                            upload_has_errors = True
                     finally:
-                        # Clean up the temporary file from the server
                         if os.path.exists(temp_filepath):
                             os.remove(temp_filepath)
                 elif file and not allowed_file(file.filename):
-                    flash(f'ไฟล์ {file.filename} ไม่อนุญาตให้แนบ', 'warning')
-
+                    upload_messages.append(f'✗ ไฟล์ {file.filename} ไม่อนุญาตให้แนบ')
+                    upload_has_errors = True
+            
             # Append new report entry to history
             history.append({
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -1209,7 +1256,12 @@ def task_details(task_id):
 
         if updated_task:
             cache.clear()
-            flash('บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว!', 'success')
+            
+            final_message = "บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว!"
+            if upload_messages:
+                final_message += "<br>" + "<br>".join(upload_messages)
+            
+            flash(final_message, 'warning' if upload_has_errors else 'success')
             
             # Send notifications if status changed or task was rescheduled
             if task_raw.get('status') != 'completed' and new_status == 'completed':
