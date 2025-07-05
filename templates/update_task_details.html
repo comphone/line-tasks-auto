@@ -131,7 +131,7 @@
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
                 </form>
             </div>
-            <div class="tab-pane fade show active" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
+            <div class="tab-pane fade show active p-2" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
                 {% if task.tech_reports_history %}
                     {% for report in task.tech_reports_history %}
                     <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}">
@@ -152,6 +152,13 @@
                              {% endif %}
                              <p class="mb-0"><small class="text-muted"><strong>ช่าง/ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
                         </div>
+                        {% if report.type == 'report' and report.attachments %}
+                        <div class="mt-2 text-end">
+                             <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editAttachmentsModal" data-report-index="{{ loop.index0 }}">
+                                 <i class="fas fa-images me-1"></i> แก้ไขรูปภาพ
+                             </button>
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 {% else %}
@@ -161,23 +168,118 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
+<div class="modal fade" id="editAttachmentsModal" tabindex="-1" aria-labelledby="editAttachmentsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form id="editAttachmentsForm" method="POST" enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editAttachmentsModalLabel">แก้ไขรูปภาพในรายงาน</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <h6>รูปภาพปัจจุบัน (กด <i class="fas fa-times text-danger"></i> เพื่อลบ)</h6>
+            <div id="current-attachments-container" class="d-flex flex-wrap gap-2 mb-3">
+                </div>
+            <hr>
+            <h6>เพิ่มรูปภาพใหม่</h6>
+            <input class="form-control" type="file" name="new_files[]" multiple accept="image/*">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
 
 {% block body_extra %}
 <script>
+// Pass Flask data to JavaScript
+const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
+
 // Function to switch between the main action chooser and specific action forms
 function showActionCard(cardIdToShow) {
-    // Hide all action cards first
     document.getElementById('chooseActionCard').style.display = 'none';
     document.getElementById('finalReportCard').style.display = 'none';
     document.getElementById('rescheduleCard').style.display = 'none';
-
-    // Show the requested card
     const cardToShow = document.getElementById(cardIdToShow);
     if (cardToShow) {
         cardToShow.style.display = 'block';
     }
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    const editAttachmentsModal = document.getElementById('editAttachmentsModal');
+    if(editAttachmentsModal) {
+        editAttachmentsModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const reportIndex = button.getAttribute('data-report-index');
+            const report = techReportsHistory[reportIndex];
+            
+            const form = document.getElementById('editAttachmentsForm');
+            const container = document.getElementById('current-attachments-container');
+            
+            // Set the form action dynamically
+            form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
+            
+            // Clear previous content
+            container.innerHTML = '';
+
+            // Populate with current attachments
+            if (report.attachments && report.attachments.length > 0) {
+                report.attachments.forEach(att => {
+                    const attachmentId = att.id;
+                    const thumbnailUrl = `https://drive.google.com/thumbnail?id=${attachmentId}&sz=w200`;
+                    
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'position-relative';
+                    wrapper.id = `att-wrapper-${attachmentId}`;
+
+                    const imgLink = document.createElement('a');
+                    imgLink.href = att.url;
+                    imgLink.target = '_blank';
+                    
+                    const img = document.createElement('img');
+                    img.src = thumbnailUrl;
+                    img.style = "width: 100px; height: 100px; object-fit: cover; border-radius: 5px;";
+                    imgLink.appendChild(img);
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.type = 'button';
+                    deleteBtn.className = 'btn btn-danger btn-sm rounded-circle position-absolute top-0 start-100 translate-middle';
+                    deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
+                    deleteBtn.style = "width: 25px; height: 25px; font-size: 12px; padding: 0;";
+                    deleteBtn.title = 'ลบรูปภาพนี้';
+
+                    deleteBtn.onclick = function() {
+                        // Just hide the element on click
+                        wrapper.style.display = 'none';
+                        // And remove the hidden input so it's not submitted
+                        const hiddenInput = document.getElementById(`keep-att-${attachmentId}`);
+                        if (hiddenInput) {
+                            hiddenInput.remove();
+                        }
+                    };
+                    
+                    const hiddenInput = document.createElement('input');
+                    hiddenInput.type = 'hidden';
+                    hiddenInput.name = 'attachments_to_keep';
+                    hiddenInput.value = attachmentId;
+                    hiddenInput.id = `keep-att-${attachmentId}`;
+
+                    wrapper.appendChild(imgLink);
+                    wrapper.appendChild(deleteBtn);
+                    wrapper.appendChild(hiddenInput); // Add hidden input to the wrapper
+                    container.appendChild(wrapper);
+                });
+            } else {
+                container.innerHTML = '<p class="text-muted">ไม่มีรูปภาพในรายงานนี้</p>';
+            }
+        });
+    }
+});
 </script>
 {% endblock %}
