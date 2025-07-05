@@ -501,7 +501,7 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords):
-            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords}"
+            info['map_url'] = f"https://www.google.com/maps?q={coords}"
         else:
             info['map_url'] = coords
     
@@ -1186,23 +1186,17 @@ def task_details(task_id):
             flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
             abort(404)
         
-        # Determine which action the user took based on the submitted button
         action = request.form.get('action')
         
-        # Get current data from the task notes
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
-        final_notes = None
-        updated_task = None
-        
-        # --- ACTION 1: Add a new work report ---
+        # --- ACTION: Add a new work report (progress) ---
         if action == 'save_report':
             work_summary = str(request.form.get('work_summary', '')).strip()
             files = request.files.getlist('files[]')
             selected_technicians = request.form.getlist('technicians_report')
 
-            # A report must have a summary or an attachment
             if not work_summary and not any(f.filename for f in files):
                 flash('กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
@@ -1211,7 +1205,6 @@ def task_details(task_id):
                 flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
-            # --- Logic to upload files to Google Drive ---
             new_attachments = []
             upload_messages = []
             upload_has_errors = False
@@ -1235,21 +1228,20 @@ def task_details(task_id):
                     upload_messages.append(f'✗ ไฟล์ {file.filename} ไม่อนุญาตให้แนบ')
                     upload_has_errors = True
             
-            # Append new report entry to history
             history.append({
-                'type': 'report', # This is a standard work report
+                'type': 'report',
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
-            flash_message = "เพิ่มรายงานการปฏิบัติงานเรียบร้อยแล้ว!"
+            flash_message = "เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!"
             if upload_messages:
                 flash_message += "<br>" + "<br>".join(upload_messages)
             flash(flash_message, 'warning' if upload_has_errors else 'success')
         
-        # --- ACTION 2: Reschedule the task ---
+        # --- ACTION: Reschedule the task ---
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
             reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
@@ -1269,38 +1261,84 @@ def task_details(task_id):
                 flash('รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง โปรดตรวจสอบ', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
-            # Add a reschedule event to the history
             history.append({
-                'type': 'reschedule', # Special type for reschedule events
+                'type': 'reschedule',
                 'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 'reason': reschedule_reason,
                 'new_due_date': new_due_date_formatted,
                 'technicians': selected_technicians
             })
             
-            # Update the task with new status and due date
             updated_task = update_google_task(task_id, status='needsAction', due=new_due_date_gmt)
             if updated_task:
                 send_reschedule_notification(updated_task, new_due_date_formatted, reschedule_reason, selected_technicians)
             flash('เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว', 'success')
 
-        # --- ACTION 3: Complete the task ---
+        # --- ACTION: Complete the task ---
         elif action == 'complete_task':
-            # Simply update the status to 'completed'
-            technicians_on_completion = []
-            if history:
-                technicians_on_completion = history[0].get('technicians', [])
+            work_summary = str(request.form.get('work_summary', '')).strip()
+            if not work_summary:
+                flash('กรุณากรอกสรุปงานเพื่อปิดงาน', 'warning')
+                return redirect(url_for('task_details', task_id=task_id))
+                
+            selected_technicians = request.form.getlist('technicians_report')
+            if not selected_technicians:
+                flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน', 'warning')
+                return redirect(url_for('task_details', task_id=task_id))
 
+            # NEW: Handle Map Coordinate Update
+            lat_lon_update = str(request.form.get('latitude_longitude_update', '')).strip()
+            if lat_lon_update:
+                if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", lat_lon_update):
+                    customer_info = parse_customer_info_from_notes(base_notes_text)
+                    customer_info['map_url'] = f"https://www.google.com/maps?q={lat_lon_update}"
+                    
+                    notes_lines = []
+                    if customer_info.get('organization'): notes_lines.append(f"หน่วยงาน: {customer_info['organization']}")
+                    notes_lines.extend([
+                        f"ลูกค้า: {customer_info.get('name', '')}",
+                        f"เบอร์โทรศัพท์: {customer_info.get('phone', '')}",
+                        f"ที่อยู่: {customer_info.get('address', '')}",
+                        customer_info['map_url']
+                    ])
+                    base_notes_text = "\n".join(filter(None, notes_lines))
+                    app.logger.info(f"Updated map coordinates for task {task_id} to {lat_lon_update} upon completion.")
+                else:
+                    flash('รูปแบบพิกัดแผนที่ไม่ถูกต้อง (ต้องเป็น "ละติจูด,ลองจิจูด")', 'warning')
+
+            files = request.files.getlist('files[]')
+            new_attachments = []
+            # File upload logic here... (same as save_report)
+            for file in files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    try:
+                        file.save(temp_filepath)
+                        drive_file = upload_file_from_path_to_drive(temp_filepath, filename, file.mimetype, GOOGLE_DRIVE_FOLDER_ID)
+                        if drive_file: new_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+                    finally:
+                        if os.path.exists(temp_filepath): os.remove(temp_filepath)
+
+            history.append({
+                'type': 'report',
+                'summary_date': datetime.datetime.now(THAILAND_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+                'work_summary': work_summary,
+                'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
+                'attachments': new_attachments,
+                'technicians': selected_technicians
+            })
+            
             updated_task = update_google_task(task_id, status='completed')
             if updated_task:
-                 send_completion_notification(updated_task, technicians_on_completion)
-            flash('ปิดงานเรียบร้อยแล้ว!', 'success')
+                send_completion_notification(updated_task, selected_technicians)
+            flash('ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!', 'success')
         
         else:
             flash('ไม่พบการกระทำที่ร้องขอ', 'danger')
             return redirect(url_for('task_details', task_id=task_id))
             
-        # --- Reconstruct notes and save the task IF an update happened ---
+        # --- Reconstruct notes and save the task after ANY action ---
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
         
@@ -1310,14 +1348,12 @@ def task_details(task_id):
         if feedback_data:
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         
-        # Update notes only, as status/due might have been set already
         final_updated_task = update_google_task(task_id, notes=final_notes)
 
         if final_updated_task:
-            cache.clear() # Clear cache after any successful update
+            cache.clear()
         else:
-            # This is a fallback flash message in case the final notes update fails
-            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงใน Notes ของ Task', 'danger')
+            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลสุดท้ายลงใน Notes ของ Task', 'danger')
 
         return redirect(url_for('task_details', task_id=task_id))
 
