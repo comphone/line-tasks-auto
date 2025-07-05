@@ -821,14 +821,16 @@ def scheduled_backup_job():
         app.logger.info(f"--- Finished Scheduled Backup Job at {end_time.strftime('%Y-%m-%d %H:%M:%S')} (Duration: {duration}) ---")
         return overall_success
 
-# REVISED: Appointment reminder job format
+# REVISED: Appointment reminder job to send one message per task
 def scheduled_appointment_reminder_job():
     with app.app_context():
         app.logger.info("Running scheduled appointment reminder job...")
         settings = get_app_settings()
         recipients = settings.get('line_recipients', {})
+        admin_group_id = recipients.get('admin_group_id')
+        technician_group_id = recipients.get('technician_group_id')
 
-        if not recipients.get('admin_group_id') and not recipients.get('technician_group_id'):
+        if not admin_group_id and not technician_group_id:
             app.logger.info("No LINE admin or technician group ID set for appointment reminders. Skipping.")
             return
 
@@ -850,29 +852,36 @@ def scheduled_appointment_reminder_job():
             app.logger.info("No upcoming appointments for today.")
             return
 
+        # Sort appointments by due time
         upcoming_appointments.sort(key=lambda x: date_parse(x['due']) if x.get('due') else datetime.datetime.max.replace(tzinfo=pytz.utc))
 
+        # --- REVISED LOGIC: Loop and send one message for each task ---
         for task in upcoming_appointments:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             parsed_dates = parse_google_task_dates(task)
             
-            # --- REVISED MESSAGE FORMAT ---
             location_info = f"พิกัด: {customer_info.get('map_url')}" if customer_info.get('map_url') else "พิกัด: - (ไม่มีข้อมูล)"
             
             message_text = (
-                f"🔔 งานวันนี้ ({parsed_dates.get('due_formatted', '-')})\n\n"
+                f"🔔 งานสำหรับวันนี้\n\n"
                 f"ชื่องาน: {task.get('title', '-')}\n"
-                f"ลูกค้า: {customer_info.get('name', '-')}\n"
+                f"👤 ลูกค้า: {customer_info.get('name', '-')}\n"
                 f"📞 โทร: {customer_info.get('phone', '-')}\n"
+                f"🗓️ นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n"
                 f"📍 {location_info}\n\n"
-                f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
+                f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
             )
+
+            # Send to relevant groups
             try:
-                if recipients.get('admin_group_id'):
-                    line_bot_api.push_message(recipients['admin_group_id'], TextSendMessage(text=message_text))
+                sent_to = set()
+                if admin_group_id:
+                    line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
                     app.logger.info(f"Sent appointment reminder for task {task['id']} to admin group.")
-                if recipients.get('technician_group_id') and recipients['technician_group_id'] != recipients.get('admin_group_id'):
-                    line_bot_api.push_message(recipients['technician_group_id'], TextSendMessage(text=message_text))
+                    sent_to.add(admin_group_id)
+
+                if technician_group_id and technician_group_id not in sent_to:
+                    line_bot_api.push_message(technician_group_id, TextSendMessage(text=message_text))
                     app.logger.info(f"Sent appointment reminder for task {task['id']} to technician group.")
             except Exception as e:
                 app.logger.error(f"Failed to send appointment reminder for task {task['id']}: {e}")
