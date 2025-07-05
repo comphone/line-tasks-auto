@@ -9,8 +9,8 @@ import zipfile
 from io import BytesIO
 from collections import defaultdict
 from datetime import timezone
-import time # ADDED: For retry delay
-import tempfile # ADDED: For temporary file handling during uploads
+import time 
+import tempfile 
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -380,7 +380,7 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
-def _perform_drive_upload(media_body, file_name, folder_id):
+def _perform_drive_upload(media_body, file_name, mime_type, folder_id): # Added mime_type parameter
     """Base logic to upload a file to Drive and set permissions."""
     service = get_google_drive_service()
     if not service or not folder_id:
@@ -425,12 +425,12 @@ def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
         app.logger.error(f"File at path '{file_path}' is missing or empty. Aborting upload.")
         return None
     media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-    return _perform_drive_upload(media, file_name, folder_id)
+    return _perform_drive_upload(media, file_name, mime_type, folder_id) # Pass mime_type
 
 def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
     """Uploads a file-like object from memory to Google Drive."""
     media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
-    file_obj = _perform_drive_upload(media, file_name, folder_id)
+    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id) # Pass mime_type
     return file_obj
 
 
@@ -503,7 +503,7 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords):
-            info['map_url'] = f"https://www.google.com/maps?q={coords}"
+            info['map_url'] = f"http://maps.google.com/?q={coords}" # Corrected Google Maps URL format
         else:
             info['map_url'] = coords
     
@@ -573,7 +573,12 @@ def parse_tech_report_from_notes(notes):
         except json.JSONDecodeError:
             app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
     
-    original_notes_text = re.sub(r"--- (?:TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*?--- (?:TECH_REPORT_END|CUSTOMER_FEEDBACK_END) ---", "", notes, flags=re.DOTALL).strip()
+    # Extract base notes text by removing all known blocks
+    temp_notes = notes
+    temp_notes = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", temp_notes, flags=re.DOTALL)
+    temp_notes = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", temp_notes, flags=re.DOTALL)
+    original_notes_text = temp_notes.strip()
+
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
 
@@ -958,10 +963,13 @@ def scheduled_customer_follow_up_job():
                             app.logger.info(f"Sent follow-up message to customer {customer_line_id} for task {task['id']}.")
                             
                             feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
-                            _, base_notes = parse_tech_report_from_notes(notes)
-                            tech_reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
+                            # Ensure the base notes are correctly extracted before re-adding blocks
+                            history_reports, base_notes = parse_tech_report_from_notes(notes)
+                            
+                            tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+                            
                             new_notes = base_notes.strip()
-                            if tech_reports_text: new_notes += "\n\n" + tech_reports_text.strip()
+                            if tech_reports_text: new_notes += tech_reports_text
                             new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
                             _execute_google_api_call_with_retry(update_google_task, task['id'], notes=new_notes)
                             cache.clear()
@@ -1125,11 +1133,67 @@ def summary():
                            search_query=search_query, status_filter=status_filter,
                            chart_data=chart_data)
 
+@app.route('/api/upload_attachment', methods=['POST'])
+def api_upload_attachment():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+    
+    task_id = request.form.get('task_id')
+    if not task_id:
+        return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
+
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+
+    # Extract base_notes_text for customer info and folder naming
+    _, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    
+    attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+    
+    monthly_folder_id = None
+    if task_raw.get('created'):
+        created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+        monthly_folder_name = created_dt_local.strftime('%Y-%m')
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+    else:
+        monthly_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
+
+    customer_info = parse_customer_info_from_notes(base_notes_text)
+    sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
+    customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+    final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+
+    if not final_upload_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not determine upload folder'}), 500
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        # Use a temporary file to save the uploaded file before sending to Drive
+        with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
+            file.save(tmp.name)
+            mime_type = file.mimetype or mimetypes.guess_type(filename)[0] # Guess MIME type if not provided
+            drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, final_upload_folder_id)
+            os.unlink(tmp.name) # Clean up the temporary file
+            if drive_file:
+                return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')}})
+            else:
+                return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
+    else:
+        return jsonify({'status': 'error', 'message': 'File type not allowed or no file selected'}), 400
+
+
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
         task_raw = get_single_task(task_id)
         if not task_raw:
+            # For AJAX, return JSON error
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
             flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
             abort(404)
         
@@ -1140,52 +1204,46 @@ def task_details(task_id):
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
-        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
-        
-        monthly_folder_id = None
-        if task_raw.get('created'):
-            created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
-            monthly_folder_name = created_dt_local.strftime('%Y-%m')
-            monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-        else:
-            monthly_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
-
-        customer_info = parse_customer_info_from_notes(base_notes_text)
-        sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
-        customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
-        final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+        # New: Retrieve uploaded_attachments_json from the form data
+        new_attachments_from_ajax_json = request.form.get('uploaded_attachments_json')
+        new_attachments = []
+        if new_attachments_from_ajax_json:
+            try:
+                new_attachments = json.loads(new_attachments_from_ajax_json)
+            except json.JSONDecodeError:
+                app.logger.error("Failed to decode uploaded_attachments_json from request.")
+        # End New
 
         if action == 'save_report':
             work_summary = str(request.form.get('work_summary', '')).strip()
-            files = request.files.getlist('files[]')
             selected_technicians = request.form.getlist('technicians_report')
 
-            if not (work_summary or any(f.filename for f in files)):
-                flash('กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่', 'warning')
+            # Check for content: either summary or attachments (now from new_attachments)
+            if not (work_summary or new_attachments): 
+                message = 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'status': 'error', 'message': message}), 400
+                flash(message, 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
             if not selected_technicians:
-                flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
+                message = 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'status': 'error', 'message': message}), 400
+                flash(message, 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
-
-            new_attachments = []
-            if final_upload_folder_id:
-                for file in files:
-                    if file and allowed_file(file.filename):
-                        filename = secure_filename(file.filename)
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
-                            file.save(tmp.name)
-                            drive_file = upload_file_from_path_to_drive(tmp.name, filename, file.mimetype, final_upload_folder_id)
-                            if drive_file: new_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
-                            os.unlink(tmp.name)
-            else:
-                flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใน Google Drive ได้', 'danger')
 
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'work_summary': work_summary, 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
-                'attachments': new_attachments, 'technicians': selected_technicians
+                'work_summary': work_summary, 
+                'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
+                'attachments': new_attachments, # Use the attachments collected via AJAX
+                'technicians': selected_technicians
             })
-            flash('เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!', 'success')
+            message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                flash(message, 'success') # Still flash for page reload after JS redirects
+                return jsonify({'status': 'success', 'message': message})
+            flash(message, 'success')
         
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
@@ -1193,7 +1251,10 @@ def task_details(task_id):
             selected_technicians = request.form.getlist('technicians_reschedule')
 
             if not reschedule_due_str:
-                flash('กรุณากำหนดวันนัดหมายใหม่', 'warning')
+                message = 'กรุณากำหนดวันนัดหมายใหม่'
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'status': 'error', 'message': message}), 400
+                flash(message, 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
             
             try:
@@ -1202,7 +1263,10 @@ def task_details(task_id):
                 update_payload['status'] = 'needsAction'
                 new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
             except ValueError:
-                flash('รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง', 'warning')
+                message = 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'status': 'error', 'message': message}), 400
+                flash(message, 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
             history.append({
@@ -1212,45 +1276,50 @@ def task_details(task_id):
             })
             
             notification_to_send = ('reschedule', new_due_date_formatted, reschedule_reason, selected_technicians)
-            flash('เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว', 'success')
+            message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                flash(message, 'success') # Still flash for page reload after JS redirects
+                return jsonify({'status': 'success', 'message': message})
+            flash(message, 'success')
 
         elif action == 'complete_task':
             work_summary = str(request.form.get('work_summary', '')).strip()
             if not work_summary:
-                flash('กรุณากรอกสรุปงานเพื่อปิดงาน', 'warning')
+                message = 'กรุณากรอกสรุปงานเพื่อปิดงาน'
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'status': 'error', 'message': message}), 400
+                flash(message, 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
                 
             selected_technicians = request.form.getlist('technicians_report')
             if not selected_technicians:
-                flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน', 'warning')
+                message = 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'status': 'error', 'message': message}), 400
+                flash(message, 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
             
-            files = request.files.getlist('files[]')
-            new_attachments = []
-            if final_upload_folder_id:
-                for file in files:
-                     if file and allowed_file(file.filename):
-                        filename = secure_filename(file.filename)
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
-                            file.save(tmp.name)
-                            drive_file = upload_file_from_path_to_drive(tmp.name, filename, file.mimetype, final_upload_folder_id)
-                            if drive_file: new_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
-                            os.unlink(tmp.name)
-            else:
-                 flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใน Google Drive ได้', 'danger')
-
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'work_summary': work_summary, 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
-                'attachments': new_attachments, 'technicians': selected_technicians
+                'work_summary': work_summary, 
+                'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
+                'attachments': new_attachments, # Use the attachments collected via AJAX
+                'technicians': selected_technicians
             })
             
             update_payload['status'] = 'completed'
             notification_to_send = ('completion', selected_technicians)
-            flash('ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!', 'success')
+            message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                flash(message, 'success') # Still flash for page reload after JS redirects
+                return jsonify({'status': 'success', 'message': message})
+            flash(message, 'success')
         
         else:
-            flash('ไม่พบการกระทำที่ร้องขอ', 'danger')
+            message = 'ไม่พบการกระทำที่ร้องขอ'
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'status': 'error', 'message': message}), 400
+            flash(message, 'danger')
             return redirect(url_for('task_details', task_id=task_id))
             
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
@@ -1270,8 +1339,14 @@ def task_details(task_id):
                 notif_type = notification_to_send[0]
                 if notif_type == 'reschedule': send_reschedule_notification(updated_task, *notification_to_send[1:])
                 elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
+            # For AJAX success, return a JSON response
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'status': 'success', 'message': 'อัปเดตงานสำเร็จแล้ว'})
         else:
-            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!', 'danger')
+            message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'status': 'error', 'message': message}), 500
+            flash(message, 'danger')
 
         return redirect(url_for('task_details', task_id=task_id))
 
@@ -1349,16 +1424,17 @@ def edit_report_attachments(task_id, report_index):
         
         if final_upload_folder_id:
             for file in new_files:
-                if file and allowed_file(file.filename):
+                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
                     with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
                         file.save(tmp.name)
-                        drive_file = upload_file_from_path_to_drive(tmp.name, filename, file.mimetype, final_upload_folder_id)
+                        mime_type = file.mimetype or mimetypes.guess_type(filename)[0] # Guess MIME type if not provided
+                        drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, final_upload_folder_id)
                         if drive_file:
                             updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
                         os.unlink(tmp.name)
         else:
-            flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
+             flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
 
     report_to_edit['attachments'] = updated_attachments
     history[report_index] = report_to_edit
@@ -1696,8 +1772,7 @@ def manage_duplicates():
             parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
             parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
             processed_tasks.append(parsed)
-        processed_sets[key] = processed_sets
-
+        processed_sets[key] = processed_tasks # Changed this line to add processed_tasks
     return render_template('duplicates.html', duplicates=processed_sets)
 
 @app.route('/delete_duplicates_batch', methods=['POST'])
@@ -1784,15 +1859,30 @@ def trigger_customer_follow_up_test():
             flash('ไม่พบงานที่เสร็จแล้วสำหรับใช้ทดสอบ.', 'warning')
             return redirect(url_for('settings_page'))
         latest = max(tasks, key=lambda x: date_parse(x['completed']))
-        notes, feedback = latest.get('notes', ''), parse_customer_feedback_from_notes(notes)
-        feedback.pop('follow_up_sent_date', None)
-        # Reconstruct notes to remove the sent date
-        _execute_google_api_call_with_retry(update_google_task, latest['id'], notes=notes.split('--- CUSTOMER_FEEDBACK_START ---')[0] + f"--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---")
-        latest['completed'] = (datetime.datetime.now(pytz.utc) - datetime.timedelta(days=1, minutes=5)).isoformat()
+        notes = latest.get('notes', '') # Get current notes
+        feedback = parse_customer_feedback_from_notes(notes) # Parse existing feedback
+        feedback.pop('follow_up_sent_date', None) # Remove sent date for testing
+        
+        # Reconstruct notes with updated feedback and original base/reports
+        history_reports, base_notes = parse_tech_report_from_notes(notes)
+        tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+        new_notes_content = base_notes.strip()
+        if tech_reports_text: new_notes_content += tech_reports_text
+        new_notes_content += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+        # Update task with modified notes
+        _execute_google_api_call_with_retry(update_google_task, latest['id'], notes=new_notes_content)
+        
+        # Manually adjust completed date for the test to be "yesterday"
+        # This will make the scheduled job pick it up
+        latest['completed'] = (datetime.datetime.now(pytz.utc) - datetime.timedelta(days=1, minutes=5)).isoformat().replace('+00:00', 'Z')
+        _execute_google_api_call_with_retry(update_google_task, latest['id'], completed=latest['completed'])
+        
         cache.clear()
-        scheduled_customer_follow_up_job()
+        scheduled_customer_follow_up_job() # Trigger the job immediately
         flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
     return redirect(url_for('settings_page'))
+
 
 @app.route('/public_report/<task_id>')
 def public_task_report(task_id):
@@ -1830,9 +1920,12 @@ def submit_customer_problem():
     feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': 'problem_reported', 'problem_description': problem_desc})
     if user_id: feedback['customer_line_user_id'] = user_id
     # Reconstruct notes
-    _, base = parse_tech_report_from_notes(notes)
-    reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
-    final_notes = f"{base.strip()}\n\n{reports_text.strip()}\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    reports_history, base = parse_tech_report_from_notes(notes)
+    reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
+    final_notes = f"{base.strip()}"
+    if reports_text: final_notes += reports_text
+    final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
     _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes, status='needsAction')
     cache.clear()
     admin_group = get_app_settings().get('line_recipients', {}).get('admin_group_id')
@@ -1856,9 +1949,12 @@ def save_customer_line_id():
         feedback['customer_line_user_id'] = user_id
         feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
         # Reconstruct notes
-        _, base = parse_tech_report_from_notes(notes)
-        reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
-        final_notes = f"{base.strip()}\n\n{reports_text.strip()}\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        reports_history, base = parse_tech_report_from_notes(notes)
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
+        final_notes = f"{base.strip()}"
+        if reports_text: final_notes += reports_text
+        final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        
         if _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes):
             cache.clear()
             shop = get_app_settings().get('shop_info', {})
@@ -1990,9 +2086,11 @@ def handle_postback(event):
         feedback = parse_customer_feedback_from_notes(notes)
         feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': data.get('feedback'), 'customer_line_user_id': event.source.user_id})
         # Reconstruct notes
-        _, base = parse_tech_report_from_notes(notes)
-        reports_text = "".join(re.findall(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", notes, re.DOTALL))
-        final_notes = f"{base.strip()}\n\n{reports_text.strip()}\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        history_reports, base = parse_tech_report_from_notes(notes)
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+        final_notes = f"{base.strip()}"
+        if reports_text: final_notes += reports_text
+        final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         _execute_google_api_call_with_retry(update_google_task, task_id, notes=final_notes)
         cache.clear()
         try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏"))
@@ -2053,29 +2151,48 @@ def organize_files():
                         if not file_id:
                             continue
 
-                        file_meta = service.files().get(fileId=file_id, fields='parents').execute()
-                        current_parents = file_meta.get('parents', [])
+                        # It's better to fetch parents only if needed, to minimize API calls
+                        # Check if file needs to be moved
+                        try:
+                            file_meta = service.files().get(fileId=file_id, fields='parents').execute()
+                            current_parents = file_meta.get('parents', [])
 
-                        if destination_folder_id in current_parents:
-                            skipped_count += 1
-                            app.logger.info(f"File {file_id} is already in the correct folder. Skipping.")
-                            continue
-                        
-                        previous_parents = ",".join(current_parents)
-                        service.files().update(
-                            fileId=file_id,
-                            addParents=destination_folder_id,
-                            removeParents=previous_parents,
-                            fields='id, parents'
-                        ).execute()
-                        moved_count += 1
-                        app.logger.info(f"Moved file {file_id} to folder {destination_folder_id}")
+                            if destination_folder_id in current_parents:
+                                # File is already in the correct folder or one of its parents
+                                skipped_count += 1
+                                app.logger.info(f"File {file_id} is already in the correct folder. Skipping.")
+                                continue
+                            
+                            # Move the file: remove from old parents, add to new
+                            previous_parents = ",".join(current_parents) # Comma-separated list for removeParents
+                            service.files().update(
+                                fileId=file_id,
+                                addParents=destination_folder_id,
+                                removeParents=previous_parents,
+                                fields='id, parents'
+                            ).execute()
+                            moved_count += 1
+                            app.logger.info(f"Moved file {file_id} to folder {destination_folder_id}")
+
+                        except HttpError as file_error:
+                            # Handle cases where the file might have been deleted or inaccessible
+                            if file_error.resp.status == 404:
+                                app.logger.warning(f"File {file_id} not found on Drive, skipping. Error: {file_error}")
+                                skipped_count += 1 # Count as skipped if not found
+                            else:
+                                app.logger.error(f"Error moving file {file_id} for task {task_id}: {file_error}")
+                                error_count += 1
+                        except Exception as file_other_error:
+                            app.logger.error(f"Unexpected error when processing file {file_id} for task {task_id}: {file_other_error}")
+                            error_count += 1
+
 
             except Exception as e:
-                error_count += 1
                 app.logger.error(f"Error processing task {task.get('id')} for organization: {e}")
+                # Increment error count for the task itself, not per attachment
+                error_count += 1 
 
-        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว/ไม่มีวันที่): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} ไฟล์.', 'success')
+        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว/ไม่มีวันที่/ไม่พบ): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} งาน.', 'success')
         return redirect(url_for('organize_files'))
 
     return render_template('organize_files.html')
