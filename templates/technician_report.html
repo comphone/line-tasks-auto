@@ -93,9 +93,10 @@
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card shadow-sm report-card h-100">
                         <div class="card-header d-flex align-items-center">
-                            {% set tech_avatar = (technician_list | selectattr('name', 'equalto', tech_name) | first) %}
-                            {% if tech_avatar and tech_avatar.avatar_id %}
-                                <img src="https://drive.google.com/thumbnail?id={{ tech_avatar.avatar_id }}&sz=s30-c" class="technician-avatar-small" alt="{{ tech_name }}">
+                            {# Find technician avatar based on name from technician_list #}
+                            {% set tech_avatar_obj = (technician_list | selectattr('name', 'equalto', tech_name) | first) %}
+                            {% if tech_avatar_obj and tech_avatar_obj.avatar_id %}
+                                <img src="https://drive.google.com/thumbnail?id={{ tech_avatar_obj.avatar_id }}&sz=s30-c" class="technician-avatar-small" alt="{{ tech_name }}">
                             {% else %}
                                 {% set initial = tech_name[0] | upper if tech_name else '?' %}
                                 <img src="https://via.placeholder.com/30/6c757d/ffffff?text={{ initial }}" class="technician-avatar-small" alt="{{ tech_name }}">
@@ -142,4 +143,3 @@
     // No specific JS needed here beyond Bootstrap's collapse,
     // as data is rendered directly by Jinja2.
 </script>
-{% endblock %}
