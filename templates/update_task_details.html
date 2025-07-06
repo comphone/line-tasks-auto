@@ -4,7 +4,7 @@
 
 {% block head_extra %}
 <style>
-    /* --- Styles for the new Image Gallery & Lightbox --- */
+    /* --- Styles for Image Gallery & Lightbox --- */
     .image-gallery-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -47,7 +47,7 @@
     .lightbox {
         display: none;
         position: fixed;
-        z-index: 1060;
+        z-index: 1070; /* Higher z-index */
         padding-top: 60px;
         left: 0;
         top: 0;
@@ -99,9 +99,7 @@
         font-weight: bold;
         font-size: 30px;
         transition: 0.6s ease;
-        border-radius: 0 3px 3px 0;
         user-select: none;
-        -webkit-user-select: none;
     }
     .lightbox-prev { left: 0; border-radius: 3px 0 0 3px; }
     .lightbox-next { right: 0; border-radius: 0 3px 3px 0; }
@@ -127,7 +125,53 @@
     .lightbox-actions a:hover {
         transform: scale(1.2);
     }
-    /* --- End of New Styles --- */
+    /* --- End of Lightbox Styles --- */
+
+    /* --- Styles for Redesigned Info Card --- */
+    .info-card .list-group-item {
+        display: flex;
+        align-items: center;
+        padding: 1rem 1.25rem;
+    }
+    .info-card .info-icon {
+        width: 40px;
+        font-size: 1.25rem;
+        color: #0d6efd;
+        text-align: center;
+    }
+    .info-card .info-content {
+        margin-left: 1rem;
+    }
+    .info-card .info-label {
+        font-size: 0.85em;
+        color: #6c757d;
+        margin-bottom: 0;
+    }
+    .info-card .info-value {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #212529;
+    }
+    /* --- End of Info Card Styles --- */
+
+    /* --- Styles for Technician Selection Modal --- */
+    .technician-item {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 0;
+    }
+    .technician-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-right: 1rem;
+        background-color: #e9ecef;
+    }
+    .technician-name {
+        flex-grow: 1;
+    }
+    /* --- End of Technician Modal Styles --- */
 
     .history-entry {
         background-color: #f8f9fa;
@@ -141,18 +185,8 @@
     .history-entry-title { font-weight: 600; font-size: 1.05em; }
     .history-entry-body p { margin-bottom: 0.25rem; }
 
-    .info-hero-card {
-        background: linear-gradient(135deg, #0d6efd, #0d6efd);
-        color: white;
-        padding: 1.5rem;
-        border-radius: .75rem;
-        margin-bottom: 1.5rem;
-    }
-    .info-label { font-size: 0.9em; opacity: 0.8; margin-bottom: .25rem; }
-    .info-value { font-size: 1.1em; font-weight: 600; margin-bottom: 1rem; }
-
     .input-group-text {
-        width: 42px; /* Fixed width for icons */
+        width: 42px;
         justify-content: center;
         background-color: #e9ecef;
     }
@@ -166,39 +200,68 @@
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    <!-- Customer & Task Info Hero Card -->
-    <div class="info-hero-card shadow-lg">
-        <div class="row">
-            <div class="col-md-6">
-                <div class="d-flex justify-content-between align-items-center">
-                    <p class="info-label mb-0">ลูกค้า</p>
-                    <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-light py-0 px-2" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit"></i></a>
-                </div>
-                <h5 class="info-value">{{ task.customer.name or '-' }}</h5>
-                <p class="info-label">เบอร์โทร</p>
-                <h5 class="info-value">{{ task.customer.phone or '-' }}</h5>
-                <p class="info-label">ที่อยู่</p>
-                <h5 class="info-value">{{ task.customer.address or '-' }}</h5>
-            </div>
-            <div class="col-md-6">
-                 <p class="info-label">นัดหมาย</p>
-                <h5 class="info-value {% if task.is_overdue and task.status != 'completed' %}text-warning{% endif %}">{{ task.due_formatted or '-' }}</h5>
-                 <p class="info-label">แผนที่</p>
-                <h5 class="info-value">{% if task.customer.map_url %}<a href="{{ task.customer.map_url }}" target="_blank" class="text-white"><u>เปิด Google Maps</u></a>{% else %}-{% endif %}</h5>
-                <p class="info-label">รายละเอียดงาน</p>
-                <h5 class="info-value">{{ task.title }}</h5>
-            </div>
+    <!-- Redesigned Info Card -->
+    <div class="card shadow-sm mb-4 info-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">ข้อมูลสรุป</h5>
+            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไข</a>
         </div>
+        <ul class="list-group list-group-flush">
+            <li class="list-group-item">
+                <div class="info-icon"><i class="fas fa-comment-dots"></i></div>
+                <div class="info-content">
+                    <p class="info-label">รายละเอียดงาน</p>
+                    <p class="info-value">{{ task.title }}</p>
+                </div>
+            </li>
+            <li class="list-group-item">
+                <div class="info-icon"><i class="fas fa-user"></i></div>
+                <div class="info-content">
+                    <p class="info-label">ลูกค้า</p>
+                    <p class="info-value">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+                </div>
+            </li>
+            <li class="list-group-item">
+                <div class="info-icon"><i class="fas fa-phone"></i></div>
+                <div class="info-content">
+                    <p class="info-label">เบอร์โทร</p>
+                    <p class="info-value">{{ task.customer.phone or '-' }}</p>
+                </div>
+            </li>
+            <li class="list-group-item">
+                <div class="info-icon"><i class="fas fa-map-marker-alt"></i></div>
+                <div class="info-content">
+                    <p class="info-label">ที่อยู่</p>
+                    <p class="info-value">{{ task.customer.address or '-' }}</p>
+                </div>
+            </li>
+            <li class="list-group-item">
+                <div class="info-icon"><i class="fas fa-calendar-alt"></i></div>
+                <div class="info-content">
+                    <p class="info-label">นัดหมาย</p>
+                    <p class="info-value {% if task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+                </div>
+            </li>
+            {% if task.customer.map_url %}
+            <li class="list-group-item">
+                <div class="info-icon"><i class="fas fa-map-pin"></i></div>
+                <div class="info-content">
+                    <p class="info-label">แผนที่</p>
+                    <p class="info-value"><a href="{{ task.customer.map_url }}" target="_blank">เปิด Google Maps</a></p>
+                </div>
+            </li>
+            {% endif %}
+        </ul>
     </div>
-
+    
     <!-- Main Actions Card -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำหลักสำหรับงานนี้</h5>
              <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                <button type="button" onclick="showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงานและบันทึกรายงานสรุป</button>
-                <button type="button" onclick="showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</button>
-                <button type="button" onclick="showActionCard('qrCodeCard')" class="btn btn-info btn-lg px-4"><i class="fas fa-qrcode me-2"></i>สร้าง QR Code</button>
+                <button type="button" onclick="showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
+                <button type="button" onclick="showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัด</button>
+                <button type="button" onclick="showActionCard('qrCodeCard')" class="btn btn-info btn-lg px-4"><i class="fas fa-qrcode me-2"></i>QR Code</button>
             </div>
         </div>
     </div>
@@ -214,10 +277,12 @@
                     <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
                 </div>
                  <div class="mb-3">
-                    <label for="technicians_final" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
-                    <select class="form-select" id="technicians_final" name="technicians_report" multiple required size="3">
-                        {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
-                    </select>
+                    <label for="technicians_final_display" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <input type="text" id="technicians_final_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="openTechnicianModal('technicians_final')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="openTechnicianModal('technicians_final')">เลือก</button>
+                    </div>
+                    <input type="hidden" id="technicians_final" name="technicians_report" required>
                 </div>
                 <div class="mb-3">
                     <label for="files_final" class="form-label"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
@@ -250,10 +315,12 @@
                     <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
                 </div>
                 <div class="mb-3">
-                    <label for="technicians_reschedule" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
-                     <select class="form-select" id="technicians_reschedule" name="technicians_reschedule" multiple required size="3">
-                        {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
-                    </select>
+                    <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <input type="text" id="technicians_reschedule_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="openTechnicianModal('technicians_reschedule')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="openTechnicianModal('technicians_reschedule')">เลือก</button>
+                    </div>
+                    <input type="hidden" id="technicians_reschedule" name="technicians_reschedule" required>
                 </div>
                 <hr>
                 <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
@@ -302,7 +369,6 @@
         <div class="card-body">
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this, 'report-upload-status')">
                 <input type="hidden" name="action" value="save_report">
-                <p class="text-muted">ใช้ฟอร์มนี้เพื่อบันทึกความคืบหน้าของงาน (เมื่องานยังไม่เสร็จสมบูรณ์)</p>
                 <div class="mb-3">
                     <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
                     <div class="input-group">
@@ -311,13 +377,12 @@
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label for="technicians_progress" class="form-label">ช่าง <span class="text-danger">*</span></label>
+                    <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
                     <div class="input-group">
-                         <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
-                        <select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">
-                            {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
-                        </select>
+                        <input type="text" id="technicians_progress_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="openTechnicianModal('technicians_progress')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="openTechnicianModal('technicians_progress')">เลือก</button>
                     </div>
+                    <input type="hidden" id="technicians_progress" name="technicians_report" required>
                 </div>
                 <div class="mb-3">
                     <label for="files_progress" class="form-label">แนบรูป</label>
@@ -397,6 +462,27 @@
     </div>
 </div>
 
+<!-- Technician Selection Modal -->
+<div class="modal fade" id="technicianSelectionModal" tabindex="-1" aria-labelledby="technicianModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="technicianModalLabel">เลือกช่างผู้รับผิดชอบ</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="technician-list-container">
+            <!-- Technician items will be injected here by JavaScript -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" onclick="confirmTechnicianSelection()">ตกลง</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block body_extra %}
@@ -406,7 +492,7 @@ const allAttachments = {{ all_attachments | tojson | safe if all_attachments els
 let slideIndex;
 
 function openLightbox(index) {
-    if (allAttachments.length === 0) return;
+    if (!allAttachments || allAttachments.length === 0) return;
     slideIndex = index;
     document.getElementById('lightboxModal').style.display = "block";
     document.body.style.overflow = 'hidden';
@@ -480,9 +566,56 @@ async function shareImage(imageSrc, text) {
     }
 }
 
-// --- Form Submission & Other Scripts ---
-const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
+// --- Technician Selection Modal Script ---
+const technicianList = {{ technician_list | tojson | safe }};
+let currentTechnicianTargetId;
+let technicianSelectionModal;
 
+function openTechnicianModal(targetInputId) {
+    currentTechnicianTargetId = targetInputId;
+    const targetInput = document.getElementById(targetInputId);
+    const selectedTechnicians = targetInput.value ? targetInput.value.split(',') : [];
+    
+    const container = document.getElementById('technician-list-container');
+    container.innerHTML = ''; // Clear previous list
+
+    technicianList.forEach(tech => {
+        const isChecked = selectedTechnicians.includes(tech.name);
+        const avatarUrl = tech.avatar || 'https://via.placeholder.com/40/0d6efd/ffffff?text=' + tech.name.charAt(0).toUpperCase();
+        
+        container.innerHTML += `
+            <div class="technician-item list-group-item-action">
+                <img src="${avatarUrl}" class="technician-avatar" alt="${tech.name}">
+                <span class="technician-name">${tech.name}</span>
+                <input class="form-check-input" type="checkbox" value="${tech.name}" ${isChecked ? 'checked' : ''}>
+            </div>
+        `;
+    });
+
+    if (!technicianSelectionModal) {
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+    }
+    technicianSelectionModal.show();
+}
+
+function confirmTechnicianSelection() {
+    const selectedNames = [];
+    const checkboxes = document.querySelectorAll('#technician-list-container input[type="checkbox"]:checked');
+    checkboxes.forEach(checkbox => {
+        selectedNames.push(checkbox.value);
+    });
+
+    const targetInput = document.getElementById(currentTechnicianTargetId);
+    const displayInput = document.getElementById(currentTechnicianTargetId + '_display');
+    
+    targetInput.value = selectedNames.join(',');
+    displayInput.value = selectedNames.length > 0 ? selectedNames.join(', ') : 'กรุณาเลือกช่าง...';
+    
+    technicianSelectionModal.hide();
+}
+
+
+// --- Existing Scripts ---
 function showActionCard(cardIdToShow) {
     document.getElementById('chooseActionCard').style.display = 'none';
     document.getElementById('finalReportCard').style.display = 'none';
