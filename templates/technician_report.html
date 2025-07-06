@@ -64,7 +64,8 @@
                                 <div>
                                     <a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank">{{ task.title }}</a>
                                     <br>
-                                    <small class="text-muted">ลูกค้า: {{ task.customer.name or '-'}}</small>
+                                    {# FIXED: Access customer name safely from the dictionary using .get() #}
+                                    <small class="text-muted">ลูกค้า: {{ task.get('customer_name', '-') }}</small>
                                 </div>
                                 <span class="text-muted small">เสร็จเมื่อ: {{ task.completed_formatted }}</span>
                             </li>
