@@ -29,7 +29,7 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-<form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
+<div id="flash-messages-area"></div> <form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
     <input type="hidden" id="technician_list_json" name="technician_list_json">
 
     <div class="card shadow-sm mb-4">
@@ -204,23 +204,23 @@
 </div>
 
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="testNotificationModalLabel">ทดสอบส่งข้อความ LINE</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                ข้อความทดสอบจะถูกส่งไปยัง LINE Admin Group ID ที่คุณได้ตั้งค่าไว้
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-                <form action="{{ url_for('test_notification') }}" method="POST" class="d-inline">
-                    <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
-                </form>
-            </div>
-        </div>
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="testNotificationModalLabel">ทดสอบส่งข้อความ LINE</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        ข้อความทดสอบจะถูกส่งไปยัง LINE Admin Group ID ที่คุณได้ตั้งค่าไว้
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+        <form action="{{ url_for('test_notification') }}" method="POST" class="d-inline">
+            <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
+        </form>
+      </div>
     </div>
+  </div>
 </div>
 
 <div class="modal fade" id="technicianEditModal" tabindex="-1" aria-labelledby="technicianEditModalLabel" aria-hidden="true">
@@ -258,7 +258,8 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     let technicians = {{ settings.technician_list | tojson | safe }};
-    let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
+    const technicianEditModalEl = document.getElementById('technicianEditModal');
+    let technicianEditModal = new bootstrap.Modal(technicianEditModalEl);
     let currentIndex = -1;
 
     function renderTechnicianList() {
@@ -268,8 +269,11 @@ document.addEventListener('DOMContentLoaded', function() {
             container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
         } else {
             technicians.forEach((tech, index) => {
-                // Corrected Google Drive thumbnail URL generation for avatar
-                const avatarUrl = tech.avatar_id ? `https://lh3.googleusercontent.com/d/${tech.avatar_id}=s40-c` : 'https://via.placeholder.com/40/6c757d/ffffff?text=' + tech.name.charAt(0).toUpperCase();
+                // FIXED: Use correct Google Drive thumbnail URL for avatars
+                const avatarUrl = tech.avatar_id 
+                    ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=w80` 
+                    : 'https://via.placeholder.com/40/6c757d/ffffff?text=' + tech.name.charAt(0).toUpperCase();
+                
                 const item = document.createElement('div');
                 item.className = 'list-group-item';
                 item.innerHTML = `
@@ -285,16 +289,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.openTechnicianEditModal = (index = -1) => {
         currentIndex = index;
-        document.getElementById('technician-avatar-file').value = ''; // Clear file input
+        const form = technicianEditModalEl.querySelector('.modal-body');
+        form.querySelector('#technician-name').value = '';
+        form.querySelector('#technician-avatar-file').value = ''; 
+        form.querySelector('#technician-avatar-id').value = '';
+
         if (index > -1) {
             const tech = technicians[index];
-            document.getElementById('technician-name').value = tech.name;
-            document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
-            document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
+            form.querySelector('#technician-name').value = tech.name;
+            form.querySelector('#technician-avatar-id').value = tech.avatar_id || '';
+            technicianEditModalEl.querySelector('.modal-title').innerText = 'แก้ไขข้อมูลช่าง';
         } else {
-            document.getElementById('technician-name').value = '';
-            document.getElementById('technician-avatar-id').value = '';
-            document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
+            technicianEditModalEl.querySelector('.modal-title').innerText = 'เพิ่มช่างใหม่';
         }
         technicianEditModal.show();
     }
@@ -305,53 +311,58 @@ document.addEventListener('DOMContentLoaded', function() {
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...';
 
-        const name = document.getElementById('technician-name').value.trim();
-        const avatarFile = document.getElementById('technician-avatar-file').files[0];
-        let avatarId = document.getElementById('technician-avatar-id').value;
+        try {
+            const name = document.getElementById('technician-name').value.trim();
+            const avatarFile = document.getElementById('technician-avatar-file').files[0];
+            let avatarId = document.getElementById('technician-avatar-id').value;
 
-        if (!name) {
-            alert('กรุณาใส่ชื่อช่าง');
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = originalBtnText;
-            return;
-        }
+            if (!name) {
+                alert('กรุณาใส่ชื่อช่าง');
+                return; // Exit early
+            }
 
-        if (avatarFile) {
-            const formData = new FormData();
-            formData.append('file', avatarFile);
-            try {
+            if (avatarFile) {
+                const formData = new FormData();
+                formData.append('file', avatarFile);
+                
                 const response = await fetch('/api/upload_avatar', { method: 'POST', body: formData });
                 const result = await response.json();
-                if (result.status === 'success') {
+                
+                if (response.ok && result.status === 'success') {
                     avatarId = result.file_id;
+                    flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
                 } else {
-                    throw new Error(result.message);
+                    throw new Error(result.message || 'Server returned an error.');
                 }
-            } catch (error) {
-                alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + error.message);
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalBtnText;
-                return;
             }
-        }
 
-        const newTech = { name: name, avatar_id: avatarId };
+            const newTech = { name: name, avatar_id: avatarId };
 
-        if (currentIndex > -1) {
-            technicians[currentIndex] = newTech;
-        } else {
-            technicians.push(newTech);
+            if (currentIndex > -1) {
+                technicians[currentIndex] = newTech;
+            } else {
+                technicians.push(newTech);
+            }
+            
+            renderTechnicianList(); 
+            technicianEditModal.hide();
+            flashMessage('บันทึกข้อมูลช่างเรียบร้อยแล้ว!', 'info');
+
+        } catch (error) {
+            console.error('Error saving technician:', error);
+            alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+        } finally {
+            // MODIFIED: Ensure button is always reset
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnText;
         }
-        renderTechnicianList();
-        technicianEditModal.hide();
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = originalBtnText;
     }
 
     window.deleteTechnician = (index) => {
         if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบช่าง "${technicians[index].name}"?`)) {
             technicians.splice(index, 1);
             renderTechnicianList();
+            flashMessage('ลบข้อมูลช่างเรียบร้อยแล้ว!', 'success');
         }
     }
 
@@ -361,5 +372,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     renderTechnicianList();
 });
+
+// Helper function to display flash messages for AJAX operations
+function flashMessage(message, category = 'info') {
+    const messageArea = document.getElementById('flash-messages-area');
+    if (!messageArea) {
+        console.error('Flash message area not found!');
+        return;
+    }
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${category} alert-dismissible fade show mt-3`;
+    alert.setAttribute('role', 'alert');
+    alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    messageArea.prepend(alert);
+
+    // Auto-dismiss after some time
+    setTimeout(() => {
+        bootstrap.Alert.getInstance(alert)?.close();
+    }, 5000);
+}
 </script>
 {% endblock %}
