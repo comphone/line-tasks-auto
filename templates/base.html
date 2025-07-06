@@ -27,11 +27,26 @@
             background-color: #000000 !important;
         }
 
+        /* --- NEW: Global Style Adjustments --- */
+        body {
+            background-color: #f8f9fa; /* A slightly softer background color */
+        }
+
+        .card {
+            transition: all 0.2s ease-in-out;
+        }
+
+        .card-header h1, .card-header h2, .card-header h3, .card-header h4, .card-header h5, .card-header h6 {
+            margin-bottom: 0;
+            font-weight: 600; /* Make headers slightly bolder */
+        }
+        /* --- End of New Styles --- */
+
     </style>
     {% block head_extra %}{% endblock %}
 </head>
 <body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-custom-black shadow-sm">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-custom-black shadow-sm sticky-top">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="{{ url_for('summary') }}">
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="navbar-logo">
@@ -82,10 +97,20 @@
     </nav>
 
     <main class="container mt-4 mb-5 pb-5">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message | safe }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="text-center text-muted py-3 bg-light border-top">
+    <footer class="text-center text-muted py-3 bg-white border-top">
         <small>Task Management System © {{ now.year }}</small>
     </footer>
 

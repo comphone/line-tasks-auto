@@ -3,230 +3,222 @@
 {% block title %}ตั้งค่าระบบ{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <h1 class="mb-4">ตั้งค่าระบบ</h1>
+<h1 class="mb-4">ตั้งค่าระบบ</h1>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                    {{ message | safe }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
-    <form method="POST" action="{{ url_for('settings_page') }}" class="needs-validation" novalidate>
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">การตั้งค่าการแจ้งเตือนและรายงาน</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <label for="appointment_reminder_hour" class="col-md-4 col-form-label">แจ้งเตือนนัดหมาย (โมงไทย)</label>
-                    <div class="col-md-8">
-                        <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour"
-                               value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23" required>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="outstanding_report_hour" class="col-md-4 col-form-label">รายงานค้างงาน (โมงไทย)</label>
-                    <div class="col-md-8">
-                        <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour"
-                               value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23" required>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="customer_followup_hour" class="col-md-4 col-form-label">ติดตามลูกค้า (โมงไทย)</label>
-                    <div class="col-md-8">
-                        <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour"
-                               value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23" required>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">ข้อมูล LINE Bot</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <label for="admin_group_id" class="col-md-4 col-form-label">LINE Admin Group ID</label>
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" id="admin_group_id" name="admin_group_id"
-                               value="{{ settings.line_recipients.admin_group_id }}">
-                        <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนภายใน</div>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="technician_group_id" class="col-md-4 col-form-label">LINE Technician Group ID</label>
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" id="technician_group_id" name="technician_group_id"
-                               value="{{ settings.line_recipients.technician_group_id }}">
-                        <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนให้ช่าง (ถ้าแยกจาก Admin)</div>
-                    </div>
-                </div>
-                 <div class="row mb-3">
-                    <label for="manager_user_id" class="col-md-4 col-form-label">LINE Manager User ID</label>
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" id="manager_user_id" name="manager_user_id"
-                               value="{{ settings.line_recipients.manager_user_id }}">
-                        <div class="form-text">LINE User ID ของผู้จัดการ (ถ้ามี)</div>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-8 offset-md-4">
-                        <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#testNotificationModal">
-                            ทดสอบส่งข้อความ LINE
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">ข้อมูลร้านค้าและช่าง</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <label for="shop_contact_phone" class="col-md-4 col-form-label">เบอร์โทรศัพท์ติดต่อ</label>
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" id="shop_contact_phone" name="shop_contact_phone"
-                               value="{{ settings.shop_info.contact_phone }}">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="shop_line_id" class="col-md-4 col-form-label">LINE ID ร้าน</label>
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" id="shop_line_id" name="shop_line_id"
-                               value="{{ settings.shop_info.line_id }}">
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <label for="technician_list" class="col-md-4 col-form-label">รายชื่อช่าง (แยกบรรทัด)</label>
-                    <div class="col-md-8">
-                        <textarea class="form-control" id="technician_list" name="technician_list" rows="5">{{ settings.technician_list | join('\n') }}</textarea>
-                        <div class="form-text">ป้อนชื่อช่างแต่ละคนในบรรทัดใหม่</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">การสำรองข้อมูลอัตโนมัติ</h5>
-            </div>
-            <div class="card-body">
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" id="auto_backup_enabled" name="auto_backup_enabled" role="switch" {% if settings.auto_backup.enabled %}checked{% endif %}>
-                    <label class="form-check-label" for="auto_backup_enabled">เปิดใช้งานการสำรองข้อมูลอัตโนมัติไปยัง Google Drive</label>
-                </div>
-                <div class="row mb-3">
-                    <label for="auto_backup_hour" class="col-md-4 col-form-label">เวลาสำรองข้อมูล (โมงไทย)</label>
-                    <div class="col-md-4">
-                        <input type="number" class="form-control" id="auto_backup_hour" name="auto_backup_hour"
-                               value="{{ settings.auto_backup.hour_thai }}" min="0" max="23" required>
-                    </div>
-                    <label for="auto_backup_minute" class="col-md-1 col-form-label">นาที</label>
-                    <div class="col-md-3">
-                        <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute"
-                               value="{{ settings.auto_backup.minute_thai }}" min="0" max="59" required>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="text-center">
-            <button type="submit" class="btn btn-success btn-lg">
-                <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด
-            </button>
-            <p class="form-text mt-2">
-                การกดปุ่มนี้จะบันทึกการเปลี่ยนแปลงทั้งหมดในหน้านี้
-            </p>
-        </div>
-    </form>
-    
-    <hr class="my-5">
-
-    <h2 class="mb-3">เครื่องมือและการจัดการข้อมูล</h2>
-
-    <div class="card mt-4 mb-4">
-        <div class="card-header bg-info text-dark">
-            <h5 class="mb-0">จัดการแคตตาล็อกอุปกรณ์</h5>
+<form method="POST" action="{{ url_for('settings_page') }}" class="needs-validation" novalidate>
+    <!-- Notification Settings Card -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-bell me-2"></i>การตั้งค่าการแจ้งเตือนและรายงาน</h5>
         </div>
         <div class="card-body">
-            <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-secondary me-2">Export แคตตาล็อก (Excel)</a>
-            <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importEquipmentModal">
-                Import แคตตาล็อก (Excel)
-            </button>
-            <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning ms-2">
-                <i class="fas fa-copy me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ
-            </a>
-        </div>
-    </div>
-    
-    <div class="card mt-4 mb-4">
-        <div class="card-header bg-secondary text-white">
-            <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือผู้ดูแลระบบ</h5>
-        </div>
-        <div class="card-body">
-            <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
-            <a href="{{ url_for('organize_files') }}" class="btn btn-info">
-                <i class="fas fa-folder-tree me-1"></i> ไปยังหน้าจัดระเบียบไฟล์ใน Drive
-            </a>
-            <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning ms-2">
-                <i class="fas fa-copy me-1"></i> ไปยังหน้าจัดการข้อมูลงานซ้ำ
-            </a>
+            <div class="row mb-3">
+                <label for="appointment_reminder_hour" class="col-md-4 col-form-label">แจ้งเตือนนัดหมาย (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour"
+                           value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="outstanding_report_hour" class="col-md-4 col-form-label">รายงานค้างงาน (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour"
+                           value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="customer_followup_hour" class="col-md-4 col-form-label">ติดตามลูกค้า (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour"
+                           value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="card mt-4 mb-4">
-        <div class="card-header bg-warning text-dark">
-            <h5 class="mb-0">นำเข้า / ส่งออก ข้อมูล</h5>
+    <!-- LINE Bot Settings Card -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fab fa-line me-2"></i>ข้อมูล LINE Bot</h5>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6 border-end">
-                    <h6><i class="fas fa-upload me-1"></i> นำเข้าข้อมูลสำรอง (.json)</h6>
-                    <form id="importBackupForm" enctype="multipart/form-data">
-                        <div class="mb-3">
-                            <label for="backupFileType" class="form-label">ประเภทไฟล์:</label>
-                            <select class="form-select" id="backupFileType" name="file_type" required>
-                                <option value="">-- เลือกประเภท --</option>
-                                <option value="tasks_json">งานเก่า (tasks_backup.json)</option>
-                                <option value="settings_json">ตั้งค่าระบบ (settings_backup.json)</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="backupFile" class="form-label">เลือกไฟล์ .json</label>
-                            <input class="form-control" type="file" id="backupFile" name="backup_file" accept=".json" required>
-                        </div>
-                        <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่าง</button>
-                        <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยันการนำเข้า</button>
-                    </form>
-                    <div id="importBackupPreview" class="mt-3"></div>
+            <div class="row mb-3">
+                <label for="admin_group_id" class="col-md-4 col-form-label">LINE Admin Group ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="admin_group_id" name="admin_group_id"
+                           value="{{ settings.line_recipients.admin_group_id }}">
+                    <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนภายใน</div>
                 </div>
-                <div class="col-md-6">
-                    <h6><i class="fas fa-download me-1"></i> ส่งออกข้อมูลทั้งหมด</h6>
-                    <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงาน, การตั้งค่า, และซอร์สโค้ดปัจจุบันทั้งหมด</p>
-                    <a href="{{ url_for('backup_data') }}" class="btn btn-danger">ดาวน์โหลด Full Backup (.zip)</a>
-                    <hr>
-                     <h6><i class="fas fa-cloud-upload-alt me-1"></i> สำรองข้อมูลขึ้น Google Drive</h6>
-                     <p>สำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive ทันที</p>
-                    <button type="button" id="backupNowBtn" class="btn btn-info">
-                        Backup to Drive Now
+            </div>
+            <div class="row mb-3">
+                <label for="technician_group_id" class="col-md-4 col-form-label">LINE Technician Group ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="technician_group_id" name="technician_group_id"
+                           value="{{ settings.line_recipients.technician_group_id }}">
+                    <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนให้ช่าง (ถ้าแยกจาก Admin)</div>
+                </div>
+            </div>
+             <div class="row mb-3">
+                <label for="manager_user_id" class="col-md-4 col-form-label">LINE Manager User ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="manager_user_id" name="manager_user_id"
+                           value="{{ settings.line_recipients.manager_user_id }}">
+                    <div class="form-text">LINE User ID ของผู้จัดการ (ถ้ามี)</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-8 offset-md-4">
+                    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#testNotificationModal">
+                        <i class="fas fa-paper-plane me-2"></i>ทดสอบส่งข้อความ LINE
                     </button>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Shop and Technician Info Card -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-store me-2"></i>ข้อมูลร้านค้าและช่าง</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <label for="shop_contact_phone" class="col-md-4 col-form-label">เบอร์โทรศัพท์ติดต่อ</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="shop_contact_phone" name="shop_contact_phone"
+                           value="{{ settings.shop_info.contact_phone }}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="shop_line_id" class="col-md-4 col-form-label">LINE ID ร้าน</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="shop_line_id" name="shop_line_id"
+                           value="{{ settings.shop_info.line_id }}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="technician_list" class="col-md-4 col-form-label">รายชื่อช่าง (แยกบรรทัด)</label>
+                <div class="col-md-8">
+                    <textarea class="form-control" id="technician_list" name="technician_list" rows="5">{{ settings.technician_list | join('\n') }}</textarea>
+                    <div class="form-text">ป้อนชื่อช่างแต่ละคนในบรรทัดใหม่</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto Backup Card -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-cloud-upload-alt me-2"></i>การสำรองข้อมูลอัตโนมัติ</h5>
+        </div>
+        <div class="card-body">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="auto_backup_enabled" name="auto_backup_enabled" role="switch" {% if settings.auto_backup.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="auto_backup_enabled">เปิดใช้งานการสำรองข้อมูลอัตโนมัติไปยัง Google Drive</label>
+            </div>
+            <div class="row mb-3 align-items-center">
+                <label for="auto_backup_hour" class="col-md-4 col-form-label">เวลาสำรองข้อมูล (โมง:นาที)</label>
+                <div class="col-md-8 d-flex align-items-center">
+                    <input type="number" class="form-control" id="auto_backup_hour" name="auto_backup_hour"
+                           value="{{ settings.auto_backup.hour_thai }}" min="0" max="23" required style="width: 80px;">
+                    <span class="mx-2">:</span>
+                    <input type="number" class="form-control" id="auto_backup_minute" name="auto_backup_minute"
+                           value="{{ settings.auto_backup.minute_thai }}" min="0" max="59" required style="width: 80px;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save All Settings Button -->
+    <div class="text-center mb-5">
+        <button type="submit" class="btn btn-success btn-lg">
+            <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด
+        </button>
+        <p class="form-text mt-2">
+            การกดปุ่มนี้จะบันทึกการเปลี่ยนแปลงทั้งหมดในหน้านี้
+        </p>
+    </div>
+</form>
+
+<hr class="my-5">
+
+<h2 class="mb-4">เครื่องมือและการจัดการข้อมูล</h2>
+
+<!-- Equipment Catalog Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-info text-dark">
+        <h5 class="mb-0"><i class="fas fa-book me-2"></i>จัดการแคตตาล็อกอุปกรณ์</h5>
+    </div>
+    <div class="card-body">
+        <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-secondary me-2"><i class="fas fa-file-excel me-1"></i> Export (Excel)</a>
+        <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importEquipmentModal">
+            <i class="fas fa-file-import me-1"></i> Import (Excel)
+        </button>
+        <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning ms-2">
+            <i class="fas fa-copy me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ
+        </a>
+    </div>
 </div>
 
-{# --- Modals (Test Notification, Import Equipment) --- #}
+<!-- Admin Tools Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือผู้ดูแลระบบ</h5>
+    </div>
+    <div class="card-body">
+        <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
+        <a href="{{ url_for('organize_files') }}" class="btn btn-info">
+            <i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive
+        </a>
+        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning ms-2">
+            <i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ
+        </a>
+    </div>
+</div>
+
+<!-- Import/Export Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>นำเข้า / ส่งออก ข้อมูล</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 border-end">
+                <h6><i class="fas fa-upload me-1"></i> นำเข้าข้อมูลสำรอง (.json)</h6>
+                <form id="importBackupForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="backupFileType" class="form-label">ประเภทไฟล์:</label>
+                        <select class="form-select" id="backupFileType" name="file_type" required>
+                            <option value="">-- เลือกประเภท --</option>
+                            <option value="tasks_json">งานเก่า (tasks_backup.json)</option>
+                            <option value="settings_json">ตั้งค่าระบบ (settings_backup.json)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="backupFile" class="form-label">เลือกไฟล์ .json</label>
+                        <input class="form-control" type="file" id="backupFile" name="backup_file" accept=".json" required>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่าง</button>
+                    <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยันการนำเข้า</button>
+                </form>
+                <div id="importBackupPreview" class="mt-3"></div>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="fas fa-download me-1"></i> ส่งออกข้อมูลทั้งหมด</h6>
+                <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงาน, การตั้งค่า, และซอร์สโค้ดปัจจุบันทั้งหมด</p>
+                <a href="{{ url_for('backup_data') }}" class="btn btn-danger"><i class="fas fa-file-archive me-1"></i> ดาวน์โหลด Full Backup (.zip)</a>
+                <hr>
+                 <h6><i class="fas fa-cloud-upload-alt me-1"></i> สำรองข้อมูลขึ้น Google Drive</h6>
+                 <p>สำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive ทันที</p>
+                <button type="button" id="backupNowBtn" class="btn btn-info">
+                    <i class="fas fa-cloud-upload-alt me-1"></i> Backup to Drive Now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
