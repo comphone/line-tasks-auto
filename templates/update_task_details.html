@@ -2,33 +2,90 @@
 
 {% block title %}จัดการงาน: {{ task.title }}{% endblock %}
 
+{% block head_extra %}
+<style>
+    /* --- NEW STYLES for History Entries and Tabs --- */
+
+    /* Style for each history entry to make it stand out */
+    .history-entry {
+        background-color: #f8f9fa; /* Light background for the entry */
+        border: 1px solid #e9ecef;
+        border-left-width: 5px; /* Thick colored left border */
+        border-radius: .375rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .history-entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    .history-entry-title {
+        font-weight: 600;
+        font-size: 1.05em;
+    }
+    .history-entry-body p {
+        margin-bottom: 0.25rem;
+    }
+
+    /* Custom styles for modern tabs */
+    .nav-tabs-modern {
+        border-bottom: 1px solid #dee2e6;
+    }
+    .nav-tabs-modern .nav-link {
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: #6c757d;
+        transition: all 0.2s ease-in-out;
+    }
+    .nav-tabs-modern .nav-link:hover {
+        color: #0d6efd;
+    }
+    .nav-tabs-modern .nav-link.active {
+        border-bottom-color: #0d6efd;
+        color: #0d6efd;
+        font-weight: 600;
+        background-color: transparent;
+    }
+    /* --- END OF NEW STYLES --- */
+
+    .info-hero-card {
+        background: linear-gradient(135deg, #0d6efd, #0d6efd);
+        color: white;
+        padding: 1.5rem;
+        border-radius: .75rem;
+        margin-bottom: 1.5rem;
+    }
+    .info-label {
+        font-size: 0.9em;
+        opacity: 0.8;
+        margin-bottom: .25rem;
+    }
+    .info-value {
+        font-size: 1.1em;
+        font-weight: 600;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4 mb-5">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">📝 จัดการงาน</h1>
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                    {{ message | safe }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
-    {# New: Upload Status Box - กล่องสถานะการอัปโหลด #}
+    <!-- Upload Status Box -->
     <div id="upload-status-box" class="alert alert-info mt-3" style="display:none;">
         <i class="fas fa-spinner fa-spin me-2"></i> กำลังอัปโหลดไฟล์... <span id="upload-progress-text"></span>
         <div class="progress mt-2">
             <div class="progress-bar" role="progressbar" id="upload-progress-bar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
         </div>
     </div>
-    {# End New #}
 
+    <!-- Customer & Task Info Hero Card -->
     <div class="info-hero-card shadow-lg">
         <div class="row">
             <div class="col-md-6">
@@ -46,9 +103,9 @@
             </div>
             <div class="col-md-6">
                  <p class="info-label">นัดหมาย</p>
-                <h5 class="info-value {% if task.is_overdue %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</h5>
+                <h5 class="info-value {% if task.is_overdue and task.status != 'completed' %}text-warning{% endif %}">{{ task.due_formatted or '-' }}</h5>
                  <p class="info-label">แผนที่</p>
-                <h5 class="info-value">{% if task.customer.map_url %}<a href="{{ task.customer.map_url }}" target="_blank">เปิด Google Maps</a>{% else %}-{% endif %}</h5>
+                <h5 class="info-value">{% if task.customer.map_url %}<a href="{{ task.customer.map_url }}" target="_blank" class="text-white"><u>เปิด Google Maps</u></a>{% else %}-{% endif %}</h5>
                 
                 <p class="info-label">รายละเอียดงาน</p>
                 <h5 class="info-value">{{ task.title }}</h5>
@@ -56,35 +113,36 @@
         </div>
     </div>
 
+    <!-- Main Actions Card -->
     <div class="card shadow-sm" id="chooseActionCard">
-        <div class="card-body text-center">
+        <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำหลักสำหรับงานนี้</h5>
              <div class="d-grid gap-3 d-md-flex justify-content-md-center">
                 <button type="button" onclick="showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงานและบันทึกรายงานสรุป</button>
                 <button type="button" onclick="showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</button>
-                <button type="button" onclick="showActionCard('qrCodeCard')" class="btn btn-info btn-lg px-4"><i class="fas fa-qrcode me-2"></i>สร้าง QR Code</button> {# Added button to show QR Code card #}
+                <button type="button" onclick="showActionCard('qrCodeCard')" class="btn btn-info btn-lg px-4"><i class="fas fa-qrcode me-2"></i>สร้าง QR Code</button>
             </div>
         </div>
     </div>
     
-    {# Section: บันทึกรายงานสรุปเพื่อปิดงาน - มีกรอบและปรับขนาดตัวอักษร #}
-    <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;"> {# Hidden by default #}
+    <!-- Hidden Action Cards -->
+    <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="completeForm" onsubmit="handleFormSubmission(event, this, 'complete')">
                 <input type="hidden" name="action" value="complete_task">
                 <div class="mb-3">
-                    <label for="work_summary_final" class="form-label form-label-custom"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
+                    <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
                     <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
                 </div>
                  <div class="mb-3">
-                    <label for="technicians_final" class="form-label form-label-custom"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
+                    <label for="technicians_final" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
                     <select class="form-select" id="technicians_final" name="technicians_report" multiple required size="3">
                         {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label for="files_final" class="form-label form-label-custom"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
+                    <label for="files_final" class="form-label"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*">
                 </div>
                 <hr>
@@ -94,21 +152,21 @@
         </div>
     </div>
 
-    <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;"> {# Hidden by default #}
+    <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" onsubmit="showLoading(this)">
                 <input type="hidden" name="action" value="reschedule_task">
                 <div class="mb-3">
-                    <label for="reschedule_due" class="form-label form-label-custom"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
+                    <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
                     <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
                 </div>
                 <div class="mb-3">
-                    <label for="reschedule_reason" class="form-label form-label-custom"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
+                    <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
                     <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
                 </div>
                 <div class="mb-3">
-                    <label for="technicians_reschedule" class="form-label form-label-custom"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
+                    <label for="technicians_reschedule" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
                      <select class="form-select" id="technicians_reschedule" name="technicians_reschedule" multiple required size="3">
                         {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
                     </select>
@@ -120,8 +178,7 @@
         </div>
     </div>
 
-    {# New: QR Code Actions Card - เมนูสร้าง QR Code #}
-    <div class="card shadow-sm mt-4" id="qrCodeCard" style="display:none;"> {# Hidden by default #}
+    <div class="card shadow-sm mt-4" id="qrCodeCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
         <div class="card-body text-center">
             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
@@ -130,36 +187,25 @@
                 <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
                 {% endif %}
             </div>
-            <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button> {# Added cancel button #}
+            <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
         </div>
     </div>
-    {# End New #}
 
+    <!-- History and Progress Card with Modern Tabs -->
     <div class="card shadow-sm mt-4">
         <div class="card-header">
-            <ul class="nav nav-tabs card-header-tabs" id="secondaryActionsTab" role="tablist">
-                <li class="nav-item" role="presentation">
-                    {# MODIFIED: Changed text to "เพิ่มประวัติงาน" and added style for font size #}
-                    <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i><span style="font-size: 0.9em;">เพิ่มประวัติงาน</span></button>
-                </li>
+            <ul class="nav nav-tabs nav-tabs-modern" id="secondaryActionsTab" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-pane" type="button" role="tab" aria-controls="history-pane" aria-selected="true"><i class="fas fa-history me-2"></i>ประวัติงาน</button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน</button>
+                </li>
             </ul>
         </div>
-        <div class="card-body tab-content">
-            <div class="tab-pane fade" id="progress-report-pane" role="tabpanel" aria-labelledby="progress-report-tab">
-                 {# Modified form: added id and changed onsubmit #}
-                 <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="reportForm" onsubmit="handleFormSubmission(event, this, 'report')">
-                    <input type="hidden" name="action" value="save_report">
-                    <h5 class="mb-3">เพิ่มรายงานความคืบหน้า (งานยังไม่เสร็จ)</h5>
-                    <div class="mb-3"><label for="work_summary_progress" class="form-label form-label-custom">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
-                    <div class="mb-3"><label for="technicians_progress" class="form-label form-label-custom">ช่าง <span class="text-danger">*</span></label><select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">{% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}</select></div>
-                    <div class="mb-3"><label for="files_progress" class="form-label form-label-custom">แนบรูป</label><input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*"></div>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
-                </form>
-            </div>
-            <div class="tab-pane fade show active p-2" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
+        <div class="card-body tab-content p-4">
+            <!-- History Pane -->
+            <div class="tab-pane fade show active" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
                 {% if task.tech_reports_history %}
                     {% for report in task.tech_reports_history %}
                     <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}">
@@ -174,9 +220,9 @@
                         <div class="history-entry-body">
                              {% if report.type == 'reschedule' %}
                                 <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
-                                <p class="mb-1"><strong>เหตุผล:</strong> {{ report.reason or 'ไม่ได้ระบุ' }}</p>
+                                <p><strong>เหตุผล:</strong> {{ report.reason or 'ไม่ได้ระบุ' }}</p>
                              {% else %}
-                                <p class="mb-1"><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
+                                <p><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
                              {% endif %}
                              <p class="mb-0"><small class="text-muted"><strong>ช่าง/ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
                         </div>
@@ -193,10 +239,23 @@
                     <p class="text-muted text-center mt-3">ยังไม่มีประวัติการดำเนินงาน</p>
                 {% endif %}
             </div>
+            <!-- Progress Report Pane -->
+            <div class="tab-pane fade" id="progress-report-pane" role="tabpanel" aria-labelledby="progress-report-tab">
+                 <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="reportForm" onsubmit="handleFormSubmission(event, this, 'report')">
+                    <input type="hidden" name="action" value="save_report">
+                    <h5 class="mb-3">เพิ่มรายงานความคืบหน้า (งานยังไม่เสร็จ)</h5>
+                    <div class="mb-3"><label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
+                    <div class="mb-3"><label for="technicians_progress" class="form-label">ช่าง <span class="text-danger">*</span></label><select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">{% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}</select></div>
+                    <div class="mb-3"><label for="files_progress" class="form-label">แนบรูป</label><input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*"></div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>
+</div>
 
+<!-- Edit Attachments Modal -->
 <div class="modal fade" id="editAttachmentsModal" tabindex="-1" aria-labelledby="editAttachmentsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -224,20 +283,6 @@
 {% endblock %}
 
 {% block body_extra %}
-<style>
-    /* Custom style for form labels to match the desired font size */
-    .form-label-custom {
-        font-size: 0.95em; /* Adjust as needed, e.g., 0.9em, 0.85em */
-    }
-
-    /* Ensure card headers and body text are consistent */
-    .card-header h5 {
-        font-size: 1.1em; /* Adjust as needed */
-    }
-    .card-body {
-        font-size: 0.95em; /* Adjust as needed for general body text */
-    }
-</style>
 <script>
 // Pass Flask data to JavaScript
 const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
@@ -247,7 +292,7 @@ function showActionCard(cardIdToShow) {
     document.getElementById('chooseActionCard').style.display = 'none';
     document.getElementById('finalReportCard').style.display = 'none';
     document.getElementById('rescheduleCard').style.display = 'none';
-    document.getElementById('qrCodeCard').style.display = 'none'; // Hide QR code card
+    document.getElementById('qrCodeCard').style.display = 'none';
 
     const cardToShow = document.getElementById(cardIdToShow);
     if (cardToShow) {
@@ -255,27 +300,22 @@ function showActionCard(cardIdToShow) {
     }
 }
 
-// Original showLoading, for non-file submissions (e.g., reschedule)
+// Original showLoading, for non-file submissions
 function showLoading(form) {
-    const submitButton = form.querySelector('button[type="submit"]');
-    if (submitButton) {
-        submitButton.disabled = true;
-        submitButton.innerHTML = `
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            กำลังบันทึก...
-        `;
-    }
-}
-
-// New function for handling AJAX form submissions for file uploads
-async function handleFormSubmission(event, form, formType) {
-    event.preventDefault(); // Prevent default form submission
-
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) {
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...`;
     }
+}
+
+// AJAX form submissions for file uploads
+async function handleFormSubmission(event, form, formType) {
+    event.preventDefault();
+
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...`;
 
     const uploadStatusBox = document.getElementById('upload-status-box');
     const uploadProgressBar = document.getElementById('upload-progress-bar');
@@ -283,114 +323,68 @@ async function handleFormSubmission(event, form, formType) {
     
     const filesInput = form.querySelector('input[type="file"][name="files[]"]');
     const files = filesInput ? Array.from(filesInput.files) : [];
-    const totalFiles = files.length;
-    let uploadedFilesCount = 0;
-    let attachmentUrls = []; // To collect URLs of uploaded files
+    let attachmentUrls = [];
 
-    // Ensure taskId is a string and correctly passed
-    const taskId = '{{ task.id }}'; 
-
-    if (totalFiles > 0) {
-        uploadStatusBox.style.display = 'block'; // Show status box
-        
-        for (let i = 0; i < totalFiles; i++) {
-            const file = files[i];
-            uploadProgressText.textContent = `กำลังอัปโหลดไฟล์ ${i + 1} จาก ${totalFiles}...`;
-            uploadProgressBar.style.width = `${((i + 1) / totalFiles) * 100}%`;
-            uploadProgressBar.setAttribute('aria-valuenow', ((i + 1) / totalFiles) * 100);
-
+    if (files.length > 0) {
+        uploadStatusBox.style.display = 'block';
+        for (let i = 0; i < files.length; i++) {
+            uploadProgressText.textContent = `กำลังอัปโหลดไฟล์ ${i + 1} จาก ${files.length}...`;
+            uploadProgressBar.style.width = `${((i + 1) / files.length) * 100}%`;
+            
             const formData = new FormData();
-            formData.append('file', file);
-            formData.append('task_id', taskId); // Use the string taskId
+            formData.append('file', files[i]);
+            formData.append('task_id', '{{ task.id }}');
 
             try {
-                const response = await fetch('/api/upload_attachment', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('/api/upload_attachment', { method: 'POST', body: formData });
                 const result = await response.json();
                 if (result.status === 'success') {
-                    uploadedFilesCount++;
-                    attachmentUrls.push(result.file_info); // Collect URL/ID for the report
+                    attachmentUrls.push(result.file_info);
                 } else {
-                    console.error('File upload failed:', result.message);
                     flashMessage('อัปโหลดไฟล์ไม่สำเร็จ: ' + result.message, 'danger');
                 }
             } catch (error) {
-                console.error('Error during file upload:', error);
                 flashMessage('เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์', 'danger');
             }
         }
-        uploadProgressText.textContent = `อัปโหลดครบทุกไฟล์แล้ว (${uploadedFilesCount} จาก ${totalFiles})`;
-        // Give a brief moment for the user to see the "complete" status
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    // Now, submit the rest of the form data (including collected attachmentUrls)
-    // This will be a standard AJAX submission for the main report content
     const mainFormData = new FormData(form);
-    // Remove the files from the main form data as they were uploaded separately
     if (filesInput) mainFormData.delete('files[]');
-
-    // Add the collected attachment URLs to the main form data
     mainFormData.append('uploaded_attachments_json', JSON.stringify(attachmentUrls));
 
     try {
-        // Ensure the action URL is correct, using taskId directly if needed
-        const finalFormAction = `{{ url_for('task_details', task_id='') }}${taskId}`; 
-        
-        const response = await fetch(finalFormAction, { // Use the string taskId in the URL
-            method: 'POST',
-            body: mainFormData // Send the new FormData without files, but with attachment info
-        });
-        const result = await response.json(); // Assuming your Flask endpoint returns JSON for AJAX
+        const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
+        const result = await response.json();
         if (result.status === 'success') {
-            // Flash success message and then reload the page
-            window.location.reload(); // Or redirect to summary
+            window.location.reload();
         } else {
-            flashMessage(result.message, 'danger'); // Display error from server
+            flashMessage(result.message, 'danger');
             submitButton.disabled = false;
-            submitButton.innerHTML = submitButton.getAttribute('data-original-html'); // Restore original button text
+            submitButton.innerHTML = submitButton.getAttribute('data-original-html');
         }
     } catch (error) {
-        console.error('Error submitting main form:', error);
         flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger');
         submitButton.disabled = false;
-        submitButton.innerHTML = submitButton.getAttribute('data-original-html'); // Restore original button text
+        submitButton.innerHTML = submitButton.getAttribute('data-original-html');
     } finally {
-        uploadStatusBox.style.display = 'none'; // Hide status box
+        uploadStatusBox.style.display = 'none';
     }
 }
 
-// Helper function to display flash messages (since Flask's flash won't work with AJAX directly)
+// Helper to display flash messages with AJAX
 function flashMessage(message, category) {
-    // Check if the message is already present to avoid duplicates
-    const existingAlerts = document.querySelectorAll('.container.mt-4.mb-5 .alert');
-    let messageExists = false;
-    existingAlerts.forEach(alert => {
-        if (alert.textContent.includes(message)) {
-            messageExists = true;
-        }
-    });
-
-    if (messageExists) {
-        return; // Don't add duplicate messages
-    }
-    
-    // Create new message container if needed, or clear existing one
     const mainContainer = document.querySelector('.container.mt-4.mb-5');
     if (!mainContainer) return;
-
     const newMessage = document.createElement('div');
-    newMessage.className = `alert alert-${category} alert-dismissible fade show mt-3`; // Added mt-3 for spacing
+    newMessage.className = `alert alert-${category} alert-dismissible fade show mt-3`;
     newMessage.setAttribute('role', 'alert');
     newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
-    
-    // Prepend (add to top) to the container
     mainContainer.prepend(newMessage); 
 }
 
-// Store original button HTML for re-enabling
+// DOMContentLoaded listener
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('button[type="submit"]').forEach(btn => {
         btn.setAttribute('data-original-html', btn.innerHTML);
@@ -406,13 +400,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('editAttachmentsForm');
             const container = document.getElementById('current-attachments-container');
             
-            // Set the form action dynamically
             form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
-            
-            // Clear previous content
             container.innerHTML = '';
 
-            // Populate with current attachments
             if (report.attachments && report.attachments.length > 0) {
                 report.attachments.forEach(att => {
                     const attachmentId = att.id;
@@ -439,13 +429,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     deleteBtn.title = 'ลบรูปภาพนี้';
 
                     deleteBtn.onclick = function() {
-                        // Just hide the element on click
                         wrapper.style.display = 'none';
-                        // And remove the hidden input so it's not submitted
                         const hiddenInput = document.getElementById(`keep-att-${attachmentId}`);
-                        if (hiddenInput) {
-                            hiddenInput.remove();
-                        }
+                        if (hiddenInput) hiddenInput.remove();
                     };
                     
                     const hiddenInput = document.createElement('input');
@@ -456,7 +442,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     wrapper.appendChild(imgLink);
                     wrapper.appendChild(deleteBtn);
-                    wrapper.appendChild(hiddenInput); // Add hidden input to the wrapper
+                    wrapper.appendChild(hiddenInput);
                     container.appendChild(wrapper);
                 });
             } else {
