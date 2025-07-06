@@ -45,10 +45,8 @@
 
 
 <form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
-    <!-- Hidden input to store technician data as JSON -->
     <input type="hidden" id="technician_list_json" name="technician_list_json">
 
-    <!-- Notification Settings Card -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fas fa-bell me-2"></i>การตั้งค่าการแจ้งเตือนและรายงาน</h5>
@@ -78,7 +76,6 @@
         </div>
     </div>
 
-    <!-- LINE Bot Settings Card -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fab fa-line me-2"></i>ข้อมูล LINE Bot</h5>
@@ -118,7 +115,6 @@
         </div>
     </div>
 
-    <!-- Shop and Technician Info Card -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fas fa-store me-2"></i>ข้อมูลร้านค้าและช่าง</h5>
@@ -141,15 +137,13 @@
             <hr>
             <h6 class="mt-3">จัดการรายชื่อช่าง</h6>
             <div id="technician-management-list-container" class="list-group technician-management-list mb-3">
-                <!-- Technician list will be rendered here by JS -->
-            </div>
+                </div>
             <button type="button" class="btn btn-success" onclick="openTechnicianEditModal()">
                 <i class="fas fa-plus me-2"></i>เพิ่มช่างใหม่
             </button>
         </div>
     </div>
 
-    <!-- Save All Settings Button -->
     <div class="text-center mb-5">
         <button type="submit" class="btn btn-success btn-lg">
             <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด
@@ -164,7 +158,6 @@
 
 <h2 class="mb-4">เครื่องมือและการจัดการข้อมูล</h2>
 
-<!-- Data Management Tools Card -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-secondary text-white">
         <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือดูแลและจัดการข้อมูล</h5>
@@ -177,7 +170,6 @@
     </div>
 </div>
 
-<!-- Import Data Card -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-info text-dark">
         <h5 class="mb-0"><i class="fas fa-upload me-2"></i>นำเข้าข้อมูลสำรอง (.json)</h5>
@@ -203,7 +195,6 @@
     </div>
 </div>
 
-<!-- Export and Backup Card -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-danger text-white">
         <h5 class="mb-0"><i class="fas fa-download me-2"></i>ส่งออกและสำรองข้อมูลขึ้น Drive</h5>
@@ -227,7 +218,6 @@
     </div>
 </div>
 
-<!-- Modals -->
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -248,7 +238,6 @@
   </div>
 </div>
 
-<!-- Technician Edit/Add Modal -->
 <div class="modal fade" id="technicianEditModal" tabindex="-1" aria-labelledby="technicianEditModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -429,3 +418,4 @@ function flashMessage(message, category) {
     }, 5000); 
 }
 </script>
+{% endblock %}
