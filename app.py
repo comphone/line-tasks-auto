@@ -9,8 +9,8 @@ import zipfile
 from io import BytesIO
 from collections import defaultdict
 from datetime import timezone
-import time 
-import tempfile 
+import time
+import tempfile
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -290,8 +290,7 @@ def load_settings_from_drive_on_startup():
 def get_app_settings():
     """Get current application settings, loading from file or using defaults."""
     global _APP_SETTINGS_STORE
-    # Corrected variable name from _APP_STORE to _APP_SETTINGS_STORE
-    if not _APP_SETTINGS_STORE: 
+    if not _APP_SETTINGS_STORE:
         loaded = load_settings_from_file()
         _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
         if loaded:
@@ -381,7 +380,7 @@ def get_single_task(task_id):
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
-def _perform_drive_upload(media_body, file_name, mime_type, folder_id): 
+def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
     """Base logic to upload a file to Drive and set permissions."""
     service = get_google_drive_service()
     if not service or not folder_id:
@@ -393,7 +392,7 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
         app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
         
         file_obj = _execute_google_api_call_with_retry(
-            service.files().create, 
+            service.files().create,
             body=file_metadata, media_body=media_body, fields='id, webViewLink'
         )
 
@@ -405,7 +404,7 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
         app.logger.info(f"File '{file_name}' uploaded with ID: {uploaded_file_id}. Setting permissions.")
 
         permission_result = _execute_google_api_call_with_retry(
-            service.permissions().create, 
+            service.permissions().create,
             fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'}
         )
         
@@ -426,12 +425,12 @@ def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
         app.logger.error(f"File at path '{file_path}' is missing or empty. Aborting upload.")
         return None
     media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-    return _perform_drive_upload(media, file_name, mime_type, folder_id) 
+    return _perform_drive_upload(media, file_name, mime_type, folder_id)
 
 def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
     """Uploads a file-like object from memory to Google Drive."""
     media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
-    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id) 
+    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id)
     return file_obj
 
 
@@ -507,7 +506,7 @@ def parse_customer_info_from_notes(notes):
         # Check if it looks like coordinates (e.g., "13.75,100.50")
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
             # Use standard Google Maps search URL for coordinates
-            info['map_url'] = f"http://maps.google.com/maps?q={coords_or_url}" 
+            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}"
         else:
             # Otherwise, assume it's already a valid URL
             info['map_url'] = coords_or_url
@@ -816,7 +815,7 @@ def scheduled_backup_job():
             if memory_file_zip and filename_zip:
                 if upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', system_backup_folder_id):
                     app.logger.info("Automatic full system backup successful.")
-                else: 
+                else:
                     app.logger.error("Automatic full system backup failed.")
                     overall_success = False
             else:
@@ -899,7 +898,7 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     """Creates the new feedback Flex Message with 'OK' and 'Problem' buttons."""
     
     problem_action = URIAction(
-        label='🚨 ยังมีปัญหาอยู่', 
+        label='🚨 ยังมีปัญหาอยู่',
         uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}"
     )
 
@@ -915,14 +914,14 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
                 TextComponent(text="ไม่ทราบว่าหลังจากทีมงานของเราเข้าบริการแล้ว ทุกอย่างเรียบร้อยดีหรือไม่ครับ/คะ?", size='md', wrap=True, align='center'),
                 BoxComponent(layout='vertical', spacing='sm', margin='md', contents=[
                     ButtonComponent(
-                        style='primary', height='sm', color='#28a745', 
+                        style='primary', height='sm', color='#28a745',
                         action=PostbackAction(
-                            label='✅ งานเรียบร้อยดี', data=f'action=customer_feedback&task_id={task_id}&feedback=ok', 
+                            label='✅ งานเรียบร้อยดี', data=f'action=customer_feedback&task_id={task_id}&feedback=ok',
                             display_text='ขอบคุณสำหรับคำยืนยันครับ/ค่ะ!'
                         )
                     ),
                     ButtonComponent(
-                        style='secondary', height='sm', color='#dc3545', 
+                        style='secondary', height='sm', color='#dc3545',
                         action=problem_action
                     )
                 ]),
@@ -1225,7 +1224,7 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()] # Clean and filter empty
 
             # Check for content: either summary or attachments (now from new_attachments)
-            if not (work_summary or new_attachments): 
+            if not (work_summary or new_attachments):
                 message = 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'
                 if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                     return jsonify({'status': 'error', 'message': message}), 400
@@ -1240,7 +1239,7 @@ def task_details(task_id):
 
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'work_summary': work_summary, 
+                'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
                 'attachments': new_attachments, # Use the attachments collected via AJAX
                 'technicians': selected_technicians
@@ -1310,7 +1309,7 @@ def task_details(task_id):
             
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'work_summary': work_summary, 
+                'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
                 'attachments': new_attachments, # Use the attachments collected via AJAX
                 'technicians': selected_technicians
@@ -1828,7 +1827,7 @@ def manage_duplicates():
             parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
             parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
             processed_tasks.append(parsed)
-        processed_sets[key] = processed_tasks 
+        processed_sets[key] = processed_tasks
     return render_template('duplicates.html', duplicates=processed_sets)
 
 @app.route('/delete_duplicates_batch', methods=['POST'])
@@ -1915,9 +1914,9 @@ def trigger_customer_follow_up_test():
             flash('ไม่พบงานที่เสร็จแล้วสำหรับใช้ทดสอบ.', 'warning')
             return redirect(url_for('settings_page'))
         latest = max(tasks, key=lambda x: date_parse(x['completed']))
-        notes = latest.get('notes', '') 
-        feedback = parse_customer_feedback_from_notes(notes) 
-        feedback.pop('follow_up_sent_date', None) 
+        notes = latest.get('notes', '')
+        feedback = parse_customer_feedback_from_notes(notes)
+        feedback.pop('follow_up_sent_date', None)
         
         # Reconstruct notes with updated feedback and original base/reports
         history_reports, base_notes = parse_tech_report_from_notes(notes)
@@ -1961,7 +1960,7 @@ def public_task_report(task_id):
                 total += subtotal
                 costs.append({'item': name, 'quantity': qty, 'unit': cat_item.get('unit', ''), 'price_per_unit': price, 'subtotal': subtotal})
             else:
-                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_per_unit': 'N/A', 'subtotal': 'N/A'})
+                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})
     return render_template('public_task_report.html', task=task, customer_info=customer, latest_report=latest_report, detailed_costs=costs, total_cost=total)
 
 @app.route('/submit_customer_problem', methods=['POST'])
@@ -1973,8 +1972,7 @@ def submit_customer_problem():
     if not task: return jsonify({"status": "error"}), 404
     notes = task.get('notes', '')
     feedback = parse_customer_feedback_from_notes(notes)
-    feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': 'problem_reported', 'problem_description': problem_desc})
-    if user_id: feedback['customer_line_user_id'] = user_id
+    feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': 'problem_reported', 'customer_line_user_id': user_id})
     # Reconstruct notes
     reports_history, base = parse_tech_report_from_notes(notes)
     reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
@@ -2192,10 +2190,10 @@ def organize_files():
             page_token = None
             while True:
                 response = _execute_google_api_call_with_retry(
-                    service.files().list, 
-                    q=unorganized_files_query, 
-                    spaces='drive', 
-                    fields='nextPageToken, files(id, name, parents)', 
+                    service.files().list,
+                    q=unorganized_files_query,
+                    spaces='drive',
+                    fields='nextPageToken, files(id, name, parents)',
                     pageSize=100, # Fetch in chunks
                     pageToken=page_token
                 )
@@ -2306,7 +2304,7 @@ def organize_files():
             except HttpError as file_error:
                 if file_error.resp.status == 404:
                     app.logger.warning(f"File {file_id} ('{file_name}') not found on Drive during move, skipping. Error: {file_error}")
-                    skipped_count += 1 
+                    skipped_count += 1
                 else:
                     app.logger.error(f"Error moving file {file_id} ('{file_name}'): {file_error}")
                     error_count += 1
