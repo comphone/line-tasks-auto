@@ -6,81 +6,89 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
         .form-section-header {
+            font-size: 1.2rem;
             font-weight: 600;
             padding-bottom: .5rem;
-            border-bottom: 1px solid #dee2e6;
-            margin-top: 1.5rem;
-            margin-bottom: 1rem;
+            border-bottom: 2px solid #0d6efd;
+            margin-top: 1rem;
+            margin-bottom: 1.5rem;
+            display: inline-block;
         }
     </style>
 {% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-9 col-md-11">
-        <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0"><i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่</h4>
+    <div class="col-lg-10 col-md-12">
+        <form method="POST" class="needs-validation" novalidate>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h2 mb-0">📝 สร้างงานใหม่</h1>
+                <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
             </div>
-            <div class="card-body p-4">
-                <form method="POST" class="needs-validation" novalidate>
 
-                    <h5 class="form-section-header">ข้อมูลลูกค้า</h5>
-                    
-                    <div class="mb-3">
-                        <label for="organization_name" class="form-label">ชื่อหน่วยงาน/บริษัท (ถ้ามี)</label>
-                        <input type="text" class="form-control" id="organization_name" name="organization_name" value="{{ request.form.organization_name or '' }}">
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="customer" class="form-label"><strong>ชื่อผู้ติดต่อ</strong> <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="customer" name="customer" required value="{{ request.form.customer or '' }}" autofocus>
-                        <div class="invalid-feedback">
-                            กรุณากรอกชื่อผู้ติดต่อ
+            <!-- Customer Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-tag me-2"></i>ข้อมูลลูกค้าและแผนที่</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="organization_name" class="form-label">ชื่อหน่วยงาน/บริษัท (ถ้ามี)</label>
+                            <input type="text" class="form-control" id="organization_name" name="organization_name" value="{{ request.form.organization_name or '' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="customer" class="form-label"><strong>ชื่อผู้ติดต่อ</strong> <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="customer" name="customer" required value="{{ request.form.customer or '' }}" autofocus>
+                            <div class="invalid-feedback">กรุณากรอกชื่อผู้ติดต่อ</div>
                         </div>
                     </div>
-
-                    <div class="mb-3">
-                        <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
-                        <input type="tel" class="form-control" id="phone" name="phone" value="{{ request.form.phone or '' }}" placeholder="เช่น 08x-xxx-xxxx">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
+                            <input type="tel" class="form-control" id="phone" name="phone" value="{{ request.form.phone or '' }}" placeholder="เช่น 08x-xxx-xxxx">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
+                            <div class="input-group">
+                                <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ request.form.latitude_longitude or '' }}" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่ง">
+                                <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
+                                    <i class="fas fa-location-arrow"></i>
+                                </button>
+                            </div>
+                            <small class="form-text text-muted" id="shareLocationStatus"></small>
+                        </div>
                     </div>
-
                     <div class="mb-3">
                         <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
                         <textarea class="form-control" id="address" name="address" rows="2">{{ request.form.address or '' }}</textarea>
                     </div>
+                </div>
+            </div>
 
-                    <div class="mb-3">
-                        <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
-                        <div class="input-group">
-                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ request.form.latitude_longitude or '' }}" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่งปัจจุบัน">
-                            <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
-                                <i class="fas fa-location-arrow"></i>
-                            </button>
-                        </div>
-                        <small class="form-text text-muted" id="shareLocationStatus">กดปุ่มเพื่อใส่ลิงก์ Google Maps ของตำแหน่งคุณ</small>
-                    </div>
-
-                    <h5 class="form-section-header">ข้อมูลงาน</h5>
+            <!-- Task Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>รายละเอียดงานและนัดหมาย</h5>
+                </div>
+                <div class="card-body p-4">
                     <div class="mb-3">
                         <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong> <span class="text-danger">*</span></label>
                         <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ request.form.task_title or '' }}</textarea>
-                        <div class="invalid-feedback">
-                            กรุณากรอกรายละเอียดงาน
-                        </div>
+                        <div class="invalid-feedback">กรุณากรอกรายละเอียดงาน</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="appointment" class="form-label">วันเวลานัดหมาย</label>
                         <input type="text" class="form-control datetimepicker" id="appointment" name="appointment" placeholder="เลือกวันและเวลา">
                     </div>
-                    
-                    <div class="d-grid mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
-                    </div>
-                </form>
+                </div>
             </div>
-        </div>
+            
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}
