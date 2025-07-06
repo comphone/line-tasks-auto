@@ -4,8 +4,6 @@
 
 {% block head_extra %}
 <style>
-    /* --- NEW STYLES for History Entries and Tabs --- */
-
     /* Style for each history entry to make it stand out */
     .history-entry {
         background-color: #f8f9fa; /* Light background for the entry */
@@ -29,27 +27,7 @@
         margin-bottom: 0.25rem;
     }
 
-    /* Custom styles for modern tabs */
-    .nav-tabs-modern {
-        border-bottom: 1px solid #dee2e6;
-    }
-    .nav-tabs-modern .nav-link {
-        border: none;
-        border-bottom: 3px solid transparent;
-        color: #6c757d;
-        transition: all 0.2s ease-in-out;
-    }
-    .nav-tabs-modern .nav-link:hover {
-        color: #0d6efd;
-    }
-    .nav-tabs-modern .nav-link.active {
-        border-bottom-color: #0d6efd;
-        color: #0d6efd;
-        font-weight: 600;
-        background-color: transparent;
-    }
-    /* --- END OF NEW STYLES --- */
-
+    /* Hero card for main task info */
     .info-hero-card {
         background: linear-gradient(135deg, #0d6efd, #0d6efd);
         color: white;
@@ -114,7 +92,7 @@
     </div>
 
     <!-- Main Actions Card -->
-    <div class="card shadow-sm" id="chooseActionCard">
+    <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำหลักสำหรับงานนี้</h5>
              <div class="d-grid gap-3 d-md-flex justify-content-md-center">
@@ -125,7 +103,7 @@
         </div>
     </div>
     
-    <!-- Hidden Action Cards -->
+    <!-- Hidden Action Cards (for completing, rescheduling, etc.) -->
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -191,68 +169,63 @@
         </div>
     </div>
 
-    <!-- History and Progress Card with Modern Tabs -->
-    <div class="card shadow-sm mt-4">
-        <div class="card-header">
-            <ul class="nav nav-tabs nav-tabs-modern" id="secondaryActionsTab" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-pane" type="button" role="tab" aria-controls="history-pane" aria-selected="true"><i class="fas fa-history me-2"></i>ประวัติงาน</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="progress-report-tab" data-bs-toggle="tab" data-bs-target="#progress-report-pane" type="button" role="tab" aria-controls="progress-report-pane" aria-selected="false"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน</button>
-                </li>
-            </ul>
+    <!-- NEW LAYOUT: Add Progress Report Card -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
         </div>
-        <div class="card-body tab-content p-4">
-            <!-- History Pane -->
-            <div class="tab-pane fade show active" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
-                {% if task.tech_reports_history %}
-                    {% for report in task.tech_reports_history %}
-                    <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}">
-                        <div class="history-entry-header">
-                            {% if report.type == 'reschedule' %}
-                                <span class="history-entry-title text-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</span>
-                            {% else %}
-                                <span class="history-entry-title text-primary"><i class="fas fa-wrench me-2"></i>รายงานการปฏิบัติงาน</span>
-                            {% endif %}
-                            <small class="text-muted">{{ report.summary_date }}</small>
-                        </div>
-                        <div class="history-entry-body">
-                             {% if report.type == 'reschedule' %}
-                                <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
-                                <p><strong>เหตุผล:</strong> {{ report.reason or 'ไม่ได้ระบุ' }}</p>
-                             {% else %}
-                                <p><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
-                             {% endif %}
-                             <p class="mb-0"><small class="text-muted"><strong>ช่าง/ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
-                        </div>
-                        {% if report.type == 'report' and report.attachments %}
-                        <div class="mt-2 text-end">
-                             <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editAttachmentsModal" data-report-index="{{ loop.index0 }}">
-                                 <i class="fas fa-images me-1"></i> แก้ไขรูปภาพ
-                             </button>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="text-muted text-center mt-3">ยังไม่มีประวัติการดำเนินงาน</p>
-                {% endif %}
-            </div>
-            <!-- Progress Report Pane -->
-            <div class="tab-pane fade" id="progress-report-pane" role="tabpanel" aria-labelledby="progress-report-tab">
-                 <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="reportForm" onsubmit="handleFormSubmission(event, this, 'report')">
-                    <input type="hidden" name="action" value="save_report">
-                    <h5 class="mb-3">เพิ่มรายงานความคืบหน้า (งานยังไม่เสร็จ)</h5>
-                    <div class="mb-3"><label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
-                    <div class="mb-3"><label for="technicians_progress" class="form-label">ช่าง <span class="text-danger">*</span></label><select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">{% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}</select></div>
-                    <div class="mb-3"><label for="files_progress" class="form-label">แนบรูป</label><input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*"></div>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
-                </form>
-            </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="reportForm" onsubmit="handleFormSubmission(event, this, 'report')">
+                <input type="hidden" name="action" value="save_report">
+                <p class="text-muted">ใช้ฟอร์มนี้เพื่อบันทึกความคืบหน้าของงาน (เมื่องานยังไม่เสร็จสมบูรณ์)</p>
+                <div class="mb-3"><label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
+                <div class="mb-3"><label for="technicians_progress" class="form-label">ช่าง <span class="text-danger">*</span></label><select class="form-select" id="technicians_progress" name="technicians_report" multiple required size="3">{% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}</select></div>
+                <div class="mb-3"><label for="files_progress" class="form-label">แนบรูป</label><input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*"></div>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+            </form>
         </div>
     </div>
-</div>
+
+    <!-- NEW LAYOUT: Work History Card -->
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
+        </div>
+        <div class="card-body">
+            {% if task.tech_reports_history %}
+                {% for report in task.tech_reports_history %}
+                <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}">
+                    <div class="history-entry-header">
+                        {% if report.type == 'reschedule' %}
+                            <span class="history-entry-title text-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย</span>
+                        {% else %}
+                            <span class="history-entry-title text-primary"><i class="fas fa-wrench me-2"></i>รายงานการปฏิบัติงาน</span>
+                        {% endif %}
+                        <small class="text-muted">{{ report.summary_date }}</small>
+                    </div>
+                    <div class="history-entry-body">
+                         {% if report.type == 'reschedule' %}
+                            <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
+                            <p><strong>เหตุผล:</strong> {{ report.reason or 'ไม่ได้ระบุ' }}</p>
+                         {% else %}
+                            <p><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
+                         {% endif %}
+                         <p class="mb-0"><small class="text-muted"><strong>ช่าง/ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
+                    </div>
+                    {% if report.type == 'report' and report.attachments %}
+                    <div class="mt-2 text-end">
+                         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editAttachmentsModal" data-report-index="{{ loop.index0 }}">
+                             <i class="fas fa-images me-1"></i> แก้ไขรูปภาพ
+                         </button>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted text-center mt-3">ยังไม่มีประวัติการดำเนินงาน</p>
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 <!-- Edit Attachments Modal -->
