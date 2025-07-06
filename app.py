@@ -494,23 +494,19 @@ def parse_customer_info_from_notes(notes):
     name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
     phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
     address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
-    # Modified regex to capture coordinates or full URL more robustly
     map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
 
-    if org_match: info['organization'] = org_match.group(1).strip()
-    if name_match: info['name'] = name_match.group(1).strip()
-    if phone_match: info['phone'] = phone_match.group(1).strip()
-    if address_match: info['address'] = address_match.group(1).strip()
+    # UPDATED: Added .split(':')[-1].strip() to remove potential duplicate labels
+    if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
+    if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
+    if phone_match: info['phone'] = phone_match.group(1).strip().split(':')[-1].strip()
+    if address_match: info['address'] = address_match.group(1).strip().split(':')[-1].strip()
+    
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
-        # Check if it looks like coordinates (e.g., "13.75,100.50")
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            # Use standard Google Maps search URL for coordinates
-            # Corrected Google Maps URL format for coordinates:
-            # Using maps.google.com/search?q= for a general search by coordinates
             info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
         else:
-            # Otherwise, assume it's already a valid URL
             info['map_url'] = coords_or_url
     
     return info

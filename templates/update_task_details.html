@@ -135,43 +135,49 @@
         transition: 0.3s;
         cursor: pointer;
     }
-    /* Updated: Lightbox Navigation Arrows */
+    
+    /* UPDATED: Lightbox Navigation Arrows and Actions */
     .lightbox-nav {
         cursor: pointer;
         position: absolute;
-        top: 50%; /* Center vertically */
-        transform: translateY(-50%); /* Adjust for vertical centering */
+        bottom: 20px; /* ย้ายลงมาด้านล่าง */
         width: auto;
-        padding: 18px 12px; /* Adjust padding to make them larger touch targets */
+        padding: 10px 15px;
+        margin-top: -22px;
         color: white;
         font-weight: bold;
-        font-size: 45px; /* Larger font size for arrows */
+        font-size: 30px;
         transition: 0.6s ease;
+        border-radius: 50px;
         user-select: none;
-        background-color: rgba(0,0,0,0.5); /* Semi-transparent background */
-        border-radius: 5px; /* Slightly rounded corners */
+        background-color: rgba(0,0,0,0.5);
     }
-    .lightbox-prev { left: 15px; } /* Position from left edge */
-    .lightbox-next { right: 15px; } /* Position from right edge */
+    .lightbox-prev {
+        left: 50%;
+        transform: translateX(-150%); /* จัดตำแหน่งไปทางซ้ายของจุดกึ่งกลาง */
+    }
+    .lightbox-next {
+        right: 50%;
+        transform: translateX(150%); /* จัดตำแหน่งไปทางขวาของจุดกึ่งกลาง */
+    }
     .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
-    
-    /* Updated: Lightbox Actions (Download/Share) position */
+
     .lightbox-actions {
         position: absolute;
-        bottom: 20px; /* Position at the bottom */
+        bottom: 20px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 20px;
-        background-color: rgba(0, 0, 0, 0.5);
-        padding: 10px 20px;
-        border-radius: 50px;
+        gap: 100px; /* เพิ่มระยะห่างระหว่างปุ่ม */
     }
     .lightbox-actions a {
         color: white;
         font-size: 1.5rem;
         text-decoration: none;
         transition: transform 0.2s;
+        background-color: rgba(0,0,0,0.5);
+        padding: 8px 15px;
+        border-radius: 50px;
     }
     .lightbox-actions a:hover {
         transform: scale(1.2);

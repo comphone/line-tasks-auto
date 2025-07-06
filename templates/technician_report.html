@@ -90,10 +90,11 @@
     {% if report_data %}
         <div class="row">
             {% for tech_name, data in report_data.items() %}
+                {# --- POINT OF CHANGE 1: Store outer loop context --- #}
+                {% set outer_loop = loop %}
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card shadow-sm report-card h-100">
                         <div class="card-header d-flex align-items-center">
-                            {# Find technician avatar based on name from technician_list #}
                             {% set tech_avatar_obj = (technician_list | selectattr('name', 'equalto', tech_name) | first) %}
                             {% if tech_avatar_obj and tech_avatar_obj.avatar_id %}
                                 <img src="https://drive.google.com/thumbnail?id={{ tech_avatar_obj.avatar_id }}&sz=s30-c" class="technician-avatar-small" alt="{{ tech_name }}">
@@ -107,15 +108,16 @@
                         <div class="card-body">
                             <h6 class="mb-2">รายการงานที่เสร็จสิ้น:</h6>
                             {% if data.tasks %}
-                                <div class="accordion accordion-flush" id="accordionTasks-{{ loop.index }}">
+                                <div class="accordion accordion-flush" id="accordionTasks-{{ outer_loop.index }}">
                                     {% for task in data.tasks %}
                                         <div class="accordion-item">
-                                            <h2 class="accordion-header" id="headingTask-{{ task.id }}-{{ loop.parent.index }}">
-                                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTask-{{ task.id }}-{{ loop.parent.index }}" aria-expanded="false" aria-controls="collapseTask-{{ task.id }}-{{ loop.parent.index }}">
+                                             {# --- POINT OF CHANGE 2: Use outer_loop.index instead of loop.parent.index --- #}
+                                            <h2 class="accordion-header" id="headingTask-{{ task.id }}-{{ outer_loop.index }}">
+                                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTask-{{ task.id }}-{{ outer_loop.index }}" aria-expanded="false" aria-controls="collapseTask-{{ task.id }}-{{ outer_loop.index }}">
                                                     {{ task.title }} <small class="text-muted ms-auto">{{ task.completed_formatted }}</small>
                                                 </button>
                                             </h2>
-                                            <div id="collapseTask-{{ task.id }}-{{ loop.parent.index }}" class="accordion-collapse collapse" aria-labelledby="headingTask-{{ task.id }}-{{ loop.parent.index }}" data-bs-parent="#accordionTasks-{{ loop.index }}">
+                                            <div id="collapseTask-{{ task.id }}-{{ outer_loop.index }}" class="accordion-collapse collapse" aria-labelledby="headingTask-{{ task.id }}-{{ outer_loop.index }}" data-bs-parent="#accordionTasks-{{ outer_loop.index }}">
                                                 <div class="accordion-body task-details-content">
                                                     <p class="mb-1"><strong>Task ID:</strong> {{ task.id }}</p>
                                                     <p class="mb-1"><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">ดูรายละเอียดงาน</a></p>
