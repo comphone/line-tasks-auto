@@ -248,14 +248,15 @@
                     <input type="text" class="form-control" id="technician-name" placeholder="เช่น ช่างโต้">
                 </div>
                 <div class="mb-3">
-                    <label for="technician-avatar" class="form-label">URL รูปภาพโปรไฟล์ (Avatar)</label>
-                    <input type="url" class="form-control" id="technician-avatar" placeholder="https://example.com/image.jpg">
-                    <div class="form-text">ใส่ URL รูปภาพของช่าง (ถ้ามี)</div>
+                    <label for="technician-avatar-file" class="form-label">รูปภาพโปรไฟล์ (Avatar)</label>
+                    <input type="file" class="form-control" id="technician-avatar-file" accept="image/*">
+                    <div class="form-text">เลือกไฟล์รูปภาพใหม่เพื่ออัปโหลด (ถ้าไม่เลือกจะใช้รูปเดิม)</div>
+                    <input type="hidden" id="technician-avatar-id">
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                <button type="button" class="btn btn-primary" onclick="saveTechnician()">บันทึก</button>
+                <button type="button" class="btn btn-primary" id="save-technician-btn" onclick="saveTechnician()">บันทึก</button>
             </div>
         </div>
     </div>
@@ -278,7 +279,7 @@ document.addEventListener('DOMContentLoaded', function() {
             container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
         } else {
             technicians.forEach((tech, index) => {
-                const avatarUrl = tech.avatar || 'https://via.placeholder.com/40/6c757d/ffffff?text=' + tech.name.charAt(0).toUpperCase();
+                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}` : 'https://via.placeholder.com/40/6c757d/ffffff?text=' + tech.name.charAt(0).toUpperCase();
                 const item = document.createElement('div');
                 item.className = 'list-group-item';
                 item.innerHTML = `
@@ -294,40 +295,67 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.openTechnicianEditModal = (index = -1) => {
         currentIndex = index;
+        document.getElementById('technician-avatar-file').value = ''; // Clear file input
         if (index > -1) {
-            // Editing existing
             const tech = technicians[index];
             document.getElementById('technician-name').value = tech.name;
-            document.getElementById('technician-avatar').value = tech.avatar || '';
+            document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
             document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
         } else {
-            // Adding new
             document.getElementById('technician-name').value = '';
-            document.getElementById('technician-avatar').value = '';
+            document.getElementById('technician-avatar-id').value = '';
             document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
         }
         technicianEditModal.show();
     }
 
-    window.saveTechnician = () => {
+    window.saveTechnician = async () => {
+        const saveBtn = document.getElementById('save-technician-btn');
+        const originalBtnText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...';
+
         const name = document.getElementById('technician-name').value.trim();
-        const avatar = document.getElementById('technician-avatar').value.trim();
+        const avatarFile = document.getElementById('technician-avatar-file').files[0];
+        let avatarId = document.getElementById('technician-avatar-id').value;
+
         if (!name) {
             alert('กรุณาใส่ชื่อช่าง');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnText;
             return;
         }
 
-        const newTech = { name: name, avatar: avatar };
+        if (avatarFile) {
+            const formData = new FormData();
+            formData.append('file', avatarFile);
+            try {
+                const response = await fetch('/api/upload_avatar', { method: 'POST', body: formData });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    avatarId = result.file_id;
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + error.message);
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalBtnText;
+                return;
+            }
+        }
+
+        const newTech = { name: name, avatar_id: avatarId };
 
         if (currentIndex > -1) {
-            // Update
             technicians[currentIndex] = newTech;
         } else {
-            // Add
             technicians.push(newTech);
         }
         renderTechnicianList();
         technicianEditModal.hide();
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalBtnText;
     }
 
     window.deleteTechnician = (index) => {
@@ -338,11 +366,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('settingsForm').addEventListener('submit', function(e) {
-        // Before submitting, serialize the technician data into the hidden input
         document.getElementById('technician_list_json').value = JSON.stringify(technicians);
     });
 
-    // Initial render
     renderTechnicianList();
 });
 </script>
