@@ -210,6 +210,20 @@
         justify-content: center;
         background-color: #e9ecef;
     }
+
+    /* Font sizes based on old version */
+    .form-label, .card-body {
+        font-size: 0.95em;
+    }
+    .card-header h5 {
+        font-size: 1.1em;
+    }
+    .btn {
+        font-size: 1em; /* Default button font size */
+    }
+    .btn-lg {
+        font-size: 1.25em; /* Large button font size */
+    }
 </style>
 {% endblock %}
 
@@ -220,7 +234,6 @@
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    <!-- Redesigned Info Hero Card -->
     <div class="card shadow-lg mb-4 info-hero-card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0 text-white">ข้อมูลสรุป</h5>
@@ -274,7 +287,6 @@
         </ul>
     </div>
     
-    <!-- Main Actions Card -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำหลักสำหรับงานนี้</h5>
@@ -286,7 +298,6 @@
         </div>
     </div>
     
-    <!-- Hidden Action Cards -->
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -362,7 +373,6 @@
         </div>
     </div>
 
-    <!-- Image Gallery Card -->
     {% if all_attachments %}
     <div class="card shadow-sm mb-4">
         <div class="card-header">
@@ -381,7 +391,6 @@
     </div>
     {% endif %}
 
-    <!-- Add Progress Report Card -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-light">
             <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
@@ -416,7 +425,6 @@
         </div>
     </div>
 
-    <!-- Work History Card -->
     <div class="card shadow-sm">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
@@ -469,20 +477,18 @@
     </div>
 </div>
 
-<!-- Lightbox Modal -->
 <div id="lightboxModal" class="lightbox">
-    <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+    <span class="lightbox-close" onclick="closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
     <div id="lightboxCaption" class="lightbox-caption"></div>
-    <a class="lightbox-prev" onclick="changeSlide(-1)">&#10094;</a>
-    <a class="lightbox-next" onclick="changeSlide(1)">&#10095;</a>
+    <a class="lightbox-prev" onclick="changeSlide(-1)">❮</a>
+    <a class="lightbox-next" onclick="changeSlide(1)">❯</a>
     <div class="lightbox-actions">
         <a href="#" id="downloadBtn" title="บันทึกรูปภาพ"><i class="fas fa-download"></i></a>
         <a href="#" id="shareBtn" title="แชร์รูปภาพ"><i class="fas fa-share-alt"></i></a>
     </div>
 </div>
 
-<!-- Technician Selection Modal -->
 <div class="modal fade" id="technicianSelectionModal" tabindex="-1" aria-labelledby="technicianModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -492,8 +498,7 @@
       </div>
       <div class="modal-body">
         <div id="technician-list-container">
-            <!-- Technician items will be injected here by JavaScript -->
-        </div>
+            </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
@@ -540,6 +545,7 @@ function showSlide(index) {
     if(index < 0 || index >= allAttachments.length) return;
     const attachment = allAttachments[index];
     
+    // Corrected Google Drive thumbnail URL generation
     const imageUrl = `https://lh3.googleusercontent.com/d/${attachment.id}=w1024`;
     lightboxImg.src = imageUrl;
     lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length} (จากรายงานวันที่: ${attachment.report_date})`;
@@ -601,7 +607,8 @@ function openTechnicianModal(targetInputId) {
 
     technicianList.forEach(tech => {
         const isChecked = selectedTechnicians.includes(tech.name);
-        const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}` : 'https://via.placeholder.com/40/0d6efd/ffffff?text=' + tech.name.charAt(0).toUpperCase();
+        // Corrected Google Drive thumbnail URL generation for avatar
+        const avatarUrl = tech.avatar_id ? `https://lh3.googleusercontent.com/d/${tech.avatar_id}=s40` : 'https://via.placeholder.com/40/0d6efd/ffffff?text=' + tech.name.charAt(0).toUpperCase();
         
         container.innerHTML += `
             <div class="technician-item list-group-item-action">

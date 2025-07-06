@@ -507,7 +507,7 @@ def parse_customer_info_from_notes(notes):
         # Check if it looks like coordinates (e.g., "13.75,100.50")
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
             # Use standard Google Maps search URL for coordinates
-            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}" 
+            info['map_url'] = f"http://maps.google.com/maps?q={coords_or_url}" 
         else:
             # Otherwise, assume it's already a valid URL
             info['map_url'] = coords_or_url
@@ -1221,7 +1221,8 @@ def task_details(task_id):
 
         if action == 'save_report':
             work_summary = str(request.form.get('work_summary', '')).strip()
-            selected_technicians = request.form.getlist('technicians_report')
+            selected_technicians = request.form.get('technicians_report', '').split(',')
+            selected_technicians = [t.strip() for t in selected_technicians if t.strip()] # Clean and filter empty
 
             # Check for content: either summary or attachments (now from new_attachments)
             if not (work_summary or new_attachments): 
@@ -1253,7 +1254,8 @@ def task_details(task_id):
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
             reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
-            selected_technicians = request.form.getlist('technicians_reschedule')
+            selected_technicians = request.form.get('technicians_reschedule', '').split(',')
+            selected_technicians = [t.strip() for t in selected_technicians if t.strip()] # Clean and filter empty
 
             if not reschedule_due_str:
                 message = 'กรุณากำหนดวันนัดหมายใหม่'
@@ -1296,7 +1298,9 @@ def task_details(task_id):
                 flash(message, 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
                 
-            selected_technicians = request.form.getlist('technicians_report')
+            selected_technicians = request.form.get('technicians_report', '').split(',')
+            selected_technicians = [t.strip() for t in selected_technicians if t.strip()] # Clean and filter empty
+
             if not selected_technicians:
                 message = 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'
                 if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -1372,10 +1376,24 @@ def task_details(task_id):
     
     app_settings = get_app_settings()
     
+    # Collect all attachments from all reports for the lightbox gallery
+    all_attachments = []
+    for report in task['tech_reports_history']:
+        if report.get('attachments'):
+            # Attach report_date to each attachment for display in lightbox caption
+            report_date = parse_google_task_dates({'summary_date': report['summary_date']}).get('summary_date_formatted', '')
+            for att in report['attachments']:
+                att_copy = att.copy()
+                att_copy['report_date'] = report_date
+                all_attachments.append(att_copy)
+
+
     return render_template('update_task_details.html',
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
-                           technician_list=app_settings.get('technician_list', []))
+                           technician_list=app_settings.get('technician_list', []),
+                           all_attachments=all_attachments) # Pass all attachments to the template
+
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(task_id, report_index):
@@ -1549,8 +1567,13 @@ def api_delete_tasks_batch():
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
-        technician_names_text = request.form.get('technician_list', '').strip()
-        technician_list = [name.strip() for name in technician_names_text.splitlines() if name.strip()]
+        # Parse technician_list_json from hidden input, which is now an array of objects
+        technician_list_json_str = request.form.get('technician_list_json', '[]')
+        try:
+            technician_list = json.loads(technician_list_json_str)
+        except json.JSONDecodeError:
+            flash('เกิดข้อผิดพลาดในการอ่านข้อมูลช่าง', 'danger')
+            return redirect(url_for('settings_page'))
 
         settings_data = {
             'report_times': {
@@ -1572,7 +1595,7 @@ def settings_page():
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
-            'technician_list': technician_list
+            'technician_list': technician_list # Use the parsed list of dictionaries
         }
 
         if save_app_settings(settings_data):
@@ -1588,6 +1611,34 @@ def settings_page():
 
     current_settings = get_app_settings()
     return render_template('settings_page.html', settings=current_settings)
+
+@app.route('/api/upload_avatar', methods=['POST'])
+def api_upload_avatar():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+
+    avatars_folder_id = find_or_create_drive_folder("Technician_Avatars", GOOGLE_DRIVE_FOLDER_ID)
+    if not avatars_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not create or find Technician_Avatars folder'}), 500
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        # Use a temporary file to save the uploaded file before sending to Drive
+        with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
+            file.save(tmp.name)
+            mime_type = file.mimetype or mimetypes.guess_type(filename)[0] # Guess MIME type if not provided
+            drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, avatars_folder_id)
+            os.unlink(tmp.name) # Clean up the temporary file
+            if drive_file:
+                return jsonify({'status': 'success', 'file_id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+            else:
+                return jsonify({'status': 'error', 'message': 'Failed to upload avatar to Google Drive'}), 500
+    else:
+        return jsonify({'status': 'error', 'message': 'File type not allowed or no file selected'}), 400
+
 
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
@@ -1910,7 +1961,7 @@ def public_task_report(task_id):
                 total += subtotal
                 costs.append({'item': name, 'quantity': qty, 'unit': cat_item.get('unit', ''), 'price_per_unit': price, 'subtotal': subtotal})
             else:
-                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})
+                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_per_unit': 'N/A', 'subtotal': 'N/A'})
     return render_template('public_task_report.html', task=task, customer_info=customer, latest_report=latest_report, detailed_costs=costs, total_cost=total)
 
 @app.route('/submit_customer_problem', methods=['POST'])
@@ -2049,7 +2100,7 @@ def handle_text_message(event):
         tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('status') == 'needsAction']
         reply = create_full_summary_message('รายการงานค้าง', tasks)
     elif text == 'งานเสร็จ':
-        tasks = sorted([t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed'], key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')), reverse=True)
+        tasks = sorted([t for t t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed'], key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')), reverse=True)
         reply = create_task_list_message('รายการงานเสร็จล่าสุด', tasks)
     elif text == 'งานพรุ่งนี้':
         tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == (datetime.datetime.now(THAILAND_TZ) + datetime.timedelta(days=1)).date() and t.get('status') == 'needsAction']
@@ -2272,4 +2323,3 @@ if __name__ == '__main__':
     if not os.path.exists('credentials.json'):
         app.logger.error("credentials.json not found! Google API functions will not work.")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
-
