@@ -371,15 +371,16 @@ document.addEventListener('DOMContentLoaded', function() {
         saveBtn.disabled = false;
         saveBtn.innerHTML = originalBtnText;
 
-        // Flash message for saving technician details
-        flashMessage('บันทึกข้อมูลช่างเรียบร้อยแล้ว!', 'success');
+        // **REMOVED** to prevent duplicate flash messages
+        // flashMessage('บันทึกข้อมูลช่างเรียบร้อยแล้ว!', 'success');
     }
 
     window.deleteTechnician = (index) => {
         if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบช่าง "${technicians[index].name}"?`)) {
             technicians.splice(index, 1);
             renderTechnicianList();
-            flashMessage('ลบข้อมูลช่างเรียบร้อยแล้ว!', 'success');
+            // **REMOVED** to prevent potential duplicate flash messages
+            // flashMessage('ลบข้อมูลช่างเรียบร้อยแล้ว!', 'success');
         }
     }
 

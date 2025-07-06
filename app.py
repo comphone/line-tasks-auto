@@ -1156,26 +1156,42 @@ def api_upload_attachment():
     if not task_raw:
         return jsonify({'status': 'error', 'message': 'Task not found'}), 404
 
-    # Extract base_notes_text for customer info and folder naming
-    _, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    # --- START: IMPROVED FOLDER CREATION LOGIC ---
     
+    # 1. Ensure the base folder "Task_Attachments" exists
     attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
-    
-    monthly_folder_id = None
-    if task_raw.get('created'):
-        created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
-        monthly_folder_name = created_dt_local.strftime('%Y-%m')
-        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-    else:
-        monthly_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
+    if not attachments_base_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not create or find base Task_Attachments folder'}), 500
 
+    # 2. Determine the date for the monthly folder, using today as a fallback
+    target_date = None
+    if task_raw.get('created'):
+        try:
+            target_date = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+        except (ValueError, TypeError):
+            app.logger.warning(f"Task {task_id} has an invalid 'created' date. Using current date as fallback.")
+            target_date = datetime.datetime.now(THAILAND_TZ)
+    else:
+        app.logger.warning(f"Task {task_id} has no 'created' date. Using current date as fallback.")
+        target_date = datetime.datetime.now(THAILAND_TZ)
+
+    # 3. Create the monthly folder (e.g., "2025-07")
+    monthly_folder_name = target_date.strftime('%Y-%m')
+    monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+    if not monthly_folder_id:
+        return jsonify({'status': 'error', 'message': f'Could not create or find monthly folder: {monthly_folder_name}'}), 500
+        
+    # 4. Create the customer-specific task folder inside the monthly folder
+    _, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
     customer_info = parse_customer_info_from_notes(base_notes_text)
     sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
     customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
     final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+    
+    # --- END: IMPROVED FOLDER CREATION LOGIC ---
 
     if not final_upload_folder_id:
-        return jsonify({'status': 'error', 'message': 'Could not determine upload folder'}), 500
+        return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
 
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
