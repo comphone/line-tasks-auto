@@ -4,6 +4,53 @@
 
 {% block head_extra %}
 <style>
+    /* --- Styles for Redesigned Info Hero Card --- */
+    .info-hero-card {
+        background: linear-gradient(135deg, #0d6efd, #0a58ca);
+        color: white;
+        border-radius: .75rem;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+    }
+    .info-hero-card .list-group-item {
+        background-color: transparent;
+        border: none;
+        color: white;
+        display: flex;
+        align-items: flex-start;
+        padding: 0.75rem 0.5rem;
+    }
+    .info-hero-card .info-icon {
+        width: 35px;
+        font-size: 1.1rem;
+        text-align: center;
+        margin-top: 2px;
+        opacity: 0.8;
+    }
+    .info-hero-card .info-content {
+        margin-left: 0.75rem;
+        word-break: break-word;
+    }
+    .info-hero-card .info-label {
+        font-size: 0.85em;
+        opacity: 0.8;
+        margin-bottom: 0;
+    }
+    .info-hero-card .info-value {
+        font-size: 1.1em;
+        font-weight: 600;
+    }
+    .info-hero-card .info-value a {
+        color: white;
+        text-decoration: underline;
+    }
+    .info-hero-card .card-header {
+        background-color: transparent;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 0.75rem 0.5rem;
+    }
+    /* --- End of Info Hero Card Styles --- */
+
     /* --- Styles for Image Gallery & Lightbox --- */
     .image-gallery-grid {
         display: grid;
@@ -47,7 +94,7 @@
     .lightbox {
         display: none;
         position: fixed;
-        z-index: 1070; /* Higher z-index */
+        z-index: 1070;
         padding-top: 60px;
         left: 0;
         top: 0;
@@ -127,52 +174,6 @@
     }
     /* --- End of Lightbox Styles --- */
 
-    /* --- Styles for Redesigned Info Card --- */
-    .info-card .list-group-item {
-        display: flex;
-        align-items: center;
-        padding: 1rem 1.25rem;
-    }
-    .info-card .info-icon {
-        width: 40px;
-        font-size: 1.25rem;
-        color: #0d6efd;
-        text-align: center;
-    }
-    .info-card .info-content {
-        margin-left: 1rem;
-    }
-    .info-card .info-label {
-        font-size: 0.85em;
-        color: #6c757d;
-        margin-bottom: 0;
-    }
-    .info-card .info-value {
-        font-size: 1.05em;
-        font-weight: 600;
-        color: #212529;
-    }
-    /* --- End of Info Card Styles --- */
-
-    /* --- Styles for Technician Selection Modal --- */
-    .technician-item {
-        display: flex;
-        align-items: center;
-        padding: 0.75rem 0;
-    }
-    .technician-avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        object-fit: cover;
-        margin-right: 1rem;
-        background-color: #e9ecef;
-    }
-    .technician-name {
-        flex-grow: 1;
-    }
-    /* --- End of Technician Modal Styles --- */
-
     .history-entry {
         background-color: #f8f9fa;
         border: 1px solid #e9ecef;
@@ -200,20 +201,13 @@
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    <!-- Redesigned Info Card -->
-    <div class="card shadow-sm mb-4 info-card">
+    <!-- Redesigned Info Hero Card -->
+    <div class="card shadow-lg mb-4 info-hero-card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">ข้อมูลสรุป</h5>
-            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไข</a>
+            <h5 class="mb-0 text-white">ข้อมูลสรุป</h5>
+            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-light" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไข</a>
         </div>
         <ul class="list-group list-group-flush">
-            <li class="list-group-item">
-                <div class="info-icon"><i class="fas fa-comment-dots"></i></div>
-                <div class="info-content">
-                    <p class="info-label">รายละเอียดงาน</p>
-                    <p class="info-value">{{ task.title }}</p>
-                </div>
-            </li>
             <li class="list-group-item">
                 <div class="info-icon"><i class="fas fa-user"></i></div>
                 <div class="info-content">
@@ -239,7 +233,7 @@
                 <div class="info-icon"><i class="fas fa-calendar-alt"></i></div>
                 <div class="info-content">
                     <p class="info-label">นัดหมาย</p>
-                    <p class="info-value {% if task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+                    <p class="info-value {% if task.is_overdue and task.status != 'completed' %}text-warning{% endif %}">{{ task.due_formatted or '-' }}</p>
                 </div>
             </li>
             {% if task.customer.map_url %}
@@ -251,6 +245,13 @@
                 </div>
             </li>
             {% endif %}
+             <li class="list-group-item">
+                <div class="info-icon"><i class="fas fa-comment-dots"></i></div>
+                <div class="info-content">
+                    <p class="info-label">รายละเอียดงาน</p>
+                    <p class="info-value">{{ task.title }}</p>
+                </div>
+            </li>
         </ul>
     </div>
     
@@ -266,81 +267,8 @@
         </div>
     </div>
     
-    <!-- Hidden Action Cards -->
-    <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
-        <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
-        <div class="card-body">
-            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this, 'complete-upload-status')">
-                <input type="hidden" name="action" value="complete_task">
-                <div class="mb-3">
-                    <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
-                    <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
-                </div>
-                 <div class="mb-3">
-                    <label for="technicians_final_display" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
-                    <div class="input-group">
-                        <input type="text" id="technicians_final_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="openTechnicianModal('technicians_final')">
-                        <button class="btn btn-outline-secondary" type="button" onclick="openTechnicianModal('technicians_final')">เลือก</button>
-                    </div>
-                    <input type="hidden" id="technicians_final" name="technicians_report" required>
-                </div>
-                <div class="mb-3">
-                    <label for="files_final" class="form-label"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
-                    <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*">
-                </div>
-                <hr>
-                <div class="d-flex align-items-center">
-                    <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
-                    <button type="button" class="btn btn-secondary ms-2" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
-                    <div id="complete-upload-status" class="ms-3" style="display:none;"></div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
-        <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
-        <div class="card-body">
-            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" onsubmit="showLoading(this)">
-                <input type="hidden" name="action" value="reschedule_task">
-                <div class="mb-3">
-                    <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
-                        <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
-                    <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
-                </div>
-                <div class="mb-3">
-                    <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
-                    <div class="input-group">
-                        <input type="text" id="technicians_reschedule_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="openTechnicianModal('technicians_reschedule')">
-                        <button class="btn btn-outline-secondary" type="button" onclick="openTechnicianModal('technicians_reschedule')">เลือก</button>
-                    </div>
-                    <input type="hidden" id="technicians_reschedule" name="technicians_reschedule" required>
-                </div>
-                <hr>
-                <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
-                <button type="button" class="btn btn-secondary ms-2" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
-            </form>
-        </div>
-    </div>
-
-    <div class="card shadow-sm mt-4" id="qrCodeCard" style="display:none;">
-        <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
-        <div class="card-body text-center">
-            <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
-                {% if task.status == 'completed' %}
-                <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
-                {% endif %}
-            </div>
-            <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
-        </div>
-    </div>
+    <!-- Hidden Action Cards are now part of this file -->
+    {% include 'includes/update_task_action_cards.html' %}
 
     <!-- Image Gallery Card -->
     {% if all_attachments %}
