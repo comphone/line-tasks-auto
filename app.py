@@ -506,7 +506,8 @@ def parse_customer_info_from_notes(notes):
         # Check if it looks like coordinates (e.g., "13.75,100.50")
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
             # Use standard Google Maps search URL for coordinates
-            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}" # แก้ไข URL แผนที่
+            # Corrected Google Maps URL format for coordinates
+            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}" 
         else:
             # Otherwise, assume it's already a valid URL
             info['map_url'] = coords_or_url
@@ -769,10 +770,9 @@ def send_completion_notification(task, technicians):
         if admin_group_id:
             line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
             sent_to.add(admin_group_id)
-        
+
         if tech_group_id and tech_group_id not in sent_to:
             line_bot_api.push_message(tech_group_id, TextSendMessage(text=message_text))
-
     except Exception as e:
         app.logger.error(f"Failed to send completion notification for task {task['id']}: {e}")
 
@@ -1577,9 +1577,10 @@ def settings_page():
 
         settings_data = {
             'report_times': {
-                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour')),
-                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour')),
-                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour'))
+                # Safely convert to int, providing default 0 if None
+                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour') or 0),
+                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour') or 0),
+                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour') or 0)
             },
             'line_recipients': {
                 'admin_group_id': request.form.get('admin_group_id', '').strip(),
@@ -1588,8 +1589,9 @@ def settings_page():
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('auto_backup_hour')),
-                'minute_thai': int(request.form.get('auto_backup_minute'))
+                # Safely convert to int, providing default 0 if None
+                'hour_thai': int(request.form.get('auto_backup_hour') or 0),
+                'minute_thai': int(request.form.get('auto_backup_minute') or 0)
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),

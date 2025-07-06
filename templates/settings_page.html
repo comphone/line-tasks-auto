@@ -283,9 +283,8 @@ document.addEventListener('DOMContentLoaded', function() {
             container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
         } else {
             technicians.forEach((tech, index) => {
-                // Corrected Google Drive thumbnail URL generation for avatar
-                // Ensure tech.name is not empty before calling charAt
-                const initial = tech.name ? tech.name.charAt(0).toUpperCase() : '?'; // Handle empty name gracefully
+                // Handle case where tech.name might be empty or null
+                const initial = tech.name && tech.name.trim() !== '' ? tech.name.trim().charAt(0).toUpperCase() : '?'; 
                 const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
                 
                 const item = document.createElement('div');
