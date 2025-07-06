@@ -296,7 +296,14 @@
                     <div class="mt-3">
                         <div class="image-gallery-grid">
                             {% for att in report.attachments %}
-                                <div class="thumbnail" onclick="openLightbox({{ all_attachments.index(att) if att in all_attachments else 0 }})">
+                                {# Find the index of the current attachment in the global list #}
+                                {% set found_index = -1 %}
+                                {% for global_att in all_attachments %}
+                                    {% if global_att.id == att.id %}
+                                        {% set found_index = loop.index0 %}
+                                    {% endif %}
+                                {% endfor %}
+                                <div class="thumbnail" onclick="openLightbox({{ found_index if found_index != -1 else 0 }})">
                                      <img src="https://drive.google.com/thumbnail?id={{ att.id }}&sz=w200-h200" alt="Attachment" loading="lazy">
                                 </div>
                             {% endfor %}
@@ -326,10 +333,11 @@
 {% block body_extra %}
 <script>
 // --- Lightbox Gallery Script ---
-const allAttachments = {{ all_attachments | tojson | safe }};
+const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
 let slideIndex;
 
 function openLightbox(index) {
+    if (allAttachments.length === 0) return;
     slideIndex = index;
     document.getElementById('lightboxModal').style.display = "block";
     showSlide(slideIndex);
