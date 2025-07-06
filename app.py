@@ -506,7 +506,7 @@ def parse_customer_info_from_notes(notes):
         # Check if it looks like coordinates (e.g., "13.75,100.50")
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
             # Use standard Google Maps search URL for coordinates
-            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}"
+            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}" # แก้ไข URL แผนที่
         else:
             # Otherwise, assume it's already a valid URL
             info['map_url'] = coords_or_url
@@ -560,6 +560,7 @@ def parse_tech_report_from_notes(notes):
                 report_data['attachments'] = []
                 for url in report_data['attachment_urls']:
                     if isinstance(url, str):
+                        # Extract Google Drive file ID from URL
                         match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
                         file_id = match.group(1) if match else None
                         report_data['attachments'].append({'id': file_id, 'url': url})
@@ -810,7 +811,10 @@ def scheduled_backup_job():
 
         # System Backup
         system_backup_folder_id = find_or_create_drive_folder("System_Backups", GOOGLE_DRIVE_FOLDER_ID)
-        if system_backup_folder_id:
+        if not system_backup_folder_id:
+            app.logger.error("Could not find or create System_Backups folder for backup.")
+            overall_success = False
+        else:
             memory_file_zip, filename_zip = _create_backup_zip()
             if memory_file_zip and filename_zip:
                 if upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', system_backup_folder_id):
@@ -821,9 +825,6 @@ def scheduled_backup_job():
             else:
                 app.logger.error("Failed to create full system backup zip.")
                 overall_success = False
-        else:
-            app.logger.error("Could not find/create System_Backups folder for backup.")
-            overall_success = False
 
         # Settings-only Backup
         if not backup_settings_to_drive():
@@ -1391,7 +1392,7 @@ def task_details(task_id):
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []),
-                           all_attachments=all_attachments) # Pass all attachments to the template
+                           all_attachments=all_attachments)
 
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
@@ -1632,6 +1633,7 @@ def api_upload_avatar():
             drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, avatars_folder_id)
             os.unlink(tmp.name) # Clean up the temporary file
             if drive_file:
+                # IMPORTANT: Return file_id and webViewLink for the frontend to use
                 return jsonify({'status': 'success', 'file_id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
             else:
                 return jsonify({'status': 'error', 'message': 'Failed to upload avatar to Google Drive'}), 500
@@ -1886,7 +1888,7 @@ def generate_customer_onboarding_qr(task_id):
     liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
     qr_code = generate_qr_code_base64(liff_url)
     customer = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code, task=task, customer_info=customer, onboarding_url=liff_url)
+    return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code, task=task, customer_info=customer, public_report_url=url_for('public_task_report', task_id=task_id, _external=True), qr_code_base64_report=generate_qr_code_base64(url_for('public_task_report', task_id=task_id, _external=True)))
 
 @app.route('/customer_problem_form')
 def customer_problem_form():
@@ -2004,7 +2006,7 @@ def save_customer_line_id():
         feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
         # Reconstruct notes
         reports_history, base = parse_tech_report_from_notes(notes)
-        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
         final_notes = f"{base.strip()}"
         if reports_text: final_notes += reports_text
         final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
@@ -2147,7 +2149,7 @@ def handle_postback(event):
         final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         _execute_google_api_call_with_retry(update_google_task, task_id, notes=final_notes)
         cache.clear()
-        try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏"))
+        try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏)"))
         except Exception: pass
 
 @app.route("/admin/organize_files", methods=['GET', 'POST'])

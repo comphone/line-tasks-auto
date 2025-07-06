@@ -29,7 +29,22 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-<div id="flash-messages-area"></div> <form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
+{# Added flash messages area to display messages from JavaScript #}
+<div id="flash-messages-area">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message | safe }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+
+<form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
     <input type="hidden" id="technician_list_json" name="technician_list_json">
 
     <div class="card shadow-sm mb-4">
@@ -258,8 +273,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     let technicians = {{ settings.technician_list | tojson | safe }};
-    const technicianEditModalEl = document.getElementById('technicianEditModal');
-    let technicianEditModal = new bootstrap.Modal(technicianEditModalEl);
+    let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
     let currentIndex = -1;
 
     function renderTechnicianList() {
@@ -269,10 +283,10 @@ document.addEventListener('DOMContentLoaded', function() {
             container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
         } else {
             technicians.forEach((tech, index) => {
-                // FIXED: Use correct Google Drive thumbnail URL for avatars
-                const avatarUrl = tech.avatar_id 
-                    ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=w80` 
-                    : 'https://via.placeholder.com/40/6c757d/ffffff?text=' + tech.name.charAt(0).toUpperCase();
+                // Corrected Google Drive thumbnail URL generation for avatar
+                // Ensure tech.name is not empty before calling charAt
+                const initial = tech.name ? tech.name.charAt(0).toUpperCase() : '?'; // Handle empty name gracefully
+                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
                 
                 const item = document.createElement('div');
                 item.className = 'list-group-item';
@@ -289,18 +303,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.openTechnicianEditModal = (index = -1) => {
         currentIndex = index;
-        const form = technicianEditModalEl.querySelector('.modal-body');
-        form.querySelector('#technician-name').value = '';
-        form.querySelector('#technician-avatar-file').value = ''; 
-        form.querySelector('#technician-avatar-id').value = '';
-
+        document.getElementById('technician-avatar-file').value = ''; // Clear file input
         if (index > -1) {
             const tech = technicians[index];
-            form.querySelector('#technician-name').value = tech.name;
-            form.querySelector('#technician-avatar-id').value = tech.avatar_id || '';
-            technicianEditModalEl.querySelector('.modal-title').innerText = 'แก้ไขข้อมูลช่าง';
+            document.getElementById('technician-name').value = tech.name;
+            document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
+            document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
         } else {
-            technicianEditModalEl.querySelector('.modal-title').innerText = 'เพิ่มช่างใหม่';
+            document.getElementById('technician-name').value = '';
+            document.getElementById('technician-avatar-id').value = '';
+            document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
         }
         technicianEditModal.show();
     }
@@ -311,51 +323,57 @@ document.addEventListener('DOMContentLoaded', function() {
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...';
 
-        try {
-            const name = document.getElementById('technician-name').value.trim();
-            const avatarFile = document.getElementById('technician-avatar-file').files[0];
-            let avatarId = document.getElementById('technician-avatar-id').value;
+        const name = document.getElementById('technician-name').value.trim();
+        const avatarFile = document.getElementById('technician-avatar-file').files[0];
+        let avatarId = document.getElementById('technician-avatar-id').value;
 
-            if (!name) {
-                alert('กรุณาใส่ชื่อช่าง');
-                return; // Exit early
-            }
-
-            if (avatarFile) {
-                const formData = new FormData();
-                formData.append('file', avatarFile);
-                
-                const response = await fetch('/api/upload_avatar', { method: 'POST', body: formData });
-                const result = await response.json();
-                
-                if (response.ok && result.status === 'success') {
-                    avatarId = result.file_id;
-                    flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
-                } else {
-                    throw new Error(result.message || 'Server returned an error.');
-                }
-            }
-
-            const newTech = { name: name, avatar_id: avatarId };
-
-            if (currentIndex > -1) {
-                technicians[currentIndex] = newTech;
-            } else {
-                technicians.push(newTech);
-            }
-            
-            renderTechnicianList(); 
-            technicianEditModal.hide();
-            flashMessage('บันทึกข้อมูลช่างเรียบร้อยแล้ว!', 'info');
-
-        } catch (error) {
-            console.error('Error saving technician:', error);
-            alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
-        } finally {
-            // MODIFIED: Ensure button is always reset
+        if (!name) {
+            alert('กรุณาใส่ชื่อช่าง');
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalBtnText;
+            return;
         }
+
+        if (avatarFile) {
+            const formData = new FormData();
+            formData.append('file', avatarFile);
+            try {
+                const response = await fetch('/api/upload_avatar', { method: 'POST', body: formData });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    avatarId = result.file_id;
+                    // Flash success message for avatar upload
+                    flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + error.message);
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalBtnText;
+                return;
+            }
+        }
+
+        const newTech = { name: name, avatar_id: avatarId };
+
+        if (currentIndex > -1) {
+            // Update existing technician
+            technicians[currentIndex] = newTech;
+        } else {
+            // Add new technician
+            technicians.push(newTech);
+        }
+        
+        renderTechnicianList(); // Re-render the list immediately
+        technicianEditModal.hide(); // Hide the modal
+
+        // Reset button state
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalBtnText;
+
+        // Flash message for saving technician details
+        flashMessage('บันทึกข้อมูลช่างเรียบร้อยแล้ว!', 'success');
     }
 
     window.deleteTechnician = (index) => {
@@ -374,26 +392,26 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Helper function to display flash messages for AJAX operations
-function flashMessage(message, category = 'info') {
-    const messageArea = document.getElementById('flash-messages-area');
-    if (!messageArea) {
-        console.error('Flash message area not found!');
-        return;
-    }
-    const alert = document.createElement('div');
-    alert.className = `alert alert-${category} alert-dismissible fade show mt-3`;
-    alert.setAttribute('role', 'alert');
-    alert.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
+function flashMessage(message, category) {
+    const mainContainer = document.querySelector('.container'); // Or a more specific container for messages
+    if (!mainContainer) return;
+    const newMessage = document.createElement('div');
+    newMessage.className = `alert alert-${category} alert-dismissible fade show mt-3`;
+    newMessage.setAttribute('role', 'alert');
+    newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
     
-    messageArea.prepend(alert);
+    // Append to a designated message area or just before the first card
+    const messageArea = document.getElementById('flash-messages-area'); // You might need to add this div in your base.html or specific page
+    if (messageArea) {
+        messageArea.prepend(newMessage);
+    } else {
+        mainContainer.prepend(newMessage); 
+    }
 
     // Auto-dismiss after some time
     setTimeout(() => {
-        bootstrap.Alert.getInstance(alert)?.close();
-    }, 5000);
+        bootstrap.Alert.getInstance(newMessage)?.close();
+    }, 5000); // 5 seconds
 }
 </script>
 {% endblock %}
