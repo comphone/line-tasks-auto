@@ -123,7 +123,7 @@
         text-align: center;
         color: #ccc;
         padding: 10px 0;
-        height: 50px; /* Increased height for two lines */
+        height: 20px;
     }
     .lightbox-close {
         position: absolute;
@@ -135,32 +135,25 @@
         transition: 0.3s;
         cursor: pointer;
     }
-    /* MODIFIED: Lightbox Navigation Arrows */
+    /* Updated: Lightbox Navigation Arrows */
     .lightbox-nav {
         cursor: pointer;
         position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
+        top: 50%; /* Center vertically */
+        transform: translateY(-50%); /* Adjust for vertical centering */
         width: auto;
-        padding: 16px;
+        padding: 18px 12px; /* Adjust padding to make them larger touch targets */
         color: white;
         font-weight: bold;
-        font-size: 30px;
+        font-size: 45px; /* Larger font size for arrows */
         transition: 0.6s ease;
         user-select: none;
-        background-color: rgba(0,0,0,0.3);
-        border-radius: 0 3px 3px 0;
+        background-color: rgba(0,0,0,0.5); /* Semi-transparent background */
+        border-radius: 5px; /* Slightly rounded corners */
     }
-    .lightbox-prev {
-        left: 0;
-        border-radius: 3px 0 0 3px;
-    }
-    .lightbox-next {
-        right: 0;
-    }
-    .lightbox-nav:hover {
-        background-color: rgba(0,0,0,0.6);
-    }
+    .lightbox-prev { left: 15px; } /* Position from left edge */
+    .lightbox-next { right: 15px; } /* Position from right edge */
+    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
     
     .lightbox-actions {
         position: absolute;
@@ -187,9 +180,8 @@
     /* --- Styles for Technician Selection Modal --- */
     .technician-item {
         display: flex;
-        align-items: center; 
-        padding: 0.75rem;
-        border-bottom: 1px solid #eee;
+        align-items: flex-start; /* Align items to top to avoid vertical misalignment */
+        padding: 0.75rem 0;
     }
     .technician-avatar {
         width: 40px;
@@ -201,6 +193,7 @@
     }
     .technician-name {
         flex-grow: 1;
+        padding-top: 5px; /* Adjust vertical alignment with avatar */
     }
     /* --- End of Technician Modal Styles --- */
 
@@ -221,15 +214,45 @@
         justify-content: center;
         background-color: #e9ecef;
     }
-    .form-label, .card-body { font-size: 0.95em; }
-    .card-header h5 { font-size: 1.1em; }
-    .btn { font-size: 1em; }
-    .btn-lg { font-size: 1.25em; }
-    .info-hero-card .info-label { color: #B0D9FF; font-weight: 500; margin-bottom: 0.2rem; }
-    .info-hero-card .info-value { margin-bottom: 0.5rem; line-height: 1.3; }
-    .info-hero-card .list-group-item { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-    .form-label { margin-bottom: 0.3rem; }
-    .mb-3 { margin-bottom: 0.8rem !important; }
+
+    /* Font sizes based on old version */
+    .form-label, .card-body {
+        font-size: 0.95em;
+    }
+    .card-header h5 {
+        font-size: 1.1em;
+    }
+    .btn {
+        font-size: 1em; /* Default button font size */
+    }
+    .btn-lg {
+        font-size: 1.25em; /* Large button font size */
+    }
+
+    /* Custom Styles for Info Hero Card to make labels clearer and adjust spacing */
+    .info-hero-card .info-label {
+        color: #B0D9FF; /* Lighter blue for labels */
+        font-weight: 500;
+        margin-bottom: 0.2rem; /* Reduce spacing between label and value */
+    }
+
+    .info-hero-card .info-value {
+        margin-bottom: 0.5rem; /* Adjust spacing below the value */
+        line-height: 1.3; /* Adjust line height for better readability */
+    }
+    
+    .info-hero-card .list-group-item {
+        padding-top: 0.5rem; /* Adjust padding for list items */
+        padding-bottom: 0.5rem;
+    }
+
+    /* Adjust overall line spacing in forms */
+    .form-label {
+        margin-bottom: 0.3rem; /* Smaller margin below labels */
+    }
+    .mb-3 {
+        margin-bottom: 0.8rem !important; /* Smaller margin-bottom for form groups */
+    }
 </style>
 {% endblock %}
 
@@ -487,9 +510,9 @@
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
+    <div id="lightboxCaption" class="lightbox-caption"></div>
     <a class="lightbox-prev" onclick="changeSlide(-1)">❮</a>
     <a class="lightbox-next" onclick="changeSlide(1)">❯</a>
-    <div id="lightboxCaption" class="lightbox-caption"></div>
     <div class="lightbox-actions">
         <a href="#" id="downloadBtn" title="บันทึกรูปภาพ"><i class="fas fa-download"></i></a>
         <a href="#" id="shareBtn" title="แชร์รูปภาพ"><i class="fas fa-share-alt"></i></a>
@@ -507,7 +530,7 @@
         <div id="technician-list-container">
             </div>
       </div>
-      <div class.="modal-footer">
+      <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
         <button type="button" class="btn btn-primary" onclick="confirmTechnicianSelection()">ตกลง</button>
       </div>
@@ -552,13 +575,11 @@ function showSlide(index) {
     if(index < 0 || index >= allAttachments.length) return;
     const attachment = allAttachments[index];
     
-    // FIXED: Use correct Google Drive thumbnail URL for high-resolution images
-    const imageUrl = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1200`;
+    // Corrected Google Drive direct download URL generation for higher resolution
+    // Using 'w' and 'h' for width/height and 'n' to disable cropping, 's' for size
+    const imageUrl = `https://drive.google.com/uc?id=${attachment.id}&export=download`; // Direct download link for full resolution
     lightboxImg.src = imageUrl;
-    
-    // MODIFIED: Added swipe hint to caption
-    lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length} (รายงานวันที่: ${attachment.report_date})
-                                 <br><small>(ใช้ลูกศร หรือปัดซ้าย/ขวาเพื่อเลื่อน)</small>`;
+    lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length} (จากรายงานวันที่: ${attachment.report_date})<br> (ปัดซ้าย/ขวา หรือใช้ลูกศรเพื่อดูภาพถัดไป)`;
 
     downloadBtn.onclick = (e) => { e.preventDefault(); downloadImage(imageUrl, `task-image-${attachment.id}.jpg`); };
     shareBtn.onclick = (e) => { e.preventDefault(); shareImage(imageUrl, `รูปจากงาน: {{ task.title | e }}`); };
@@ -615,24 +636,21 @@ function openTechnicianModal(targetInputId) {
     const container = document.getElementById('technician-list-container');
     container.innerHTML = ''; // Clear previous list
 
-    if (technicianList.length > 0) {
-        technicianList.forEach(tech => {
-            const isChecked = selectedTechnicians.includes(tech.name);
-            // FIXED: Use correct Google Drive thumbnail URL for avatars
-            const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=w80` : 'https://via.placeholder.com/40/0d6efd/ffffff?text=' + tech.name.charAt(0).toUpperCase();
-            
-            const itemHtml = `
-                <label class="technician-item list-group-item-action">
-                    <img src="${avatarUrl}" class="technician-avatar" alt="${tech.name}">
-                    <span class="technician-name">${tech.name}</span>
-                    <input class="form-check-input" type="checkbox" value="${tech.name}" ${isChecked ? 'checked' : ''}>
-                </label>
-            `;
-            container.insertAdjacentHTML('beforeend', itemHtml);
-        });
-    } else {
-        container.innerHTML = '<p class="text-muted text-center p-3">ไม่มีรายชื่อช่างในระบบ กรุณาเพิ่มในหน้าตั้งค่า</p>';
-    }
+    technicianList.forEach(tech => {
+        const isChecked = selectedTechnicians.includes(tech.name);
+        // Corrected Google Drive thumbnail URL generation for avatar
+        // Ensure tech.name is not empty before calling charAt
+        const initial = tech.name ? tech.name.charAt(0).toUpperCase() : '?'; // Handle empty name gracefully
+        const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/0d6efd/ffffff?text=${initial}`;
+        
+        container.innerHTML += `
+            <div class="technician-item list-group-item-action">
+                <img src="${avatarUrl}" class="technician-avatar" alt="${tech.name}">
+                <span class="technician-name">${tech.name}</span>
+                <input class="form-check-input" type="checkbox" value="${tech.name}" ${isChecked ? 'checked' : ''}>
+            </div>
+        `;
+    });
 
     if (!technicianSelectionModal) {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
@@ -657,7 +675,7 @@ function confirmTechnicianSelection() {
 }
 
 
-// --- Existing Scripts (with slight modifications for robustness) ---
+// --- Existing Scripts ---
 function showActionCard(cardIdToShow) {
     document.getElementById('chooseActionCard').style.display = 'none';
     document.getElementById('finalReportCard').style.display = 'none';
@@ -678,7 +696,6 @@ function showLoading(form) {
 async function handleFormSubmission(event, form, statusElementId) {
     event.preventDefault();
     const submitButton = form.querySelector('button[type="submit"]');
-    const originalButtonHtml = submitButton.innerHTML;
     submitButton.disabled = true;
     submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
@@ -687,7 +704,6 @@ async function handleFormSubmission(event, form, statusElementId) {
     const filesInput = form.querySelector('input[type="file"][name="files[]"]');
     const files = filesInput ? Array.from(filesInput.files) : [];
     let attachmentUrls = [];
-    let uploadFailed = false;
 
     if (files.length > 0) {
         uploadStatusBox.style.display = 'inline-block';
@@ -704,23 +720,12 @@ async function handleFormSubmission(event, form, statusElementId) {
                 if (result.status === 'success') {
                     attachmentUrls.push(result.file_info);
                 } else {
-                    uploadFailed = true;
                     flashMessage('อัปโหลดไฟล์ไม่สำเร็จ: ' + result.message, 'danger');
-                    break; // Stop on first failure
                 }
             } catch (error) {
-                uploadFailed = true;
                 flashMessage('เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์', 'danger');
-                break; // Stop on error
             }
         }
-    }
-    
-    if (uploadFailed) {
-        submitButton.disabled = false;
-        submitButton.innerHTML = originalButtonHtml;
-        uploadStatusBox.style.display = 'none';
-        return;
     }
 
     const mainFormData = new FormData(form);
@@ -733,36 +738,39 @@ async function handleFormSubmission(event, form, statusElementId) {
         if (result.status === 'success') {
             window.location.reload();
         } else {
-            flashMessage(result.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger');
+            flashMessage(result.message, 'danger');
             submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHtml;
+            submitButton.innerHTML = submitButton.getAttribute('data-original-html');
         }
     } catch (error) {
         flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger');
         submitButton.disabled = false;
-        submitButton.innerHTML = originalButtonHtml;
+        submitButton.innerHTML = submitButton.getAttribute('data-original-html');
     } finally {
         uploadStatusBox.style.display = 'none';
     }
 }
 
 function flashMessage(message, category) {
-    const mainContainer = document.querySelector('.container.mt-4.mb-5');
+    const mainContainer = document.querySelector('.container'); // Or a more specific container for messages
     if (!mainContainer) return;
     const newMessage = document.createElement('div');
     newMessage.className = `alert alert-${category} alert-dismissible fade show mt-3`;
     newMessage.setAttribute('role', 'alert');
     newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
     
-    // Find a good spot to prepend the message, e.g., before the first card or h1
-    const firstCard = mainContainer.querySelector('.card');
-    mainContainer.insertBefore(newMessage, firstCard);
-    
-    window.scrollTo(0, 0); // Scroll to top to make sure user sees the message
-}
+    // Append to a designated message area or just before the first card
+    const messageArea = document.getElementById('flash-messages-area'); // You might need to add this div in your base.html or specific page
+    if (messageArea) {
+        messageArea.prepend(newMessage);
+    } else {
+        mainContainer.prepend(newMessage); 
+    }
 
-document.addEventListener('DOMContentLoaded', function() {
-    // No changes needed here, just ensuring it's present.
-});
+    // Auto-dismiss after some time
+    setTimeout(() => {
+        bootstrap.Alert.getInstance(newMessage)?.close();
+    }, 5000); // 5 seconds
+}
 </script>
 {% endblock %}
