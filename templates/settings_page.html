@@ -269,7 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             technicians.forEach((tech, index) => {
                 // Corrected Google Drive thumbnail URL generation for avatar
-                const avatarUrl = tech.avatar_id ? `https://lh3.googleusercontent.com/d/${tech.avatar_id}=s40` : 'https://via.placeholder.com/40/6c757d/ffffff?text=' + tech.name.charAt(0).toUpperCase();
+                const avatarUrl = tech.avatar_id ? `https://lh3.googleusercontent.com/d/${tech.avatar_id}=s40-c` : 'https://via.placeholder.com/40/6c757d/ffffff?text=' + tech.name.charAt(0).toUpperCase();
                 const item = document.createElement('div');
                 item.className = 'list-group-item';
                 item.innerHTML = `
