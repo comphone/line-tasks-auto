@@ -2100,7 +2100,7 @@ def handle_text_message(event):
         tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('status') == 'needsAction']
         reply = create_full_summary_message('รายการงานค้าง', tasks)
     elif text == 'งานเสร็จ':
-        tasks = sorted([t for t t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed'], key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')), reverse=True)
+        tasks = sorted([t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed'], key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')), reverse=True)
         reply = create_task_list_message('รายการงานเสร็จล่าสุด', tasks)
     elif text == 'งานพรุ่งนี้':
         tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == (datetime.datetime.now(THAILAND_TZ) + datetime.timedelta(days=1)).date() and t.get('status') == 'needsAction']
