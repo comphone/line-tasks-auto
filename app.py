@@ -506,7 +506,9 @@ def parse_customer_info_from_notes(notes):
         # Check if it looks like coordinates (e.g., "13.75,100.50")
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
             # Use standard Google Maps search URL for coordinates
-            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}" # แก้ไข URL แผนที่ให้ถูกต้อง
+            # Corrected Google Maps URL format for coordinates:
+            # Using maps.google.com/search?q= for a general search by coordinates
+            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
         else:
             # Otherwise, assume it's already a valid URL
             info['map_url'] = coords_or_url
@@ -1575,11 +1577,18 @@ def settings_page():
             flash('เกิดข้อผิดพลาดในการอ่านข้อมูลช่าง', 'danger')
             return redirect(url_for('settings_page'))
 
+        # Safely get integer values for hours/minutes, providing a default if not present
+        appointment_reminder_hour = int(request.form.get('appointment_reminder_hour', 0))
+        outstanding_report_hour = int(request.form.get('outstanding_report_hour', 0))
+        customer_followup_hour = int(request.form.get('customer_followup_hour', 0))
+        auto_backup_hour = int(request.form.get('auto_backup_hour', 0))
+        auto_backup_minute = int(request.form.get('auto_backup_minute', 0))
+
         settings_data = {
             'report_times': {
-                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour', 0)), # Added default 0
-                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour', 0)), # Added default 0
-                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour', 0)) # Added default 0
+                'appointment_reminder_hour_thai': appointment_reminder_hour,
+                'outstanding_report_hour_thai': outstanding_report_hour,
+                'customer_followup_hour_thai': customer_followup_hour
             },
             'line_recipients': {
                 'admin_group_id': request.form.get('admin_group_id', '').strip(),
@@ -1588,8 +1597,8 @@ def settings_page():
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('auto_backup_hour', 0)), # Added default 0
-                'minute_thai': int(request.form.get('auto_backup_minute', 0)) # Added default 0
+                'hour_thai': auto_backup_hour,
+                'minute_thai': auto_backup_minute
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
@@ -1792,6 +1801,11 @@ def technician_report():
         year, month = now.year, now.month
     
     months = [{'value': i, 'name': datetime.date(2000, i, 1).strftime('%B')} for i in range(1, 13)]
+    
+    # Get the full technician list from settings for avatar display
+    app_settings = get_app_settings()
+    technician_list = app_settings.get('technician_list', [])
+
     tasks = get_google_tasks_for_report(show_completed=True) or []
     report = defaultdict(lambda: {'count': 0, 'tasks': []})
 
@@ -1801,15 +1815,24 @@ def technician_report():
                 completed_dt = date_parse(task['completed']).astimezone(THAILAND_TZ)
                 if completed_dt.year == year and completed_dt.month == month:
                     history, _ = parse_tech_report_from_notes(task.get('notes', ''))
-                    techs = {t.strip() for r in history for t in r.get('technicians', []) if isinstance(t, str)}
-                    for tech_name in sorted(list(techs)):
+                    # Collect all unique technicians from all reports for this task
+                    task_techs = set()
+                    for r in history:
+                        for t_name in r.get('technicians', []):
+                            if isinstance(t_name, str):
+                                task_techs.add(t_name.strip())
+
+                    for tech_name in sorted(list(task_techs)):
                         report[tech_name]['count'] += 1
                         report[tech_name]['tasks'].append({'id': task.get('id'), 'title': task.get('title'), 'completed_formatted': completed_dt.strftime("%d/%m/%Y")})
-            except Exception: continue
+            except Exception as e:
+                app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
+                continue
 
     return render_template('technician_report.html',
                            report_data=report, selected_year=year, selected_month=month,
-                           years=list(range(now.year - 5, now.year + 2)), months=months)
+                           years=list(range(now.year - 5, now.year + 2)), months=months,
+                           technician_list=technician_list) # Pass the full technician_list here
 
 @app.route('/manage_duplicates', methods=['GET'])
 def manage_duplicates():
@@ -2006,7 +2029,7 @@ def save_customer_line_id():
         feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
         # Reconstruct notes
         reports_history, base = parse_tech_report_from_notes(notes)
-        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
         final_notes = f"{base.strip()}"
         if reports_text: final_notes += reports_text
         final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
@@ -2188,7 +2211,6 @@ def organize_files():
 
         all_files_in_base_and_uncategorized = []
         try:
-            # Use pageSize and pageToken for large number of files
             page_token = None
             while True:
                 response = _execute_google_api_call_with_retry(
@@ -2215,12 +2237,10 @@ def organize_files():
         task_folder_map = {}
         for task in all_tasks:
             try:
-                # Ensure task has a created date, otherwise use current time for folder naming
                 created_dt_local = None
                 if task.get('created'):
                     created_dt_local = date_parse(task.get('created')).astimezone(THAILAND_TZ)
                 else:
-                    # If no created date, use current time for monthly folder, but log a warning
                     app.logger.warning(f"Task {task.get('id')} has no 'created' date. Using current date for monthly folder naming.")
                     created_dt_local = datetime.datetime.now(THAILAND_TZ)
 
@@ -2229,7 +2249,7 @@ def organize_files():
                 
                 if not monthly_folder_id:
                     app.logger.error(f"Could not create/find monthly folder {monthly_folder_name} for task {task.get('id')}.")
-                    continue # Skip this task if monthly folder can't be determined
+                    continue
 
                 customer_info = parse_customer_info_from_notes(task.get('notes', ''))
                 sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
@@ -2251,28 +2271,21 @@ def organize_files():
             file_name = file_item.get('name', 'Unnamed File')
             current_parents = file_parents_map.get(file_id, [])
 
-            # Try to link file to a task based on its name (if it contains a task ID)
-            # This is a heuristic and might need refinement based on actual file naming conventions
             matched_task_id = None
             for task_id_candidate in task_folder_map.keys():
-                if task_id_candidate in file_name: # Simple check if task ID is in file name
+                if task_id_candidate in file_name:
                     matched_task_id = task_id_candidate
                     break
             
-            # If a task ID is found in the filename, or if it's an attachment linked via notes
-            # prioritize moving it to the correct task folder.
-            # Otherwise, check if it's an attachment from a report.
             expected_folder_id = None
             if matched_task_id and task_folder_map.get(matched_task_id):
                 expected_folder_id = task_folder_map[matched_task_id]
             else:
-                # Fallback: Check if this file is an attachment in any task's notes
                 for task in all_tasks:
                     history, _ = parse_tech_report_from_notes(task.get('notes', ''))
                     for report in history:
                         for attachment in report.get('attachments', []):
                             if attachment.get('id') == file_id:
-                                # Found a matching attachment in a task's notes
                                 if task.get('id') in task_folder_map:
                                     expected_folder_id = task_folder_map[task.get('id')]
                                 break
@@ -2282,7 +2295,7 @@ def organize_files():
             if not expected_folder_id:
                 app.logger.info(f"File {file_id} ('{file_name}') could not be linked to any task. Skipping.")
                 skipped_count += 1
-                continue # Cannot determine destination, skip this file
+                continue
 
             if expected_folder_id in current_parents:
                 skipped_count += 1
@@ -2290,14 +2303,13 @@ def organize_files():
                 continue
             
             try:
-                # Remove any current parents that are not the target folder
                 parents_to_remove = [p for p in current_parents if p != expected_folder_id]
                 
                 _execute_google_api_call_with_retry(
                     service.files().update,
                     fileId=file_id,
                     addParents=expected_folder_id,
-                    removeParents=",".join(parents_to_remove), # Join list for removeParents
+                    removeParents=",".join(parents_to_remove),
                     fields='id, parents'
                 )
                 moved_count += 1
