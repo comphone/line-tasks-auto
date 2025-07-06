@@ -1,0 +1,67 @@
+<!-- Hidden Action Card: Complete Task -->
+<div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
+    <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" id="completeForm" onsubmit="handleFormSubmission(event, this, 'complete')">
+            <input type="hidden" name="action" value="complete_task">
+            <div class="mb-3">
+                <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
+                <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
+            </div>
+             <div class="mb-3">
+                <label for="technicians_final" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
+                <select class="form-select" id="technicians_final" name="technicians_report" multiple required size="3">
+                    {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="files_final" class="form-label"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
+                <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*">
+            </div>
+            <hr>
+            <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
+            <button type="button" class="btn btn-secondary" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
+        </form>
+    </div>
+</div>
+
+<!-- Hidden Action Card: Reschedule Task -->
+<div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
+    <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" onsubmit="showLoading(this)">
+            <input type="hidden" name="action" value="reschedule_task">
+            <div class="mb-3">
+                <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
+                <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
+            </div>
+            <div class="mb-3">
+                <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
+                <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="technicians_reschedule" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
+                 <select class="form-select" id="technicians_reschedule" name="technicians_reschedule" multiple required size="3">
+                    {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
+                </select>
+            </div>
+            <hr>
+            <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
+            <button type="button" class="btn btn-secondary" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
+        </form>
+    </div>
+</div>
+
+<!-- Hidden Action Card: Generate QR Code -->
+<div class="card shadow-sm mt-4" id="qrCodeCard" style="display:none;">
+    <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
+    <div class="card-body text-center">
+        <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+            <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
+            {% if task.status == 'completed' %}
+            <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
+            {% endif %}
+        </div>
+        <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
+    </div>
+</div>

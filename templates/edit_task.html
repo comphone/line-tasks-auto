@@ -4,14 +4,12 @@
 
 {% block head_extra %}
 <style>
-    .form-section-header {
-        font-size: 1.2rem;
+    .card-header h5 {
         font-weight: 600;
-        padding-bottom: .5rem;
-        border-bottom: 2px solid #0d6efd;
-        margin-top: 1.5rem;
-        margin-bottom: 1.5rem;
-        display: inline-block;
+    }
+    .input-group-text {
+        width: 42px; /* Fixed width for icons */
+        justify-content: center;
     }
 </style>
 {% endblock %}
@@ -24,61 +22,70 @@
 
 <div class="row justify-content-center">
     <div class="col-lg-10 col-md-12">
-        <div class="card shadow-sm">
-            <div class="card-header bg-warning text-dark">
-                <h5 class="mb-0"><i class="fas fa-edit me-2"></i>ฟอร์มแก้ไขข้อมูลหลัก</h5>
-            </div>
-            <div class="card-body p-4 p-md-5">
-                <form method="POST" action="{{ url_for('edit_task', task_id=task.id) }}" class="needs-validation" novalidate>
+        <form method="POST" action="{{ url_for('edit_task', task_id=task.id) }}" class="needs-validation" novalidate>
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="fas fa-edit me-2"></i>ฟอร์มแก้ไขข้อมูลหลัก</h5>
+                </div>
+                <div class="card-body p-4 p-md-5">
                     
                     <!-- Task Information Section -->
-                    <div>
-                        <span class="form-section-header"><i class="fas fa-clipboard-list me-2"></i>ข้อมูลงาน</span>
-                    </div>
-                    <div class="row mb-3">
-                        <label for="task_title" class="col-md-3 col-form-label">รายละเอียดงาน</label>
-                        <div class="col-md-9">
+                    <h5 class="mb-3">ข้อมูลงานและนัดหมาย</h5>
+                    <div class="mb-3">
+                        <label for="task_title" class="form-label">รายละเอียดงาน</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
                             <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ task.title }}</textarea>
                         </div>
                     </div>
-                    <div class="row mb-3">
-                        <label for="appointment_due" class="col-md-3 col-form-label">วันเวลานัดหมาย</label>
-                        <div class="col-md-9">
+                    <div class="mb-4">
+                        <label for="appointment_due" class="form-label">วันเวลานัดหมาย</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
                             <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
                         </div>
                     </div>
 
+                    <hr>
+
                     <!-- Customer Information Section -->
-                    <div>
-                        <span class="form-section-header"><i class="fas fa-user-tag me-2"></i>ข้อมูลลูกค้าและนัดหมาย</span>
-                    </div>
-                    <div class="row mb-3">
-                        <label for="organization_name" class="col-md-3 col-form-label">ชื่อหน่วยงาน/บริษัท</label>
-                        <div class="col-md-9">
-                            <input type="text" class="form-control" id="organization_name" name="organization_name" value="{{ task.customer.organization or '' }}">
+                    <h5 class="my-3">ข้อมูลลูกค้า</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="organization_name" class="form-label">ชื่อหน่วยงาน/บริษัท</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-building"></i></span>
+                                <input type="text" class="form-control" id="organization_name" name="organization_name" value="{{ task.customer.organization or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="customer_name" class="form-label">ชื่อผู้ติดต่อ</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name }}">
+                            </div>
                         </div>
                     </div>
-                    <div class="row mb-3">
-                        <label for="customer_name" class="col-md-3 col-form-label">ชื่อผู้ติดต่อ</label>
-                        <div class="col-md-9">
-                            <input type="text" class="form-control" id="customer_name" name="customer_name" value="{{ task.customer.name }}">
+                    <div class="row">
+                         <div class="col-md-6 mb-3">
+                            <label for="customer_phone" class="form-label">เบอร์โทรศัพท์</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="address" class="form-label">ที่อยู่</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
+                                <textarea class="form-control" id="address" name="address" rows="1">{{ task.customer.address }}</textarea>
+                            </div>
                         </div>
                     </div>
-                    <div class="row mb-3">
-                        <label for="customer_phone" class="col-md-3 col-form-label">เบอร์โทรศัพท์</label>
-                        <div class="col-md-9">
-                            <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone }}">
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <label for="address" class="col-md-3 col-form-label">ที่อยู่</label>
-                        <div class="col-md-9">
-                            <textarea class="form-control" id="address" name="address" rows="2">{{ task.customer.address }}</textarea>
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <label for="latitude_longitude" class="col-md-3 col-form-label">ลิงก์ Google Maps</label>
-                        <div class="col-md-9">
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label">ลิงก์ Google Maps</label>
+                        <div class="input-group">
+                             <span class="input-group-text"><i class="fas fa-map-pin"></i></span>
                             <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}">
                         </div>
                     </div>
@@ -88,9 +95,9 @@
                         <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
                         <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
                     </div>
-                </form>
+                </div>
             </div>
-        </div>
+        </form>
     </div>
 </div>
 {% endblock %}
