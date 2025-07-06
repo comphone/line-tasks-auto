@@ -59,6 +59,7 @@
     </a>
 </div>
 
+<!-- Summary Cards -->
 <div class="row">
     <div class="col-lg-3 col-6 mb-4">
         <a href="{{ url_for('summary', status_filter='all') }}#task-list-section" class="summary-card-link">
@@ -106,91 +107,86 @@
     </div>
 </div>
 
-<div class="row">
-    <div class="col-lg-12 mb-4">
-        <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center" id="chartHeader" data-bs-toggle="collapse" data-bs-target="#monthlyTasksChartCollapse" aria-expanded="false" aria-controls="monthlyTasksChartCollapse" style="cursor: pointer;">
-                <h5 class="mb-0"><i class="fas fa-chart-bar me-1"></i>จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)</h5>
-                <i class="fas fa-chevron-down"></i>
-            </div>
-            <div class="collapse" id="monthlyTasksChartCollapse">
-                <div class="card-body">
-                    <canvas id="monthlyTasksChart"></canvas>
-                </div>
-            </div>
+<!-- Monthly Chart Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center" id="chartHeader" data-bs-toggle="collapse" data-bs-target="#monthlyTasksChartCollapse" aria-expanded="true" aria-controls="monthlyTasksChartCollapse" style="cursor: pointer;">
+        <h5 class="mb-0"><i class="fas fa-chart-bar me-1"></i>จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)</h5>
+        <i class="fas fa-chevron-down"></i>
+    </div>
+    <div class="collapse show" id="monthlyTasksChartCollapse">
+        <div class="card-body">
+            <canvas id="monthlyTasksChart" style="min-height: 250px;"></canvas>
         </div>
     </div>
 </div>
 
-
+<!-- Task List Card -->
 <div class="card shadow-sm" id="task-list-section">
-    <div class="card-header d-flex justify-content-between align-items-center" id="tasksHeader">
+    <div class="card-header">
         <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
     </div>
-    <div class="collapse show" id="tasksTableCollapse">
-        <div class="card-body">
-            <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
-                <div class="input-group">
-                    <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หน่วยงาน หรือเบอร์โทร..." value="{{ search_query or '' }}">
-                    <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
-                </div>
-            </form>
-
-            <div class="table-responsive">
-                <table class="table table-hover table-bordered align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>#</th>
-                            <th>หน่วยงาน / ลูกค้า</th>
-                            <th>รายละเอียดงาน</th>
-                            <th>วันเวลานัดหมาย</th>
-                            <th class="text-center">สถานะ</th>
-                            <th class="text-center">จัดการ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for task in tasks %}
-                        <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}">
-                            <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ loop.index }}</td>
-                            <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
-                                {% if task.customer.organization %}
-                                    <strong>{{ task.customer.organization }}</strong>
-                                    <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
-                                {% else %}
-                                    <strong>{{ task.customer.name or '-' }}</strong>
-                                {% endif %}
-                            </td>
-                            <td class="task-title-cell" title="{{ task.title }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.title }}</td>
-                            <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
-                            <td class="text-center clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
-                                {% if task.status == 'completed' %}
-                                    <span class="badge bg-success">เสร็จเรียบร้อย</span>
-                                {% elif task.is_overdue %}
-                                    <span class="badge bg-danger">เลยกำหนด</span>
-                                {% else %}
-                                    <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
-                                    <i class="fas fa-file-alt"></i>
-                                </a>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="6" class="text-center p-4">
-                                <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
-                                <p>ลอง<a href="{{ url_for('form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
+            <div class="input-group">
+                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หน่วยงาน หรือเบอร์โทร..." value="{{ search_query or '' }}">
+                <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
             </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>หน่วยงาน / ลูกค้า</th>
+                        <th>รายละเอียดงาน</th>
+                        <th>วันเวลานัดหมาย</th>
+                        <th class="text-center">สถานะ</th>
+                        <th class="text-center">จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}">
+                        <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ loop.index }}</td>
+                        <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
+                            {% if task.customer.organization %}
+                                <strong>{{ task.customer.organization }}</strong>
+                                <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
+                            {% else %}
+                                <strong>{{ task.customer.name or '-' }}</strong>
+                            {% endif %}
+                        </td>
+                        <td class="task-title-cell" title="{{ task.title }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.title }}</td>
+                        <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
+                        <td class="text-center clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
+                            {% if task.status == 'completed' %}
+                                <span class="badge bg-success">เสร็จเรียบร้อย</span>
+                            {% elif task.is_overdue %}
+                                <span class="badge bg-danger">เลยกำหนด</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+                                <i class="fas fa-file-alt"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center p-4">
+                            <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
+                            <p>ลอง<a href="{{ url_for('form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -231,11 +227,9 @@
             new Chart(monthlyCtx, {
                 type: 'bar',
                 data: {
-                    // --- REVISED: Use explicit key access to avoid ambiguity ---
                     labels: {{ chart_data['labels'] | tojson | safe }},
                     datasets: [{
                         label: 'จำนวนงานที่เสร็จ',
-                        // --- REVISED: Use explicit key access to avoid ambiguity ---
                         data: {{ chart_data['values'] | tojson | safe }},
                         backgroundColor: 'rgba(25, 135, 84, 0.6)',
                         borderColor: 'rgba(25, 135, 84, 1)',
