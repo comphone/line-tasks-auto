@@ -581,9 +581,11 @@
         const files = filesInput ? Array.from(filesInput.files) : [];
         let uploadedAttachments = [];
 
+        // This is the implementation for the per-file upload progress display.
         if (files.length > 0) {
             uploadStatusBox.style.display = 'inline-block';
             for (let i = 0; i < files.length; i++) {
+                // Update the status for each file being uploaded.
                 uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> อัปโหลด ${i + 1}/${files.length}`;
                 const fileFormData = new FormData();
                 fileFormData.append('file', files[i]);
@@ -596,10 +598,11 @@
                     if (response.ok && result.status === 'success') {
                         uploadedAttachments.push(result.file_info);
                     } else {
-                        flashMessage(`อัปโหลดไฟล์ไม่สำเร็จ: ${result.message}`, 'danger');
+                        // Display an error message but continue with other files.
+                        flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${result.message}`, 'danger');
                     }
                 } catch (error) {
-                    flashMessage('เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์', 'danger');
+                    flashMessage(`เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์ "${files[i].name}"`, 'danger');
                 }
             }
         }
@@ -611,10 +614,10 @@
         try {
             const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
             if (response.ok) {
-                // The backend will flash a message and redirect, so we just reload.
+                // The backend will flash a message and redirect, so we just reload the page to see the result.
                 window.location.reload();
             } else {
-                // If the backend returns an error, display it.
+                // If the backend returns a JSON error, display it.
                 const result = await response.json();
                 flashMessage(result.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger');
                 submitButton.disabled = false;
