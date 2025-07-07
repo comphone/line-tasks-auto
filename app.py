@@ -25,7 +25,6 @@ from geopy.distance import geodesic
 import qrcode
 import base64
 
-# --- Use line-bot-sdk version 2.4.2 ---
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -38,9 +37,7 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
     ImageComponent, PostbackEvent
 )
-# ---------------------------------------------
 
-# --- Google API Imports ---
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -50,12 +47,10 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBa
 import pandas as pd
 from dateutil.parser import parse as date_parse
 
-# --- APScheduler for background tasks ---
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
-# --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -64,7 +59,7 @@ csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'} # MODIFIED: Added 'pdf'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 MAX_FILE_SIZE_MB = 5
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
@@ -72,7 +67,6 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# --- LINE & Google Configs ---
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
@@ -81,11 +75,10 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') # Main folder ID
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
-
 if not LIFF_ID_FORM:
     app.logger.warning("LIFF_ID_FORM environment variable is not set. LIFF features will not work.")
 if not LINE_LOGIN_CHANNEL_ID:
@@ -100,7 +93,6 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 app.jinja_env.filters['dateutil_parse'] = date_parse
-
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
 SETTINGS_FILE = 'settings.json'
@@ -169,14 +161,12 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
 def get_google_service(api_name, api_version):
     creds = None
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
-
     if google_token_json_str:
         try:
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
         except Exception as e:
             app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Please check format.")
             creds = None
-
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
@@ -188,7 +178,6 @@ def get_google_service(api_name, api_version):
         except Exception as e:
             app.logger.error(f"Error refreshing token: {e}")
             creds = None
-
     if creds and creds.valid:
         try:
             service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
@@ -200,7 +189,6 @@ def get_google_service(api_name, api_version):
         app.logger.error("No valid Google credentials available. API service cannot be built.")
         app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set and valid, or that authorization was successful.")
         return None
-
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
@@ -215,7 +203,6 @@ def find_or_create_drive_folder(name, parent_id):
     service = get_google_drive_service()
     if not service:
         return None
-    
     query = f"name = '{name}' and '{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     try:
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', pageSize=1)
@@ -243,21 +230,17 @@ def load_settings_from_drive_on_startup():
     if not settings_backup_folder_id:
         app.logger.error("Could not find or create Settings_Backups folder. Skipping settings restore.")
         return False
-        
     service = get_google_drive_service()
     if not service:
         app.logger.error("Could not get Drive service for settings restore.")
         return False
-
     try:
         query = f"name = 'settings_backup.json' and '{settings_backup_folder_id}' in parents and trashed = false"
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', orderBy='modifiedTime desc', pageSize=1)
         files = response.get('files', [])
-
         if files:
             latest_backup_file_id = files[0]['id']
             app.logger.info(f"Found latest settings backup on Drive (ID: {latest_backup_file_id})")
-
             request = service.files().get_media(fileId=latest_backup_file_id)
             fh = BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
@@ -265,9 +248,7 @@ def load_settings_from_drive_on_startup():
             while not done:
                 status, done = downloader.next_chunk()
             fh.seek(0)
-
             downloaded_settings = json.loads(fh.read().decode('utf-8'))
-
             if save_settings_to_file(downloaded_settings):
                 app.logger.info("Successfully restored settings from Google Drive backup.")
                 return True
@@ -315,12 +296,10 @@ def backup_settings_to_drive():
     if not settings_backup_folder_id:
         app.logger.error("Cannot back up settings: Could not find or create Settings_Backups folder.")
         return False
-
     service = get_google_drive_service()
     if not service:
         app.logger.error("Cannot back up settings: Google Drive service is unavailable.")
         return False
-
     try:
         query = f"name = 'settings_backup.json' and '{settings_backup_folder_id}' in parents and trashed = false"
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id)')
@@ -330,20 +309,16 @@ def backup_settings_to_drive():
                 app.logger.info(f"Deleted old settings_backup.json (ID: {file_item['id']}) from Drive before saving new one.")
             except HttpError as e:
                 app.logger.warning(f"Could not delete old settings file {file_item['id']}: {e}. Proceeding with upload attempt.")
-
         settings_data = get_app_settings()
         settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
-        
         file_metadata = {'name': 'settings_backup.json', 'parents': [settings_backup_folder_id]}
         media = MediaIoBaseUpload(settings_json_bytes, mimetype='application/json', resumable=True)
-        
         _execute_google_api_call_with_retry(
             service.files().create,
             body=file_metadata, media_body=media, fields='id'
         )
         app.logger.info("Successfully saved current settings to settings_backup.json on Google Drive.")
         return True
-
     except Exception as e:
         app.logger.error(f"Failed to backup settings to Google Drive: {e}", exc_info=True)
         return False
@@ -374,35 +349,27 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
     if not service or not folder_id:
         app.logger.error(f"Drive service or Folder ID not configured for upload of '{file_name}'.")
         return None
-
     try:
         file_metadata = {'name': file_name, 'parents': [folder_id]}
         app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
-        
         file_obj = _execute_google_api_call_with_retry(
             service.files().create,
             body=file_metadata, media_body=media_body, fields='id, webViewLink'
         )
-
         if not file_obj or 'id' not in file_obj:
             app.logger.error(f"Drive upload failed for '{file_name}': File object or ID is missing.")
             return None
-
         uploaded_file_id = file_obj['id']
         app.logger.info(f"File '{file_name}' uploaded with ID: {uploaded_file_id}. Setting permissions.")
-
         permission_result = _execute_google_api_call_with_retry(
             service.permissions().create,
             fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'}
         )
-        
         if not permission_result or 'id' not in permission_result:
             app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File may be inaccessible.")
             return file_obj
-
         app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
         return file_obj
-
     except Exception as e:
         app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
         return None
