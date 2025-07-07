@@ -188,16 +188,21 @@
         await handleEventUpdate(info.event, info.revert);
       },
       eventReceive: async function(info) {
-        await handleEventUpdate(info.event, info.revert);
-        // Remove the original div from the external list after successful update
+        // Find the original div element in the "unscheduled" list
         const originalDiv = document.querySelector(`.external-event[data-task-id="${info.event.id}"]`);
-        if (originalDiv) {
-            originalDiv.remove();
-        }
+        
+        // Temporarily hide it until the server confirms the update
+        if (originalDiv) originalDiv.style.display = 'none';
+
+        await handleEventUpdate(info.event, () => {
+            info.revert();
+            // If the update fails, show the div again
+            if (originalDiv) originalDiv.style.display = 'block';
+        }, originalDiv);
       }
     });
 
-    async function handleEventUpdate(event, revertFunc) {
+    async function handleEventUpdate(event, revertFunc, originalDivElement = null) {
         const taskId = event.id;
         const newDueDate = event.start.toISOString();
 
@@ -220,13 +225,21 @@
                 })
             });
             const result = await response.json();
-            Swal.close();
+            
             if (result.status === 'success') {
                 Swal.fire({
+                    toast: true,
                     icon: 'success',
-                    title: 'สำเร็จ',
-                    text: 'อัปเดตวันนัดหมายสำเร็จ'
+                    title: 'อัปเดตวันนัดหมายสำเร็จ',
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3000,
+                    timerProgressBar: true
                 });
+                // Remove the original div from the external list after successful update
+                if (originalDivElement) {
+                    originalDivElement.remove();
+                }
                 calendar.refetchEvents();
             } else {
                 Swal.fire({
@@ -234,16 +247,15 @@
                     title: 'เกิดข้อผิดพลาด',
                     text: result.message || 'อัปเดตไม่สำเร็จ'
                 });
-                revertFunc();
+                if (revertFunc) revertFunc();
             }
         } catch (err) {
-            Swal.close();
             Swal.fire({
                 icon: 'error',
-                title: 'เกิดข้อผิดพลาด',
+                title: 'การเชื่อมต่อล้มเหลว',
                 text: 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้'
             });
-            revertFunc();
+            if (revertFunc) revertFunc();
         }
     }
 
