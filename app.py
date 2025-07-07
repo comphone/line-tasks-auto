@@ -58,7 +58,7 @@ import atexit
 # --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # จำกัดขนาด request ทั้งหมดไว้ที่ 16MB
 
 csrf = CSRFProtect(app)
 
@@ -479,9 +479,9 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
 
         if status == 'completed':
             task['completed'] = datetime.datetime.now(pytz.utc).isoformat().replace('+00:00', 'Z')
-            task['due'] = None # Explicitly set due to None on completion
-        else: # status == 'needsAction'
-            task.pop('completed', None) # Remove completed timestamp
+            task['due'] = None
+        else:
+            task.pop('completed', None)
             if due is not None:
                 task['due'] = due
         if due is None and status == 'needsAction':
@@ -1043,12 +1043,14 @@ atexit.register(cleanup_scheduler)
 # --- Error Handlers ---
 @app.errorhandler(404)
 def page_not_found(e):
+    # This will now render a template, assuming 404.html exists
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
     notify_admin_error(f"Internal Server Error: {e}")
+    # This will now render a template, assuming 500.html exists
     return render_template('500.html'), 500
 
 
