@@ -65,9 +65,7 @@ csrf = CSRFProtect(app)
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-# --- MODIFICATION: Increased file size limit from 5MB to 10MB ---
 MAX_FILE_SIZE_MB = 10
-# -----------------------------------------------------------------
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
@@ -1046,11 +1044,71 @@ def form_page():
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
         if new_task:
             cache.clear()
-            flash('สร้างงานใหม่เรียบร้อยแล้ว! คุณสามารถเพิ่มรูปภาพหรือรายงานต่อได้ที่นี่', 'success')
             send_new_task_notification(new_task)
+            
+            # --- NEW: Handle file uploads on task creation ---
+            files = request.files.getlist('files[]')
+            if files and files[0].filename:
+                task_id = new_task['id']
+                
+                attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+                monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
+                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+                sanitized_customer_name = sanitize_filename(customer_name)
+                customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+                final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+
+                uploaded_attachments = []
+                if final_upload_folder_id:
+                    for file in files:
+                        if not file or not allowed_file(file.filename): continue
+                        
+                        file.seek(0, os.SEEK_END)
+                        file_length = file.tell()
+                        file.seek(0)
+                        
+                        if file_length > MAX_FILE_SIZE_BYTES and file.mimetype and file.mimetype.startswith('image/'):
+                            try:
+                                img = Image.open(file)
+                                if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                                output_buffer = BytesIO()
+                                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                                output_buffer.seek(0)
+                                file_to_upload = output_buffer
+                                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                                mime_type = 'image/jpeg'
+                            except Exception as e:
+                                app.logger.error(f"Could not compress image during task creation: {e}")
+                                continue
+                        else:
+                            file_to_upload = file
+                            filename = secure_filename(file.filename)
+                            mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+
+                        media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+                        drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
+                        if drive_file:
+                            uploaded_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+                
+                if uploaded_attachments:
+                    initial_report = {
+                        'type': 'report',
+                        'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                        'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
+                        'attachments': uploaded_attachments,
+                        'technicians': ['System']
+                    }
+                    report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+                    updated_notes = new_task.get('notes', '') + report_text
+                    update_google_task(task_id, notes=updated_notes)
+                    cache.clear()
+
+            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
             return redirect(url_for('task_details', task_id=new_task['id']))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
+            return render_template('form.html', form_data=request.form)
+
     return render_template('form.html')
 
 @app.route('/summary')
@@ -1328,6 +1386,8 @@ def task_details(task_id):
         action = request.form.get('action')
         update_payload = {}
         notification_to_send = None
+        flash_message = None
+        flash_category = 'info'
 
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
@@ -1346,14 +1406,10 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not (work_summary or new_attachments):
-                message = 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
+                flash('กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
             if not selected_technicians:
-                message = 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
+                flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
             history.append({
@@ -1363,11 +1419,8 @@ def task_details(task_id):
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
-            message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                flash(message, 'success')
-                return jsonify({'status': 'success', 'message': message})
-            flash(message, 'success')
+            flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
+            flash_category = 'success'
         
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
@@ -1376,9 +1429,7 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not reschedule_due_str:
-                message = 'กรุณากำหนดวันนัดหมายใหม่'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
+                flash('กรุณากำหนดวันนัดหมายใหม่', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
             
             try:
@@ -1389,9 +1440,7 @@ def task_details(task_id):
                 is_today = dt_local.date() == datetime.datetime.now(THAILAND_TZ).date()
                 notification_to_send = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
             except ValueError:
-                message = 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
+                flash('รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
 
             history.append({
@@ -1399,28 +1448,20 @@ def task_details(task_id):
                 'reason': reschedule_reason, 'new_due_date': new_due_date_formatted,
                 'technicians': selected_technicians
             })
-            
-            message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                flash(message, 'success')
-                return jsonify({'status': 'success', 'message': message})
-            flash(message, 'success')
+            flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
+            flash_category = 'success'
 
         elif action == 'complete_task':
             work_summary = str(request.form.get('work_summary', '')).strip()
             if not work_summary:
-                message = 'กรุณากรอกสรุปงานเพื่อปิดงาน'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
+                flash('กรุณากรอกสรุปงานเพื่อปิดงาน', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
                 
             selected_technicians = request.form.get('technicians_report', '').split(',')
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not selected_technicians:
-                message = 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
+                flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน', 'warning')
                 return redirect(url_for('task_details', task_id=task_id))
             
             history.append({
@@ -1433,16 +1474,11 @@ def task_details(task_id):
             
             update_payload['status'] = 'completed'
             notification_to_send = ('completion', selected_technicians)
-            message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                flash(message, 'success')
-                return jsonify({'status': 'success', 'message': message})
-            flash(message, 'success')
+            flash_message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
+            flash_category = 'success'
         
         else:
-            message = 'ไม่พบการกระทำที่ร้องขอ'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-            flash(message, 'danger')
+            flash('ไม่พบการกระทำที่ร้องขอ', 'danger')
             return redirect(url_for('task_details', task_id=task_id))
             
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
@@ -1462,15 +1498,19 @@ def task_details(task_id):
                 notif_type = notification_to_send[0]
                 if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
                 elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
+            
+            flash(flash_message, flash_category)
             if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'status': 'success', 'message': 'อัปเดตงานสำเร็จแล้ว'})
+                return jsonify({'status': 'success', 'message': flash_message})
         else:
-            message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 500
-            flash(message, 'danger')
+            flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
+            flash(flash_message, 'danger')
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'status': 'error', 'message': flash_message}), 500
 
         return redirect(url_for('task_details', task_id=task_id))
 
+    # GET request logic
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
     

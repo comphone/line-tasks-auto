@@ -24,6 +24,7 @@
 <div class="row justify-content-center">
     <div class="col-lg-10 col-md-12">
         <form method="POST" action="{{ url_for('edit_task', task_id=task.id) }}" class="needs-validation" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="card shadow-sm">
                 <div class="card-header bg-warning text-dark">
                     <h5 class="mb-0"><i class="fas fa-edit me-2"></i>ฟอร์มแก้ไขข้อมูลหลัก</h5>
@@ -86,7 +87,11 @@
                         <div class="input-group">
                              <span class="input-group-text"><i class="fas fa-map-pin"></i></span>
                             <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}">
+                            <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
+                                <i class="fas fa-location-arrow"></i>
+                            </button>
                         </div>
+                        <small class="form-text text-muted" id="shareLocationStatus"></small>
                     </div>
                     
                     <hr class="my-4">
@@ -99,4 +104,62 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const shareBtn = document.getElementById('shareLocationBtn');
+    const locationInput = document.getElementById('latitude_longitude');
+    const statusText = document.getElementById('shareLocationStatus');
+
+    if (shareBtn) {
+        shareBtn.addEventListener('click', function() {
+            statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        locationInput.value = `https://maps.google.com/maps?q=${lat},${lon}`;
+                        statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                        statusText.classList.remove('text-danger');
+                        statusText.classList.add('text-success');
+                    },
+                    (error) => {
+                        console.error("Geolocation error:", error);
+                        let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. โปรดอนุญาตในตั้งค่าเบราว์เซอร์.";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage = "ไม่สามารถระบุตำแหน่งได้. สัญญาณ GPS อ่อนแอ?";
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage = "ค้นหาตำแหน่งใช้เวลานานเกินไป.";
+                                break;
+                            default:
+                                errorMessage = `เกิดข้อผิดพลาด: ${error.message}`;
+                                break;
+                        }
+                        statusText.textContent = errorMessage;
+                        statusText.classList.remove('text-success');
+                        statusText.classList.add('text-danger');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } else {
+                statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                statusText.classList.remove('text-success');
+                statusText.classList.add('text-danger');
+            }
+        });
+    }
+});
+</script>
 {% endblock %}
