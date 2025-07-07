@@ -17,6 +17,7 @@ load_dotenv()
 
 from flask import Flask, request, render_template, redirect, url_for, abort, flash, jsonify, Response, session
 from werkzeug.utils import secure_filename
+from flask_wtf.csrf import CSRFProtect # 1. เพิ่มการ import
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
 
@@ -56,9 +57,17 @@ import atexit
 # --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # จำกัดขนาด request ทั้งหมดไว้ที่ 16MB
+
+# 2. เปิดใช้งาน CSRF Protection
+csrf = CSRFProtect(app)
+
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+MAX_FILE_SIZE_MB = 5
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -1031,6 +1040,19 @@ with app.app_context():
 
 atexit.register(cleanup_scheduler)
 
+# --- Error Handlers (NEW) ---
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    # Log the error and notify admin
+    app.logger.error(f"Server Error: {e}", exc_info=True)
+    notify_admin_error(f"Internal Server Error: {e}")
+    return render_template('500.html'), 500
+
+
 # --- Flask Routes ---
 @app.route("/")
 def root_redirect():
@@ -1144,6 +1166,13 @@ def api_upload_attachment():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No selected file'}), 400
     
+    # Server-side file size check
+    file.seek(0, 2)
+    file_length = file.tell()
+    if file_length > MAX_FILE_SIZE_BYTES:
+        return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+    file.seek(0)
+
     task_id = request.form.get('task_id')
     if not task_id:
         return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
@@ -1640,6 +1669,13 @@ def api_upload_avatar():
     file = request.files['file']
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+    
+    # Server-side file size check
+    file.seek(0, 2)
+    file_length = file.tell()
+    if file_length > MAX_FILE_SIZE_BYTES:
+        return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+    file.seek(0)
 
     avatars_folder_id = find_or_create_drive_folder("Technician_Avatars", GOOGLE_DRIVE_FOLDER_ID)
     if not avatars_folder_id:
