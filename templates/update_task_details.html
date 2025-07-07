@@ -156,6 +156,7 @@
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this, 'complete-upload-status')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="complete_task">
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
@@ -187,6 +188,7 @@
         <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" onsubmit="showLoading(this)">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="reschedule_task">
                 <div class="mb-3">
                     <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
@@ -226,13 +228,14 @@
             <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
         </div>
     </div>
-
+    
     <div class="card shadow-sm mb-4" id="progressReportCard">
         <div class="card-header bg-light">
             <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
         </div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this, 'report-upload-status')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="save_report">
                 <div class="mb-3">
                     <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
