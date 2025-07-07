@@ -10,38 +10,27 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='custom.css') }}">
 
     <style>
-        /* ADDED: Smooth scrolling for anchor links */
         html {
             scroll-behavior: smooth;
         }
-
-        /* Custom style for the logo */
         .navbar-logo {
             height: 40px;
             width: auto;
             margin-right: 10px;
         }
-
-        /* REVISED: Custom navbar color */
         .bg-custom-black {
             background-color: #000000 !important;
         }
-
-        /* --- NEW: Global Style Adjustments --- */
         body {
-            background-color: #f8f9fa; /* A slightly softer background color */
+            background-color: #f8f9fa;
         }
-
         .card {
             transition: all 0.2s ease-in-out;
         }
-
         .card-header h1, .card-header h2, .card-header h3, .card-header h4, .card-header h5, .card-header h6 {
             margin-bottom: 0;
-            font-weight: 600; /* Make headers slightly bolder */
+            font-weight: 600;
         }
-        /* --- End of New Styles --- */
-
     </style>
     {% block head_extra %}{% endblock %}
 </head>
@@ -59,6 +48,9 @@
                 <ul class="navbar-nav ms-auto align-items-center">
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'summary' %}active{% endif %}" href="{{ url_for('summary') }}"><i class="fas fa-list-check me-1"></i>สรุปงาน</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'calendar_view' %}active{% endif %}" href="{{ url_for('calendar_view') }}"><i class="fas fa-calendar-alt me-1"></i>ปฏิทิน</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'technician_report' %}active{% endif %}" href="{{ url_for('technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
@@ -99,12 +91,14 @@
     <main class="container mt-4 mb-5 pb-5">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
+                <div id="flash-messages-area">
                 {% for category, message in messages %}
                     <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
                         {{ message | safe }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endfor %}
+                </div>
             {% endif %}
         {% endwith %}
         {% block content %}{% endblock %}
