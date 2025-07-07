@@ -5,15 +5,22 @@
 {% block head_extra %}
 <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/main.min.css' rel='stylesheet' />
 <style>
-    #calendar {
-        max-width: 1100px;
-        margin: 0 auto;
+    #external-events {
+        padding: 10px;
+        max-height: 500px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        background: #f8f9fa;
     }
-    .fc-event {
-        cursor: pointer;
+    .fc-event.fc-event-dragging {
+        z-index: 9999;
     }
-    .fc-event-main {
-        font-size: 0.85em;
+    .external-event {
+        padding: 0.5em;
+        margin: 0.5em 0;
+        background: #e9ecef;
+        border-radius: .25rem;
+        cursor: grab;
     }
 </style>
 {% endblock %}
@@ -21,50 +28,99 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2">🗓️ ปฏิทินงาน</h1>
-    <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-list-check me-2"></i>กลับหน้าสรุป</a>
 </div>
 
-<div class="card shadow-sm">
-    <div class="card-body p-4">
-        <div id='calendar'></div>
+<div class="row">
+    <div class="col-lg-3">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-list-ul me-2"></i>รอจัดตาราง</h5>
+            </div>
+            <div id='external-events' class="card-body">
+                {% for task in unscheduled_tasks %}
+                <div class='external-event' data-task-id='{{ task.id }}'>
+                    <strong>{{ task.customer.name or 'N/A' }}</strong><br>
+                    <small>{{ task.title }}</small>
+                </div>
+                {% else %}
+                <p class="text-muted text-center p-3">ไม่มีงานที่รอจัดตาราง</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-9">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div id='calendar'></div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block body_extra %}
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/main.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.14/index.global.min.js'></script>
+
 <script>
   document.addEventListener('DOMContentLoaded', function() {
-    var calendarEl = document.getElementById('calendar');
-    var calendar = new FullCalendar.Calendar(calendarEl, {
+    let containerEl = document.getElementById('external-events');
+    new FullCalendar.Draggable(containerEl, {
+      itemSelector: '.external-event',
+      eventData: function(eventEl) {
+        return {
+          title: eventEl.innerText.trim(),
+          id: eventEl.getAttribute('data-task-id')
+        };
+      }
+    });
+
+    let calendarEl = document.getElementById('calendar');
+    let calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: 'dayGridMonth',
-      locale: 'th', // Set locale to Thai
+      locale: 'th',
       headerToolbar: {
         left: 'prev,next today',
         center: 'title',
         right: 'dayGridMonth,timeGridWeek,listWeek'
       },
       events: '{{ url_for("api_calendar_tasks") }}',
-      eventTimeFormat: {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      },
-      // You can enable drag-and-drop later by uncommenting the 'editable' and 'eventDrop' properties
-      // editable: true, 
-      // eventDrop: function(info) {
-      //   //
-      //   // This function is triggered when an event is dragged and dropped.
-      //   // You would add an AJAX request here to send the new date to your backend.
-      //   //
-      //   if (!confirm("คุณต้องการย้ายนัดหมายนี้ไปที่ " + info.event.start.toLocaleString() + " หรือไม่?")) {
-      //     info.revert();
-      //   } else {
-      //      console.log("Task ID: ", info.event.id);
-      //      console.log("New Date: ", info.event.start.toISOString());
-      //      // TODO: Send AJAX POST to backend to update the task
-      //   }
-      // }
+      editable: true,
+      droppable: true,
+      eventReceive: async function(info) {
+        const taskId = info.event.id;
+        const newDueDate = info.event.start.toISOString();
+        
+        try {
+            const response = await fetch('/api/task/schedule_from_calendar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    task_id: taskId,
+                    new_due_date: newDueDate
+                })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                info.event.remove(); // Remove the temporary event
+                calendar.refetchEvents(); // Reload all events from server
+                // Remove the original div from the external list
+                const originalDiv = document.querySelector(`.external-event[data-task-id="${taskId}"]`);
+                if (originalDiv) {
+                    originalDiv.remove();
+                }
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + result.message);
+                info.revert();
+            }
+        } catch (err) {
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+            info.revert();
+        }
+      }
     });
     calendar.render();
   });

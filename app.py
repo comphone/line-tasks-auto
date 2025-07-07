@@ -25,6 +25,7 @@ from geopy.distance import geodesic
 import qrcode
 import base64
 
+# --- Use line-bot-sdk version 2.4.2 ---
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -37,7 +38,9 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
     ImageComponent, PostbackEvent
 )
+# ---------------------------------------------
 
+# --- Google API Imports ---
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -47,6 +50,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBa
 import pandas as pd
 from dateutil.parser import parse as date_parse
 
+# --- APScheduler for background tasks ---
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
@@ -1043,9 +1047,9 @@ def form_page():
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
         if new_task:
             cache.clear()
-            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
+            flash('สร้างงานใหม่เรียบร้อยแล้ว! คุณสามารถเพิ่มรูปภาพหรือรายงานต่อได้ที่นี่', 'success')
             send_new_task_notification(new_task)
-            return redirect(url_for('summary'))
+            return redirect(url_for('task_details', task_id=new_task['id']))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
     return render_template('form.html')
@@ -1168,7 +1172,17 @@ def summary_print():
 
 @app.route('/calendar')
 def calendar_view():
-    return render_template('calendar.html')
+    tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+    unscheduled_tasks = []
+    for task in tasks_raw:
+        if not task.get('due'):
+            parsed_task = parse_google_task_dates(task)
+            parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+            unscheduled_tasks.append(parsed_task)
+            
+    unscheduled_tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
+    
+    return render_template('calendar.html', unscheduled_tasks=unscheduled_tasks)
 
 @app.route('/api/calendar_tasks')
 def api_calendar_tasks():
@@ -1194,6 +1208,31 @@ def api_calendar_tasks():
     except Exception as e:
         app.logger.error(f"Error fetching tasks for calendar API: {e}")
         return jsonify({"error": "Could not fetch tasks"}), 500
+
+@app.route('/api/task/schedule_from_calendar', methods=['POST'])
+def schedule_task_from_calendar():
+    data = request.json
+    task_id = data.get('task_id')
+    new_due_str = data.get('new_due_date')
+    
+    if not task_id or not new_due_str:
+        return jsonify({'status': 'error', 'message': 'Missing task_id or new_due_date'}), 400
+        
+    try:
+        dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
+        due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+
+        updated_task = update_google_task(task_id, due=due_date_gmt)
+        
+        if updated_task:
+            cache.clear()
+            return jsonify({'status': 'success', 'message': f'Task {task_id} updated successfully.'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to update task in Google Tasks.'}), 500
+            
+    except Exception as e:
+        app.logger.error(f"Error scheduling task from calendar: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():

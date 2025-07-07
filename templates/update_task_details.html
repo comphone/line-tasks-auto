@@ -92,7 +92,7 @@
     .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
     .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; animation-name: zoom; animation-duration: 0.3s; }
     @keyframes zoom { from {transform:scale(0)} to {transform:scale(1)} }
-    .lightbox-caption { margin: auto; display: block; width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; height: 20px; }
+    .lightbox-caption { margin: auto; display: block; width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; height: 50px; }
     .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
     .lightbox-nav { cursor: pointer; position: absolute; top: 50%; width: auto; padding: 16px; margin-top: -50px; color: white; font-weight: bold; font-size: 20px; transition: 0.6s ease; border-radius: 0 3px 3px 0; user-select: none; -webkit-user-select: none; }
     .lightbox-prev { left: 0; border-radius: 3px 0 0 3px; }
@@ -111,6 +111,7 @@
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
+    <!-- Info Hero Card -->
     <div class="card shadow-lg mb-4 info-hero-card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0 text-white">ข้อมูลสรุป</h5>
@@ -153,9 +154,10 @@
         </ul>
     </div>
     
+    <!-- Action Selection -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
-            <h5 class="card-title mb-3">เลือกการกระทำหลักสำหรับงานนี้</h5>
+            <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
              <div class="d-grid gap-3 d-md-flex justify-content-md-center">
                 <button type="button" onclick="showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
                 <button type="button" onclick="showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัด</button>
@@ -164,6 +166,7 @@
         </div>
     </div>
     
+    <!-- Hidden Action Forms -->
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -276,6 +279,7 @@
         </div>
     </div>
 
+    <!-- Task History -->
     <div class="card shadow-sm mb-4">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
@@ -311,9 +315,9 @@
                     <div class="mt-3">
                         <div class="image-gallery-grid">
                             {% for att in report.attachments %}
-                                {% set found_index = all_attachments | map(attribute='id') | list | index(att.id) if att.id in all_attachments | map(attribute='id') | list else -1 %}
-                                <div class="thumbnail" onclick="openLightbox({{ found_index if found_index != -1 else 0 }})">
+                                <div class="thumbnail" onclick="openLightboxById('{{ att.id }}')">
                                      <img src="https://drive.google.com/thumbnail?id={{ att.id }}&sz=w200-h200" alt="Attachment" loading="lazy">
+                                     <div class="icon-overlay"><i class="fas fa-expand"></i></div>
                                 </div>
                             {% endfor %}
                         </div>
@@ -329,6 +333,7 @@
     
     <hr class="my-5">
 
+    <!-- Danger Zone -->
     <div class="danger-zone">
         <div class="d-flex justify-content-between align-items-center">
             <div>
@@ -354,6 +359,7 @@
 
 </div>
 
+<!-- ALL MODALS -->
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
     <img class="lightbox-content" id="lightboxImg">
@@ -417,8 +423,12 @@
     let currentTechnicianTargetId;
 
     document.addEventListener('DOMContentLoaded', function() {
-        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        if(document.getElementById('technicianSelectionModal')) {
+            technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        }
+        if(document.getElementById('editReportModal')) {
+            editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        }
     });
 
     function showActionCard(cardIdToShow) {
@@ -428,12 +438,10 @@
         document.getElementById('qrCodeCard').style.display = 'none';
         
         const cardToShow = document.getElementById(cardIdToShow);
-        if (cardToShow) {
-            cardToShow.style.display = 'block';
-        }
+        if (cardToShow) cardToShow.style.display = 'block';
 
         const progressReportCard = document.getElementById('progressReportCard');
-        if (cardIdToShow === 'chooseActionCard') {
+        if (cardIdToShow === 'chooseActionCard' || !cardIdToShow) {
             progressReportCard.style.display = 'block';
         } else {
              progressReportCard.style.display = 'none';
@@ -449,9 +457,9 @@
         technicianList.forEach(tech => {
             const isChecked = selectedTechnicians.includes(tech.name);
             container.innerHTML += `
-                <div class="technician-item list-group-item-action">
-                    <img src="${tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/0d6efd/ffffff?text=${tech.name.charAt(0)}`}" class="technician-avatar">
-                    <span class="technician-name">${tech.name}</span>
+                <div class="technician-item list-group-item-action d-flex align-items-center">
+                    <img src="${tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/0d6efd/ffffff?text=${tech.name.charAt(0)}`}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;">
+                    <span class="flex-grow-1">${tech.name}</span>
                     <input class="form-check-input ms-auto" type="checkbox" value="${tech.name}" ${isChecked ? 'checked' : ''}>
                 </div>
             `;
@@ -469,17 +477,15 @@
         displayInput.value = selectedNames.length > 0 ? selectedNames.join(', ') : 'กรุณาเลือกช่าง...';
         technicianSelectionModal.hide();
     }
-
+    
     function openEditReportModal(reportIndex) {
         const report = techReportsHistory[reportIndex];
         if (!report) return;
-
         const container = document.getElementById('current-attachments-container');
         container.innerHTML = ''; 
-
         if (report.attachments && report.attachments.length > 0) {
             report.attachments.forEach(att => {
-                const attachmentHtml = `
+                container.innerHTML += `
                     <div class="form-check d-inline-block p-1 text-center">
                         <label class="form-check-label" for="att-${att.id}">
                             <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" style="width: 100px; height: 100px; object-fit: cover; margin-bottom: 5px;">
@@ -489,18 +495,22 @@
                         <small for="att-${att.id}">เก็บไว้</small>
                     </div>
                 `;
-                container.insertAdjacentHTML('beforeend', attachmentHtml);
             });
         } else {
             container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
         }
-        
         const form = document.getElementById('editReportForm');
         form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
-
         editReportModal.show();
     }
-
+    
+    function openLightboxById(attachmentId) {
+        const index = allAttachments.findIndex(att => att.id === attachmentId);
+        if (index !== -1) {
+            openLightbox(index);
+        }
+    }
+    
     function openLightbox(index) {
         if (!allAttachments || allAttachments.length === 0) return;
         slideIndex = index;
@@ -524,7 +534,6 @@
     function showSlide(index) {
         const lightboxImg = document.getElementById("lightboxImg");
         const lightboxCaption = document.getElementById("lightboxCaption");
-
         if(index < 0 || index >= allAttachments.length) {
             closeLightbox();
             return;
@@ -574,12 +583,12 @@
                 const result = await response.json();
                 flashMessage(result.message, 'danger');
                 submitButton.disabled = false;
-                submitButton.innerHTML = submitButton.dataset.originalHtml;
+                submitButton.innerHTML = submitButton.dataset.originalHtml || 'บันทึกอีกครั้ง';
             }
         } catch (error) {
             flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger');
             submitButton.disabled = false;
-            submitButton.innerHTML = submitButton.dataset.originalHtml;
+            submitButton.innerHTML = submitButton.dataset.originalHtml || 'บันทึกอีกครั้ง';
         } finally {
             if (uploadStatusBox) uploadStatusBox.style.display = 'none';
         }
