@@ -13,6 +13,10 @@ import time
 import tempfile
 import uuid
 
+# --- เพิ่มการนำเข้าสำหรับบีบอัดรูปภาพ ---
+from PIL import Image
+# ------------------------------------
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -51,6 +55,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
+# --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -161,12 +166,14 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
 def get_google_service(api_name, api_version):
     creds = None
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
+
     if google_token_json_str:
         try:
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
         except Exception as e:
             app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Please check format.")
             creds = None
+
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
@@ -178,6 +185,7 @@ def get_google_service(api_name, api_version):
         except Exception as e:
             app.logger.error(f"Error refreshing token: {e}")
             creds = None
+
     if creds and creds.valid:
         try:
             service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
@@ -189,6 +197,7 @@ def get_google_service(api_name, api_version):
         app.logger.error("No valid Google credentials available. API service cannot be built.")
         app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set and valid, or that authorization was successful.")
         return None
+
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
@@ -203,6 +212,7 @@ def find_or_create_drive_folder(name, parent_id):
     service = get_google_drive_service()
     if not service:
         return None
+    
     query = f"name = '{name}' and '{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     try:
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', pageSize=1)
@@ -230,17 +240,21 @@ def load_settings_from_drive_on_startup():
     if not settings_backup_folder_id:
         app.logger.error("Could not find or create Settings_Backups folder. Skipping settings restore.")
         return False
+        
     service = get_google_drive_service()
     if not service:
         app.logger.error("Could not get Drive service for settings restore.")
         return False
+
     try:
         query = f"name = 'settings_backup.json' and '{settings_backup_folder_id}' in parents and trashed = false"
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', orderBy='modifiedTime desc', pageSize=1)
         files = response.get('files', [])
+
         if files:
             latest_backup_file_id = files[0]['id']
             app.logger.info(f"Found latest settings backup on Drive (ID: {latest_backup_file_id})")
+
             request = service.files().get_media(fileId=latest_backup_file_id)
             fh = BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
@@ -248,7 +262,9 @@ def load_settings_from_drive_on_startup():
             while not done:
                 status, done = downloader.next_chunk()
             fh.seek(0)
+
             downloaded_settings = json.loads(fh.read().decode('utf-8'))
+
             if save_settings_to_file(downloaded_settings):
                 app.logger.info("Successfully restored settings from Google Drive backup.")
                 return True
@@ -296,10 +312,12 @@ def backup_settings_to_drive():
     if not settings_backup_folder_id:
         app.logger.error("Cannot back up settings: Could not find or create Settings_Backups folder.")
         return False
+
     service = get_google_drive_service()
     if not service:
         app.logger.error("Cannot back up settings: Google Drive service is unavailable.")
         return False
+
     try:
         query = f"name = 'settings_backup.json' and '{settings_backup_folder_id}' in parents and trashed = false"
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id)')
@@ -309,16 +327,20 @@ def backup_settings_to_drive():
                 app.logger.info(f"Deleted old settings_backup.json (ID: {file_item['id']}) from Drive before saving new one.")
             except HttpError as e:
                 app.logger.warning(f"Could not delete old settings file {file_item['id']}: {e}. Proceeding with upload attempt.")
+
         settings_data = get_app_settings()
         settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
+        
         file_metadata = {'name': 'settings_backup.json', 'parents': [settings_backup_folder_id]}
         media = MediaIoBaseUpload(settings_json_bytes, mimetype='application/json', resumable=True)
+        
         _execute_google_api_call_with_retry(
             service.files().create,
             body=file_metadata, media_body=media, fields='id'
         )
         app.logger.info("Successfully saved current settings to settings_backup.json on Google Drive.")
         return True
+
     except Exception as e:
         app.logger.error(f"Failed to backup settings to Google Drive: {e}", exc_info=True)
         return False
@@ -349,27 +371,35 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
     if not service or not folder_id:
         app.logger.error(f"Drive service or Folder ID not configured for upload of '{file_name}'.")
         return None
+
     try:
         file_metadata = {'name': file_name, 'parents': [folder_id]}
         app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
+        
         file_obj = _execute_google_api_call_with_retry(
             service.files().create,
             body=file_metadata, media_body=media_body, fields='id, webViewLink'
         )
+
         if not file_obj or 'id' not in file_obj:
             app.logger.error(f"Drive upload failed for '{file_name}': File object or ID is missing.")
             return None
+
         uploaded_file_id = file_obj['id']
         app.logger.info(f"File '{file_name}' uploaded with ID: {uploaded_file_id}. Setting permissions.")
+
         permission_result = _execute_google_api_call_with_retry(
             service.permissions().create,
             fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'}
         )
+        
         if not permission_result or 'id' not in permission_result:
             app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File may be inaccessible.")
             return file_obj
+
         app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
         return file_obj
+
     except Exception as e:
         app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
         return None
@@ -1209,15 +1239,38 @@ def api_upload_attachment():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No selected file'}), 400
     
-    file.seek(0, 2)
-    file_length = file.tell()
-    if file_length > MAX_FILE_SIZE_BYTES:
-        return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
-    file.seek(0)
-
     task_id = request.form.get('task_id')
     if not task_id:
         return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
+
+    # ตรวจสอบขนาดไฟล์และพยายามบีบอัดถ้าเป็นรูปภาพ
+    file.seek(0, os.SEEK_END)
+    file_length = file.tell()
+    file.seek(0)
+    
+    if file_length > MAX_FILE_SIZE_BYTES:
+        if file.mimetype and file.mimetype.startswith('image/'):
+            try:
+                img = Image.open(file)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                output_buffer = BytesIO()
+                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                output_buffer.seek(0)
+                file_to_upload = output_buffer
+                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                mime_type = 'image/jpeg'
+                app.logger.info(f"Compressed image '{file.filename}' successfully.")
+            except Exception as e:
+                app.logger.error(f"Could not compress image '{file.filename}': {e}")
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
+        else:
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+    else:
+        file_to_upload = file
+        filename = secure_filename(file.filename)
+        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
 
     task_raw = get_single_task(task_id)
     if not task_raw:
@@ -1252,19 +1305,14 @@ def api_upload_attachment():
     if not final_upload_folder_id:
         return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
 
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
-            file.save(tmp.name)
-            mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-            drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, final_upload_folder_id)
-            os.unlink(tmp.name)
-            if drive_file:
-                return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')}})
-            else:
-                return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
+    # ใช้ file_to_upload ที่ผ่านการตรวจสอบ/บีบอัดแล้ว
+    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
+    
+    if drive_file:
+        return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')}})
     else:
-        return jsonify({'status': 'error', 'message': 'File type not allowed or no file selected'}), 400
+        return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
 
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
@@ -1432,10 +1480,16 @@ def task_details(task_id):
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
     task['customer_feedback'] = parse_customer_feedback_from_notes(notes)
     task['is_overdue'] = False
+    task['is_today'] = False
     if task.get('status') == 'needsAction' and task.get('due'):
         try:
-            if date_parse(task['due']) < datetime.datetime.now(pytz.utc):
+            due_dt_utc = date_parse(task['due'])
+            due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+            today_thai = datetime.datetime.now(THAILAND_TZ).date()
+            if due_dt_local.date() < today_thai:
                 task['is_overdue'] = True
+            elif due_dt_local.date() == today_thai:
+                task['is_today'] = True
         except (ValueError, TypeError): pass
     
     app_settings = get_app_settings()
@@ -1998,7 +2052,7 @@ def trigger_customer_follow_up_test():
         if not tasks:
             flash('ไม่พบงานที่เสร็จแล้วสำหรับใช้ทดสอบ.', 'warning')
             return redirect(url_for('settings_page'))
-        latest = max(tasks, key=lambda x: date_parse(x['completed']))
+        latest = max(tasks, key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')))
         notes = latest.get('notes', '')
         feedback = parse_customer_feedback_from_notes(notes)
         feedback.pop('follow_up_sent_date', None)
