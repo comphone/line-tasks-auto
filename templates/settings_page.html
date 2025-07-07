@@ -29,19 +29,8 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-<div id="flash-messages-area">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                    {{ message | safe }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-</div>
-
+<!-- This area is now handled by base.html -->
+<!-- The duplicate flash message block has been removed -->
 
 <form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -348,6 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const result = await response.json();
                 if (result.status === 'success') {
                     avatarId = result.file_id;
+                    // Using the main flash message area from base.html
                     flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
                 } else {
                     throw new Error(result.message);
@@ -389,11 +379,12 @@ document.addEventListener('DOMContentLoaded', function() {
     renderTechnicianList();
 });
 
+// This function now targets the main flash area in base.html
 function flashMessage(message, category) {
     const mainContainer = document.getElementById('flash-messages-area');
     if (!mainContainer) return;
     const newMessage = document.createElement('div');
-    newMessage.className = `alert alert-${category} alert-dismissible fade show mt-3`;
+    newMessage.className = `alert alert-${category} alert-dismissible fade show`;
     newMessage.setAttribute('role', 'alert');
     newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
     
@@ -404,6 +395,7 @@ function flashMessage(message, category) {
         if (alertInstance) {
             alertInstance.close();
         } else {
+            // Fallback for cases where the instance might not be found
             newMessage.remove();
         }
     }, 5000); 

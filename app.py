@@ -1546,6 +1546,7 @@ def edit_report_attachments(task_id, report_index):
     
     new_files = request.files.getlist('new_files[]')
     if new_files:
+        # --- Find correct folder to upload ---
         if task_raw.get('created'):
             created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
             monthly_folder_name = created_dt_local.strftime('%Y-%m')
@@ -1561,15 +1562,34 @@ def edit_report_attachments(task_id, report_index):
         
         if final_upload_folder_id:
             for file in new_files:
-                 if file and allowed_file(file.filename):
-                    filename = secure_filename(file.filename)
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
-                        file.save(tmp.name)
+                if file and allowed_file(file.filename):
+                    # --- MODIFICATION: Image Compression Logic ---
+                    file.seek(0, os.SEEK_END)
+                    file_length = file.tell()
+                    file.seek(0)
+                    if file_length > MAX_FILE_SIZE_BYTES and file.mimetype and file.mimetype.startswith('image/'):
+                        try:
+                            img = Image.open(file)
+                            if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                            output_buffer = BytesIO()
+                            img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                            output_buffer.seek(0)
+                            file_to_upload = output_buffer
+                            filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                            mime_type = 'image/jpeg'
+                        except Exception as e:
+                            app.logger.error(f"Could not compress image in edit_report: {e}")
+                            continue # Skip this file if compression fails
+                    else:
+                        file_to_upload = file
+                        filename = secure_filename(file.filename)
                         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-                        drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, final_upload_folder_id)
-                        if drive_file:
-                            updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
-                        os.unlink(tmp.name)
+                    # --- END MODIFICATION ---
+
+                    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+                    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
+                    if drive_file:
+                        updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
         else:
              flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
 
