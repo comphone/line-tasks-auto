@@ -1243,28 +1243,49 @@ def calendar_view():
 
 @app.route('/api/calendar_tasks')
 def api_calendar_tasks():
-    app.logger.info("API call received for /api/calendar_tasks")
     try:
-        tasks_raw = get_google_tasks_for_report(show_completed=False) or []
-        app.logger.info(f"Found {len(tasks_raw)} non-completed tasks from Google.")
+        # Fetch both completed and non-completed tasks
+        tasks_raw = get_google_tasks_for_report(show_completed=True) or []
         events = []
+        today_thai = datetime.datetime.now(THAILAND_TZ).date()
+
         for task in tasks_raw:
-            if task.get('due'):
-                customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-                event = {
-                    'id': task.get('id'),
-                    'title': f"{customer_info.get('name', 'N/A')} - {task.get('title')}",
-                    'start': task.get('due'),
-                    'url': url_for('task_details', task_id=task.get('id')),
-                    'color': '#ffc107',
-                    'textColor': '#000'
+            if not task.get('due'):
+                continue
+
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            is_overdue = False
+            is_today = False
+            is_completed = task.get('status') == 'completed'
+
+            try:
+                due_dt_utc = date_parse(task['due'])
+                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+                if not is_completed and due_dt_local.date() < today_thai:
+                    is_overdue = True
+                elif not is_completed and due_dt_local.date() == today_thai:
+                    is_today = True
+            except (ValueError, TypeError):
+                pass
+
+            event = {
+                'id': task.get('id'),
+                'title': f"{customer_info.get('name', 'N/A')} - {task.get('title')}",
+                'start': task.get('due'),
+                'url': url_for('task_details', task_id=task.get('id')),
+                'extendedProps': {
+                    'is_completed': is_completed,
+                    'is_overdue': is_overdue,
+                    'is_today': is_today
                 }
-                events.append(event)
-        app.logger.info(f"Returning {len(events)} events for the calendar.")
+            }
+            events.append(event)
+            
         return jsonify(events)
     except Exception as e:
-        app.logger.error(f"Error fetching tasks for calendar API: {e}")
-        return jsonify({"error": "Could not fetch tasks"}), 500
+        app.logger.error(f"Error fetching tasks for calendar API: {e}", exc_info=True)
+        return jsonify({"error": "Could not fetch tasks from server"}), 500
+
 
 @app.route('/api/task/schedule_from_calendar', methods=['POST'])
 def schedule_task_from_calendar():
@@ -1273,23 +1294,30 @@ def schedule_task_from_calendar():
     new_due_str = data.get('new_due_date')
     
     if not task_id or not new_due_str:
-        return jsonify({'status': 'error', 'message': 'Missing task_id or new_due_date'}), 400
+        return jsonify({'status': 'error', 'message': 'ข้อมูลที่ส่งมาไม่ครบถ้วน (task_id หรือ new_due_date)'}), 400
         
     try:
+        # Check if the task is already completed
+        task = get_single_task(task_id)
+        if not task:
+            return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ระบุ'}), 404
+        if task.get('status') == 'completed':
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถย้ายงานที่เสร็จสิ้นแล้วได้'}), 403
+
         dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
         due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
 
-        updated_task = update_google_task(task_id, due=due_date_gmt)
+        updated_task = update_google_task(task_id, due=due_date_gmt, status='needsAction')
         
         if updated_task:
             cache.clear()
-            return jsonify({'status': 'success', 'message': f'Task {task_id} updated successfully.'})
+            return jsonify({'status': 'success', 'message': f'อัปเดตวันนัดหมายสำหรับงาน {task_id} เรียบร้อยแล้ว'})
         else:
-            return jsonify({'status': 'error', 'message': 'Failed to update task in Google Tasks.'}), 500
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถอัปเดตงานใน Google Tasks ได้'}), 500
             
     except Exception as e:
         app.logger.error(f"Error scheduling task from calendar: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
 @app.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():
@@ -1406,11 +1434,9 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not (work_summary or new_attachments):
-                flash('กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่', 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'}), 400
             if not selected_technicians:
-                flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้', 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'}), 400
 
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1429,8 +1455,7 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not reschedule_due_str:
-                flash('กรุณากำหนดวันนัดหมายใหม่', 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
             
             try:
                 dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
@@ -1440,8 +1465,7 @@ def task_details(task_id):
                 is_today = dt_local.date() == datetime.datetime.now(THAILAND_TZ).date()
                 notification_to_send = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
             except ValueError:
-                flash('รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง', 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
 
             history.append({
                 'type': 'reschedule', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1454,15 +1478,13 @@ def task_details(task_id):
         elif action == 'complete_task':
             work_summary = str(request.form.get('work_summary', '')).strip()
             if not work_summary:
-                flash('กรุณากรอกสรุปงานเพื่อปิดงาน', 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
                 
             selected_technicians = request.form.get('technicians_report', '').split(',')
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not selected_technicians:
-                flash('กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน', 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
             
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1478,8 +1500,7 @@ def task_details(task_id):
             flash_category = 'success'
         
         else:
-            flash('ไม่พบการกระทำที่ร้องขอ', 'danger')
-            return redirect(url_for('task_details', task_id=task_id))
+            return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
             
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
@@ -1499,16 +1520,11 @@ def task_details(task_id):
                 if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
                 elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
             
-            flash(flash_message, flash_category)
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'status': 'success', 'message': flash_message})
+            # Instead of flashing, return a success JSON for the frontend to handle
+            return jsonify({'status': 'success', 'message': flash_message})
         else:
             flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
-            flash(flash_message, 'danger')
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'status': 'error', 'message': flash_message}), 500
-
-        return redirect(url_for('task_details', task_id=task_id))
+            return jsonify({'status': 'error', 'message': flash_message}), 500
 
     # GET request logic
     task_raw = get_single_task(task_id)
@@ -1650,6 +1666,44 @@ def edit_report_attachments(task_id, report_index):
         flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงรูปภาพ', 'danger')
 
     return redirect(url_for('task_details', task_id=task_id))
+
+@app.route('/api/task/<task_id>/delete_report/<int:report_index>', methods=['POST'])
+def delete_task_report(task_id, report_index):
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการลบ'}), 404
+
+    # Optionally, delete files from Drive associated with the report
+    report_to_delete = history[report_index]
+    if report_to_delete.get('attachments'):
+        drive_service = get_google_drive_service()
+        if drive_service:
+            for att in report_to_delete['attachments']:
+                try:
+                    drive_service.files().delete(fileId=att['id']).execute()
+                    app.logger.info(f"Deleted attachment {att['id']} from Drive while deleting report.")
+                except HttpError as e:
+                    app.logger.error(f"Failed to delete attachment {att['id']} from Drive during report deletion: {e}")
+
+    # Remove the report from history
+    history.pop(report_index)
+
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'ลบรายงานเรียบร้อยแล้ว'})
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกหลังลบรายงาน'}), 500
 
 
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
