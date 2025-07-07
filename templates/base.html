@@ -73,7 +73,7 @@
                             {% else %}
                                 <li><span class="dropdown-item-text">สถานะ: <span class="badge bg-danger">ล้มเหลว</span></span></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{{ url_for('authorize') }}">คลิกเพื่อเชื่อมต่อใหม่</a></li>
+                                <li><a class="dropdown-item" href="#">คลิกเพื่อเชื่อมต่อใหม่</a></li>
                             {% endif %}
                         </ul>
                     </li>
@@ -89,18 +89,18 @@
     </nav>
 
     <main class="container mt-4 mb-5 pb-5">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div id="flash-messages-area">
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message | safe }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+        <div id="flash-messages-area">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message | safe }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
         {% block content %}{% endblock %}
     </main>
 
