@@ -65,7 +65,9 @@ csrf = CSRFProtect(app)
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-MAX_FILE_SIZE_MB = 5
+# --- MODIFICATION: Increased file size limit from 5MB to 10MB ---
+MAX_FILE_SIZE_MB = 10
+# -----------------------------------------------------------------
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
