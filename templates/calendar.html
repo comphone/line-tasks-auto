@@ -6,7 +6,7 @@
 <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/main.min.css' rel='stylesheet' />
 <style>
     #external-events-container {
-        height: 80vh; /* Adjust height as needed */
+        height: 80vh;
         display: flex;
         flex-direction: column;
     }
@@ -104,7 +104,6 @@
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/main.min.js'></script>
 <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.14/index.global.min.js'></script>
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar/locales/th.js'></script>
-
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     const csrfToken = '{{ csrf_token() }}';
@@ -201,7 +200,7 @@
     async function handleEventUpdate(event, revertFunc) {
         const taskId = event.id;
         const newDueDate = event.start.toISOString();
-        
+
         Swal.fire({
             title: 'กำลังอัปเดตวันนัดหมาย...',
             allowOutsideClick: false,
@@ -209,4 +208,46 @@
         });
 
         try {
-            const response = await fetch('/api/task/schedule_from_calendar'
+            const response = await fetch('/api/task/schedule_from_calendar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    task_id: taskId,
+                    new_due_date: newDueDate
+                })
+            });
+            const result = await response.json();
+            Swal.close();
+            if (result.status === 'success') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'สำเร็จ',
+                    text: 'อัปเดตวันนัดหมายสำเร็จ'
+                });
+                calendar.refetchEvents();
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'เกิดข้อผิดพลาด',
+                    text: result.message || 'อัปเดตไม่สำเร็จ'
+                });
+                revertFunc();
+            }
+        } catch (err) {
+            Swal.close();
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้'
+            });
+            revertFunc();
+        }
+    }
+
+    calendar.render();
+  });
+</script>
+{% endblock %}
