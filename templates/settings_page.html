@@ -29,7 +29,6 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-{# Added flash messages area to display messages from JavaScript #}
 <div id="flash-messages-area">
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -45,6 +44,7 @@
 
 
 <form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" id="technician_list_json" name="technician_list_json">
 
     <div class="card shadow-sm mb-4">
@@ -176,6 +176,7 @@
     </div>
     <div class="card-body p-4">
         <form id="importBackupForm" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="mb-3">
                 <label for="backupFileType" class="form-label">ประเภทไฟล์:</label>
                 <select class="form-select" id="backupFileType" name="file_type" required>
@@ -209,6 +210,7 @@
         <div class="row align-items-center">
             <div class="col-md-6">
                 <form class="d-inline" method="POST" action="{{ url_for('trigger_auto_backup_now') }}" onsubmit="return confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                      <button type="submit" class="btn btn-info">
                         <i class="fas fa-cloud-upload-alt me-1"></i> Backup to Drive Now
                     </button>
@@ -231,6 +233,7 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
         <form action="{{ url_for('test_notification') }}" method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
         </form>
       </div>
@@ -275,6 +278,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let technicians = {{ settings.technician_list | tojson | safe }};
     let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
     let currentIndex = -1;
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 
     function renderTechnicianList() {
         const container = document.getElementById('technician-management-list-container');
@@ -283,7 +287,6 @@ document.addEventListener('DOMContentLoaded', function() {
             container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
         } else {
             technicians.forEach((tech, index) => {
-                // Handle case where tech.name might be empty or null
                 const initial = tech.name && tech.name.trim() !== '' ? tech.name.trim().charAt(0).toUpperCase() : '?'; 
                 const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
                 
@@ -302,7 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.openTechnicianEditModal = (index = -1) => {
         currentIndex = index;
-        document.getElementById('technician-avatar-file').value = ''; // Clear file input
+        document.getElementById('technician-avatar-file').value = '';
         if (index > -1) {
             const tech = technicians[index];
             document.getElementById('technician-name').value = tech.name;
@@ -337,11 +340,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             formData.append('file', avatarFile);
             try {
-                const response = await fetch('/api/upload_avatar', { method: 'POST', body: formData });
+                const response = await fetch('/api/upload_avatar', { 
+                    method: 'POST', 
+                    body: formData,
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
                 const result = await response.json();
                 if (result.status === 'success') {
                     avatarId = result.file_id;
-                    // Flash success message for avatar upload
                     flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
                 } else {
                     throw new Error(result.message);
@@ -357,30 +363,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const newTech = { name: name, avatar_id: avatarId };
 
         if (currentIndex > -1) {
-            // Update existing technician
             technicians[currentIndex] = newTech;
         } else {
-            // Add new technician
             technicians.push(newTech);
         }
         
-        renderTechnicianList(); // Re-render the list immediately
-        technicianEditModal.hide(); // Hide the modal
+        renderTechnicianList();
+        technicianEditModal.hide();
 
-        // Reset button state
         saveBtn.disabled = false;
         saveBtn.innerHTML = originalBtnText;
-
-        // **REMOVED** to prevent duplicate flash messages
-        // flashMessage('บันทึกข้อมูลช่างเรียบร้อยแล้ว!', 'success');
     }
 
     window.deleteTechnician = (index) => {
         if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบช่าง "${technicians[index].name}"?`)) {
             technicians.splice(index, 1);
             renderTechnicianList();
-            // **REMOVED** to prevent potential duplicate flash messages
-            // flashMessage('ลบข้อมูลช่างเรียบร้อยแล้ว!', 'success');
         }
     }
 
@@ -391,30 +389,22 @@ document.addEventListener('DOMContentLoaded', function() {
     renderTechnicianList();
 });
 
-// Helper function to display flash messages for AJAX operations
 function flashMessage(message, category) {
-    const mainContainer = document.querySelector('.container'); // Or a more specific container for messages
+    const mainContainer = document.getElementById('flash-messages-area');
     if (!mainContainer) return;
     const newMessage = document.createElement('div');
     newMessage.className = `alert alert-${category} alert-dismissible fade show mt-3`;
     newMessage.setAttribute('role', 'alert');
     newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
     
-    // Append to a designated message area or just before the first card
-    const messageArea = document.getElementById('flash-messages-area'); // You might need to add this div in your base.html or specific page
-    if (messageArea) {
-        messageArea.prepend(newMessage);
-    } else {
-        mainContainer.prepend(newMessage); 
-    }
+    mainContainer.prepend(newMessage);
 
-    // Auto-dismiss after some time
     setTimeout(() => {
         const alertInstance = bootstrap.Alert.getInstance(newMessage);
         if (alertInstance) {
             alertInstance.close();
         } else {
-            newMessage.remove(); // Fallback if instance not found
+            newMessage.remove();
         }
     }, 5000); 
 }
