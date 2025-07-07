@@ -1243,7 +1243,7 @@ def api_upload_attachment():
     if not task_id:
         return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
 
-    # ตรวจสอบขนาดไฟล์และพยายามบีบอัดถ้าเป็นรูปภาพ
+    # --- MODIFICATION: Image Compression Logic ---
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
     file.seek(0)
@@ -1271,6 +1271,7 @@ def api_upload_attachment():
         file_to_upload = file
         filename = secure_filename(file.filename)
         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+    # --- END MODIFICATION ---
 
     task_raw = get_single_task(task_id)
     if not task_raw:
@@ -1285,10 +1286,8 @@ def api_upload_attachment():
         try:
             target_date = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
         except (ValueError, TypeError):
-            app.logger.warning(f"Task {task_id} has an invalid 'created' date. Using current date as fallback.")
             target_date = datetime.datetime.now(THAILAND_TZ)
     else:
-        app.logger.warning(f"Task {task_id} has no 'created' date. Using current date as fallback.")
         target_date = datetime.datetime.now(THAILAND_TZ)
 
     monthly_folder_name = target_date.strftime('%Y-%m')
@@ -1305,7 +1304,6 @@ def api_upload_attachment():
     if not final_upload_folder_id:
         return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
 
-    # ใช้ file_to_upload ที่ผ่านการตรวจสอบ/บีบอัดแล้ว
     media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
     drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
     
@@ -1741,29 +1739,47 @@ def api_upload_avatar():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No selected file'}), 400
     
-    file.seek(0, 2)
+    # --- MODIFICATION: Image Compression Logic ---
+    file.seek(0, os.SEEK_END)
     file_length = file.tell()
-    if file_length > MAX_FILE_SIZE_BYTES:
-        return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
     file.seek(0)
+    
+    if file_length > MAX_FILE_SIZE_BYTES:
+        if file.mimetype and file.mimetype.startswith('image/'):
+            try:
+                img = Image.open(file)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                output_buffer = BytesIO()
+                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                output_buffer.seek(0)
+                file_to_upload = output_buffer
+                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                mime_type = 'image/jpeg'
+                app.logger.info(f"Compressed avatar '{file.filename}' successfully.")
+            except Exception as e:
+                app.logger.error(f"Could not compress avatar '{file.filename}': {e}")
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
+        else:
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+    else:
+        file_to_upload = file
+        filename = secure_filename(file.filename)
+        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+    # --- END MODIFICATION ---
 
     avatars_folder_id = find_or_create_drive_folder("Technician_Avatars", GOOGLE_DRIVE_FOLDER_ID)
     if not avatars_folder_id:
         return jsonify({'status': 'error', 'message': 'Could not create or find Technician_Avatars folder'}), 500
 
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
-            file.save(tmp.name)
-            mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-            drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, avatars_folder_id)
-            os.unlink(tmp.name)
-            if drive_file:
-                return jsonify({'status': 'success', 'file_id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
-            else:
-                return jsonify({'status': 'error', 'message': 'Failed to upload avatar to Google Drive'}), 500
+    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, avatars_folder_id)
+    
+    if drive_file:
+        return jsonify({'status': 'success', 'file_id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
     else:
-        return jsonify({'status': 'error', 'message': 'File type not allowed or no file selected'}), 400
+        return jsonify({'status': 'error', 'message': 'Failed to upload avatar to Google Drive'}), 500
 
 
 @app.route('/test_notification', methods=['POST'])

@@ -4,7 +4,7 @@
 
 {% block head_extra %}
 <style>
-    /* All styles from the original update_task_details_old.html are preserved */
+    /* General Styles */
     .info-hero-card {
         background: linear-gradient(135deg, #0d6efd, #0a58ca);
         color: white;
@@ -104,7 +104,9 @@
 
 {% block content %}
 <div class="container mt-4 mb-5">
-    <div id="flash-message-container"></div>
+    
+    <!-- Container for dynamic flash messages from JavaScript -->
+    <div id="js-flash-message-container"></div>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">📝 จัดการงาน</h1>
@@ -170,7 +172,7 @@
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this, 'complete-upload-status')">
+            <form id="completeTaskForm" onsubmit="handleFormSubmission(event, this, 'complete-upload-status')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="complete_task">
                 <div class="mb-3">
@@ -203,7 +205,7 @@
     <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" onsubmit="showLoading(this)">
+            <form id="rescheduleTaskForm" onsubmit="handleFormSubmission(event, this, 'reschedule-upload-status')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="reschedule_task">
                 <div class="mb-3">
@@ -229,6 +231,7 @@
                 <hr>
                 <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
                 <button type="button" class="btn btn-secondary ms-2" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
+                <div id="reschedule-upload-status" class="ms-3" style="display:none;"></div>
             </form>
         </div>
     </div>
@@ -251,7 +254,7 @@
             <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
         </div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('task_details', task_id=task.id) }}" enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this, 'report-upload-status')">
+            <form id="progressReportForm" onsubmit="handleFormSubmission(event, this, 'report-upload-status')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="save_report">
                 <div class="mb-3">
@@ -459,11 +462,16 @@
         container.innerHTML = '';
         technicianList.forEach(tech => {
             const isChecked = selectedTechnicians.includes(tech.name);
+            const avatarUrl = tech.avatar_id 
+                ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` 
+                : `https://via.placeholder.com/40/0d6efd/ffffff?text=${encodeURIComponent(tech.name.charAt(0))}`;
             container.innerHTML += `
-                <div class="technician-item list-group-item-action d-flex align-items-center">
-                    <img src="${tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/0d6efd/ffffff?text=${tech.name.charAt(0)}`}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;">
-                    <span class="flex-grow-1">${tech.name}</span>
-                    <input class="form-check-input ms-auto" type="checkbox" value="${tech.name}" ${isChecked ? 'checked' : ''}>
+                <div class="form-check mb-2 d-flex align-items-center">
+                    <input class="form-check-input" type="checkbox" value="${tech.name}" id="tech-${tech.name.replace(/\s/g, '')}" ${isChecked ? 'checked' : ''}>
+                    <label class="form-check-label d-flex align-items-center ms-2" for="tech-${tech.name.replace(/\s/g, '')}">
+                        <img src="${avatarUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;">
+                        <span class="flex-grow-1">${tech.name}</span>
+                    </label>
                 </div>
             `;
         });
@@ -546,52 +554,76 @@
         lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length}`;
     }
 
+    function flashMessage(message, category) {
+        const container = document.getElementById('js-flash-message-container');
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${category} alert-dismissible fade show`;
+        alert.role = 'alert';
+        alert.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
+        container.prepend(alert);
+        setTimeout(() => {
+            const alertInstance = bootstrap.Alert.getInstance(alert);
+            if (alertInstance) {
+                alertInstance.close();
+            }
+        }, 5000);
+    }
+
     async function handleFormSubmission(event, form, statusElementId) {
         event.preventDefault();
         const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+        
         const uploadStatusBox = document.getElementById(statusElementId);
         const filesInput = form.querySelector('input[type="file"][name="files[]"]');
         const files = filesInput ? Array.from(filesInput.files) : [];
-        let attachmentUrls = [];
+        let uploadedAttachments = [];
+
         if (files.length > 0) {
             uploadStatusBox.style.display = 'inline-block';
             for (let i = 0; i < files.length; i++) {
                 uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> อัปโหลด ${i + 1}/${files.length}`;
-                const formData = new FormData();
-                formData.append('file', files[i]);
-                formData.append('task_id', '{{ task.id }}');
+                const fileFormData = new FormData();
+                fileFormData.append('file', files[i]);
+                fileFormData.append('task_id', '{{ task.id }}');
+                fileFormData.append('csrf_token', '{{ csrf_token() }}');
+                
                 try {
-                    const response = await fetch('/api/upload_attachment', { method: 'POST', body: formData, headers: { 'X-CSRFToken': '{{ csrf_token() }}' } });
+                    const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
                     const result = await response.json();
-                    if (result.status === 'success') {
-                        attachmentUrls.push(result.file_info);
+                    if (response.ok && result.status === 'success') {
+                        uploadedAttachments.push(result.file_info);
                     } else {
-                        flashMessage('อัปโหลดไฟล์ไม่สำเร็จ: ' + result.message, 'danger');
+                        flashMessage(`อัปโหลดไฟล์ไม่สำเร็จ: ${result.message}`, 'danger');
                     }
                 } catch (error) {
                     flashMessage('เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์', 'danger');
                 }
             }
         }
+        
         const mainFormData = new FormData(form);
         if (filesInput) mainFormData.delete('files[]');
-        mainFormData.append('uploaded_attachments_json', JSON.stringify(attachmentUrls));
+        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+
         try {
             const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
             if (response.ok) {
+                // The backend will flash a message and redirect, so we just reload.
                 window.location.reload();
             } else {
+                // If the backend returns an error, display it.
                 const result = await response.json();
-                flashMessage(result.message, 'danger');
+                flashMessage(result.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger');
                 submitButton.disabled = false;
-                submitButton.innerHTML = submitButton.dataset.originalHtml || 'บันทึกอีกครั้ง';
+                submitButton.innerHTML = originalButtonHtml;
             }
         } catch (error) {
-            flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger');
+            flashMessage('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อบันทึกข้อมูล', 'danger');
             submitButton.disabled = false;
-            submitButton.innerHTML = submitButton.dataset.originalHtml || 'บันทึกอีกครั้ง';
+            submitButton.innerHTML = originalButtonHtml;
         } finally {
             if (uploadStatusBox) uploadStatusBox.style.display = 'none';
         }
