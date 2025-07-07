@@ -90,7 +90,7 @@
       eventReceive: async function(info) {
         const taskId = info.event.id;
         const newDueDate = info.event.start.toISOString();
-        
+
         try {
             const response = await fetch('/api/task/schedule_from_calendar', {
                 method: 'POST',
@@ -112,6 +112,34 @@
                 if (originalDiv) {
                     originalDiv.remove();
                 }
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + result.message);
+                info.revert();
+            }
+        } catch (err) {
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+            info.revert();
+        }
+      },
+      eventDrop: async function(info) {
+        // อีเวนต์นี้คือการลาก/เลื่อนงานในปฏิทินไปวันใหม่
+        const taskId = info.event.id;
+        const newDueDate = info.event.start.toISOString();
+        try {
+            const response = await fetch('/api/task/schedule_from_calendar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    task_id: taskId,
+                    new_due_date: newDueDate
+                })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                calendar.refetchEvents();
             } else {
                 alert('เกิดข้อผิดพลาด: ' + result.message);
                 info.revert();
