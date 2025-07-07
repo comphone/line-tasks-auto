@@ -1,19 +1,28 @@
+# Flask and Web Server
 Flask==3.0.3
+Flask-WTF
+gunicorn==22.0.0
 Werkzeug==3.0.3
-line-bot-sdk==2.4.2
+python-dotenv
+
+# Google API Services
 google-api-python-client==2.130.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.0
-gunicorn==22.0.0
-python-dotenv
-pytz
-firebase-admin
 google-auth
-# cachetools, geopy, etc. 
-cachetools
-geopy
-qrcode
-Pillow
+
+# LINE Bot SDK
+line-bot-sdk==2.4.2
+
+# Data and Utilities
 pandas
 openpyxl
+python-dateutil
+pytz
+Pillow
+qrcode
+geopy
+cachetools
+
+# Scheduler
 APScheduler
