@@ -143,7 +143,14 @@
                     </div>
                 </form>
 
-                <div class="table-responsive">
+                <div id="table-loading-spinner" class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">กำลังโหลดข้อมูลงาน...</p>
+                </div>
+
+                <div class="table-responsive" id="task-table-container" style="display:none;">
                     <table class="table table-hover table-bordered align-middle">
                         <thead class="table-light">
                             <tr>
@@ -273,6 +280,14 @@
                     }
                 });
             }
+        }
+
+        // Hide spinner and show table
+        const tableContainer = document.getElementById('task-table-container');
+        const spinner = document.getElementById('table-loading-spinner');
+        if (tableContainer && spinner) {
+            tableContainer.style.display = 'block';
+            spinner.style.display = 'none';
         }
     });
 </script>

@@ -105,7 +105,6 @@
 {% block content %}
 <div class="container mt-4 mb-5">
     
-    <!-- Container for dynamic flash messages from JavaScript -->
     <div id="js-flash-message-container"></div>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -113,7 +112,6 @@
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    <!-- Info Hero Card -->
     <div class="card shadow-lg mb-4 info-hero-card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0 text-white">ข้อมูลสรุป</h5>
@@ -156,7 +154,6 @@
         </ul>
     </div>
     
-    <!-- Action Selection -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
@@ -168,7 +165,6 @@
         </div>
     </div>
     
-    <!-- Hidden Action Forms -->
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -189,7 +185,7 @@
                     <input type="hidden" id="technicians_final" name="technicians_report" required>
                 </div>
                 <div class="mb-3">
-                    <label for="files_final" class="form-label"><strong>แนบรูปภาพ/PDF ปิดงาน (ถ้ามี)</strong></label>
+                    <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/PDF ปิดงาน (ถ้ามี)</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf">
                 </div>
                 <hr>
@@ -274,18 +270,17 @@
                     <input type="hidden" id="technicians_progress" name="technicians_report" required>
                 </div>
                 <div class="mb-3">
-                    <label for="files_progress" class="form-label">แนบรูป/PDF</label>
+                    <label for="files_progress" class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/PDF</label>
                     <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf">
                 </div>
                 <div class="d-flex align-items-center">
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+                    <button type="submit" id="saveProgressBtn" class="btn btn-primary" disabled><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
                     <div id="report-upload-status" class="ms-3" style="display:none;"></div>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Task History -->
     <div class="card shadow-sm mb-4">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
@@ -306,6 +301,9 @@
                                 <i class="fas fa-images"></i> แก้ไขรูปภาพ
                             </button>
                             {% endif %}
+                            <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteReport({{ loop.index0 }})" title="ลบรายงานนี้">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
                         </div>
                     </div>
                     <div class="history-entry-body">
@@ -339,7 +337,6 @@
     
     <hr class="my-5">
 
-    <!-- Danger Zone -->
     <div class="danger-zone">
         <div class="d-flex justify-content-between align-items-center">
             <div>
@@ -365,7 +362,6 @@
 
 </div>
 
-<!-- ALL MODALS -->
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
     <img class="lightbox-content" id="lightboxImg">
@@ -427,6 +423,7 @@
     let technicianSelectionModal;
     let editReportModal;
     let currentTechnicianTargetId;
+    const csrfToken = '{{ csrf_token() }}';
 
     document.addEventListener('DOMContentLoaded', function() {
         if(document.getElementById('technicianSelectionModal')) {
@@ -435,6 +432,21 @@
         if(document.getElementById('editReportModal')) {
             editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         }
+
+        // Logic to enable/disable the "Save Progress" button
+        const workSummaryInput = document.getElementById('work_summary_progress');
+        const filesProgressInput = document.getElementById('files_progress');
+        const saveProgressBtn = document.getElementById('saveProgressBtn');
+
+        function validateProgressForm() {
+            if (!workSummaryInput || !filesProgressInput || !saveProgressBtn) return;
+            const hasSummary = workSummaryInput.value.trim() !== '';
+            const hasFiles = filesProgressInput.files.length > 0;
+            saveProgressBtn.disabled = !(hasSummary || hasFiles);
+        }
+
+        if(workSummaryInput) workSummaryInput.addEventListener('input', validateProgressForm);
+        if(filesProgressInput) filesProgressInput.addEventListener('change', validateProgressForm);
     });
 
     function showActionCard(cardIdToShow) {
@@ -514,6 +526,38 @@
         form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
         editReportModal.show();
     }
+
+    function deleteReport(reportIndex) {
+        Swal.fire({
+            title: 'คุณแน่ใจหรือไม่?',
+            text: "คุณต้องการลบรายงานนี้ใช่ไหม? การกระทำนี้ไม่สามารถย้อนกลับได้!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'ใช่, ลบเลย!',
+            cancelButtonText: 'ยกเลิก'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const response = await fetch(`/api/task/{{ task.id }}/delete_report/${reportIndex}`, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    });
+
+                    const data = await response.json();
+                    if (response.ok && data.status === 'success') {
+                        await Swal.fire('ลบแล้ว!', data.message, 'success');
+                        window.location.reload();
+                    } else {
+                        Swal.fire('เกิดข้อผิดพลาด', data.message || 'ไม่สามารถลบรายงานได้', 'error');
+                    }
+                } catch (err) {
+                     Swal.fire('การเชื่อมต่อล้มเหลว', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อลบรายงานได้', 'error');
+                }
+            }
+        });
+    }
     
     function openLightboxById(attachmentId) {
         const index = allAttachments.findIndex(att => att.id === attachmentId);
@@ -581,16 +625,14 @@
         const files = filesInput ? Array.from(filesInput.files) : [];
         let uploadedAttachments = [];
 
-        // This is the implementation for the per-file upload progress display.
         if (files.length > 0) {
             uploadStatusBox.style.display = 'inline-block';
             for (let i = 0; i < files.length; i++) {
-                // Update the status for each file being uploaded.
-                uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> อัปโหลด ${i + 1}/${files.length}`;
+                uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> กำลังอัปโหลด ${i + 1}/${files.length}`;
                 const fileFormData = new FormData();
                 fileFormData.append('file', files[i]);
                 fileFormData.append('task_id', '{{ task.id }}');
-                fileFormData.append('csrf_token', '{{ csrf_token() }}');
+                fileFormData.append('csrf_token', csrfToken);
                 
                 try {
                     const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
@@ -598,7 +640,6 @@
                     if (response.ok && result.status === 'success') {
                         uploadedAttachments.push(result.file_info);
                     } else {
-                        // Display an error message but continue with other files.
                         flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${result.message}`, 'danger');
                     }
                 } catch (error) {
@@ -613,12 +654,21 @@
 
         try {
             const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
+            const result = await response.json();
+            
             if (response.ok) {
-                // The backend will flash a message and redirect, so we just reload the page to see the result.
-                window.location.reload();
+                Swal.fire({
+                    toast: true,
+                    icon: 'success',
+                    title: result.message || "บันทึกข้อมูลเรียบร้อยแล้ว!",
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3000,
+                    timerProgressBar: true,
+                }).then(() => {
+                    window.location.reload();
+                });
             } else {
-                // If the backend returns a JSON error, display it.
-                const result = await response.json();
                 flashMessage(result.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger');
                 submitButton.disabled = false;
                 submitButton.innerHTML = originalButtonHtml;
