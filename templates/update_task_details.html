@@ -157,7 +157,7 @@
                             {% if report.type == 'reschedule' %}เลื่อนนัดหมาย{% else %}รายงานการปฏิบัติงาน{% endif %}
                         </span>
                         <div>
-                            <small class="text-muted me-3">{{ report.summary_date | dateutil_parse | astitimezone(thaizone) | strftime('%d/%m/%y %H:%M') }}</small>
+                            <small class="text-muted me-3">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
                             {% if report.type == 'report' %}
                             <button class="btn btn-sm btn-outline-secondary" onclick="openEditReportModal({{ loop.index0 }})">
                                 <i class="fas fa-images"></i> แก้ไขรูปภาพ
@@ -213,7 +213,7 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
-        // All other initializations from the old file's JS
+        // ... all other initializations from the old complete file
     });
 
     function openEditReportModal(reportIndex) {
@@ -247,6 +247,6 @@
         editReportModal.show();
     }
     
-    // All other JS functions (lightbox, technician selection, etc.) from the old complete file
+    // ... all other JS functions from the complete old file
 </script>
 {% endblock %}
