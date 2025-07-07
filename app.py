@@ -1092,15 +1092,63 @@ def form_page():
                 flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
                 return render_template('form.html', form_data=request.form)
 
+        # 1. Create the main task first to get a Task ID
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
-        if new_task:
-            cache.clear()
-            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
-            send_new_task_notification(new_task)
-            return redirect(url_for('summary'))
-        else:
-            flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
-    return render_template('form.html')
+        
+        if not new_task:
+            flash('เกิดข้อผิดพลาดในการสร้างงานหลัก', 'danger')
+            tasks = get_google_tasks_for_report(True) or []
+            all_titles = sorted(list(set(t.get('title', '') for t in tasks if t.get('title'))))
+            return render_template('form.html', form_data=request.form, all_titles=all_titles)
+
+        # 2. Handle attached files
+        files = request.files.getlist('files[]')
+        uploaded_attachments = []
+        if files and files[0].filename:
+            task_id = new_task.get('id')
+            
+            # Create folder for the new task
+            attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+            monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
+            monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+            sanitized_customer_name = sanitize_filename(customer_name)
+            customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+            final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+
+            if final_upload_folder_id:
+                for file in files:
+                    if file and allowed_file(file.filename):
+                        filename = secure_filename(file.filename)
+                        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                            file.save(tmp.name)
+                            mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+                            drive_file = upload_file_from_path_to_drive(tmp.name, filename, mime_type, final_upload_folder_id)
+                            os.unlink(tmp.name)
+                            if drive_file:
+                                uploaded_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+            
+            # 3. Update the task with the file attachment info
+            if uploaded_attachments:
+                initial_report = {
+                    'type': 'report',
+                    'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                    'work_summary': 'ไฟล์แนบเมื่อสร้างงาน',
+                    'attachments': uploaded_attachments,
+                    'technicians': ['ระบบ'] # Or get from a form field if needed
+                }
+                report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+                updated_notes = new_task.get('notes', '') + report_text
+                update_google_task(task_id, notes=updated_notes)
+        
+        cache.clear()
+        flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
+        send_new_task_notification(new_task)
+        return redirect(url_for('summary'))
+    
+    # For GET request, provide task titles for autocomplete
+    tasks = get_google_tasks_for_report(True) or []
+    all_titles = sorted(list(set(t.get('title', '') for t in tasks if t.get('title'))))
+    return render_template('form.html', all_titles=all_titles)
 
 @app.route('/summary')
 def summary():
@@ -1232,6 +1280,58 @@ def api_upload_attachment():
                 return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
     else:
         return jsonify({'status': 'error', 'message': 'File type not allowed or no file selected'}), 400
+
+
+@app.route('/api/delete_attachment/<task_id>/<file_id>', methods=['POST'])
+def api_delete_attachment(task_id, file_id):
+    if not task_id or not file_id:
+        return jsonify({'status': 'error', 'message': 'Missing task or file ID'}), 400
+
+    # 1. Get the task
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+
+    # 2. Find and remove the attachment from notes
+    notes = task_raw.get('notes', '')
+    history, base_notes = parse_tech_report_from_notes(notes)
+    feedback_data = parse_customer_feedback_from_notes(notes)
+    
+    attachment_found_and_removed = False
+    for report in history:
+        attachments = report.get('attachments', [])
+        for i, att in enumerate(attachments):
+            if att.get('id') == file_id:
+                attachments.pop(i)
+                attachment_found_and_removed = True
+                break
+        if attachment_found_and_removed:
+            break
+
+    if not attachment_found_and_removed:
+        return jsonify({'status': 'error', 'message': 'Attachment not found in any report'}), 404
+
+    # 3. Delete the file from Google Drive
+    drive_service = get_google_drive_service()
+    if drive_service:
+        try:
+            drive_service.files().delete(fileId=file_id).execute()
+            app.logger.info(f"Successfully deleted file {file_id} from Google Drive.")
+        except HttpError as e:
+            app.logger.error(f"Failed to delete file {file_id} from Drive: {e}")
+            # Even if Drive deletion fails, proceed to update the task notes
+    
+    # 4. Reconstruct and update the task notes
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'Attachment deleted successfully'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to update task after deleting attachment'}), 500
 
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
@@ -1573,7 +1673,12 @@ def edit_task(task_id):
 
     task = parse_google_task_dates(task_raw)
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('edit_task.html', task=task)
+    
+    # Provide task titles for autocomplete
+    tasks = get_google_tasks_for_report(True) or []
+    all_titles = sorted(list(set(t.get('title', '') for t in tasks if t.get('title'))))
+    
+    return render_template('edit_task.html', task=task, all_titles=all_titles)
 
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
