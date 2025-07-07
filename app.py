@@ -60,7 +60,7 @@ csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'} # MODIFIED: Added 'pdf'
 MAX_FILE_SIZE_MB = 5
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
@@ -1172,8 +1172,10 @@ def calendar_view():
 
 @app.route('/api/calendar_tasks')
 def api_calendar_tasks():
+    app.logger.info("API call received for /api/calendar_tasks")
     try:
         tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+        app.logger.info(f"Found {len(tasks_raw)} non-completed tasks from Google.")
         events = []
         for task in tasks_raw:
             if task.get('due'):
@@ -1187,6 +1189,7 @@ def api_calendar_tasks():
                     'textColor': '#000'
                 }
                 events.append(event)
+        app.logger.info(f"Returning {len(events)} events for the calendar.")
         return jsonify(events)
     except Exception as e:
         app.logger.error(f"Error fetching tasks for calendar API: {e}")
