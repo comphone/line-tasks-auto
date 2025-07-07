@@ -25,7 +25,6 @@ from geopy.distance import geodesic
 import qrcode
 import base64
 
-# --- Use line-bot-sdk version 2.4.2 ---
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -38,9 +37,7 @@ from linebot.models import (
     ButtonComponent, SeparatorComponent, URIAction, PostbackAction, QuickReply, QuickReplyButton,
     ImageComponent, PostbackEvent
 )
-# ---------------------------------------------
 
-# --- Google API Imports ---
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -50,7 +47,6 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBa
 import pandas as pd
 from dateutil.parser import parse as date_parse
 
-# --- APScheduler for background tasks ---
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
@@ -1059,7 +1055,7 @@ def summary():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
-    today_thai = date.today()
+    today_thai = datetime.datetime.now(THAILAND_TZ).date()
     final_tasks = []
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw), 'today': 0}
 
