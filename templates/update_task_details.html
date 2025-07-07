@@ -594,7 +594,8 @@
             return;
         }
         const attachment = allAttachments[index];
-        lightboxImg.src = `https://drive.google.com/uc?id=${attachment.id}&export=view`; 
+        // Corrected URL to show full-size image reliably
+        lightboxImg.src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`; 
         lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length}`;
     }
 
