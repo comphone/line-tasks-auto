@@ -76,14 +76,17 @@ TEXT_SNIPPETS = {
 # --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+# --- START: เพิ่มขีดจำกัดการอัปโหลด ---
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 # เพิ่มจาก 16MB เป็น 50MB
+# --- END: เพิ่มขีดจำกัดการอัปโหลด ---
 
 csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-MAX_FILE_SIZE_MB = 10
+MAX_FILE_SIZE_MB = 10 # This is for single file compression logic, not the request limit
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
