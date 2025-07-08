@@ -104,7 +104,6 @@
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/main.min.js'></script>
 <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.14/index.global.min.js'></script>
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar/locales/th.js'></script>
-
 <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.14/index.global.min.js'></script>
 <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.14/index.global.min.js'></script>
 <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/list@6.1.14/index.global.min.js'></script>
@@ -192,15 +191,10 @@
         await handleEventUpdate(info.event, info.revert);
       },
       eventReceive: async function(info) {
-        // Find the original div element in the "unscheduled" list
         const originalDiv = document.querySelector(`.external-event[data-task-id="${info.event.id}"]`);
-        
-        // Temporarily hide it until the server confirms the update
         if (originalDiv) originalDiv.style.display = 'none';
-
         await handleEventUpdate(info.event, () => {
             info.revert();
-            // If the update fails, show the div again
             if (originalDiv) originalDiv.style.display = 'block';
         }, originalDiv);
       }
@@ -240,7 +234,6 @@
                     timer: 3000,
                     timerProgressBar: true
                 });
-                // Remove the original div from the external list after successful update
                 if (originalDivElement) {
                     originalDivElement.remove();
                 }
