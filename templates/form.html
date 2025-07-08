@@ -12,8 +12,6 @@
             width: 42px; /* Fixed width for icons */
             justify-content: center;
         }
-        
-        /* --- START: สไตล์สำหรับ Dropdown ค้นหาลูกค้า --- */
         .autocomplete-container {
             position: relative;
         }
@@ -50,15 +48,13 @@
             font-size: 0.85em;
             color: #6c757d;
         }
-        /* --- END: สไตล์สำหรับ Dropdown ค้นหาลูกค้า --- */
-
     </style>
 {% endblock %}
+
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-10 col-md-12">
-        {# เปลี่ยน form tag ให้เรียกใช้ JavaScript เมื่อกดส่ง #}
         <form id="createTaskForm" class="needs-validation" novalidate enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this)">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="uploaded_attachments_json" id="uploaded_attachments_json" value="[]">
@@ -83,7 +79,6 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="customer" class="form-label"><strong>ชื่อผู้ติดต่อ</strong> <span class="text-danger">*</span></label>
-                            <!-- START: โครงสร้างสำหรับช่องค้นหาลูกค้า -->
                             <div class="autocomplete-container">
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="fas fa-user"></i></span>
@@ -91,7 +86,6 @@
                                     <div class="invalid-feedback">กรุณากรอกชื่อผู้ติดต่อ</div>
                                 </div>
                             </div>
-                            <!-- END: โครงสร้างสำหรับช่องค้นหาลูกค้า -->
                         </div>
                     </div>
                     <div class="row">
@@ -149,7 +143,6 @@
 
                     <div class="mb-3">
                         <label for="files" class="form-label">แนบรูปภาพ/PDF เริ่มต้น (ถ้ามี)</label>
-                        {# เพิ่ม attribute `capture` เพื่อให้มือถือเปิดกล้องได้ทันที #}
                         <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf" capture="environment">
                     </div>
                 </div>
@@ -157,7 +150,6 @@
 
             <div class="d-flex align-items-center">
                 <button type="submit" class="btn btn-primary btn-lg flex-grow-1"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
-                {# Element สำหรับแสดงสถานะการอัปโหลด #}
                 <div id="upload-status" class="ms-3" style="display:none; font-weight: 500;"></div>
             </div>
         </form>
@@ -169,13 +161,9 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
     <script>
-        // --- START: JavaScript สำหรับจัดการฟอร์มทั้งหมด ---
-
-        // State variable for customer data
         let customerDatabase = [];
 
         document.addEventListener('DOMContentLoaded', async function() {
-            // Fetch customer data on page load
             try {
                 const response = await fetch("{{ url_for('api_customers') }}");
                 if (response.ok) {
@@ -186,11 +174,8 @@
             } catch (error) {
                 console.error("Error fetching customer database:", error);
             }
-
-            // Initialize customer autocomplete
             initializeAutocomplete(document.getElementById("customer"), customerDatabase);
-
-            // Initialize flatpickr (date/time picker)
+            
             flatpickr(".datetimepicker", {
                 enableTime: true,
                 dateFormat: "Y-m-d H:i",
@@ -198,7 +183,6 @@
                 defaultDate: document.getElementById('appointment').value ? document.getElementById('appointment').value : null
             });
 
-            // Geolocation and validation scripts (no changes here)
             const shareBtn = document.getElementById('shareLocationBtn');
             const locationInput = document.getElementById('latitude_longitude');
             const statusText = document.getElementById('shareLocationStatus');
@@ -251,7 +235,6 @@
                 });
         });
 
-        // ฟังก์ชันสำหรับสร้างระบบค้นหาลูกค้า
         function initializeAutocomplete(inp, arr) {
             let currentFocus;
             inp.addEventListener("input", function(e) {
@@ -266,7 +249,6 @@
 
                 let count = 0;
                 for (i = 0; i < arr.length && count < 7; i++) {
-                    // ค้นหาจากชื่อ หรือเบอร์โทร
                     if (arr[i].name.includes(val) || (arr[i].phone && arr[i].phone.includes(val))) {
                         count++;
                         b = document.createElement("DIV");
@@ -275,11 +257,13 @@
                         b.dataset.customerInfo = JSON.stringify(arr[i]);
                         b.addEventListener("click", function(e) {
                             const customer = JSON.parse(this.dataset.customerInfo);
-                            // กรอกข้อมูลลงในฟอร์ม
+                            
                             document.getElementById('customer').value = customer.name;
                             document.getElementById('organization_name').value = customer.organization || '';
                             document.getElementById('phone').value = customer.phone || '';
                             document.getElementById('address').value = customer.address || '';
+                            document.getElementById('latitude_longitude').value = customer.map_url || '';
+
                             closeAllLists();
                         });
                         a.appendChild(b);
@@ -300,7 +284,6 @@
             });
         }
 
-        // ฟังก์ชันสำหรับจัดการการอัปโหลดไฟล์และส่งฟอร์ม
         const csrfToken = '{{ csrf_token() }}';
 
         function flashMessage(message, category) {
@@ -336,7 +319,6 @@
             const files = filesInput ? Array.from(filesInput.files) : [];
             let uploadedAttachments = [];
 
-            // 1. อัปโหลดไฟล์ก่อน (ถ้ามี)
             if (files.length > 0) {
                 uploadStatusBox.style.display = 'inline-block';
                 for (let i = 0; i < files.length; i++) {
@@ -359,12 +341,10 @@
                 }
             }
 
-            // 2. ใส่ข้อมูลไฟล์ที่อัปโหลดแล้วลงใน hidden input
             document.getElementById('uploaded_attachments_json').value = JSON.stringify(uploadedAttachments);
 
             if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังสร้างงาน...';
 
-            // 3. ส่งข้อมูลฟอร์มหลัก (ที่ไม่มีไฟล์) ไปยังเซิร์ฟเวอร์
             try {
                 const mainFormData = new FormData(form);
                 mainFormData.delete('files[]');
@@ -389,6 +369,5 @@
                 if (uploadStatusBox) uploadStatusBox.style.display = 'none';
             }
         }
-        // --- END: JavaScript ---
     </script>
 {% endblock %}
