@@ -80,8 +80,8 @@
         padding: 1rem;
         margin-bottom: 1rem;
     }
-    .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-    .history-entry-title { font-weight: 600; font-size: 1.05em; }
+    .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .history-entry-title { font-weight: 600; font-size: 1.05em; margin-right: auto; }
     .history-entry-body p { margin-bottom: 0.25rem; }
     .image-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
     .thumbnail { cursor: pointer; border-radius: .375rem; overflow: hidden; aspect-ratio: 1 / 1; background-color: #e9ecef; position: relative; }
@@ -92,11 +92,10 @@
     .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
     .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; animation-name: zoom; animation-duration: 0.3s; }
     @keyframes zoom { from {transform:scale(0)} to {transform:scale(1)} }
-    .lightbox-caption { margin: auto; display: block; width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; height: 50px; }
+    .lightbox-caption { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; }
     .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
     .hidden-file-input { display: none; }
 
-    /* --- START: Lightbox Arrow and Button Styles --- */
     .lightbox-nav {
         cursor: pointer;
         position: absolute;
@@ -110,8 +109,8 @@
         border-radius: 0 3px 3px 0;
         user-select: none;
         -webkit-user-select: none;
-        transform: translateY(-50%); /* จัดกึ่งกลางแนวตั้ง */
-        font-size: 2.5rem; /* ทำให้ลูกศรใหญ่ขึ้น */
+        transform: translateY(-50%);
+        font-size: 2.5rem;
         background-color: rgba(0,0,0,0.5);
     }
     .lightbox-prev { left: 1rem; border-radius: 3px 0 0 3px; }
@@ -121,7 +120,7 @@
         text-align: center;
         padding: 10px 0;
         position: absolute;
-        bottom: 0px; /* ตำแหน่งของปุ่ม */
+        bottom: 50px;
         width: 100%;
         left: 0;
         z-index: 1071;
@@ -133,15 +132,13 @@
         background-color: rgba(40, 40, 40, 0.8);
         border: 1px solid rgba(255, 255, 255, 0.5);
     }
-    /* --- END: Lightbox Arrow and Button Styles --- */
 
-    /* --- START: Multi-select Styles --- */
     .multi-select-controls {
-        position: fixed; /* เปลี่ยนเป็น fixed เพื่อให้อยู่กับที่ */
+        position: fixed;
         bottom: 0;
         left: 0;
         width: 100%;
-        background-color: #212529; /* สีเข้มขึ้น */
+        background-color: #212529;
         color: white;
         padding: 1rem;
         z-index: 1050;
@@ -162,7 +159,7 @@
         position: relative;
     }
     .thumbnail.selected::after {
-        content: '\f00c'; /* Font Awesome Check Icon */
+        content: '\f00c';
         font-family: 'Font Awesome 6 Free';
         font-weight: 900;
         position: absolute;
@@ -179,7 +176,18 @@
         font-size: 14px;
         border: 2px solid white;
     }
-    /* --- END: Multi-select Styles --- */
+    .tribute-container {
+        border: 1px solid #dee2e6;
+        border-radius: .375rem;
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+        background-color: #fff;
+        z-index: 9999;
+    }
+    .tribute-container ul { list-style-type: none; padding: 0; margin: 0; }
+    .tribute-container li { border-bottom: 1px solid #f1f1f1; cursor: pointer; }
+    .tribute-container li:last-child { border-bottom: none; }
+    .tribute-container li.highlight { background-color: #0d6efd; color: white; }
+    .tribute-container li.highlight small { color: #e9ecef; }
 </style>
 {% endblock %}
 
@@ -255,6 +263,7 @@
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
                     <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
+                    <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                 </div>
                  <div class="mb-3">
                     <label for="technicians_final_display" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
@@ -295,6 +304,7 @@
                 <div class="mb-3">
                     <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
                     <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
+                     <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                 </div>
                 <div class="mb-3">
                     <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
@@ -340,6 +350,7 @@
                         <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
                         <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
                     </div>
+                    <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                 </div>
                 <div class="mb-3">
                     <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
@@ -371,22 +382,22 @@
                 {% for report in task.tech_reports_history %}
                 <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}" id="history-entry-{{ loop.index0 }}">
                     <div class="history-entry-header">
-                        <span class="history-entry-title {% if report.type == 'reschedule' %}text-warning{% else %}text-primary{% endif %}">
+                        <span class="history-entry-title {% if report.type == 'reschedule' %}text-warning{% else %}text-primary{% endif %} mb-2 me-auto">
                             <i class="fas {% if report.type == 'reschedule' %}fa-calendar-alt{% else %}fa-wrench{% endif %} me-2"></i>
                             {% if report.type == 'reschedule' %}เลื่อนนัดหมาย{% else %}รายงานการปฏิบัติงาน{% endif %}
                         </span>
-                        <div>
-                            <small class="text-muted me-3">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
+                        <div class="d-flex align-items-center flex-wrap">
+                            <small class="text-muted me-3 mb-2">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
                             {% if report.type == 'report' %}
-                            <button class="btn btn-sm btn-outline-secondary" onclick="openEditReportModal({{ loop.index0 }})">
-                                <i class="fas fa-images"></i> แก้ไขรูปภาพ
+                            <button class="btn btn-sm btn-outline-secondary mb-2 me-1" onclick="openEditReportModal({{ loop.index0 }})">
+                                <i class="fas fa-images"></i> แก้ไขรูป
                             </button>
                             {% endif %}
-                            <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteReport({{ loop.index0 }})" title="ลบรายงานนี้">
+                            <button class="btn btn-sm btn-outline-danger mb-2 me-1" onclick="deleteReport({{ loop.index0 }})" title="ลบรายงานนี้">
                                 <i class="fas fa-trash-alt"></i>
                             </button>
                              {% if report.type == 'report' and report.attachments %}
-                            <button class="btn btn-sm btn-outline-info ms-1" onclick="toggleSelectionMode({{ loop.index0 }})" title="เลือกหลายภาพเพื่อแชร์">
+                            <button class="btn btn-sm btn-outline-info mb-2" onclick="toggleSelectionMode({{ loop.index0 }})" title="เลือกหลายภาพเพื่อแชร์">
                                 <i class="fas fa-share-square"></i> เลือกรูป
                             </button>
                             {% endif %}
@@ -413,7 +424,6 @@
                         </div>
                     </div>
                     {% endif %}
-
                      <div class="multi-select-controls" id="multi-select-controls-{{ loop.index0 }}">
                         <div class="d-flex justify-content-between align-items-center">
                             <button class="btn btn-secondary" onclick="toggleSelectionMode({{ loop.index0 }})">ยกเลิก</button>
@@ -455,7 +465,6 @@
             </div>
         </div>
     </div>
-
 </div>
 
 <div id="lightboxModal" class="lightbox">
@@ -529,11 +538,7 @@
     let editReportModal;
     let currentTechnicianTargetId;
     const csrfToken = '{{ csrf_token() }}';
-
-    // Variables for swipe
     let touchStartX = 0;
-    
-    // Variables for multi-select
     let isSelectionMode = false;
     let selectedAttachments = new Set();
     let currentReportIndex = -1;
@@ -561,95 +566,84 @@
         if(workSummaryInput) workSummaryInput.addEventListener('input', validateProgressForm);
         if(filesProgressInput) filesProgressInput.addEventListener('change', validateProgressForm);
         
-        // Add touch event listeners for swipe navigation
         const lightboxImgElement = document.getElementById('lightboxImg');
         if (lightboxImgElement) {
             lightboxImgElement.addEventListener('touchstart', handleTouchStart, false);
             lightboxImgElement.addEventListener('touchend', handleTouchEnd, false);
         }
+
+        // --- START: Initialize Text Snippets ---
+        const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
+        if (progressReportSnippets && progressReportSnippets.length > 0) {
+            const tributeProgress = new Tribute({
+                trigger: '/',
+                values: progressReportSnippets,
+                selectTemplate: function (item) {
+                    if (item === undefined) return null;
+                    return item.original.value;
+                },
+                menuItemTemplate: function(item) {
+                    return `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`;
+                },
+                noMatchTemplate: function () {
+                    return '<li class="p-2 text-muted">ไม่พบข้อความที่ตรงกัน</li>';
+                },
+                allowSpaces: true,
+                menuContainer: document.body
+            });
+            tributeProgress.attach(document.getElementById('work_summary_progress'));
+            tributeProgress.attach(document.getElementById('work_summary_final'));
+            tributeProgress.attach(document.getElementById('reschedule_reason'));
+        }
+        // --- END: Initialize Text Snippets ---
     });
     
-    // --- START: Swipe Functions ---
-    function handleTouchStart(event) {
-        touchStartX = event.touches[0].clientX;
-    }
-
+    // --- All other JavaScript functions go here ---
+    function handleTouchStart(event) { touchStartX = event.touches[0].clientX; }
     function handleTouchEnd(event) {
         if (!touchStartX) return;
         let touchEndX = event.changedTouches[0].clientX;
         let diffX = touchStartX - touchEndX;
-
-        if (diffX > 50) { // Swipe left
-            changeSlide(1);
-        } else if (diffX < -50) { // Swipe right
-            changeSlide(-1);
-        }
-        touchStartX = 0; // Reset start position
+        if (diffX > 50) { changeSlide(1); } else if (diffX < -50) { changeSlide(-1); }
+        touchStartX = 0;
     }
-    // --- END: Swipe Functions ---
-    
-    // --- START: Lightbox Functions (Updated) ---
     function showSlide(index) {
         const lightboxImg = document.getElementById("lightboxImg");
         const lightboxCaption = document.getElementById("lightboxCaption");
         const lightboxControls = document.querySelector('.lightbox-controls');
         const shareBtn = document.getElementById('shareBtn');
         const downloadBtn = document.getElementById('downloadBtn');
-
-        if(index < 0 || index >= allAttachments.length) {
-            closeLightbox();
-            return;
-        }
+        if(index < 0 || index >= allAttachments.length) { closeLightbox(); return; }
         const attachment = allAttachments[index];
         lightboxImg.src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`; 
         lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length}`;
-        
-        // Show controls and set actions
         lightboxControls.style.display = 'block';
         shareBtn.onclick = () => shareCurrentImage();
         downloadBtn.onclick = () => downloadCurrentImage();
     }
-
     async function processCurrentImage(asFile = false, fileName = 'image.jpg') {
         if (slideIndex === undefined) return null;
         const attachment = allAttachments[slideIndex];
         const imageUrl = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1920`;
-
         try {
             const response = await fetch(imageUrl);
             if (!response.ok) throw new Error('Network response was not ok.');
             const blob = await response.blob();
-            
-            if (asFile) {
-                return new File([blob], fileName, { type: blob.type });
-            }
+            if (asFile) { return new File([blob], fileName, { type: blob.type }); }
             return blob;
         } catch (error) {
-            console.error('Error processing image:', error);
             Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error');
             return null;
         }
     }
-
     async function shareCurrentImage() {
-        if (!navigator.share) {
-            Swal.fire('ไม่รองรับ', 'เบราว์เซอร์ของคุณไม่รองรับฟังก์ชันแชร์', 'warning');
-            return;
-        }
+        if (!navigator.share) { Swal.fire('ไม่รองรับ', 'เบราว์เซอร์ของคุณไม่รองรับฟังก์ชันแชร์', 'warning'); return; }
         const file = await processCurrentImage(true, `task-image-${slideIndex + 1}.jpg`);
         if (file) {
-            try {
-                await navigator.share({
-                    files: [file],
-                    title: 'รูปภาพจากระบบจัดการงาน',
-                    text: `รูปภาพที่ ${slideIndex + 1}`
-                });
-            } catch (error) {
-                console.log('Share was cancelled or failed', error);
-            }
+            try { await navigator.share({ files: [file], title: 'รูปภาพจากระบบจัดการงาน', text: `รูปภาพที่ ${slideIndex + 1}` }); } 
+            catch (error) { console.log('Share was cancelled or failed', error); }
         }
     }
-
     async function downloadCurrentImage() {
         const blob = await processCurrentImage();
         if (blob) {
@@ -664,13 +658,11 @@
             a.remove();
         }
     }
-
     function closeLightbox() {
         document.getElementById('lightboxModal').style.display = "none";
         document.querySelector('.lightbox-controls').style.display = 'none';
         document.body.style.overflow = 'auto';
     }
-
     function openLightboxById(attachmentId) {
         if (isSelectionMode) return;
         const index = allAttachments.findIndex(att => att.id === attachmentId);
@@ -681,7 +673,7 @@
         slideIndex = index;
         document.getElementById('lightboxModal').style.display = "block";
         document.body.style.overflow = 'hidden';
-        showSlide(slideIndex);
+        showSlide(index);
     }
     function changeSlide(n) {
         slideIndex += n;
@@ -689,39 +681,29 @@
         if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
         showSlide(slideIndex);
     }
-    // --- END: Lightbox Functions ---
-
-    // --- START: Multi-Select Share Functions ---
     function toggleSelectionMode(reportIdx) {
         isSelectionMode = !isSelectionMode;
         currentReportIndex = isSelectionMode ? reportIdx : -1;
-        
         const historyEntry = document.getElementById(`history-entry-${reportIdx}`);
         const controls = document.getElementById(`multi-select-controls-${reportIdx}`);
-        
         historyEntry.classList.toggle('selection-mode', isSelectionMode);
         controls.classList.toggle('active', isSelectionMode);
-        
         if (!isSelectionMode) {
             selectedAttachments.clear();
             historyEntry.querySelectorAll('.thumbnail.selected').forEach(el => el.classList.remove('selected'));
         }
         updateThumbnailClickEvents(reportIdx);
     }
-
     function updateThumbnailClickEvents(reportIdx) {
         const thumbnails = document.querySelectorAll(`#history-entry-${reportIdx} .thumbnail`);
         const report = techReportsHistory[reportIdx];
-
         thumbnails.forEach((thumb, thumbIndex) => {
             const attachmentId = report.attachments[thumbIndex].id;
             const originalOnclick = () => openLightboxById(attachmentId);
             const selectionOnClick = () => toggleThumbnailSelection(thumb, attachmentId);
-
             thumb.onclick = isSelectionMode ? selectionOnClick : originalOnclick;
         });
     }
-
     function toggleThumbnailSelection(thumbnailElement, attachmentId) {
         thumbnailElement.classList.toggle('selected');
         if (selectedAttachments.has(attachmentId)) {
@@ -731,25 +713,16 @@
         }
         updateSelectionCounter();
     }
-
     function updateSelectionCounter() {
         const count = selectedAttachments.size;
         const counter = document.getElementById(`selection-counter-${currentReportIndex}`);
         const shareBtn = document.getElementById(`share-selected-btn-${currentReportIndex}`);
-        
         if (counter) counter.textContent = `เลือก ${count} รูป`;
         if (shareBtn) shareBtn.disabled = (count === 0);
     }
-
     async function shareSelectedAttachments() {
         if (!navigator.share || selectedAttachments.size === 0) return;
-
-        Swal.fire({
-            title: `กำลังเตรียม ${selectedAttachments.size} รูปเพื่อแชร์...`,
-            allowOutsideClick: false,
-            didOpen: () => { Swal.showLoading(); }
-        });
-
+        Swal.fire({ title: `กำลังเตรียม ${selectedAttachments.size} รูปเพื่อแชร์...`, allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
         try {
             const fetchPromises = Array.from(selectedAttachments).map(async (fileId, index) => {
                 const imageUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1920`;
@@ -757,43 +730,22 @@
                 const blob = await response.blob();
                 return new File([blob], `image-${index + 1}.jpg`, { type: blob.type });
             });
-            
             const files = await Promise.all(fetchPromises);
-            
             Swal.close();
-            
-            await navigator.share({
-                files: files,
-                title: 'รูปภาพงาน',
-                text: `รูปภาพงานจำนวน ${files.length} รูป`
-            });
+            await navigator.share({ files: files, title: 'รูปภาพงาน', text: `รูปภาพงานจำนวน ${files.length} รูป` });
             toggleSelectionMode(currentReportIndex);
-
         } catch (error) {
             Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์รูปภาพได้ในขณะนี้', 'error');
-            console.error("Multi-share error: ", error);
         }
     }
-    // --- END: Multi-Select Share Functions ---
-
-    // --- Other existing functions (deleteReport, flashMessage, handleFormSubmission, etc.) ---
     function deleteReport(reportIndex) {
         Swal.fire({
-            title: 'คุณแน่ใจหรือไม่?',
-            text: "คุณต้องการลบรายงานนี้ใช่ไหม? การกระทำนี้ไม่สามารถย้อนกลับได้!",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'ใช่, ลบเลย!',
-            cancelButtonText: 'ยกเลิก'
+            title: 'คุณแน่ใจหรือไม่?', text: "คุณต้องการลบรายงานนี้ใช่ไหม? การกระทำนี้ไม่สามารถย้อนกลับได้!", icon: 'warning',
+            showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#6c757d', confirmButtonText: 'ใช่, ลบเลย!', cancelButtonText: 'ยกเลิก'
         }).then(async (result) => {
             if (result.isConfirmed) {
                 try {
-                    const response = await fetch(`/api/task/{{ task.id }}/delete_report/${reportIndex}`, {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': csrfToken }
-                    });
+                    const response = await fetch(`/api/task/{{ task.id }}/delete_report/${reportIndex}`, { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
                     const data = await response.json();
                     if (response.ok && data.status === 'success') {
                         await Swal.fire('ลบแล้ว!', data.message, 'success');
@@ -830,14 +782,9 @@
             report.attachments.forEach(att => {
                 container.innerHTML += `
                     <div class="form-check d-inline-block p-1 text-center">
-                        <label class="form-check-label" for="att-${att.id}">
-                            <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" style="width: 100px; height: 100px; object-fit: cover; margin-bottom: 5px;">
-                        </label>
-                        <br>
-                        <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
-                        <small for="att-${att.id}">เก็บไว้</small>
-                    </div>
-                `;
+                        <label class="form-check-label" for="att-${att.id}"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" style="width: 100px; height: 100px; object-fit: cover; margin-bottom: 5px;"></label>
+                        <br><input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked> <small for="att-${att.id}">เก็บไว้</small>
+                    </div>`;
             });
         } else {
             container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
@@ -853,12 +800,7 @@
         alert.role = 'alert';
         alert.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
         container.prepend(alert);
-        setTimeout(() => {
-            const alertInstance = bootstrap.Alert.getInstance(alert);
-            if (alertInstance) {
-                alertInstance.close();
-            }
-        }, 5000);
+        setTimeout(() => { const alertInstance = bootstrap.Alert.getInstance(alert); if (alertInstance) { alertInstance.close(); } }, 5000);
     }
     async function handleFormSubmission(event, form, statusElementId) {
         event.preventDefault();
@@ -881,14 +823,9 @@
                 try {
                     const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
                     const result = await response.json();
-                    if (response.ok && result.status === 'success') {
-                        uploadedAttachments.push(result.file_info);
-                    } else {
-                        flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${result.message}`, 'danger');
-                    }
-                } catch (error) {
-                    flashMessage(`เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์ "${files[i].name}"`, 'danger');
-                }
+                    if (response.ok && result.status === 'success') { uploadedAttachments.push(result.file_info); } 
+                    else { flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${result.message}`, 'danger'); }
+                } catch (error) { flashMessage(`เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์ "${files[i].name}"`, 'danger'); }
             }
         }
         const mainFormData = new FormData(form);
@@ -898,17 +835,7 @@
             const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
             const result = await response.json();
             if (response.ok) {
-                Swal.fire({
-                    toast: true,
-                    icon: 'success',
-                    title: result.message || "บันทึกข้อมูลเรียบร้อยแล้ว!",
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 3000,
-                    timerProgressBar: true,
-                }).then(() => {
-                    window.location.reload();
-                });
+                Swal.fire({ toast: true, icon: 'success', title: result.message || "บันทึกข้อมูลเรียบร้อยแล้ว!", position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true, }).then(() => { window.location.reload(); });
             } else {
                 flashMessage(result.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'danger');
                 submitButton.disabled = false;

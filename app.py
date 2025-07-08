@@ -55,6 +55,24 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
+# --- START: เพิ่มคลังข้อความด่วน (Text Snippets) ---
+TEXT_SNIPPETS = {
+    'task_details': [
+        {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
+        {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
+        {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
+        {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
+    ],
+    'progress_reports': [
+        {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
+        {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
+        {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
+        {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
+    ]
+}
+# --- END: เพิ่มคลังข้อความด่วน ---
+
+
 # --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
@@ -1109,7 +1127,11 @@ def form_page():
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
             return render_template('form.html', form_data=request.form)
 
-    return render_template('form.html')
+    # --- START: ส่งข้อมูล Snippets ไปยัง Template ---
+    return render_template('form.html',
+                           task_detail_snippets=TEXT_SNIPPETS.get('task_details', [])
+                           )
+    # --- END: ส่งข้อมูล Snippets ---
 
 @app.route('/summary')
 def summary():
@@ -1304,8 +1326,10 @@ def schedule_task_from_calendar():
         if task.get('status') == 'completed':
             return jsonify({'status': 'error', 'message': 'ไม่สามารถย้ายงานที่เสร็จสิ้นแล้วได้'}), 403
 
-        dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
-        due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+        # --- FIX: Parse timezone-aware ISO string directly ---
+        dt_utc = date_parse(new_due_str)
+        due_date_gmt = dt_utc.isoformat().replace('+00:00', 'Z')
+        # --- END FIX ---
 
         updated_task = update_google_task(task_id, due=due_date_gmt, status='needsAction')
         
@@ -1520,7 +1544,6 @@ def task_details(task_id):
                 if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
                 elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
             
-            # Instead of flashing, return a success JSON for the frontend to handle
             return jsonify({'status': 'success', 'message': flash_message})
         else:
             flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
@@ -1560,11 +1583,15 @@ def task_details(task_id):
                 all_attachments.append(att_copy)
 
 
+    # --- START: ส่งข้อมูล Snippets ไปยัง Template ---
     return render_template('update_task_details.html',
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []),
-                           all_attachments=all_attachments)
+                           all_attachments=all_attachments,
+                           progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
+                           )
+    # --- END: ส่งข้อมูล Snippets ---
 
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
