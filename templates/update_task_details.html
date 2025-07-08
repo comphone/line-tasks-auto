@@ -4,18 +4,26 @@
 
 {% block head_extra %}
 <style>
-    /* --- START: CSS ที่ออกแบบใหม่สำหรับส่วนข้อมูลสรุป --- */
+    /* --- START: CSS ที่ออกแบบใหม่ --- */
+    /* Container for the summary section with a border */
+    .summary-container {
+        border: 1px solid #dee2e6;
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        margin-bottom: 2rem;
+        background-color: #f8f9fa;
+    }
+
     .info-grid {
         display: grid;
         grid-template-columns: 1fr;
-        gap: 0.6rem; /* Slightly reduced gap */
-        margin-bottom: 2rem;
+        gap: 0.75rem;
     }
     .info-card {
         background-color: #ffffff;
         border-radius: 0.75rem;
-        padding: 0.8rem 1.1rem; /* Slightly reduced padding */
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 0.8rem 1.1rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         border: 1px solid #e9ecef;
         display: flex;
         flex-direction: column;
@@ -25,7 +33,7 @@
     }
     /* Lighter blue gradient */
     .info-card.task-title-card {
-        background: linear-gradient(135deg, #4e9eff, #1a73e8);
+        background: linear-gradient(135deg, #5d9cec, #1a73e8);
         color: white;
         border: none;
     }
@@ -167,43 +175,52 @@
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">ข้อมูลสรุป</h5>
-        <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
-    </div>
-
-    <div class="info-grid">
-        <div class="info-card">
-            <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
-            <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+    <!-- START: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
+    <div class="summary-container">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">ข้อมูลสรุป</h5>
+            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
         </div>
-        <div class="info-card">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
-                    <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
-                </div>
-                <div class="text-end">
-                    <h6 class="info-label" style="font-size: 0.7rem;"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
-                    <p class="info-value info-value-small {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+
+        <div class="info-grid">
+            <div class="info-card">
+                <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
+                <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+            </div>
+            <div class="info-card">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
+                        <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
+                    </div>
+                    <div class="text-end">
+                        <h6 class="info-label" style="font-size: 0.7rem;"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                        <p class="info-value info-value-small {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="info-card full-width-card">
-            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่และพิกัด</h6>
-            <p class="info-value">{{ task.customer.address or '-' }}</p>
-            {% if task.customer.map_url %}
-                <a href="{{ task.customer.map_url }}" target="_blank" class="info-value-small mt-1 d-inline-block">
-                    เปิดใน Google Maps <i class="fas fa-external-link-alt fa-xs"></i>
-                </a>
-            {% endif %}
-        </div>
-        <div class="info-card task-title-card full-width-card">
-            <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
-            <p class="info-value task-title">{{ task.title }}</p>
+            <div class="info-card full-width-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+                        <p class="info-value">{{ task.customer.address or '-' }}</p>
+                    </div>
+                    {% if task.customer.map_url %}
+                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;">
+                            <i class="fas fa-map-marked-alt"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="info-card task-title-card full-width-card">
+                <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
+                <p class="info-value task-title">{{ task.title }}</p>
+            </div>
         </div>
     </div>
+    <!-- END: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
     
+    <!-- ส่วนที่เหลือของหน้าเว็บเหมือนเดิมทั้งหมด -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
@@ -663,7 +680,6 @@
     async function processCurrentImage(asFile = false, fileName = 'image.jpg') {
         if (slideIndex === undefined) return null;
         const attachment = allAttachments[slideIndex];
-        // Use a more direct URL for fetching
         const imageUrl = `https://drive.google.com/uc?id=${attachment.id}`;
         try {
             const response = await fetch(imageUrl);
