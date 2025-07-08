@@ -8,13 +8,13 @@
     .info-grid {
         display: grid;
         grid-template-columns: 1fr;
-        gap: 0.75rem;
+        gap: 0.6rem; /* Slightly reduced gap */
         margin-bottom: 2rem;
     }
     .info-card {
         background-color: #ffffff;
         border-radius: 0.75rem;
-        padding: 1rem 1.25rem;
+        padding: 0.8rem 1.1rem; /* Slightly reduced padding */
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         border: 1px solid #e9ecef;
         display: flex;
@@ -68,16 +68,18 @@
         font-size: 1.15em;
         font-weight: 600;
     }
-    /* New style for de-emphasized text */
     .info-value-small {
-        font-size: 0.9em !important;
+        font-size: 0.85em !important;
         font-weight: 400 !important;
         color: #6c757d !important;
     }
     .info-value a {
         color: #0d6efd;
-        text-decoration: underline;
+        text-decoration: none;
         font-weight: 600;
+    }
+    .info-value a:hover {
+        text-decoration: underline;
     }
     .task-title-card .info-value a {
         color: white;
@@ -187,30 +189,27 @@
 
         <!-- Row 3: Appointment & Created Date -->
         <div class="info-card">
-            <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
-            <p class="info-value {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                    <p class="info-value {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+                </div>
+                <div class="text-end">
+                    <h6 class="info-label" style="font-size: 0.7rem;">วันที่รับงาน</h6>
+                    <p class="info-value info-value-small">{{ task.created_formatted or '-' }}</p>
+                </div>
+            </div>
         </div>
+
+        <!-- Row 3: Address & Map (Combined) -->
         <div class="info-card">
-            <h6 class="info-label"><i class="fas fa-plus-circle"></i>วันที่รับงาน</h6>
-            <p class="info-value info-value-small">{{ task.created_formatted or '-' }}</p>
-        </div>
-
-        <!-- Row 4: Address (Full Width) -->
-        <div class="info-card full-width-card">
-            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่และพิกัด</h6>
             <p class="info-value">{{ task.customer.address or '-' }}</p>
-        </div>
-
-        <!-- Row 5: Map URL (Full Width) -->
-        <div class="info-card full-width-card">
-            <h6 class="info-label"><i class="fas fa-map-pin"></i>พิกัดแผนที่</h6>
-            <p class="info-value">
-                {% if task.customer.map_url %}
-                    <a href="{{ task.customer.map_url }}" target="_blank">เปิดใน Google Maps</a>
-                {% else %}
-                    -
-                {% endif %}
-            </p>
+            {% if task.customer.map_url %}
+                <a href="{{ task.customer.map_url }}" target="_blank" class="info-value-small mt-1 d-inline-block">
+                    เปิดใน Google Maps <i class="fas fa-external-link-alt fa-xs"></i>
+                </a>
+            {% endif %}
         </div>
     </div>
     <!-- END: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
@@ -731,14 +730,12 @@
         showSlide(index);
     }
 
-    // --- START: แก้ไขฟังก์ชัน changeSlide ---
     function changeSlide(n) {
         slideIndex += n;
         if (slideIndex >= allAttachments.length) { slideIndex = 0; }
         if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
-        showSlide(slideIndex); // แก้จาก index เป็น slideIndex
+        showSlide(slideIndex);
     }
-    // --- END: แก้ไขฟังก์ชัน changeSlide ---
 
     function toggleSelectionMode(reportIdx) {
         isSelectionMode = !isSelectionMode;
