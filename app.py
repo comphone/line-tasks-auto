@@ -304,19 +304,14 @@ def get_customer_database():
     if not all_tasks:
         return []
 
-    # Use a dictionary to store the latest info for each unique customer
-    # Key: (lower_case_name, phone_number)
     customers_dict = {}
-
-    # Sort tasks by creation date, newest first, to prioritize recent info
     all_tasks.sort(key=lambda x: x.get('created', '0'), reverse=True)
 
     for task in all_tasks:
         notes = task.get('notes', '')
         if not notes:
             continue
-        
-        # We only need the base notes, not the reports
+
         _, base_notes = parse_tech_report_from_notes(notes)
         customer_info = parse_customer_info_from_notes(base_notes)
 
@@ -324,21 +319,21 @@ def get_customer_database():
         phone = customer_info.get('phone', '').strip()
 
         if not name:
-            continue # Skip if there's no customer name
+            continue
 
         customer_key = (name.lower(), phone)
-        
-        # If this customer is not yet in our dict, add them
+
         if customer_key not in customers_dict:
+            # จุดสำคัญคือการเพิ่ม 'map_url' เข้าไปใน dictionary นี้
             customers_dict[customer_key] = {
                 'name': name,
                 'phone': phone,
                 'organization': customer_info.get('organization', '').strip(),
-                'address': customer_info.get('address', '').strip()
+                'address': customer_info.get('address', '').strip(),
+                'map_url': customer_info.get('map_url', '') # <-- บรรทัดที่เพิ่มเข้ามา
             }
-    
+
     app.logger.info(f"Customer database built with {len(customers_dict)} unique customers.")
-    # Return a list of customer dictionaries
     return list(customers_dict.values())
 # --- END: เพิ่มฟังก์ชันสร้างฐานข้อมูลลูกค้า ---
 
