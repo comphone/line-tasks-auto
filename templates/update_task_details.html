@@ -4,68 +4,88 @@
 
 {% block head_extra %}
 <style>
-    /* General Styles (no changes from previous version) */
-    .info-hero-card {
+    /* --- START: CSS ที่ออกแบบใหม่สำหรับส่วนข้อมูลสรุป --- */
+
+    /* Main container for info cards */
+    .info-grid {
+        display: grid;
+        grid-template-columns: 1fr; /* 1 คอลัมน์บนมือถือ */
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    /* Styling for each individual info card */
+    .info-card {
+        background-color: #ffffff;
+        border-radius: 0.75rem;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e9ecef;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .info-card.task-title-card {
         background: linear-gradient(135deg, #0d6efd, #0a58ca);
         color: white;
-        border-radius: .75rem;
-        margin-bottom: 1.5rem;
-        padding: 1rem;
-    }
-    .info-hero-card .list-group-item {
-        background-color: transparent;
         border: none;
-        color: white;
+    }
+
+    /* Label style (e.g., "ลูกค้า", "เบอร์โทร") */
+    .info-label {
         display: flex;
-        align-items: flex-start;
-        padding: 0.75rem 0.5rem;
-        position: relative;
-        overflow: hidden;
-    }
-    .info-hero-card .list-group-item:not(:last-child)::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 15px;
-        right: 15px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .info-hero-card .info-icon {
-        width: 35px;
-        font-size: 1.1rem;
-        text-align: center;
-        margin-top: 2px;
-        opacity: 0.8;
-    }
-    .info-hero-card .info-content {
-        margin-left: 0.75rem;
-        word-break: break-word;
-        width: 100%;
-    }
-    .info-hero-card .info-label {
+        align-items: center;
         font-size: 0.85em;
-        opacity: 0.8;
-        margin-bottom: 0.2rem;
         font-weight: 500;
-        color: #B0D9FF;
+        color: #6c757d;
+        margin-bottom: 0.35rem;
     }
-    .info-hero-card .info-value {
+    .info-label i {
+        width: 20px;
+        text-align: center;
+        margin-right: 0.5rem;
+        color: #adb5bd;
+    }
+    
+    .task-title-card .info-label,
+    .task-title-card .info-label i {
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Value style (e.g., the actual customer name or phone number) */
+    .info-value {
         font-size: 1.1em;
         font-weight: 600;
-        margin-bottom: 0.5rem;
-        line-height: 1.3;
+        color: #212529;
+        word-break: break-word; /* ให้ตัดคำเมื่อยาวเกิน */
+        margin-bottom: 0;
     }
-    .info-hero-card .info-value a { color: white; text-decoration: underline; }
-    .info-hero-card .info-content .info-value.task-title,
-    .info-hero-card .info-content .info-value.customer-name {
-        font-size: 1.2em;
+    
+    .task-title-card .info-value {
+        color: white;
+        font-size: 1.25em;
         font-weight: 700;
     }
-    .info-hero-card .card-header {
-        background-color: transparent;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 0.75rem 0.5rem;
+
+    .info-value a {
+        color: #0d6efd;
+        text-decoration: underline;
     }
+    
+    .task-title-card .info-value a {
+        color: white;
+    }
+
+    /* Responsive: 2 columns for medium screens and up */
+    @media (min-width: 768px) {
+        .info-grid {
+            grid-template-columns: repeat(2, 1fr); /* 2 คอลัมน์บนจอใหญ่ */
+        }
+    }
+    /* --- END: CSS ที่ออกแบบใหม่ --- */
+
+
+    /* --- โค้ด CSS ส่วนที่เหลือเหมือนเดิม --- */
     .danger-zone {
         border: 2px solid var(--bs-danger-border-subtle);
         border-radius: .5rem;
@@ -109,20 +129,12 @@
         user-select: none;
         -webkit-user-select: none;
         transform: translateY(-50%);
-        font-size: 2.5rem; /* Larger icon size */
-        background-color: rgba(0,0,0,0.5); /* Semi-transparent background */
+        font-size: 2.5rem;
+        background-color: rgba(0,0,0,0.5);
     }
-    .lightbox-prev {
-        left: 1rem;
-        border-radius: 3px 0 0 3px;
-    }
-    .lightbox-next {
-        right: 1rem;
-        border-radius: 0 3px 3px 0;
-    }
-    .lightbox-nav:hover {
-        background-color: rgba(0,0,0,0.8);
-    }
+    .lightbox-prev { left: 1rem; border-radius: 3px 0 0 3px; }
+    .lightbox-next { right: 1rem; border-radius: 0 3px 3px 0; }
+    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
     .lightbox-controls {
         text-align: center;
         padding: 10px 0;
@@ -202,54 +214,69 @@
     
     <div id="js-flash-message-container"></div>
 
-    <!-- ... (Hero card and action cards remain the same) ... -->
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2">📝 จัดการงาน</h1>
+        <h1 class="h2 mb-0">📝 จัดการงาน</h1>
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    <div class="card shadow-lg mb-4 info-hero-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 text-white">ข้อมูลสรุป</h5>
-             <div>
-                <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-light" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไข</a>
-            </div>
-        </div>
-        <ul class="list-group list-group-flush">
-            <li class="list-group-item">
-                <div class="info-icon"><i class="fas fa-user"></i></div>
-                <div class="info-content">
-                    <p class="info-label">ลูกค้า</p>
-                    <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
-                </div>
-            </li>
-            <li class="list-group-item">
-                <div class="info-icon"><i class="fas fa-phone"></i></div>
-                <div class="info-content">
-                    <p class="info-label">เบอร์โทร</p>
-                    <p class="info-value">{{ task.customer.phone or '-' }}</p>
-                </div>
-            </li>
-             <li class="list-group-item">
-                <div class="info-icon"><i class="fas fa-calendar-alt"></i></div>
-                <div class="info-content">
-                    <p class="info-label">นัดหมาย</p>
-                    <div class="d-flex justify-content-between align-items-end">
-                        <p class="info-value mb-0 {% if task.is_today and task.status != 'completed' %}text-info{% elif task.is_overdue and task.status != 'completed' %}text-warning{% endif %}">{{ task.due_formatted or '-' }}</p>
-                        <small class="text-white-50"> (รับงาน: {{ task.created_formatted or '-' }})</small>
-                    </div>
-                </div>
-            </li>
-            <li class="list-group-item">
-                <div class="info-icon"><i class="fas fa-comment-dots"></i></div>
-                <div class="info-content">
-                    <p class="info-label">รายละเอียดงาน</p>
-                    <p class="info-value task-title">{{ task.title }}</p>
-                </div>
-            </li>
-        </ul>
+    <!-- START: โครงสร้าง HTML ที่ออกแบบใหม่ -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">ข้อมูลสรุป</h5>
+        <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
     </div>
+
+    <div class="info-grid">
+        <!-- Task Title Card -->
+        <div class="info-card task-title-card" style="grid-column: 1 / -1;">
+            <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
+            <p class="info-value">{{ task.title }}</p>
+        </div>
+
+        <!-- Customer Card -->
+        <div class="info-card">
+            <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
+            <p class="info-value">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+        </div>
+
+        <!-- Phone Card -->
+        <div class="info-card">
+            <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
+            <p class="info-value">{{ task.customer.phone or '-' }}</p>
+        </div>
+
+        <!-- Address Card -->
+        <div class="info-card">
+            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+            <p class="info-value">{{ task.customer.address or '-' }}</p>
+        </div>
+
+        <!-- Map URL Card -->
+        <div class="info-card">
+            <h6 class="info-label"><i class="fas fa-map-pin"></i>พิกัดแผนที่</h6>
+            <p class="info-value">
+                {% if task.customer.map_url %}
+                    <a href="{{ task.customer.map_url }}" target="_blank">เปิดใน Google Maps</a>
+                {% else %}
+                    -
+                {% endif %}
+            </p>
+        </div>
+        
+        <!-- Appointment Card -->
+        <div class="info-card">
+            <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+            <p class="info-value {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+        </div>
+
+        <!-- Created Date Card -->
+        <div class="info-card">
+            <h6 class="info-label"><i class="fas fa-plus-circle"></i>วันที่รับงาน</h6>
+            <p class="info-value">{{ task.created_formatted or '-' }}</p>
+        </div>
+    </div>
+    <!-- END: โครงสร้าง HTML ที่ออกแบบใหม่ -->
     
+    <!-- โค้ดส่วนที่เหลือทั้งหมดเหมือนเดิม -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
@@ -380,7 +407,6 @@
         </div>
     </div>
 
-    <!-- Task History -->
     <div class="card shadow-sm mb-4">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
@@ -397,11 +423,9 @@
                         <div class="d-flex align-items-center flex-wrap">
                             <small class="text-muted me-3 mb-2">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
                             {% if report.type == 'report' %}
-                            <!-- START: เพิ่มปุ่มแก้ไขข้อความ -->
                             <button class="btn btn-sm btn-outline-primary mb-2 me-1" onclick="openEditReportTextModal({{ loop.index0 }})" title="แก้ไขข้อความสรุป">
                                 <i class="fas fa-pen"></i>
                             </button>
-                            <!-- END: เพิ่มปุ่มแก้ไขข้อความ -->
                             <button class="btn btn-sm btn-outline-secondary mb-2 me-1" onclick="openEditReportModal({{ loop.index0 }})">
                                 <i class="fas fa-images"></i>
                             </button>
@@ -454,7 +478,6 @@
         </div>
     </div>
     
-    <!-- ... (Danger zone remains the same) ... -->
     <hr class="my-5">
 
     <div class="danger-zone">
@@ -481,7 +504,6 @@
     </div>
 </div>
 
-<!-- ... (Lightbox, Technician, and Edit Attachments Modals remain the same) ... -->
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
     <img class="lightbox-content" id="lightboxImg">
@@ -540,7 +562,6 @@
   </div>
 </div>
 
-<!-- START: เพิ่ม Modal สำหรับแก้ไขข้อความสรุป -->
 <div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -561,20 +582,18 @@
     </div>
   </div>
 </div>
-<!-- END: เพิ่ม Modal -->
 
 {% endblock %}
 
 {% block body_extra %}
 <script>
-    // ... (All existing state variables and event listeners remain the same) ...
     const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     let slideIndex;
     let technicianSelectionModal;
     let editReportModal;
-    let editReportTextModal; // <-- เพิ่มตัวแปรสำหรับ Modal ใหม่
+    let editReportTextModal;
     let currentTechnicianTargetId;
     const csrfToken = '{{ csrf_token() }}';
     let touchStartX = 0;
@@ -589,11 +608,9 @@
         if(document.getElementById('editReportModal')) {
             editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         }
-        // START: Initialize the new modal
         if(document.getElementById('editReportTextModal')) {
             editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         }
-        // END: Initialize the new modal
 
         const workSummaryInput = document.getElementById('work_summary_progress');
         const filesProgressInput = document.getElementById('files_progress');
@@ -638,8 +655,7 @@
             tributeProgress.attach(document.getElementById('reschedule_reason'));
         }
     });
-
-    // START: เพิ่มฟังก์ชันสำหรับเปิดและบันทึก Modal แก้ไขข้อความ
+    
     function openEditReportTextModal(reportIndex) {
         const report = techReportsHistory[reportIndex];
         if (!report) return;
@@ -680,9 +696,8 @@
 
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                // Update text on the page without reloading
                 document.getElementById(`summary-text-${reportIndex}`).textContent = newSummary;
-                techReportsHistory[reportIndex].work_summary = newSummary; // Update local data
+                techReportsHistory[reportIndex].work_summary = newSummary;
                 editReportTextModal.hide();
                 flashMessage(result.message, 'success');
             } else {
@@ -695,9 +710,7 @@
             submitButton.innerHTML = originalButtonHtml;
         }
     }
-    // END: เพิ่มฟังก์ชัน
-
-    // ... (All other existing JavaScript functions remain the same) ...
+    
     function handleTouchStart(event) { touchStartX = event.touches[0].clientX; }
     function handleTouchEnd(event) {
         if (!touchStartX) return;
@@ -1001,4 +1014,4 @@
         }
     }
 </script>
-{% endblock %}
+{% endblock
