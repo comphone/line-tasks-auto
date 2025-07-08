@@ -373,6 +373,7 @@
         </div>
     </div>
 
+    <!-- Task History -->
     <div class="card shadow-sm mb-4">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
@@ -664,7 +665,11 @@
         document.body.style.overflow = 'auto';
     }
     function openLightboxById(attachmentId) {
-        if (isSelectionMode) return;
+        if (isSelectionMode) {
+            const thumb = document.querySelector(`.thumbnail[onclick*="'${attachmentId}'"]`);
+            if (thumb) toggleThumbnailSelection(thumb, attachmentId);
+            return;
+        };
         const index = allAttachments.findIndex(att => att.id === attachmentId);
         if (index !== -1) { openLightbox(index); }
     }
@@ -699,9 +704,13 @@
         const report = techReportsHistory[reportIdx];
         thumbnails.forEach((thumb, thumbIndex) => {
             const attachmentId = report.attachments[thumbIndex].id;
-            const originalOnclick = () => openLightboxById(attachmentId);
-            const selectionOnClick = () => toggleThumbnailSelection(thumb, attachmentId);
-            thumb.onclick = isSelectionMode ? selectionOnClick : originalOnclick;
+            thumb.onclick = () => {
+                if (isSelectionMode) {
+                    toggleThumbnailSelection(thumb, attachmentId);
+                } else {
+                    openLightboxById(attachmentId);
+                }
+            };
         });
     }
     function toggleThumbnailSelection(thumbnailElement, attachmentId) {
@@ -772,6 +781,50 @@
         } else {
              progressReportCard.style.display = 'none';
         }
+    }
+    function openTechnicianModal(targetInputId) {
+        currentTechnicianTargetId = targetInputId;
+        const targetInput = document.getElementById(targetInputId);
+        const selectedTechnicians = targetInput.value ? targetInput.value.split(',') : [];
+        const container = document.getElementById('technician-list-container');
+        container.innerHTML = '';
+        if (technicianList.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-warning text-center" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    ไม่พบรายชื่อช่างในระบบ
+                    <hr>
+                    <p class="mb-0 small">กรุณาไปที่หน้า <a href="{{ url_for('settings_page') }}" class="alert-link">ตั้งค่า</a> เพื่อเพิ่มรายชื่อช่างก่อน</p>
+                </div>
+            `;
+        } else {
+            technicianList.forEach(tech => {
+                const isChecked = selectedTechnicians.includes(tech.name);
+                const avatarUrl = tech.avatar_id 
+                    ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` 
+                    : `https://via.placeholder.com/40/0d6efd/ffffff?text=${encodeURIComponent(tech.name.charAt(0))}`;
+                container.innerHTML += `
+                    <div class="form-check mb-2 d-flex align-items-center">
+                        <input class="form-check-input" type="checkbox" value="${tech.name}" id="tech-${tech.name.replace(/\s/g, '')}" ${isChecked ? 'checked' : ''}>
+                        <label class="form-check-label d-flex align-items-center ms-2" for="tech-${tech.name.replace(/\s/g, '')}">
+                            <img src="${avatarUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;">
+                            <span class="flex-grow-1">${tech.name}</span>
+                        </label>
+                    </div>
+                `;
+            });
+        }
+        technicianSelectionModal.show();
+    }
+    function confirmTechnicianSelection() {
+        const selectedNames = [];
+        const checkboxes = document.querySelectorAll('#technician-list-container input[type="checkbox"]:checked');
+        checkboxes.forEach(checkbox => { selectedNames.push(checkbox.value); });
+        const targetInput = document.getElementById(currentTechnicianTargetId);
+        const displayInput = document.getElementById(currentTechnicianTargetId + '_display');
+        targetInput.value = selectedNames.join(',');
+        displayInput.value = selectedNames.length > 0 ? selectedNames.join(', ') : 'กรุณาเลือกช่าง...';
+        technicianSelectionModal.hide();
     }
     function openEditReportModal(reportIndex) {
         const report = techReportsHistory[reportIndex];
@@ -851,3 +904,15 @@
     }
 </script>
 {% endblock %}
+```
+
+#### **ขั้นตอนที่ 2: ไปที่หน้า "ตั้งค่า" เพื่อเพิ่มรายชื่อช่าง**
+1.  เปิดเว็บแอปของคุณแล้วไปที่เมนู **"ตั้งค่า"**
+2.  เลื่อนลงมาที่หัวข้อ **"จัดการรายชื่อช่าง"**
+3.  กดปุ่ม **<i class="fas fa-plus me-2"></i>เพิ่มช่างใหม่**
+4.  ใส่ "ชื่อช่าง" และเลือก "รูปภาพโปรไฟล์" (ถ้ามี)
+5.  กด **"บันทึก"**
+6.  ทำซ้ำจนครบรายชื่อช่างทั้งหมด
+7.  สุดท้าย กดปุ่ม **<i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด** ที่ด้านล่างสุดของหน้า เพื่อบันทึกรายชื่อช่างลงในระบบอย่างถาวร
+
+หลังจากทำตาม 2 ขั้นตอนนี้แล้ว เมื่อคุณกลับไปที่หน้า "จัดการงาน" และกดปุ่ม "เลือก" ช่าง หน้าต่าง Modal ก็จะแสดงรายชื่อช่างที่คุณเพิ่มไว้ให้เลือกใช้งานได้ตามปกติค
