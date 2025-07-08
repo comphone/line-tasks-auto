@@ -4,7 +4,7 @@
 
 {% block head_extra %}
 <style>
-    /* General Styles */
+    /* General Styles (no changes from previous version) */
     .info-hero-card {
         background: linear-gradient(135deg, #0d6efd, #0a58ca);
         color: white;
@@ -95,7 +95,6 @@
     .lightbox-caption { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; }
     .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
     .hidden-file-input { display: none; }
-
     .lightbox-nav {
         cursor: pointer;
         position: absolute;
@@ -110,12 +109,20 @@
         user-select: none;
         -webkit-user-select: none;
         transform: translateY(-50%);
-        font-size: 2.5rem;
-        background-color: rgba(0,0,0,0.5);
+        font-size: 2.5rem; /* Larger icon size */
+        background-color: rgba(0,0,0,0.5); /* Semi-transparent background */
     }
-    .lightbox-prev { left: 1rem; border-radius: 3px 0 0 3px; }
-    .lightbox-next { right: 1rem; border-radius: 0 3px 3px 0; }
-    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
+    .lightbox-prev {
+        left: 1rem;
+        border-radius: 3px 0 0 3px;
+    }
+    .lightbox-next {
+        right: 1rem;
+        border-radius: 0 3px 3px 0;
+    }
+    .lightbox-nav:hover {
+        background-color: rgba(0,0,0,0.8);
+    }
     .lightbox-controls {
         text-align: center;
         padding: 10px 0;
@@ -132,7 +139,6 @@
         background-color: rgba(40, 40, 40, 0.8);
         border: 1px solid rgba(255, 255, 255, 0.5);
     }
-
     .multi-select-controls {
         position: fixed;
         bottom: 0;
@@ -196,6 +202,7 @@
     
     <div id="js-flash-message-container"></div>
 
+    <!-- ... (Hero card and action cards remain the same) ... -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">📝 จัดการงาน</h1>
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
@@ -390,8 +397,13 @@
                         <div class="d-flex align-items-center flex-wrap">
                             <small class="text-muted me-3 mb-2">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
                             {% if report.type == 'report' %}
+                            <!-- START: เพิ่มปุ่มแก้ไขข้อความ -->
+                            <button class="btn btn-sm btn-outline-primary mb-2 me-1" onclick="openEditReportTextModal({{ loop.index0 }})" title="แก้ไขข้อความสรุป">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <!-- END: เพิ่มปุ่มแก้ไขข้อความ -->
                             <button class="btn btn-sm btn-outline-secondary mb-2 me-1" onclick="openEditReportModal({{ loop.index0 }})">
-                                <i class="fas fa-images"></i> แก้ไขรูป
+                                <i class="fas fa-images"></i>
                             </button>
                             {% endif %}
                             <button class="btn btn-sm btn-outline-danger mb-2 me-1" onclick="deleteReport({{ loop.index0 }})" title="ลบรายงานนี้">
@@ -399,7 +411,7 @@
                             </button>
                              {% if report.type == 'report' and report.attachments %}
                             <button class="btn btn-sm btn-outline-info mb-2" onclick="toggleSelectionMode({{ loop.index0 }})" title="เลือกหลายภาพเพื่อแชร์">
-                                <i class="fas fa-share-square"></i> เลือกรูป
+                                <i class="fas fa-share-square"></i>
                             </button>
                             {% endif %}
                         </div>
@@ -409,7 +421,7 @@
                             <p class="mb-1"><strong>นัดหมายใหม่:</strong> {{ report.new_due_date }}</p>
                             <p><strong>เหตุผล:</strong> {{ report.reason or 'ไม่ได้ระบุ' }}</p>
                          {% else %}
-                            <p><strong>สรุป:</strong> {{ report.work_summary or '-' }}</p>
+                            <p><strong>สรุป:</strong> <span id="summary-text-{{ loop.index0 }}">{{ report.work_summary or '-' }}</span></p>
                          {% endif %}
                          <p class="mb-0"><small class="text-muted"><strong>ช่าง/ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
                     </div>
@@ -442,6 +454,7 @@
         </div>
     </div>
     
+    <!-- ... (Danger zone remains the same) ... -->
     <hr class="my-5">
 
     <div class="danger-zone">
@@ -468,6 +481,7 @@
     </div>
 </div>
 
+<!-- ... (Lightbox, Technician, and Edit Attachments Modals remain the same) ... -->
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
     <img class="lightbox-content" id="lightboxImg">
@@ -526,24 +540,47 @@
   </div>
 </div>
 
+<!-- START: เพิ่ม Modal สำหรับแก้ไขข้อความสรุป -->
+<div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editReportTextForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editReportTextModalLabel">แก้ไขข้อความสรุป</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <label for="editTextarea" class="form-label">ข้อความสรุป</label>
+            <textarea class="form-control" id="editTextarea" rows="5" required></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<!-- END: เพิ่ม Modal -->
+
 {% endblock %}
 
 {% block body_extra %}
 <script>
-    // --- START: State Variables ---
+    // ... (All existing state variables and event listeners remain the same) ...
     const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     let slideIndex;
     let technicianSelectionModal;
     let editReportModal;
+    let editReportTextModal; // <-- เพิ่มตัวแปรสำหรับ Modal ใหม่
     let currentTechnicianTargetId;
     const csrfToken = '{{ csrf_token() }}';
     let touchStartX = 0;
     let isSelectionMode = false;
     let selectedAttachments = new Set();
     let currentReportIndex = -1;
-    // --- END: State Variables ---
 
     document.addEventListener('DOMContentLoaded', function() {
         if(document.getElementById('technicianSelectionModal')) {
@@ -552,6 +589,11 @@
         if(document.getElementById('editReportModal')) {
             editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         }
+        // START: Initialize the new modal
+        if(document.getElementById('editReportTextModal')) {
+            editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
+        }
+        // END: Initialize the new modal
 
         const workSummaryInput = document.getElementById('work_summary_progress');
         const filesProgressInput = document.getElementById('files_progress');
@@ -573,7 +615,6 @@
             lightboxImgElement.addEventListener('touchend', handleTouchEnd, false);
         }
 
-        // --- START: Initialize Text Snippets ---
         const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
         if (progressReportSnippets && progressReportSnippets.length > 0) {
             const tributeProgress = new Tribute({
@@ -596,10 +637,67 @@
             tributeProgress.attach(document.getElementById('work_summary_final'));
             tributeProgress.attach(document.getElementById('reschedule_reason'));
         }
-        // --- END: Initialize Text Snippets ---
     });
-    
-    // --- All other JavaScript functions go here ---
+
+    // START: เพิ่มฟังก์ชันสำหรับเปิดและบันทึก Modal แก้ไขข้อความ
+    function openEditReportTextModal(reportIndex) {
+        const report = techReportsHistory[reportIndex];
+        if (!report) return;
+
+        const textarea = document.getElementById('editTextarea');
+        textarea.value = report.work_summary || '';
+
+        const form = document.getElementById('editReportTextForm');
+        form.onsubmit = (event) => saveReportText(event, reportIndex);
+        
+        editReportTextModal.show();
+    }
+
+    async function saveReportText(event, reportIndex) {
+        event.preventDefault();
+        const textarea = document.getElementById('editTextarea');
+        const newSummary = textarea.value.trim();
+
+        if (newSummary === "") {
+            flashMessage('กรุณากรอกข้อความสรุป', 'warning');
+            return;
+        }
+
+        const submitButton = event.target.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+        try {
+            const response = await fetch(`/api/task/{{ task.id }}/edit_report_text/${reportIndex}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ summary: newSummary })
+            });
+
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                // Update text on the page without reloading
+                document.getElementById(`summary-text-${reportIndex}`).textContent = newSummary;
+                techReportsHistory[reportIndex].work_summary = newSummary; // Update local data
+                editReportTextModal.hide();
+                flashMessage(result.message, 'success');
+            } else {
+                flashMessage(result.message || 'เกิดข้อผิดพลาดในการบันทึก', 'danger');
+            }
+        } catch (error) {
+            flashMessage('การเชื่อมต่อล้มเหลว', 'danger');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    }
+    // END: เพิ่มฟังก์ชัน
+
+    // ... (All other existing JavaScript functions remain the same) ...
     function handleTouchStart(event) { touchStartX = event.touches[0].clientX; }
     function handleTouchEnd(event) {
         if (!touchStartX) return;
@@ -904,15 +1002,3 @@
     }
 </script>
 {% endblock %}
-```
-
-#### **ขั้นตอนที่ 2: ไปที่หน้า "ตั้งค่า" เพื่อเพิ่มรายชื่อช่าง**
-1.  เปิดเว็บแอปของคุณแล้วไปที่เมนู **"ตั้งค่า"**
-2.  เลื่อนลงมาที่หัวข้อ **"จัดการรายชื่อช่าง"**
-3.  กดปุ่ม **<i class="fas fa-plus me-2"></i>เพิ่มช่างใหม่**
-4.  ใส่ "ชื่อช่าง" และเลือก "รูปภาพโปรไฟล์" (ถ้ามี)
-5.  กด **"บันทึก"**
-6.  ทำซ้ำจนครบรายชื่อช่างทั้งหมด
-7.  สุดท้าย กดปุ่ม **<i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด** ที่ด้านล่างสุดของหน้า เพื่อบันทึกรายชื่อช่างลงในระบบอย่างถาวร
-
-หลังจากทำตาม 2 ขั้นตอนนี้แล้ว เมื่อคุณกลับไปที่หน้า "จัดการงาน" และกดปุ่ม "เลือก" ช่าง หน้าต่าง Modal ก็จะแสดงรายชื่อช่างที่คุณเพิ่มไว้ให้เลือกใช้งานได้ตามปกติค
