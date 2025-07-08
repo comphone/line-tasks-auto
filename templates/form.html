@@ -12,6 +12,32 @@
             width: 42px; /* Fixed width for icons */
             justify-content: center;
         }
+        /* Tribute.js custom style */
+        .tribute-container {
+            border: 1px solid #dee2e6;
+            border-radius: .375rem;
+            box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+            background-color: #fff;
+        }
+        .tribute-container ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        .tribute-container li {
+            border-bottom: 1px solid #f1f1f1;
+            cursor: pointer;
+        }
+        .tribute-container li:last-child {
+            border-bottom: none;
+        }
+        .tribute-container li.highlight {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .tribute-container li.highlight small {
+            color: #e9ecef;
+        }
     </style>
 {% endblock %}
 
@@ -89,6 +115,7 @@
                             <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ request.form.task_title or '' }}</textarea>
                             <div class="invalid-feedback">กรุณากรอกรายละเอียดงาน</div>
                         </div>
+                         <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                     </div>
 
                     <div class="mb-3">
@@ -138,7 +165,7 @@
                             (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                locationInput.value = `https://maps.google.com/maps?q=${lat},${lon}`;
+                                locationInput.value = `https://www.google.com/maps?q=${lat},${lon}`;
                                 statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
                                 statusText.classList.remove('text-danger');
                                 statusText.classList.add('text-success');
@@ -189,6 +216,30 @@
                         form.classList.add('was-validated');
                     }, false);
                 });
+
+            // --- START: Text Snippets ---
+            const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }};
+            
+            if (taskDetailSnippets && taskDetailSnippets.length > 0) {
+                const tribute = new Tribute({
+                    trigger: '/',
+                    values: taskDetailSnippets,
+                    selectTemplate: function(item) {
+                        if (item === undefined) return null;
+                        return item.original.value;
+                    },
+                    menuItemTemplate: function(item) {
+                        return `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`;
+                    },
+                    noMatchTemplate: function () {
+                        return '<li class="p-2 text-muted">ไม่พบข้อความที่ตรงกัน</li>';
+                    },
+                    allowSpaces: true,
+                    menuContainer: document.body
+                });
+                tribute.attach(document.getElementById('task_title'));
+            }
+            // --- END: Text Snippets ---
         });
     </script>
 {% endblock %}
