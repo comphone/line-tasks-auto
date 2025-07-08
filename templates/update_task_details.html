@@ -54,14 +54,16 @@
         word-break: break-word;
         margin-bottom: 0;
     }
-    .info-value.task-title {
-        font-size: 1.4em;
+    /* Adjusted font sizes */
+    .info-value.task-title,
+    .info-value.customer-name {
+        font-size: 1.25em; /* Same prominent size */
         font-weight: 700;
+    }
+    .info-value.task-title {
         color: white;
     }
     .info-value.customer-name {
-        font-size: 1.25em;
-        font-weight: 700;
         color: #0d6efd;
     }
     .info-value.phone-number {
@@ -169,9 +171,7 @@
         <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
     </div>
 
-    <!-- START: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
     <div class="info-grid">
-        <!-- Row 1: Customer Name & Phone -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
             <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
@@ -180,14 +180,6 @@
             <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
             <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
         </div>
-
-        <!-- Row 2: Task Details (Full Width) -->
-        <div class="info-card task-title-card full-width-card">
-            <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
-            <p class="info-value task-title">{{ task.title }}</p>
-        </div>
-
-        <!-- Row 3: Appointment & Created Date -->
         <div class="info-card">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
@@ -200,8 +192,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Row 3: Address & Map (Combined) -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่และพิกัด</h6>
             <p class="info-value">{{ task.customer.address or '-' }}</p>
@@ -211,10 +201,12 @@
                 </a>
             {% endif %}
         </div>
+        <div class="info-card task-title-card full-width-card">
+            <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
+            <p class="info-value task-title">{{ task.title }}</p>
+        </div>
     </div>
-    <!-- END: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
     
-    <!-- ส่วนที่เหลือของหน้าเว็บเหมือนเดิมทั้งหมด -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
