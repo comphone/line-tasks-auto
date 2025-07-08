@@ -68,6 +68,12 @@
         font-size: 1.15em;
         font-weight: 600;
     }
+    /* New style for de-emphasized text */
+    .info-value-small {
+        font-size: 0.9em !important;
+        font-weight: 400 !important;
+        color: #6c757d !important;
+    }
     .info-value a {
         color: #0d6efd;
         text-decoration: underline;
@@ -94,12 +100,12 @@
         cursor: pointer;
         position: absolute;
         top: 50%;
-        transform: translateY(-50%); /* This is the key for vertical centering */
+        transform: translateY(-50%);
         width: auto;
-        padding: 1rem 1.25rem; /* Larger touch area */
+        padding: 1rem 1.25rem;
         color: white;
         font-weight: bold;
-        font-size: 2.5rem; /* Larger icon */
+        font-size: 2.5rem;
         transition: 0.3s ease;
         border-radius: 5px;
         user-select: none;
@@ -161,11 +167,9 @@
         <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
     </div>
 
+    <!-- START: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
     <div class="info-grid">
-        <div class="info-card task-title-card full-width-card">
-            <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
-            <p class="info-value task-title">{{ task.title }}</p>
-        </div>
+        <!-- Row 1: Customer Name & Phone -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
             <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
@@ -174,18 +178,30 @@
             <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
             <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
         </div>
+
+        <!-- Row 2: Task Details (Full Width) -->
+        <div class="info-card task-title-card full-width-card">
+            <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
+            <p class="info-value task-title">{{ task.title }}</p>
+        </div>
+
+        <!-- Row 3: Appointment & Created Date -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
             <p class="info-value {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
         </div>
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-plus-circle"></i>วันที่รับงาน</h6>
-            <p class="info-value">{{ task.created_formatted or '-' }}</p>
+            <p class="info-value info-value-small">{{ task.created_formatted or '-' }}</p>
         </div>
+
+        <!-- Row 4: Address (Full Width) -->
         <div class="info-card full-width-card">
             <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
             <p class="info-value">{{ task.customer.address or '-' }}</p>
         </div>
+
+        <!-- Row 5: Map URL (Full Width) -->
         <div class="info-card full-width-card">
             <h6 class="info-label"><i class="fas fa-map-pin"></i>พิกัดแผนที่</h6>
             <p class="info-value">
@@ -197,7 +213,9 @@
             </p>
         </div>
     </div>
+    <!-- END: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
     
+    <!-- ส่วนที่เหลือของหน้าเว็บเหมือนเดิมทั้งหมด -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
