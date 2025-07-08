@@ -9,8 +9,8 @@
     /* Main container for info cards */
     .info-grid {
         display: grid;
-        grid-template-columns: 1fr; /* 1 คอลัมน์บนมือถือ */
-        gap: 1rem;
+        grid-template-columns: 1fr; /* Default to 1 column for mobile */
+        gap: 0.75rem; /* Space between cards */
         margin-bottom: 2rem;
     }
 
@@ -19,26 +19,29 @@
         background-color: #ffffff;
         border-radius: 0.75rem;
         padding: 1rem 1.25rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         border: 1px solid #e9ecef;
         display: flex;
         flex-direction: column;
     }
     
+    /* Special style for the main task title card */
     .info-card.task-title-card {
         background: linear-gradient(135deg, #0d6efd, #0a58ca);
         color: white;
         border: none;
+        grid-column: 1 / -1; /* Make this card span full width */
     }
 
     /* Label style (e.g., "ลูกค้า", "เบอร์โทร") */
     .info-label {
         display: flex;
         align-items: center;
-        font-size: 0.85em;
-        font-weight: 500;
+        font-size: 0.8rem;
+        font-weight: 600;
         color: #6c757d;
         margin-bottom: 0.35rem;
+        text-transform: uppercase;
     }
     .info-label i {
         width: 20px;
@@ -54,52 +57,41 @@
 
     /* Value style (e.g., the actual customer name or phone number) */
     .info-value {
-        font-size: 1.1em;
-        font-weight: 600;
+        font-size: 1.05em;
+        font-weight: 500;
         color: #212529;
-        word-break: break-word; /* ให้ตัดคำเมื่อยาวเกิน */
+        word-break: break-word; /* Break long text */
         margin-bottom: 0;
     }
     
     .task-title-card .info-value {
         color: white;
-        font-size: 1.25em;
+        font-size: 1.2em;
         font-weight: 700;
     }
 
     .info-value a {
         color: #0d6efd;
         text-decoration: underline;
+        font-weight: 600;
     }
     
     .task-title-card .info-value a {
         color: white;
     }
 
-    /* Responsive: 2 columns for medium screens and up */
+    /* Responsive: Switch to 2 columns for medium screens and up */
     @media (min-width: 768px) {
         .info-grid {
-            grid-template-columns: repeat(2, 1fr); /* 2 คอลัมน์บนจอใหญ่ */
+            grid-template-columns: repeat(2, 1fr);
         }
     }
     /* --- END: CSS ที่ออกแบบใหม่ --- */
 
 
-    /* --- โค้ด CSS ส่วนที่เหลือเหมือนเดิม --- */
-    .danger-zone {
-        border: 2px solid var(--bs-danger-border-subtle);
-        border-radius: .5rem;
-        padding: 1rem;
-        background-color: var(--bs-danger-bg-subtle);
-    }
-    .history-entry {
-        background-color: #f8f9fa;
-        border: 1px solid #e9ecef;
-        border-left-width: 5px;
-        border-radius: .375rem;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
+    /* --- The rest of the CSS remains the same --- */
+    .danger-zone { border: 2px solid var(--bs-danger-border-subtle); border-radius: .5rem; padding: 1rem; background-color: var(--bs-danger-bg-subtle); }
+    .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .history-entry-title { font-weight: 600; font-size: 1.05em; margin-right: auto; }
     .history-entry-body p { margin-bottom: 0.25rem; }
@@ -115,92 +107,18 @@
     .lightbox-caption { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; }
     .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
     .hidden-file-input { display: none; }
-    .lightbox-nav {
-        cursor: pointer;
-        position: absolute;
-        top: 50%;
-        width: auto;
-        padding: 16px;
-        margin-top: -50px;
-        color: white;
-        font-weight: bold;
-        transition: 0.6s ease;
-        border-radius: 0 3px 3px 0;
-        user-select: none;
-        -webkit-user-select: none;
-        transform: translateY(-50%);
-        font-size: 2.5rem;
-        background-color: rgba(0,0,0,0.5);
-    }
+    .lightbox-nav { cursor: pointer; position: absolute; top: 50%; width: auto; padding: 16px; margin-top: -50px; color: white; font-weight: bold; transition: 0.6s ease; border-radius: 0 3px 3px 0; user-select: none; -webkit-user-select: none; transform: translateY(-50%); font-size: 2.5rem; background-color: rgba(0,0,0,0.5); }
     .lightbox-prev { left: 1rem; border-radius: 3px 0 0 3px; }
     .lightbox-next { right: 1rem; border-radius: 0 3px 3px 0; }
     .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
-    .lightbox-controls {
-        text-align: center;
-        padding: 10px 0;
-        position: absolute;
-        bottom: 50px;
-        width: 100%;
-        left: 0;
-        z-index: 1071;
-    }
-    .lightbox-controls .btn {
-        border-radius: 20px;
-        padding: 5px 15px;
-        margin: 0 10px;
-        background-color: rgba(40, 40, 40, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.5);
-    }
-    .multi-select-controls {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        background-color: #212529;
-        color: white;
-        padding: 1rem;
-        z-index: 1050;
-        transform: translateY(100%);
-        transition: transform 0.3s ease-in-out;
-        border-top: 1px solid #444;
-    }
-    .multi-select-controls.active {
-        transform: translateY(0);
-    }
-    .history-entry.selection-mode .thumbnail {
-        cursor: pointer;
-        opacity: 0.7;
-    }
-    .thumbnail.selected {
-        opacity: 1;
-        box-shadow: 0 0 0 3px var(--bs-primary);
-        position: relative;
-    }
-    .thumbnail.selected::after {
-        content: '\f00c';
-        font-family: 'Font Awesome 6 Free';
-        font-weight: 900;
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        color: white;
-        background-color: var(--bs-primary);
-        border-radius: 50%;
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        border: 2px solid white;
-    }
-    .tribute-container {
-        border: 1px solid #dee2e6;
-        border-radius: .375rem;
-        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
-        background-color: #fff;
-        z-index: 9999;
-    }
+    .lightbox-controls { text-align: center; padding: 10px 0; position: absolute; bottom: 50px; width: 100%; left: 0; z-index: 1071; }
+    .lightbox-controls .btn { border-radius: 20px; padding: 5px 15px; margin: 0 10px; background-color: rgba(40, 40, 40, 0.8); border: 1px solid rgba(255, 255, 255, 0.5); }
+    .multi-select-controls { position: fixed; bottom: 0; left: 0; width: 100%; background-color: #212529; color: white; padding: 1rem; z-index: 1050; transform: translateY(100%); transition: transform 0.3s ease-in-out; border-top: 1px solid #444; }
+    .multi-select-controls.active { transform: translateY(0); }
+    .history-entry.selection-mode .thumbnail { cursor: pointer; opacity: 0.7; }
+    .thumbnail.selected { opacity: 1; box-shadow: 0 0 0 3px var(--bs-primary); position: relative; }
+    .thumbnail.selected::after { content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900; position: absolute; top: 8px; right: 8px; color: white; background-color: var(--bs-primary); border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 14px; border: 2px solid white; }
+    .tribute-container { border: 1px solid #dee2e6; border-radius: .375rem; box-shadow: 0 .5rem 1rem rgba(0,0,0,.15); background-color: #fff; z-index: 9999; }
     .tribute-container ul { list-style-type: none; padding: 0; margin: 0; }
     .tribute-container li { border-bottom: 1px solid #f1f1f1; cursor: pointer; }
     .tribute-container li:last-child { border-bottom: none; }
@@ -219,38 +137,28 @@
         <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
-    <!-- START: โครงสร้าง HTML ที่ออกแบบใหม่ -->
-    <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0">ข้อมูลสรุป</h5>
         <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
     </div>
 
     <div class="info-grid">
-        <!-- Task Title Card -->
-        <div class="info-card task-title-card" style="grid-column: 1 / -1;">
+        <div class="info-card task-title-card">
             <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
             <p class="info-value">{{ task.title }}</p>
         </div>
-
-        <!-- Customer Card -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
             <p class="info-value">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
         </div>
-
-        <!-- Phone Card -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
             <p class="info-value">{{ task.customer.phone or '-' }}</p>
         </div>
-
-        <!-- Address Card -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
             <p class="info-value">{{ task.customer.address or '-' }}</p>
         </div>
-
-        <!-- Map URL Card -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-map-pin"></i>พิกัดแผนที่</h6>
             <p class="info-value">
@@ -261,22 +169,16 @@
                 {% endif %}
             </p>
         </div>
-        
-        <!-- Appointment Card -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
             <p class="info-value {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
         </div>
-
-        <!-- Created Date Card -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-plus-circle"></i>วันที่รับงาน</h6>
             <p class="info-value">{{ task.created_formatted or '-' }}</p>
         </div>
     </div>
-    <!-- END: โครงสร้าง HTML ที่ออกแบบใหม่ -->
     
-    <!-- โค้ดส่วนที่เหลือทั้งหมดเหมือนเดิม -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
@@ -795,7 +697,7 @@
         slideIndex += n;
         if (slideIndex >= allAttachments.length) { slideIndex = 0; }
         if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
-        showSlide(slideIndex);
+        showSlide(index);
     }
     function toggleSelectionMode(reportIdx) {
         isSelectionMode = !isSelectionMode;
