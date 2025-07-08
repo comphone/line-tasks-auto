@@ -76,17 +76,14 @@ TEXT_SNIPPETS = {
 # --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-
-# --- START: เพิ่มขีดจำกัดการอัปโหลด ---
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 # เพิ่มจาก 16MB เป็น 50MB
-# --- END: เพิ่มขีดจำกัดการอัปโหลด ---
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-MAX_FILE_SIZE_MB = 10 # This is for single file compression logic, not the request limit
+MAX_FILE_SIZE_MB = 10
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
@@ -138,7 +135,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
     'technician_list': []
 }
-_APP_SETTINGS_STORE = {}
 
 #<editor-fold desc="Helper and Utility Functions">
 
@@ -160,6 +156,57 @@ def save_settings_to_file(settings_data):
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
+
+# --- START: แก้ไขฟังก์ชัน get_app_settings ---
+def get_app_settings():
+    """
+    Get current application settings, always loading from file to ensure freshness.
+    This prevents issues in multi-process environments like Gunicorn.
+    """
+    # สร้างสำเนาของค่าเริ่มต้นก่อน
+    app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
+    
+    # โหลดค่าจากไฟล์
+    loaded_settings = load_settings_from_file()
+    
+    # ผสานค่าที่โหลดมากับค่าเริ่มต้น
+    if loaded_settings:
+        for key, default_value in app_settings.items():
+            if key in loaded_settings:
+                if isinstance(default_value, dict) and isinstance(loaded_settings[key], dict):
+                    # ผสานค่าใน dict ซ้อนกัน
+                    app_settings[key].update(loaded_settings[key])
+                else:
+                    # แทนที่ค่าด้วยค่าที่โหลดมา
+                    app_settings[key] = loaded_settings[key]
+    else:
+        # ถ้าไม่มีไฟล์ settings.json เลย ให้สร้างขึ้นมาใหม่จากค่าเริ่มต้น
+        save_settings_to_file(app_settings)
+        
+    # สร้าง common_equipment_items จาก catalog ล่าสุด
+    equipment_catalog = app_settings.get('equipment_catalog', [])
+    app_settings['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
+    
+    return app_settings
+
+def save_app_settings(settings_data):
+    """
+    Save application settings by merging with current settings from file and writing back.
+    """
+    # อ่านค่าปัจจุบันจากไฟล์ก่อนเสมอ เพื่อป้องกันการเขียนทับข้อมูลที่อาจมีการเปลี่ยนแปลงจาก process อื่น
+    current_settings = get_app_settings()
+    
+    # ผสานข้อมูลใหม่เข้าไป
+    for key, value in settings_data.items():
+        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
+            current_settings[key].update(value)
+        else:
+            current_settings[key] = value
+            
+    # บันทึกข้อมูลที่ผสานแล้วลงไฟล์
+    return save_settings_to_file(current_settings)
+# --- END: แก้ไขฟังก์ชัน get_app_settings ---
+
 
 def safe_execute(request_object):
     if hasattr(request_object, 'execute'):
@@ -298,35 +345,6 @@ def load_settings_from_drive_on_startup():
     except Exception as e:
         app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
         return False
-
-def get_app_settings():
-    global _APP_SETTINGS_STORE
-    if not _APP_SETTINGS_STORE:
-        loaded = load_settings_from_file()
-        _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
-        if loaded:
-            for key, default_value in _APP_SETTINGS_STORE.items():
-                if key in loaded:
-                    if isinstance(default_value, dict) and isinstance(loaded[key], dict):
-                        _APP_SETTINGS_STORE[key].update(loaded[key])
-                    else:
-                        _APP_SETTINGS_STORE[key] = loaded[key]
-        else:
-            save_settings_to_file(_APP_SETTINGS_STORE)
-    equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
-    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
-    return _APP_SETTINGS_STORE
-
-def save_app_settings(settings_data):
-    global _APP_SETTINGS_STORE
-    current_settings = get_app_settings()
-    for key, value in settings_data.items():
-        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
-            current_settings[key].update(value)
-        else:
-            current_settings[key] = value
-    _APP_SETTINGS_STORE = current_settings
-    return save_settings_to_file(_APP_SETTINGS_STORE)
 
 def backup_settings_to_drive():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
@@ -1006,7 +1024,7 @@ def cleanup_scheduler():
 # --- Initial app setup calls ---
 with app.app_context():
     load_settings_from_drive_on_startup()
-    _APP_SETTINGS_STORE = get_app_settings()
+    # _APP_SETTINGS_STORE = get_app_settings() # Removed to use fresh settings on each request
     run_scheduler()
 
 atexit.register(cleanup_scheduler)
@@ -1129,11 +1147,9 @@ def form_page():
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
             return render_template('form.html', form_data=request.form)
 
-    # --- START: ส่งข้อมูล Snippets ไปยัง Template ---
     return render_template('form.html',
                            task_detail_snippets=TEXT_SNIPPETS.get('task_details', [])
                            )
-    # --- END: ส่งข้อมูล Snippets ---
 
 @app.route('/summary')
 def summary():
