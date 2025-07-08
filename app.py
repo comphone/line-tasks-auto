@@ -163,27 +163,19 @@ def get_app_settings():
     Get current application settings, always loading from file to ensure freshness.
     This prevents issues in multi-process environments like Gunicorn.
     """
-    # สร้างสำเนาของค่าเริ่มต้นก่อน
     app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
-    
-    # โหลดค่าจากไฟล์
     loaded_settings = load_settings_from_file()
     
-    # ผสานค่าที่โหลดมากับค่าเริ่มต้น
     if loaded_settings:
         for key, default_value in app_settings.items():
             if key in loaded_settings:
                 if isinstance(default_value, dict) and isinstance(loaded_settings[key], dict):
-                    # ผสานค่าใน dict ซ้อนกัน
                     app_settings[key].update(loaded_settings[key])
                 else:
-                    # แทนที่ค่าด้วยค่าที่โหลดมา
                     app_settings[key] = loaded_settings[key]
     else:
-        # ถ้าไม่มีไฟล์ settings.json เลย ให้สร้างขึ้นมาใหม่จากค่าเริ่มต้น
         save_settings_to_file(app_settings)
         
-    # สร้าง common_equipment_items จาก catalog ล่าสุด
     equipment_catalog = app_settings.get('equipment_catalog', [])
     app_settings['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
     
@@ -193,17 +185,14 @@ def save_app_settings(settings_data):
     """
     Save application settings by merging with current settings from file and writing back.
     """
-    # อ่านค่าปัจจุบันจากไฟล์ก่อนเสมอ เพื่อป้องกันการเขียนทับข้อมูลที่อาจมีการเปลี่ยนแปลงจาก process อื่น
     current_settings = get_app_settings()
     
-    # ผสานข้อมูลใหม่เข้าไป
     for key, value in settings_data.items():
         if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
             current_settings[key].update(value)
         else:
             current_settings[key] = value
             
-    # บันทึกข้อมูลที่ผสานแล้วลงไฟล์
     return save_settings_to_file(current_settings)
 # --- END: แก้ไขฟังก์ชัน get_app_settings ---
 
@@ -1597,7 +1586,6 @@ def task_details(task_id):
                 all_attachments.append(att_copy)
 
 
-    # --- START: ส่งข้อมูล Snippets ไปยัง Template ---
     return render_template('update_task_details.html',
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
@@ -1605,7 +1593,41 @@ def task_details(task_id):
                            all_attachments=all_attachments,
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
                            )
-    # --- END: ส่งข้อมูล Snippets ---
+
+# --- START: เพิ่ม Endpoint สำหรับแก้ไขข้อความรายงาน ---
+@app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
+def api_edit_report_text(task_id, report_index):
+    data = request.json
+    new_summary = data.get('summary', '').strip()
+
+    if not new_summary:
+        return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน'}), 400
+
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการแก้ไข'}), 404
+
+    # อัปเดตเฉพาะ work_summary
+    history[report_index]['work_summary'] = new_summary
+    
+    # สร้าง notes ใหม่ทั้งหมด
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'แก้ไขรายงานเรียบร้อยแล้ว'})
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
+# --- END: เพิ่ม Endpoint ---
 
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
