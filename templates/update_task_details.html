@@ -8,13 +8,13 @@
     .info-grid {
         display: grid;
         grid-template-columns: 1fr;
-        gap: 0.6rem; /* Slightly reduced gap */
+        gap: 0.6rem; /* Reduced gap for compactness */
         margin-bottom: 2rem;
     }
     .info-card {
         background-color: #ffffff;
         border-radius: 0.75rem;
-        padding: 0.8rem 1.1rem; /* Slightly reduced padding */
+        padding: 0.8rem 1.1rem; /* Reduced padding */
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         border: 1px solid #e9ecef;
         display: flex;
@@ -23,8 +23,9 @@
     .full-width-card {
         grid-column: 1 / -1;
     }
+    /* Lighter blue gradient */
     .info-card.task-title-card {
-        background: linear-gradient(135deg, #0d6efd, #0a58ca);
+        background: linear-gradient(135deg, #4e9eff, #1a73e8);
         color: white;
         border: none;
     }
@@ -45,7 +46,7 @@
     }
     .task-title-card .info-label,
     .task-title-card .info-label i {
-        color: rgba(255, 255, 255, 0.7);
+        color: rgba(255, 255, 255, 0.8);
     }
     .info-value {
         font-size: 1.05em;
@@ -54,10 +55,10 @@
         word-break: break-word;
         margin-bottom: 0;
     }
-    /* Adjusted font sizes */
+    /* Font size adjustments */
     .info-value.task-title,
     .info-value.customer-name {
-        font-size: 1.25em; /* Same prominent size */
+        font-size: 1.25em;
         font-weight: 700;
     }
     .info-value.task-title {
@@ -67,7 +68,7 @@
         color: #0d6efd;
     }
     .info-value.phone-number {
-        font-size: 1.15em;
+        font-size: 1.1em; /* Reduced phone number size */
         font-weight: 600;
     }
     .info-value-small {
@@ -171,28 +172,28 @@
         <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
     </div>
 
+    <!-- START: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
     <div class="info-grid">
+        <!-- Row 1: Customer Name & Phone/Appointment -->
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
             <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
         </div>
         <div class="info-card">
-            <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
-            <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
-        </div>
-        <div class="info-card">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
-                    <p class="info-value {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+                    <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
+                    <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
                 </div>
                 <div class="text-end">
-                    <h6 class="info-label" style="font-size: 0.7rem;">วันที่รับงาน</h6>
-                    <p class="info-value info-value-small">{{ task.created_formatted or '-' }}</p>
+                    <h6 class="info-label" style="font-size: 0.7rem;"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                    <p class="info-value info-value-small {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
                 </div>
             </div>
         </div>
-        <div class="info-card">
+
+        <!-- Row 2: Address & Map (Combined) -->
+        <div class="info-card full-width-card">
             <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่และพิกัด</h6>
             <p class="info-value">{{ task.customer.address or '-' }}</p>
             {% if task.customer.map_url %}
@@ -201,12 +202,16 @@
                 </a>
             {% endif %}
         </div>
+        
+        <!-- Row 3: Task Details (Full Width) -->
         <div class="info-card task-title-card full-width-card">
             <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
             <p class="info-value task-title">{{ task.title }}</p>
         </div>
     </div>
+    <!-- END: โครงสร้าง HTML ที่จัดลำดับและเน้นข้อความใหม่ -->
     
+    <!-- ส่วนที่เหลือของหน้าเว็บเหมือนเดิมทั้งหมด -->
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-body text-center p-4">
             <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
@@ -666,7 +671,8 @@
     async function processCurrentImage(asFile = false, fileName = 'image.jpg') {
         if (slideIndex === undefined) return null;
         const attachment = allAttachments[slideIndex];
-        const imageUrl = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1920`;
+        // Use a more direct URL for fetching
+        const imageUrl = `https://drive.google.com/uc?id=${attachment.id}`;
         try {
             const response = await fetch(imageUrl);
             if (!response.ok) throw new Error('Network response was not ok.');
@@ -674,6 +680,7 @@
             if (asFile) { return new File([blob], fileName, { type: blob.type }); }
             return blob;
         } catch (error) {
+            console.error("Error processing image:", error);
             Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error');
             return null;
         }
