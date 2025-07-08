@@ -2308,9 +2308,18 @@ def save_customer_line_id():
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
+    
+    # --- START: เพิ่มการบันทึก Log ---
+    app.logger.info("Request body: " + body)
+    # --- END: เพิ่มการบันทึก Log ---
+
     try:
         handler.handle(body, signature)
-    except InvalidSignatureError: abort(400)
+    except InvalidSignatureError:
+        # --- START: เพิ่มการบันทึก Log ---
+        app.logger.error("Invalid LINE signature. Please check your channel secret.")
+        # --- END: เพิ่มการบันทึก Log ---
+        abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
         notify_admin_error(f"Webhook Handler Error: {e}")
