@@ -292,6 +292,56 @@ def find_or_create_drive_folder(name, parent_id):
         app.logger.error(f"Error finding or creating folder '{name}': {e}")
         return None
 
+# --- START: เพิ่มฟังก์ชันสร้างฐานข้อมูลลูกค้า ---
+@cached(cache)
+def get_customer_database():
+    """
+    Builds a unique customer database from all tasks.
+    The most recent information for a customer is prioritized.
+    """
+    app.logger.info("Building customer database from Google Tasks...")
+    all_tasks = get_google_tasks_for_report(show_completed=True)
+    if not all_tasks:
+        return []
+
+    # Use a dictionary to store the latest info for each unique customer
+    # Key: (lower_case_name, phone_number)
+    customers_dict = {}
+
+    # Sort tasks by creation date, newest first, to prioritize recent info
+    all_tasks.sort(key=lambda x: x.get('created', '0'), reverse=True)
+
+    for task in all_tasks:
+        notes = task.get('notes', '')
+        if not notes:
+            continue
+        
+        # We only need the base notes, not the reports
+        _, base_notes = parse_tech_report_from_notes(notes)
+        customer_info = parse_customer_info_from_notes(base_notes)
+
+        name = customer_info.get('name', '').strip()
+        phone = customer_info.get('phone', '').strip()
+
+        if not name:
+            continue # Skip if there's no customer name
+
+        customer_key = (name.lower(), phone)
+        
+        # If this customer is not yet in our dict, add them
+        if customer_key not in customers_dict:
+            customers_dict[customer_key] = {
+                'name': name,
+                'phone': phone,
+                'organization': customer_info.get('organization', '').strip(),
+                'address': customer_info.get('address', '').strip()
+            }
+    
+    app.logger.info(f"Customer database built with {len(customers_dict)} unique customers.")
+    # Return a list of customer dictionaries
+    return list(customers_dict.values())
+# --- END: เพิ่มฟังก์ชันสร้างฐานข้อมูลลูกค้า ---
+
 def load_settings_from_drive_on_startup():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
     if not settings_backup_folder_id:
@@ -1031,10 +1081,19 @@ def internal_server_error(e):
 
 
 # --- Flask Routes ---
+
+# --- START: เพิ่ม API Route สำหรับดึงข้อมูลลูกค้า ---
+@app.route('/api/customers')
+def api_customers():
+    customer_list = get_customer_database()
+    return jsonify(customer_list)
+# --- END: เพิ่ม API Route ---
+
 @app.route("/")
 def root_redirect():
     return redirect(url_for('summary'))
 
+# --- START: ปรับปรุง Route /form และ /api/upload_attachment ---
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
@@ -1074,61 +1133,53 @@ def form_page():
             cache.clear()
             send_new_task_notification(new_task)
             
-            files = request.files.getlist('files[]')
-            if files and files[0].filename:
+            # Process pre-uploaded files from the hidden input
+            uploaded_attachments_json = request.form.get('uploaded_attachments_json')
+            uploaded_attachments = []
+            if uploaded_attachments_json:
+                try:
+                    uploaded_attachments = json.loads(uploaded_attachments_json)
+                except json.JSONDecodeError:
+                    app.logger.warning("Could not decode uploaded_attachments_json on form submission.")
+
+            if uploaded_attachments:
                 task_id = new_task['id']
                 
+                # Logic to move pre-uploaded files to the correct final folder
                 attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
                 monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
                 monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
                 sanitized_customer_name = sanitize_filename(customer_name)
                 customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
                 final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
-
-                uploaded_attachments = []
-                if final_upload_folder_id:
-                    for file in files:
-                        if not file or not allowed_file(file.filename): continue
-                        
-                        file.seek(0, os.SEEK_END)
-                        file_length = file.tell()
-                        file.seek(0)
-                        
-                        if file_length > MAX_FILE_SIZE_BYTES and file.mimetype and file.mimetype.startswith('image/'):
-                            try:
-                                img = Image.open(file)
-                                if img.mode in ("RGBA", "P"): img = img.convert("RGB")
-                                output_buffer = BytesIO()
-                                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
-                                output_buffer.seek(0)
-                                file_to_upload = output_buffer
-                                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
-                                mime_type = 'image/jpeg'
-                            except Exception as e:
-                                app.logger.error(f"Could not compress image during task creation: {e}")
-                                continue
-                        else:
-                            file_to_upload = file
-                            filename = secure_filename(file.filename)
-                            mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-
-                        media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
-                        drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
-                        if drive_file:
-                            uploaded_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
                 
-                if uploaded_attachments:
-                    initial_report = {
-                        'type': 'report',
-                        'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                        'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
-                        'attachments': uploaded_attachments,
-                        'technicians': ['System']
-                    }
-                    report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-                    updated_notes = new_task.get('notes', '') + report_text
-                    update_google_task(task_id, notes=updated_notes)
-                    cache.clear()
+                drive_service = get_google_drive_service()
+                if final_upload_folder_id and drive_service:
+                    for att in uploaded_attachments:
+                        try:
+                            file_meta = drive_service.files().get(fileId=att['id'], fields='parents').execute()
+                            previous_parents = ",".join(file_meta.get('parents', []))
+                            drive_service.files().update(
+                                fileId=att['id'],
+                                addParents=final_upload_folder_id,
+                                removeParents=previous_parents,
+                                fields='id, parents'
+                            ).execute()
+                        except Exception as e:
+                            app.logger.error(f"Could not move attachment {att['id']} to final folder: {e}")
+                
+                # Create an initial tech report for the attachments
+                initial_report = {
+                    'type': 'report',
+                    'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                    'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
+                    'attachments': uploaded_attachments,
+                    'technicians': ['System']
+                }
+                report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+                updated_notes = new_task.get('notes', '') + report_text
+                update_google_task(task_id, notes=updated_notes)
+                cache.clear()
 
             flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
             return redirect(url_for('task_details', task_id=new_task['id']))
@@ -1139,6 +1190,96 @@ def form_page():
     return render_template('form.html',
                            task_detail_snippets=TEXT_SNIPPETS.get('task_details', [])
                            )
+
+@app.route('/api/upload_attachment', methods=['POST'])
+def api_upload_attachment():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+    
+    task_id = request.form.get('task_id')
+    if not task_id:
+        return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
+
+    # File size check and compression logic
+    file.seek(0, os.SEEK_END)
+    file_length = file.tell()
+    file.seek(0)
+    
+    if file_length > MAX_FILE_SIZE_BYTES:
+        if file.mimetype and file.mimetype.startswith('image/'):
+            try:
+                img = Image.open(file)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                output_buffer = BytesIO()
+                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                output_buffer.seek(0)
+                file_to_upload = output_buffer
+                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                mime_type = 'image/jpeg'
+                app.logger.info(f"Compressed image '{file.filename}' successfully.")
+            except Exception as e:
+                app.logger.error(f"Could not compress image '{file.filename}': {e}")
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
+        else:
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+    else:
+        file_to_upload = file
+        filename = secure_filename(file.filename)
+        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+
+    # Logic to handle both new and existing tasks
+    attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+    if not attachments_base_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not create or find base Task_Attachments folder'}), 500
+
+    final_upload_folder_id = None
+    target_date = datetime.datetime.now(THAILAND_TZ)
+
+    if task_id == 'new_task_placeholder':
+        # For a new task, upload to a temporary date-based folder
+        monthly_folder_name = target_date.strftime('%Y-%m')
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        temp_upload_folder_name = f"New_Uploads_{target_date.strftime('%Y-%m-%d')}"
+        final_upload_folder_id = find_or_create_drive_folder(temp_upload_folder_name, monthly_folder_id)
+    else:
+        # Existing task logic
+        task_raw = get_single_task(task_id)
+        if not task_raw:
+            return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+        
+        if task_raw.get('created'):
+            try:
+                target_date = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+            except (ValueError, TypeError):
+                pass
+        
+        monthly_folder_name = target_date.strftime('%Y-%m')
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        if not monthly_folder_id:
+            return jsonify({'status': 'error', 'message': f'Could not create or find monthly folder: {monthly_folder_name}'}), 500
+        
+        _, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        customer_info = parse_customer_info_from_notes(base_notes_text)
+        sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
+        customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+        final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+    
+    if not final_upload_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
+
+    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
+    
+    if drive_file:
+        return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')}})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
+# --- END: ปรับปรุง Route ---
 
 @app.route('/summary')
 def summary():
@@ -1211,6 +1352,8 @@ def summary():
                            tasks=final_tasks, summary=stats,
                            search_query=search_query, status_filter=status_filter,
                            chart_data=chart_data)
+
+# ... (The rest of the file remains unchanged) ...
 
 @app.route('/summary/print')
 def summary_print():
@@ -1347,86 +1490,6 @@ def schedule_task_from_calendar():
     except Exception as e:
         app.logger.error(f"Error scheduling task from calendar: {e}")
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
-
-@app.route('/api/upload_attachment', methods=['POST'])
-def api_upload_attachment():
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
-    
-    task_id = request.form.get('task_id')
-    if not task_id:
-        return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
-
-    file.seek(0, os.SEEK_END)
-    file_length = file.tell()
-    file.seek(0)
-    
-    if file_length > MAX_FILE_SIZE_BYTES:
-        if file.mimetype and file.mimetype.startswith('image/'):
-            try:
-                img = Image.open(file)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                
-                output_buffer = BytesIO()
-                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
-                output_buffer.seek(0)
-                file_to_upload = output_buffer
-                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
-                mime_type = 'image/jpeg'
-                app.logger.info(f"Compressed image '{file.filename}' successfully.")
-            except Exception as e:
-                app.logger.error(f"Could not compress image '{file.filename}': {e}")
-                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
-        else:
-            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
-    else:
-        file_to_upload = file
-        filename = secure_filename(file.filename)
-        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-
-    task_raw = get_single_task(task_id)
-    if not task_raw:
-        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
-    
-    attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
-    if not attachments_base_folder_id:
-        return jsonify({'status': 'error', 'message': 'Could not create or find base Task_Attachments folder'}), 500
-
-    target_date = None
-    if task_raw.get('created'):
-        try:
-            target_date = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
-        except (ValueError, TypeError):
-            target_date = datetime.datetime.now(THAILAND_TZ)
-    else:
-        target_date = datetime.datetime.now(THAILAND_TZ)
-
-    monthly_folder_name = target_date.strftime('%Y-%m')
-    monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-    if not monthly_folder_id:
-        return jsonify({'status': 'error', 'message': f'Could not create or find monthly folder: {monthly_folder_name}'}), 500
-        
-    _, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
-    customer_info = parse_customer_info_from_notes(base_notes_text)
-    sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
-    customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
-    final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
-    
-    if not final_upload_folder_id:
-        return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
-
-    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
-    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
-    
-    if drive_file:
-        return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')}})
-    else:
-        return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
-
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
@@ -1599,7 +1662,7 @@ def task_details(task_id):
 def api_edit_report_text(task_id, report_index):
     data = request.json
     new_summary = data.get('summary', '').strip()
-
+    
     if not new_summary:
         return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน'}), 400
 
