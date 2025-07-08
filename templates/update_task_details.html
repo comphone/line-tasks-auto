@@ -136,8 +136,28 @@
     }
     /* --- END: CSS ที่แก้ไขสำหรับ Lightbox --- */
 
+    /* --- START: CSS ที่แก้ไขสำหรับ Danger Zone --- */
+    .danger-zone-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        padding: 0.5rem 0;
+    }
+    .danger-zone-header h6 {
+        margin-bottom: 0;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    .danger-zone-header .icon {
+        transition: transform 0.2s ease-in-out;
+    }
+    .danger-zone-header[aria-expanded="true"] .icon {
+        transform: rotate(180deg);
+    }
+    /* --- END: CSS ที่แก้ไขสำหรับ Danger Zone --- */
+
     /* --- The rest of the CSS remains the same --- */
-    .danger-zone { border: 2px solid var(--bs-danger-border-subtle); border-radius: .5rem; padding: 1rem; background-color: var(--bs-danger-bg-subtle); }
     .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .history-entry-title { font-weight: 600; font-size: 1.05em; margin-right: auto; }
@@ -206,8 +226,8 @@
                         <p class="info-value">{{ task.customer.address or '-' }}</p>
                     </div>
                     {% if task.customer.map_url %}
-                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;">
-                            <i class="fas fa-map-marked-alt"></i>
+                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
+                            <i class="fas fa-map-marked-alt text-danger"></i>
                         </a>
                     {% endif %}
                 </div>
@@ -424,28 +444,23 @@
     
     <hr class="my-5">
 
-    <div class="danger-zone">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="text-danger mb-0">การจัดการขั้นสูง (Danger Zone)</h5>
-                <small class="text-muted">การกระทำในส่วนนี้ไม่สามารถย้อนกลับได้</small>
-            </div>
-            <button class="btn btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse" aria-expanded="false" aria-controls="dangerZoneCollapse">
-                <i class="fas fa-exclamation-triangle me-2"></i>แสดง
-            </button>
-        </div>
-        <div class="collapse mt-3" id="dangerZoneCollapse">
-            <div class="card card-body">
-                <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
-                <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <button type="submit" class="btn btn-danger w-100">
-                        <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
-                    </button>
-                </form>
-            </div>
+    <!-- START: Danger Zone Redesign -->
+    <div class="danger-zone-header" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse" aria-expanded="false" aria-controls="dangerZoneCollapse">
+        <h6><i class="fas fa-exclamation-triangle text-warning me-2"></i>การจัดการขั้นสูง</h6>
+        <i class="fas fa-chevron-down icon"></i>
+    </div>
+    <div class="collapse" id="dangerZoneCollapse">
+        <div class="card card-body border-danger mt-2">
+            <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
+            <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger w-100">
+                    <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
+                </button>
+            </form>
         </div>
     </div>
+    <!-- END: Danger Zone Redesign -->
 </div>
 
 <div id="lightboxModal" class="lightbox">
@@ -677,42 +692,39 @@
         shareBtn.onclick = () => shareCurrentImage();
         downloadBtn.onclick = () => downloadCurrentImage();
     }
-    async function processCurrentImage(asFile = false, fileName = 'image.jpg') {
+    async function processCurrentImageForSharing() {
         if (slideIndex === undefined) return null;
         const attachment = allAttachments[slideIndex];
-        const imageUrl = `https://drive.google.com/uc?id=${attachment.id}`;
+        const imageUrl = `https://drive.google.com/uc?export=view&id=${attachment.id}`; 
         try {
             const response = await fetch(imageUrl);
             if (!response.ok) throw new Error('Network response was not ok.');
             const blob = await response.blob();
-            if (asFile) { return new File([blob], fileName, { type: blob.type }); }
-            return blob;
+            return new File([blob], `task-image-${attachment.id}.jpg`, { type: blob.type });
         } catch (error) {
-            console.error("Error processing image:", error);
-            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error');
+            console.error("Error processing image for sharing:", error);
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพเพื่อแชร์ได้', 'error');
             return null;
         }
     }
+    function downloadCurrentImage() {
+        if (slideIndex === undefined) return;
+        const attachment = allAttachments[slideIndex];
+        const downloadUrl = `https://drive.google.com/uc?export=download&id=${attachment.id}`;
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = downloadUrl;
+        a.download = `task-image-${attachment.id}.jpg`; 
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
     async function shareCurrentImage() {
         if (!navigator.share) { Swal.fire('ไม่รองรับ', 'เบราว์เซอร์ของคุณไม่รองรับฟังก์ชันแชร์', 'warning'); return; }
-        const file = await processCurrentImage(true, `task-image-${slideIndex + 1}.jpg`);
+        const file = await processCurrentImageForSharing();
         if (file) {
             try { await navigator.share({ files: [file], title: 'รูปภาพจากระบบจัดการงาน', text: `รูปภาพที่ ${slideIndex + 1}` }); } 
             catch (error) { console.log('Share was cancelled or failed', error); }
-        }
-    }
-    async function downloadCurrentImage() {
-        const blob = await processCurrentImage();
-        if (blob) {
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `task-image-${allAttachments[slideIndex].id}.jpg`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
         }
     }
     function closeLightbox() {
