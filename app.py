@@ -1064,7 +1064,6 @@ def form_page():
             cache.clear()
             send_new_task_notification(new_task)
             
-            # --- NEW: Handle file uploads on task creation ---
             files = request.files.getlist('files[]')
             if files and files[0].filename:
                 task_id = new_task['id']
@@ -1266,7 +1265,6 @@ def calendar_view():
 @app.route('/api/calendar_tasks')
 def api_calendar_tasks():
     try:
-        # Fetch both completed and non-completed tasks
         tasks_raw = get_google_tasks_for_report(show_completed=True) or []
         events = []
         today_thai = datetime.datetime.now(THAILAND_TZ).date()
@@ -1319,7 +1317,6 @@ def schedule_task_from_calendar():
         return jsonify({'status': 'error', 'message': 'ข้อมูลที่ส่งมาไม่ครบถ้วน (task_id หรือ new_due_date)'}), 400
         
     try:
-        # Check if the task is already completed
         task = get_single_task(task_id)
         if not task:
             return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ระบุ'}), 404
@@ -1355,7 +1352,6 @@ def api_upload_attachment():
     if not task_id:
         return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
 
-    # --- MODIFICATION: Image Compression Logic ---
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
     file.seek(0)
@@ -1383,7 +1379,6 @@ def api_upload_attachment():
         file_to_upload = file
         filename = secure_filename(file.filename)
         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-    # --- END MODIFICATION ---
 
     task_raw = get_single_task(task_id)
     if not task_raw:
@@ -1631,7 +1626,6 @@ def edit_report_attachments(task_id, report_index):
     
     new_files = request.files.getlist('new_files[]')
     if new_files:
-        # --- Find correct folder to upload ---
         if task_raw.get('created'):
             created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
             monthly_folder_name = created_dt_local.strftime('%Y-%m')
@@ -1648,7 +1642,6 @@ def edit_report_attachments(task_id, report_index):
         if final_upload_folder_id:
             for file in new_files:
                 if file and allowed_file(file.filename):
-                    # --- MODIFICATION: Image Compression Logic ---
                     file.seek(0, os.SEEK_END)
                     file_length = file.tell()
                     file.seek(0)
@@ -1664,12 +1657,11 @@ def edit_report_attachments(task_id, report_index):
                             mime_type = 'image/jpeg'
                         except Exception as e:
                             app.logger.error(f"Could not compress image in edit_report: {e}")
-                            continue # Skip this file if compression fails
+                            continue
                     else:
                         file_to_upload = file
                         filename = secure_filename(file.filename)
                         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-                    # --- END MODIFICATION ---
 
                     media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
                     drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
@@ -1706,7 +1698,6 @@ def delete_task_report(task_id, report_index):
     if not (0 <= report_index < len(history)):
         return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการลบ'}), 404
 
-    # Optionally, delete files from Drive associated with the report
     report_to_delete = history[report_index]
     if report_to_delete.get('attachments'):
         drive_service = get_google_drive_service()
@@ -1718,7 +1709,6 @@ def delete_task_report(task_id, report_index):
                 except HttpError as e:
                     app.logger.error(f"Failed to delete attachment {att['id']} from Drive during report deletion: {e}")
 
-    # Remove the report from history
     history.pop(report_index)
 
     all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
@@ -1882,7 +1872,6 @@ def api_upload_avatar():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No selected file'}), 400
     
-    # --- MODIFICATION: Image Compression Logic ---
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
     file.seek(0)
@@ -1910,7 +1899,6 @@ def api_upload_avatar():
         file_to_upload = file
         filename = secure_filename(file.filename)
         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-    # --- END MODIFICATION ---
 
     avatars_folder_id = find_or_create_drive_folder("Technician_Avatars", GOOGLE_DRIVE_FOLDER_ID)
     if not avatars_folder_id:
