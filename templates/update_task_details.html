@@ -94,11 +94,92 @@
     @keyframes zoom { from {transform:scale(0)} to {transform:scale(1)} }
     .lightbox-caption { margin: auto; display: block; width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; height: 50px; }
     .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
-    .lightbox-nav { cursor: pointer; position: absolute; top: 50%; width: auto; padding: 16px; margin-top: -50px; color: white; font-weight: bold; font-size: 20px; transition: 0.6s ease; border-radius: 0 3px 3px 0; user-select: none; -webkit-user-select: none; }
-    .lightbox-prev { left: 0; border-radius: 3px 0 0 3px; }
-    .lightbox-next { right: 0; border-radius: 3px 0 0 3px; }
-    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
     .hidden-file-input { display: none; }
+
+    /* --- START: Lightbox Arrow and Button Styles --- */
+    .lightbox-nav {
+        cursor: pointer;
+        position: absolute;
+        top: 50%;
+        width: auto;
+        padding: 16px;
+        margin-top: -50px;
+        color: white;
+        font-weight: bold;
+        transition: 0.6s ease;
+        border-radius: 0 3px 3px 0;
+        user-select: none;
+        -webkit-user-select: none;
+        transform: translateY(-50%); /* จัดกึ่งกลางแนวตั้ง */
+        font-size: 2.5rem; /* ทำให้ลูกศรใหญ่ขึ้น */
+        background-color: rgba(0,0,0,0.5);
+    }
+    .lightbox-prev { left: 1rem; border-radius: 3px 0 0 3px; }
+    .lightbox-next { right: 1rem; border-radius: 0 3px 3px 0; }
+    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
+    .lightbox-controls {
+        text-align: center;
+        padding: 10px 0;
+        position: absolute;
+        bottom: 0px; /* ตำแหน่งของปุ่ม */
+        width: 100%;
+        left: 0;
+        z-index: 1071;
+    }
+    .lightbox-controls .btn {
+        border-radius: 20px;
+        padding: 5px 15px;
+        margin: 0 10px;
+        background-color: rgba(40, 40, 40, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+    }
+    /* --- END: Lightbox Arrow and Button Styles --- */
+
+    /* --- START: Multi-select Styles --- */
+    .multi-select-controls {
+        position: fixed; /* เปลี่ยนเป็น fixed เพื่อให้อยู่กับที่ */
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: #212529; /* สีเข้มขึ้น */
+        color: white;
+        padding: 1rem;
+        z-index: 1050;
+        transform: translateY(100%);
+        transition: transform 0.3s ease-in-out;
+        border-top: 1px solid #444;
+    }
+    .multi-select-controls.active {
+        transform: translateY(0);
+    }
+    .history-entry.selection-mode .thumbnail {
+        cursor: pointer;
+        opacity: 0.7;
+    }
+    .thumbnail.selected {
+        opacity: 1;
+        box-shadow: 0 0 0 3px var(--bs-primary);
+        position: relative;
+    }
+    .thumbnail.selected::after {
+        content: '\f00c'; /* Font Awesome Check Icon */
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        color: white;
+        background-color: var(--bs-primary);
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        border: 2px solid white;
+    }
+    /* --- END: Multi-select Styles --- */
 </style>
 {% endblock %}
 
@@ -288,7 +369,7 @@
         <div class="card-body">
             {% if task.tech_reports_history %}
                 {% for report in task.tech_reports_history %}
-                <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}">
+                <div class="history-entry {% if report.type == 'reschedule' %}border-warning{% else %}border-primary{% endif %}" id="history-entry-{{ loop.index0 }}">
                     <div class="history-entry-header">
                         <span class="history-entry-title {% if report.type == 'reschedule' %}text-warning{% else %}text-primary{% endif %}">
                             <i class="fas {% if report.type == 'reschedule' %}fa-calendar-alt{% else %}fa-wrench{% endif %} me-2"></i>
@@ -304,6 +385,11 @@
                             <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteReport({{ loop.index0 }})" title="ลบรายงานนี้">
                                 <i class="fas fa-trash-alt"></i>
                             </button>
+                             {% if report.type == 'report' and report.attachments %}
+                            <button class="btn btn-sm btn-outline-info ms-1" onclick="toggleSelectionMode({{ loop.index0 }})" title="เลือกหลายภาพเพื่อแชร์">
+                                <i class="fas fa-share-square"></i> เลือกรูป
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
                     <div class="history-entry-body">
@@ -327,6 +413,16 @@
                         </div>
                     </div>
                     {% endif %}
+
+                     <div class="multi-select-controls" id="multi-select-controls-{{ loop.index0 }}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <button class="btn btn-secondary" onclick="toggleSelectionMode({{ loop.index0 }})">ยกเลิก</button>
+                            <span id="selection-counter-{{ loop.index0 }}">เลือก 0 รูป</span>
+                            <button class="btn btn-primary" id="share-selected-btn-{{ loop.index0 }}" onclick="shareSelectedAttachments({{ loop.index0 }})" disabled>
+                                <i class="fas fa-share-alt"></i> แชร์รูปที่เลือก
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 {% endfor %}
             {% else %}
@@ -365,10 +461,18 @@
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
     <img class="lightbox-content" id="lightboxImg">
+    
     <div id="lightboxCaption" class="lightbox-caption"></div>
+    
+    <div class="lightbox-controls" style="display: none;">
+        <button id="shareBtn" class="btn btn-info text-white"><i class="fas fa-share-alt me-1"></i> แชร์</button>
+        <button id="downloadBtn" class="btn btn-light"><i class="fas fa-download me-1"></i> ดาวน์โหลด</button>
+    </div>
+
     <a class="lightbox-prev" onclick="changeSlide(-1)">&#10094;</a>
     <a class="lightbox-next" onclick="changeSlide(1)">&#10095;</a>
 </div>
+
 <div class="modal fade" id="technicianSelectionModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -416,6 +520,7 @@
 
 {% block body_extra %}
 <script>
+    // --- START: State Variables ---
     const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
@@ -425,6 +530,15 @@
     let currentTechnicianTargetId;
     const csrfToken = '{{ csrf_token() }}';
 
+    // Variables for swipe
+    let touchStartX = 0;
+    
+    // Variables for multi-select
+    let isSelectionMode = false;
+    let selectedAttachments = new Set();
+    let currentReportIndex = -1;
+    // --- END: State Variables ---
+
     document.addEventListener('DOMContentLoaded', function() {
         if(document.getElementById('technicianSelectionModal')) {
             technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
@@ -433,7 +547,6 @@
             editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         }
 
-        // Logic to enable/disable the "Save Progress" button
         const workSummaryInput = document.getElementById('work_summary_progress');
         const filesProgressInput = document.getElementById('files_progress');
         const saveProgressBtn = document.getElementById('saveProgressBtn');
@@ -447,17 +560,260 @@
 
         if(workSummaryInput) workSummaryInput.addEventListener('input', validateProgressForm);
         if(filesProgressInput) filesProgressInput.addEventListener('change', validateProgressForm);
+        
+        // Add touch event listeners for swipe navigation
+        const lightboxImgElement = document.getElementById('lightboxImg');
+        if (lightboxImgElement) {
+            lightboxImgElement.addEventListener('touchstart', handleTouchStart, false);
+            lightboxImgElement.addEventListener('touchend', handleTouchEnd, false);
+        }
     });
+    
+    // --- START: Swipe Functions ---
+    function handleTouchStart(event) {
+        touchStartX = event.touches[0].clientX;
+    }
 
+    function handleTouchEnd(event) {
+        if (!touchStartX) return;
+        let touchEndX = event.changedTouches[0].clientX;
+        let diffX = touchStartX - touchEndX;
+
+        if (diffX > 50) { // Swipe left
+            changeSlide(1);
+        } else if (diffX < -50) { // Swipe right
+            changeSlide(-1);
+        }
+        touchStartX = 0; // Reset start position
+    }
+    // --- END: Swipe Functions ---
+    
+    // --- START: Lightbox Functions (Updated) ---
+    function showSlide(index) {
+        const lightboxImg = document.getElementById("lightboxImg");
+        const lightboxCaption = document.getElementById("lightboxCaption");
+        const lightboxControls = document.querySelector('.lightbox-controls');
+        const shareBtn = document.getElementById('shareBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        if(index < 0 || index >= allAttachments.length) {
+            closeLightbox();
+            return;
+        }
+        const attachment = allAttachments[index];
+        lightboxImg.src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`; 
+        lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length}`;
+        
+        // Show controls and set actions
+        lightboxControls.style.display = 'block';
+        shareBtn.onclick = () => shareCurrentImage();
+        downloadBtn.onclick = () => downloadCurrentImage();
+    }
+
+    async function processCurrentImage(asFile = false, fileName = 'image.jpg') {
+        if (slideIndex === undefined) return null;
+        const attachment = allAttachments[slideIndex];
+        const imageUrl = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1920`;
+
+        try {
+            const response = await fetch(imageUrl);
+            if (!response.ok) throw new Error('Network response was not ok.');
+            const blob = await response.blob();
+            
+            if (asFile) {
+                return new File([blob], fileName, { type: blob.type });
+            }
+            return blob;
+        } catch (error) {
+            console.error('Error processing image:', error);
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error');
+            return null;
+        }
+    }
+
+    async function shareCurrentImage() {
+        if (!navigator.share) {
+            Swal.fire('ไม่รองรับ', 'เบราว์เซอร์ของคุณไม่รองรับฟังก์ชันแชร์', 'warning');
+            return;
+        }
+        const file = await processCurrentImage(true, `task-image-${slideIndex + 1}.jpg`);
+        if (file) {
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: 'รูปภาพจากระบบจัดการงาน',
+                    text: `รูปภาพที่ ${slideIndex + 1}`
+                });
+            } catch (error) {
+                console.log('Share was cancelled or failed', error);
+            }
+        }
+    }
+
+    async function downloadCurrentImage() {
+        const blob = await processCurrentImage();
+        if (blob) {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `task-image-${allAttachments[slideIndex].id}.jpg`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        }
+    }
+
+    function closeLightbox() {
+        document.getElementById('lightboxModal').style.display = "none";
+        document.querySelector('.lightbox-controls').style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+
+    function openLightboxById(attachmentId) {
+        if (isSelectionMode) return;
+        const index = allAttachments.findIndex(att => att.id === attachmentId);
+        if (index !== -1) { openLightbox(index); }
+    }
+    function openLightbox(index) {
+        if (!allAttachments || allAttachments.length === 0) return;
+        slideIndex = index;
+        document.getElementById('lightboxModal').style.display = "block";
+        document.body.style.overflow = 'hidden';
+        showSlide(slideIndex);
+    }
+    function changeSlide(n) {
+        slideIndex += n;
+        if (slideIndex >= allAttachments.length) { slideIndex = 0; }
+        if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
+        showSlide(slideIndex);
+    }
+    // --- END: Lightbox Functions ---
+
+    // --- START: Multi-Select Share Functions ---
+    function toggleSelectionMode(reportIdx) {
+        isSelectionMode = !isSelectionMode;
+        currentReportIndex = isSelectionMode ? reportIdx : -1;
+        
+        const historyEntry = document.getElementById(`history-entry-${reportIdx}`);
+        const controls = document.getElementById(`multi-select-controls-${reportIdx}`);
+        
+        historyEntry.classList.toggle('selection-mode', isSelectionMode);
+        controls.classList.toggle('active', isSelectionMode);
+        
+        if (!isSelectionMode) {
+            selectedAttachments.clear();
+            historyEntry.querySelectorAll('.thumbnail.selected').forEach(el => el.classList.remove('selected'));
+        }
+        updateThumbnailClickEvents(reportIdx);
+    }
+
+    function updateThumbnailClickEvents(reportIdx) {
+        const thumbnails = document.querySelectorAll(`#history-entry-${reportIdx} .thumbnail`);
+        const report = techReportsHistory[reportIdx];
+
+        thumbnails.forEach((thumb, thumbIndex) => {
+            const attachmentId = report.attachments[thumbIndex].id;
+            const originalOnclick = () => openLightboxById(attachmentId);
+            const selectionOnClick = () => toggleThumbnailSelection(thumb, attachmentId);
+
+            thumb.onclick = isSelectionMode ? selectionOnClick : originalOnclick;
+        });
+    }
+
+    function toggleThumbnailSelection(thumbnailElement, attachmentId) {
+        thumbnailElement.classList.toggle('selected');
+        if (selectedAttachments.has(attachmentId)) {
+            selectedAttachments.delete(attachmentId);
+        } else {
+            selectedAttachments.add(attachmentId);
+        }
+        updateSelectionCounter();
+    }
+
+    function updateSelectionCounter() {
+        const count = selectedAttachments.size;
+        const counter = document.getElementById(`selection-counter-${currentReportIndex}`);
+        const shareBtn = document.getElementById(`share-selected-btn-${currentReportIndex}`);
+        
+        if (counter) counter.textContent = `เลือก ${count} รูป`;
+        if (shareBtn) shareBtn.disabled = (count === 0);
+    }
+
+    async function shareSelectedAttachments() {
+        if (!navigator.share || selectedAttachments.size === 0) return;
+
+        Swal.fire({
+            title: `กำลังเตรียม ${selectedAttachments.size} รูปเพื่อแชร์...`,
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        try {
+            const fetchPromises = Array.from(selectedAttachments).map(async (fileId, index) => {
+                const imageUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1920`;
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                return new File([blob], `image-${index + 1}.jpg`, { type: blob.type });
+            });
+            
+            const files = await Promise.all(fetchPromises);
+            
+            Swal.close();
+            
+            await navigator.share({
+                files: files,
+                title: 'รูปภาพงาน',
+                text: `รูปภาพงานจำนวน ${files.length} รูป`
+            });
+            toggleSelectionMode(currentReportIndex);
+
+        } catch (error) {
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์รูปภาพได้ในขณะนี้', 'error');
+            console.error("Multi-share error: ", error);
+        }
+    }
+    // --- END: Multi-Select Share Functions ---
+
+    // --- Other existing functions (deleteReport, flashMessage, handleFormSubmission, etc.) ---
+    function deleteReport(reportIndex) {
+        Swal.fire({
+            title: 'คุณแน่ใจหรือไม่?',
+            text: "คุณต้องการลบรายงานนี้ใช่ไหม? การกระทำนี้ไม่สามารถย้อนกลับได้!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'ใช่, ลบเลย!',
+            cancelButtonText: 'ยกเลิก'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const response = await fetch(`/api/task/{{ task.id }}/delete_report/${reportIndex}`, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    });
+                    const data = await response.json();
+                    if (response.ok && data.status === 'success') {
+                        await Swal.fire('ลบแล้ว!', data.message, 'success');
+                        window.location.reload();
+                    } else {
+                        Swal.fire('เกิดข้อผิดพลาด', data.message || 'ไม่สามารถลบรายงานได้', 'error');
+                    }
+                } catch (err) {
+                     Swal.fire('การเชื่อมต่อล้มเหลว', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อลบรายงานได้', 'error');
+                }
+            }
+        });
+    }
     function showActionCard(cardIdToShow) {
         document.getElementById('chooseActionCard').style.display = 'none';
         document.getElementById('finalReportCard').style.display = 'none';
         document.getElementById('rescheduleCard').style.display = 'none';
         document.getElementById('qrCodeCard').style.display = 'none';
-        
         const cardToShow = document.getElementById(cardIdToShow);
         if (cardToShow) cardToShow.style.display = 'block';
-
         const progressReportCard = document.getElementById('progressReportCard');
         if (cardIdToShow === 'chooseActionCard' || !cardIdToShow) {
             progressReportCard.style.display = 'block';
@@ -465,42 +821,6 @@
              progressReportCard.style.display = 'none';
         }
     }
-
-    function openTechnicianModal(targetInputId) {
-        currentTechnicianTargetId = targetInputId;
-        const targetInput = document.getElementById(targetInputId);
-        const selectedTechnicians = targetInput.value ? targetInput.value.split(',') : [];
-        const container = document.getElementById('technician-list-container');
-        container.innerHTML = '';
-        technicianList.forEach(tech => {
-            const isChecked = selectedTechnicians.includes(tech.name);
-            const avatarUrl = tech.avatar_id 
-                ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` 
-                : `https://via.placeholder.com/40/0d6efd/ffffff?text=${encodeURIComponent(tech.name.charAt(0))}`;
-            container.innerHTML += `
-                <div class="form-check mb-2 d-flex align-items-center">
-                    <input class="form-check-input" type="checkbox" value="${tech.name}" id="tech-${tech.name.replace(/\s/g, '')}" ${isChecked ? 'checked' : ''}>
-                    <label class="form-check-label d-flex align-items-center ms-2" for="tech-${tech.name.replace(/\s/g, '')}">
-                        <img src="${avatarUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;">
-                        <span class="flex-grow-1">${tech.name}</span>
-                    </label>
-                </div>
-            `;
-        });
-        technicianSelectionModal.show();
-    }
-    
-    function confirmTechnicianSelection() {
-        const selectedNames = [];
-        const checkboxes = document.querySelectorAll('#technician-list-container input[type="checkbox"]:checked');
-        checkboxes.forEach(checkbox => { selectedNames.push(checkbox.value); });
-        const targetInput = document.getElementById(currentTechnicianTargetId);
-        const displayInput = document.getElementById(currentTechnicianTargetId + '_display');
-        targetInput.value = selectedNames.join(',');
-        displayInput.value = selectedNames.length > 0 ? selectedNames.join(', ') : 'กรุณาเลือกช่าง...';
-        technicianSelectionModal.hide();
-    }
-    
     function openEditReportModal(reportIndex) {
         const report = techReportsHistory[reportIndex];
         if (!report) return;
@@ -526,79 +846,6 @@
         form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
         editReportModal.show();
     }
-
-    function deleteReport(reportIndex) {
-        Swal.fire({
-            title: 'คุณแน่ใจหรือไม่?',
-            text: "คุณต้องการลบรายงานนี้ใช่ไหม? การกระทำนี้ไม่สามารถย้อนกลับได้!",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'ใช่, ลบเลย!',
-            cancelButtonText: 'ยกเลิก'
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                try {
-                    const response = await fetch(`/api/task/{{ task.id }}/delete_report/${reportIndex}`, {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': csrfToken }
-                    });
-
-                    const data = await response.json();
-                    if (response.ok && data.status === 'success') {
-                        await Swal.fire('ลบแล้ว!', data.message, 'success');
-                        window.location.reload();
-                    } else {
-                        Swal.fire('เกิดข้อผิดพลาด', data.message || 'ไม่สามารถลบรายงานได้', 'error');
-                    }
-                } catch (err) {
-                     Swal.fire('การเชื่อมต่อล้มเหลว', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อลบรายงานได้', 'error');
-                }
-            }
-        });
-    }
-    
-    function openLightboxById(attachmentId) {
-        const index = allAttachments.findIndex(att => att.id === attachmentId);
-        if (index !== -1) {
-            openLightbox(index);
-        }
-    }
-    
-    function openLightbox(index) {
-        if (!allAttachments || allAttachments.length === 0) return;
-        slideIndex = index;
-        document.getElementById('lightboxModal').style.display = "block";
-        document.body.style.overflow = 'hidden';
-        showSlide(slideIndex);
-    }
-
-    function closeLightbox() {
-        document.getElementById('lightboxModal').style.display = "none";
-        document.body.style.overflow = 'auto';
-    }
-
-    function changeSlide(n) {
-        slideIndex += n;
-        if (slideIndex >= allAttachments.length) { slideIndex = 0; }
-        if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
-        showSlide(slideIndex);
-    }
-
-    function showSlide(index) {
-        const lightboxImg = document.getElementById("lightboxImg");
-        const lightboxCaption = document.getElementById("lightboxCaption");
-        if(index < 0 || index >= allAttachments.length) {
-            closeLightbox();
-            return;
-        }
-        const attachment = allAttachments[index];
-        // Corrected URL to show full-size image reliably
-        lightboxImg.src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`; 
-        lightboxCaption.innerHTML = `รูปที่ ${index + 1} / ${allAttachments.length}`;
-    }
-
     function flashMessage(message, category) {
         const container = document.getElementById('js-flash-message-container');
         const alert = document.createElement('div');
@@ -613,19 +860,16 @@
             }
         }, 5000);
     }
-
     async function handleFormSubmission(event, form, statusElementId) {
         event.preventDefault();
         const submitButton = form.querySelector('button[type="submit"]');
         const originalButtonHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
-        
         const uploadStatusBox = document.getElementById(statusElementId);
         const filesInput = form.querySelector('input[type="file"][name="files[]"]');
         const files = filesInput ? Array.from(filesInput.files) : [];
         let uploadedAttachments = [];
-
         if (files.length > 0) {
             uploadStatusBox.style.display = 'inline-block';
             for (let i = 0; i < files.length; i++) {
@@ -634,7 +878,6 @@
                 fileFormData.append('file', files[i]);
                 fileFormData.append('task_id', '{{ task.id }}');
                 fileFormData.append('csrf_token', csrfToken);
-                
                 try {
                     const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
                     const result = await response.json();
@@ -648,15 +891,12 @@
                 }
             }
         }
-        
         const mainFormData = new FormData(form);
         if (filesInput) mainFormData.delete('files[]');
         mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
-
         try {
             const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
             const result = await response.json();
-            
             if (response.ok) {
                 Swal.fire({
                     toast: true,
