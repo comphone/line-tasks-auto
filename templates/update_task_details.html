@@ -5,16 +5,12 @@
 {% block head_extra %}
 <style>
     /* --- START: CSS ที่ออกแบบใหม่สำหรับส่วนข้อมูลสรุป --- */
-
-    /* Main container for info cards */
     .info-grid {
         display: grid;
-        grid-template-columns: 1fr; /* Default to 1 column for mobile */
-        gap: 0.75rem; /* Space between cards */
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
         margin-bottom: 2rem;
     }
-
-    /* Styling for each individual info card */
     .info-card {
         background-color: #ffffff;
         border-radius: 0.75rem;
@@ -24,22 +20,20 @@
         display: flex;
         flex-direction: column;
     }
-    
-    /* Special style for the main task title card */
+    .full-width-card {
+        grid-column: 1 / -1;
+    }
     .info-card.task-title-card {
         background: linear-gradient(135deg, #0d6efd, #0a58ca);
         color: white;
         border: none;
-        grid-column: 1 / -1; /* Make this card span full width */
     }
-
-    /* Label style (e.g., "ลูกค้า", "เบอร์โทร") */
     .info-label {
         display: flex;
         align-items: center;
         font-size: 0.8rem;
         font-weight: 600;
-        color: #6c757d;
+        color: #888;
         margin-bottom: 0.35rem;
         text-transform: uppercase;
     }
@@ -49,38 +43,39 @@
         margin-right: 0.5rem;
         color: #adb5bd;
     }
-    
     .task-title-card .info-label,
     .task-title-card .info-label i {
         color: rgba(255, 255, 255, 0.7);
     }
-
-    /* Value style (e.g., the actual customer name or phone number) */
     .info-value {
         font-size: 1.05em;
         font-weight: 500;
-        color: #212529;
-        word-break: break-word; /* Break long text */
+        color: #343a40;
+        word-break: break-word;
         margin-bottom: 0;
     }
-    
-    .task-title-card .info-value {
-        color: white;
-        font-size: 1.2em;
+    .info-value.task-title {
+        font-size: 1.4em;
         font-weight: 700;
+        color: white;
     }
-
+    .info-value.customer-name {
+        font-size: 1.25em;
+        font-weight: 700;
+        color: #0d6efd;
+    }
+    .info-value.phone-number {
+        font-size: 1.15em;
+        font-weight: 600;
+    }
     .info-value a {
         color: #0d6efd;
         text-decoration: underline;
         font-weight: 600;
     }
-    
     .task-title-card .info-value a {
         color: white;
     }
-
-    /* Responsive: Switch to 2 columns for medium screens and up */
     @media (min-width: 768px) {
         .info-grid {
             grid-template-columns: repeat(2, 1fr);
@@ -88,6 +83,39 @@
     }
     /* --- END: CSS ที่ออกแบบใหม่ --- */
 
+    /* --- START: CSS ที่แก้ไขสำหรับ Lightbox --- */
+    .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
+    .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; animation-name: zoom; animation-duration: 0.3s; }
+    @keyframes zoom { from {transform:scale(0)} to {transform:scale(1)} }
+    .lightbox-caption { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; }
+    .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
+    
+    .lightbox-nav {
+        cursor: pointer;
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%); /* This is the key for vertical centering */
+        width: auto;
+        padding: 1rem 1.25rem; /* Larger touch area */
+        color: white;
+        font-weight: bold;
+        font-size: 2.5rem; /* Larger icon */
+        transition: 0.3s ease;
+        border-radius: 5px;
+        user-select: none;
+        -webkit-user-select: none;
+        background-color: rgba(0,0,0,0.5);
+    }
+    .lightbox-nav:hover {
+        background-color: rgba(0,0,0,0.8);
+    }
+    .lightbox-prev {
+        left: 1rem;
+    }
+    .lightbox-next {
+        right: 1rem;
+    }
+    /* --- END: CSS ที่แก้ไขสำหรับ Lightbox --- */
 
     /* --- The rest of the CSS remains the same --- */
     .danger-zone { border: 2px solid var(--bs-danger-border-subtle); border-radius: .5rem; padding: 1rem; background-color: var(--bs-danger-bg-subtle); }
@@ -101,16 +129,7 @@
     .thumbnail:hover img { transform: scale(1.1); filter: brightness(0.8); }
     .thumbnail .icon-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5rem; opacity: 0; transition: opacity 0.2s ease-in-out; pointer-events: none; }
     .thumbnail:hover .icon-overlay { opacity: 1; }
-    .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
-    .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; animation-name: zoom; animation-duration: 0.3s; }
-    @keyframes zoom { from {transform:scale(0)} to {transform:scale(1)} }
-    .lightbox-caption { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; }
-    .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
     .hidden-file-input { display: none; }
-    .lightbox-nav { cursor: pointer; position: absolute; top: 50%; width: auto; padding: 16px; margin-top: -50px; color: white; font-weight: bold; transition: 0.6s ease; border-radius: 0 3px 3px 0; user-select: none; -webkit-user-select: none; transform: translateY(-50%); font-size: 2.5rem; background-color: rgba(0,0,0,0.5); }
-    .lightbox-prev { left: 1rem; border-radius: 3px 0 0 3px; }
-    .lightbox-next { right: 1rem; border-radius: 0 3px 3px 0; }
-    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
     .lightbox-controls { text-align: center; padding: 10px 0; position: absolute; bottom: 50px; width: 100%; left: 0; z-index: 1071; }
     .lightbox-controls .btn { border-radius: 20px; padding: 5px 15px; margin: 0 10px; background-color: rgba(40, 40, 40, 0.8); border: 1px solid rgba(255, 255, 255, 0.5); }
     .multi-select-controls { position: fixed; bottom: 0; left: 0; width: 100%; background-color: #212529; color: white; padding: 1rem; z-index: 1050; transform: translateY(100%); transition: transform 0.3s ease-in-out; border-top: 1px solid #444; }
@@ -143,31 +162,17 @@
     </div>
 
     <div class="info-grid">
-        <div class="info-card task-title-card">
+        <div class="info-card task-title-card full-width-card">
             <h6 class="info-label"><i class="fas fa-comment-dots"></i>รายละเอียดงาน</h6>
-            <p class="info-value">{{ task.title }}</p>
+            <p class="info-value task-title">{{ task.title }}</p>
         </div>
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
-            <p class="info-value">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+            <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
         </div>
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
-            <p class="info-value">{{ task.customer.phone or '-' }}</p>
-        </div>
-        <div class="info-card">
-            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
-            <p class="info-value">{{ task.customer.address or '-' }}</p>
-        </div>
-        <div class="info-card">
-            <h6 class="info-label"><i class="fas fa-map-pin"></i>พิกัดแผนที่</h6>
-            <p class="info-value">
-                {% if task.customer.map_url %}
-                    <a href="{{ task.customer.map_url }}" target="_blank">เปิดใน Google Maps</a>
-                {% else %}
-                    -
-                {% endif %}
-            </p>
+            <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
         </div>
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
@@ -176,6 +181,20 @@
         <div class="info-card">
             <h6 class="info-label"><i class="fas fa-plus-circle"></i>วันที่รับงาน</h6>
             <p class="info-value">{{ task.created_formatted or '-' }}</p>
+        </div>
+        <div class="info-card full-width-card">
+            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+            <p class="info-value">{{ task.customer.address or '-' }}</p>
+        </div>
+        <div class="info-card full-width-card">
+            <h6 class="info-label"><i class="fas fa-map-pin"></i>พิกัดแผนที่</h6>
+            <p class="info-value">
+                {% if task.customer.map_url %}
+                    <a href="{{ task.customer.map_url }}" target="_blank">เปิดใน Google Maps</a>
+                {% else %}
+                    -
+                {% endif %}
+            </p>
         </div>
     </div>
     
@@ -693,12 +712,16 @@
         document.body.style.overflow = 'hidden';
         showSlide(index);
     }
+
+    // --- START: แก้ไขฟังก์ชัน changeSlide ---
     function changeSlide(n) {
         slideIndex += n;
         if (slideIndex >= allAttachments.length) { slideIndex = 0; }
         if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
-        showSlide(index);
+        showSlide(slideIndex); // แก้จาก index เป็น slideIndex
     }
+    // --- END: แก้ไขฟังก์ชัน changeSlide ---
+
     function toggleSelectionMode(reportIdx) {
         isSelectionMode = !isSelectionMode;
         currentReportIndex = isSelectionMode ? reportIdx : -1;
