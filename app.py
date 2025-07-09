@@ -2321,6 +2321,7 @@ def trigger_customer_follow_up_test():
 
     @app.route('/public_report/<task_id>')
     def public_task_report(task_id):
+    # --- START: แก้ไขการจัดย่อหน้าทั้งหมดในฟังก์ชันนี้ ---
     task = get_single_task(task_id)
     if not task or task.get('status') != 'completed':
         abort(404)
@@ -2348,7 +2349,6 @@ def trigger_customer_follow_up_test():
             else:
                 costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})
     
-    # ส่งตัวแปร settings เข้าไปใน render_template
     return render_template('public_task_report.html', 
                            task=task, 
                            customer_info=customer, 
