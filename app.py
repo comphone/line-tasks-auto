@@ -82,8 +82,8 @@ csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-MAX_FILE_SIZE_MB = 10
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
+MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
@@ -1271,7 +1271,7 @@ def api_upload_attachment():
     drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
     
     if drive_file:
-        return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')}})
+        return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename}})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
 # --- END: ปรับปรุง Route ---

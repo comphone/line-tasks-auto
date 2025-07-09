@@ -4,6 +4,7 @@
 
 {% block head_extra %}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
     <style>
         .card-header h5 {
             font-weight: 600;
@@ -48,6 +49,18 @@
             font-size: 0.85em;
             color: #6c757d;
         }
+        .tribute-container {
+            border: 1px solid #dee2e6;
+            border-radius: .375rem;
+            box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+            background-color: #fff;
+            z-index: 9999;
+        }
+        .tribute-container ul { list-style-type: none; padding: 0; margin: 0; }
+        .tribute-container li { border-bottom: 1px solid #f1f1f1; cursor: pointer; }
+        .tribute-container li:last-child { border-bottom: none; }
+        .tribute-container li.highlight { background-color: #0d6efd; color: white; }
+        .tribute-container li.highlight small { color: #e9ecef; }
     </style>
 {% endblock %}
 
@@ -142,8 +155,8 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="files" class="form-label">แนบรูปภาพ/PDF เริ่มต้น (ถ้ามี)</label>
-                        <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf" capture="environment">
+                        <label for="files" class="form-label">แนบรูปภาพ/ไฟล์อื่นๆ (PDF, KMZ)</label>
+                        <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml" capture="environment">
                     </div>
                 </div>
             </div>
@@ -160,6 +173,7 @@
 {% block body_extra %}
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+    <script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
     <script>
         let customerDatabase = [];
 
@@ -182,6 +196,27 @@
                 locale: "th",
                 defaultDate: document.getElementById('appointment').value ? document.getElementById('appointment').value : null
             });
+
+            const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }};
+            if (taskDetailSnippets && taskDetailSnippets.length > 0) {
+                const tributeTask = new Tribute({
+                    values: taskDetailSnippets,
+                    selectTemplate: function (item) {
+                        if (item === undefined) return null;
+                        const originalText = this.current.element.value;
+                        const triggerPos = this.current.mentionTriggerPos;
+                        const textBeforeTrigger = originalText.substring(0, triggerPos);
+                        return (textBeforeTrigger + item.original.value).trim() + ' ';
+                    },
+                    menuItemTemplate: function(item) {
+                        return `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`;
+                    },
+                    noMatchTemplate: function () { return '<li class="p-2 text-muted">ไม่พบข้อความที่ตรงกัน</li>'; },
+                    allowSpaces: true,
+                    menuContainer: document.body
+                });
+                tributeTask.attach(document.getElementById('task_title'));
+            }
 
             const shareBtn = document.getElementById('shareLocationBtn');
             const locationInput = document.getElementById('latitude_longitude');
