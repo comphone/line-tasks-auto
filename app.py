@@ -2547,4 +2547,4 @@ def organize_files():
 if __name__ == '__main__':
     if not os.path.exists('credentials.json'):
         app.logger.error("credentials.json not found! Google API functions will not work.")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=Tr
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
