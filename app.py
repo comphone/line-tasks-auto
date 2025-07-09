@@ -2319,21 +2319,23 @@ def trigger_customer_follow_up_test():
         flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
     return redirect(url_for('settings_page'))
 
-
 @app.route('/public_report/<task_id>')
 def public_task_report(task_id):
     task = get_single_task(task_id)
-    if not task or task.get('status') != 'completed': abort(404)
+    if not task or task.get('status') != 'completed':
+        abort(404)
     
     notes = task.get('notes', '')
     customer = parse_customer_info_from_notes(notes)
     reports, _ = parse_tech_report_from_notes(notes)
     latest_report = reports[0] if reports else {}
     
-       app_settings = get_app_settings() 
+    # --- START: แก้ไขการจัดย่อหน้า และดึงข้อมูล settings ---
+    app_settings = get_app_settings() 
     
     equipment = latest_report.get('equipment_used', [])
-    catalog = {item['item_name']: item for item in get_app_settings().get('equipment_catalog', [])}
+    # แก้ไขให้ใช้ app_settings ที่ดึงมาแล้ว
+    catalog = {item['item_name']: item for item in app_settings.get('equipment_catalog', [])}
     costs, total = [], 0.0
     
     if isinstance(equipment, list):
@@ -2346,9 +2348,16 @@ def public_task_report(task_id):
                 total += subtotal
                 costs.append({'item': name, 'quantity': qty, 'unit': cat_item.get('unit', ''), 'price_per_unit': price, 'subtotal': subtotal})
             else:
-                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})                
-              
-    return render_template('public_task_report.html', task=task, customer_info=customer, latest_report=latest_report, detailed_costs=costs, total_cost=total, settings=app_settings)
+                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})
+    
+    # ส่งตัวแปร settings เข้าไปใน render_template
+    return render_template('public_task_report.html', 
+                           task=task, 
+                           customer_info=customer, 
+                           latest_report=latest_report, 
+                           detailed_costs=costs, 
+                           total_cost=total,
+                           settings=app_settings)
 
 @app.route('/submit_customer_problem', methods=['POST'])
 def submit_customer_problem():
