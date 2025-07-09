@@ -157,7 +157,6 @@ def save_settings_to_file(settings_data):
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
 
-# --- START: แก้ไขฟังก์ชัน get_app_settings ---
 def get_app_settings():
     """
     Get current application settings, always loading from file to ensure freshness.
@@ -194,7 +193,6 @@ def save_app_settings(settings_data):
             current_settings[key] = value
             
     return save_settings_to_file(current_settings)
-# --- END: แก้ไขฟังก์ชัน get_app_settings ---
 
 
 def safe_execute(request_object):
@@ -292,7 +290,6 @@ def find_or_create_drive_folder(name, parent_id):
         app.logger.error(f"Error finding or creating folder '{name}': {e}")
         return None
 
-# --- START: เพิ่มฟังก์ชันสร้างฐานข้อมูลลูกค้า ---
 @cached(cache)
 def get_customer_database():
     """
@@ -311,7 +308,7 @@ def get_customer_database():
         notes = task.get('notes', '')
         if not notes:
             continue
-
+        
         _, base_notes = parse_tech_report_from_notes(notes)
         customer_info = parse_customer_info_from_notes(base_notes)
 
@@ -322,20 +319,18 @@ def get_customer_database():
             continue
 
         customer_key = (name.lower(), phone)
-
+        
         if customer_key not in customers_dict:
-            # จุดสำคัญคือการเพิ่ม 'map_url' เข้าไปใน dictionary นี้
             customers_dict[customer_key] = {
                 'name': name,
                 'phone': phone,
                 'organization': customer_info.get('organization', '').strip(),
                 'address': customer_info.get('address', '').strip(),
-                'map_url': customer_info.get('map_url', '') # <-- บรรทัดที่เพิ่มเข้ามา
+                'map_url': customer_info.get('map_url', '')
             }
-
+    
     app.logger.info(f"Customer database built with {len(customers_dict)} unique customers.")
     return list(customers_dict.values())
-# --- END: เพิ่มฟังก์ชันสร้างฐานข้อมูลลูกค้า ---
 
 def load_settings_from_drive_on_startup():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
@@ -438,158 +433,7 @@ def get_single_task(task_id):
     except HttpError as err:
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
-
-def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
-    service = get_google_drive_service()
-    if not service or not folder_id:
-        app.logger.error(f"Drive service or Folder ID not configured for upload of '{file_name}'.")
-        return None
-
-    try:
-        file_metadata = {'name': file_name, 'parents': [folder_id]}
-        app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
         
-        file_obj = _execute_google_api_call_with_retry(
-            service.files().create,
-            body=file_metadata, media_body=media_body, fields='id, webViewLink'
-        )
-
-        if not file_obj or 'id' not in file_obj:
-            app.logger.error(f"Drive upload failed for '{file_name}': File object or ID is missing.")
-            return None
-
-        uploaded_file_id = file_obj['id']
-        app.logger.info(f"File '{file_name}' uploaded with ID: {uploaded_file_id}. Setting permissions.")
-
-        permission_result = _execute_google_api_call_with_retry(
-            service.permissions().create,
-            fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'}
-        )
-        
-        if not permission_result or 'id' not in permission_result:
-            app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File may be inaccessible.")
-            return file_obj
-
-        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
-        return file_obj
-
-    except Exception as e:
-        app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
-        return None
-
-def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
-    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-        app.logger.error(f"File at path '{file_path}' is missing or empty. Aborting upload.")
-        return None
-    media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-    return _perform_drive_upload(media, file_name, mime_type, folder_id)
-
-def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
-    media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
-    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id)
-    return file_obj
-
-
-def create_google_task(title, notes=None, due=None):
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
-        if due: task_body['due'] = due
-        return _execute_google_api_call_with_retry(service.tasks().insert, tasklist=GOOGLE_TASKS_LIST_ID, body=task_body)
-    except HttpError as e:
-        app.logger.error(f"Error creating Google Task: {e}")
-        return None
-
-def delete_google_task(task_id):
-    service = get_google_tasks_service()
-    if not service: return False
-    try:
-        _execute_google_api_call_with_retry(service.tasks().delete, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
-        return True
-    except HttpError as err:
-        app.logger.error(f"API Error deleting task {task_id}: {err}")
-        return False
-
-def update_google_task(task_id, title=None, notes=None, status=None, due=None):
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        task = _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
-        if title is not None: task['title'] = title
-        if notes is not None: task['notes'] = notes
-        if status is not None:
-            task['status'] = status
-
-        if status == 'completed':
-            task['completed'] = datetime.datetime.now(pytz.utc).isoformat().replace('+00:00', 'Z')
-            task['due'] = None
-        else:
-            task.pop('completed', None)
-            if due is not None:
-                task['due'] = due
-        if due is None and status == 'needsAction':
-             pass
-
-        return _execute_google_api_call_with_retry(service.tasks().update, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task)
-    except HttpError as e:
-        app.logger.error(f"Failed to update task {task_id}: {e}")
-        return None
-
-def parse_customer_info_from_notes(notes):
-    info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
-    if not notes: return info
-
-    org_match = re.search(r"หน่วยงาน:\s*(.*)", notes, re.IGNORECASE)
-    name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
-    phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
-    address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
-    map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
-
-    if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
-    if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
-    if phone_match: info['phone'] = phone_match.group(1).strip().split(':')[-1].strip()
-    if address_match: info['address'] = address_match.group(1).strip().split(':')[-1].strip()
-    
-    if map_url_match:
-        coords_or_url = map_url_match.group(1).strip()
-        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
-        else:
-            info['map_url'] = coords_or_url
-    
-    return info
-
-def parse_customer_feedback_from_notes(notes):
-    feedback_data = {}
-    if not notes: return feedback_data
-
-    feedback_match = re.search(r"--- CUSTOMER_FEEDBACK_START ---\s*\n(.*?)\n--- CUSTOMER_FEEDBACK_END ---", notes, re.DOTALL)
-    if feedback_match:
-        try:
-            feedback_data = json.loads(feedback_match.group(1))
-        except json.JSONDecodeError:
-            app.logger.warning("Failed to decode customer feedback JSON from notes.")
-    return feedback_data
-
-def parse_google_task_dates(task_item):
-    parsed = task_item.copy()
-    for key in ['created', 'due', 'completed']:
-        if parsed.get(key):
-            try:
-                dt_utc = date_parse(parsed[key])
-                parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
-                if key == 'due':
-                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
-            except (ValueError, TypeError) as e:
-                app.logger.warning(f"Could not parse date '{parsed[key]}' for key '{key}': {e}")
-                parsed[f'{key}_formatted'] = ''
-                if key == 'due': parsed['due_for_input'] = ''
-        else:
-            parsed[f'{key}_formatted'] = ''
-            if key == 'due': parsed['due_for_input'] = ''
-    return parsed
-
 def parse_tech_report_from_notes(notes):
     if not notes: return [], ""
     report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
@@ -1071,7 +915,7 @@ def page_not_found(e):
 @app.errorhandler(500)
 def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
-    notify_admin_error(f"Internal Server Error: {e}")
+    # notify_admin_error(f"Internal Server Error: {e}")
     return render_template('500.html'), 500
 
 
@@ -1765,7 +1609,7 @@ def edit_report_attachments(task_id, report_index):
                     media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
                     drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
                     if drive_file:
-                        updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+                        updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename})
         else:
              flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
 
@@ -2319,9 +2163,8 @@ def trigger_customer_follow_up_test():
         flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
     return redirect(url_for('settings_page'))
 
-    @app.route('/public_report/<task_id>')
-    def public_task_report(task_id):
-    # --- START: แก้ไขการจัดย่อหน้าทั้งหมดในฟังก์ชันนี้ ---
+@app.route('/public_report/<task_id>')
+def public_task_report(task_id):
     task = get_single_task(task_id)
     if not task or task.get('status') != 'completed':
         abort(404)
@@ -2434,7 +2277,7 @@ def callback():
         abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
-        notify_admin_error(f"Webhook Handler Error: {e}")
+        #notify_admin_error(f"Webhook Handler Error: {e}")
         abort(500)
     return 'OK'
 
@@ -2704,4 +2547,4 @@ def organize_files():
 if __name__ == '__main__':
     if not os.path.exists('credentials.json'):
         app.logger.error("credentials.json not found! Google API functions will not work.")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=Tr
