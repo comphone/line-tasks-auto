@@ -13,9 +13,7 @@ import time
 import tempfile
 import uuid
 
-# --- เพิ่มการนำเข้าสำหรับบีบอัดรูปภาพ ---
 from PIL import Image
-# ------------------------------------
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -55,7 +53,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
-# --- START: เพิ่มคลังข้อความด่วน (Text Snippets) ---
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -70,10 +67,7 @@ TEXT_SNIPPETS = {
         {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
     ]
 }
-# --- END: เพิ่มคลังข้อความด่วน ---
 
-
-# --- Initialization & Configurations ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
@@ -158,10 +152,6 @@ def save_settings_to_file(settings_data):
         return False
 
 def get_app_settings():
-    """
-    Get current application settings, always loading from file to ensure freshness.
-    This prevents issues in multi-process environments like Gunicorn.
-    """
     app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
     loaded_settings = load_settings_from_file()
     
@@ -181,9 +171,6 @@ def get_app_settings():
     return app_settings
 
 def save_app_settings(settings_data):
-    """
-    Save application settings by merging with current settings from file and writing back.
-    """
     current_settings = get_app_settings()
     
     for key, value in settings_data.items():
@@ -292,10 +279,6 @@ def find_or_create_drive_folder(name, parent_id):
 
 @cached(cache)
 def get_customer_database():
-    """
-    Builds a unique customer database from all tasks.
-    The most recent information for a customer is prioritized.
-    """
     app.logger.info("Building customer database from Google Tasks...")
     all_tasks = get_google_tasks_for_report(show_completed=True)
     if not all_tasks:
@@ -433,7 +416,158 @@ def get_single_task(task_id):
     except HttpError as err:
         app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
+
+def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
+    service = get_google_drive_service()
+    if not service or not folder_id:
+        app.logger.error(f"Drive service or Folder ID not configured for upload of '{file_name}'.")
+        return None
+
+    try:
+        file_metadata = {'name': file_name, 'parents': [folder_id]}
+        app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
         
+        file_obj = _execute_google_api_call_with_retry(
+            service.files().create,
+            body=file_metadata, media_body=media_body, fields='id, webViewLink'
+        )
+
+        if not file_obj or 'id' not in file_obj:
+            app.logger.error(f"Drive upload failed for '{file_name}': File object or ID is missing.")
+            return None
+
+        uploaded_file_id = file_obj['id']
+        app.logger.info(f"File '{file_name}' uploaded with ID: {uploaded_file_id}. Setting permissions.")
+
+        permission_result = _execute_google_api_call_with_retry(
+            service.permissions().create,
+            fileId=uploaded_file_id, body={'role': 'reader', 'type': 'anyone'}
+        )
+        
+        if not permission_result or 'id' not in permission_result:
+            app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File may be inaccessible.")
+            return file_obj
+
+        app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
+        return file_obj
+
+    except Exception as e:
+        app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
+        return None
+
+def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        app.logger.error(f"File at path '{file_path}' is missing or empty. Aborting upload.")
+        return None
+    media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+    return _perform_drive_upload(media, file_name, mime_type, folder_id)
+
+def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
+    media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
+    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id)
+    return file_obj
+
+
+def create_google_task(title, notes=None, due=None):
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
+        if due: task_body['due'] = due
+        return _execute_google_api_call_with_retry(service.tasks().insert, tasklist=GOOGLE_TASKS_LIST_ID, body=task_body)
+    except HttpError as e:
+        app.logger.error(f"Error creating Google Task: {e}")
+        return None
+
+def delete_google_task(task_id):
+    service = get_google_tasks_service()
+    if not service: return False
+    try:
+        _execute_google_api_call_with_retry(service.tasks().delete, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
+        return True
+    except HttpError as err:
+        app.logger.error(f"API Error deleting task {task_id}: {err}")
+        return False
+
+def update_google_task(task_id, title=None, notes=None, status=None, due=None):
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        task = _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
+        if title is not None: task['title'] = title
+        if notes is not None: task['notes'] = notes
+        if status is not None:
+            task['status'] = status
+
+        if status == 'completed':
+            task['completed'] = datetime.datetime.now(pytz.utc).isoformat().replace('+00:00', 'Z')
+            task['due'] = None
+        else:
+            task.pop('completed', None)
+            if due is not None:
+                task['due'] = due
+        if due is None and status == 'needsAction':
+             pass
+
+        return _execute_google_api_call_with_retry(service.tasks().update, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task)
+    except HttpError as e:
+        app.logger.error(f"Failed to update task {task_id}: {e}")
+        return None
+
+def parse_customer_info_from_notes(notes):
+    info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
+    if not notes: return info
+
+    org_match = re.search(r"หน่วยงาน:\s*(.*)", notes, re.IGNORECASE)
+    name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
+    phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
+    address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
+    map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
+
+    if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
+    if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
+    if phone_match: info['phone'] = phone_match.group(1).strip().split(':')[-1].strip()
+    if address_match: info['address'] = address_match.group(1).strip().split(':')[-1].strip()
+    
+    if map_url_match:
+        coords_or_url = map_url_match.group(1).strip()
+        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
+            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
+        else:
+            info['map_url'] = coords_or_url
+    
+    return info
+
+def parse_customer_feedback_from_notes(notes):
+    feedback_data = {}
+    if not notes: return feedback_data
+
+    feedback_match = re.search(r"--- CUSTOMER_FEEDBACK_START ---\s*\n(.*?)\n--- CUSTOMER_FEEDBACK_END ---", notes, re.DOTALL)
+    if feedback_match:
+        try:
+            feedback_data = json.loads(feedback_match.group(1))
+        except json.JSONDecodeError:
+            app.logger.warning("Failed to decode customer feedback JSON from notes.")
+    return feedback_data
+
+def parse_google_task_dates(task_item):
+    parsed = task_item.copy()
+    for key in ['created', 'due', 'completed']:
+        if parsed.get(key):
+            try:
+                dt_utc = date_parse(parsed[key])
+                parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
+                if key == 'due':
+                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+            except (ValueError, TypeError) as e:
+                app.logger.warning(f"Could not parse date '{parsed[key]}' for key '{key}': {e}")
+                parsed[f'{key}_formatted'] = ''
+                if key == 'due': parsed['due_for_input'] = ''
+        else:
+            parsed[f'{key}_formatted'] = ''
+            if key == 'due': parsed['due_for_input'] = ''
+    return parsed
+
 def parse_tech_report_from_notes(notes):
     if not notes: return [], ""
     report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
@@ -902,7 +1036,6 @@ def cleanup_scheduler():
 # --- Initial app setup calls ---
 with app.app_context():
     load_settings_from_drive_on_startup()
-    # _APP_SETTINGS_STORE = get_app_settings() # Removed to use fresh settings on each request
     run_scheduler()
 
 atexit.register(cleanup_scheduler)
@@ -915,24 +1048,19 @@ def page_not_found(e):
 @app.errorhandler(500)
 def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
-    # notify_admin_error(f"Internal Server Error: {e}")
     return render_template('500.html'), 500
 
 
 # --- Flask Routes ---
-
-# --- START: เพิ่ม API Route สำหรับดึงข้อมูลลูกค้า ---
 @app.route('/api/customers')
 def api_customers():
     customer_list = get_customer_database()
     return jsonify(customer_list)
-# --- END: เพิ่ม API Route ---
 
 @app.route("/")
 def root_redirect():
     return redirect(url_for('summary'))
 
-# --- START: ปรับปรุง Route /form และ /api/upload_attachment ---
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
@@ -972,7 +1100,6 @@ def form_page():
             cache.clear()
             send_new_task_notification(new_task)
             
-            # Process pre-uploaded files from the hidden input
             uploaded_attachments_json = request.form.get('uploaded_attachments_json')
             uploaded_attachments = []
             if uploaded_attachments_json:
@@ -984,7 +1111,6 @@ def form_page():
             if uploaded_attachments:
                 task_id = new_task['id']
                 
-                # Logic to move pre-uploaded files to the correct final folder
                 attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
                 monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
                 monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
@@ -1007,7 +1133,6 @@ def form_page():
                         except Exception as e:
                             app.logger.error(f"Could not move attachment {att['id']} to final folder: {e}")
                 
-                # Create an initial tech report for the attachments
                 initial_report = {
                     'type': 'report',
                     'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1042,7 +1167,6 @@ def api_upload_attachment():
     if not task_id:
         return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
 
-    # File size check and compression logic
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
     file.seek(0)
@@ -1071,7 +1195,6 @@ def api_upload_attachment():
         filename = secure_filename(file.filename)
         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
 
-    # Logic to handle both new and existing tasks
     attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
     if not attachments_base_folder_id:
         return jsonify({'status': 'error', 'message': 'Could not create or find base Task_Attachments folder'}), 500
@@ -1080,13 +1203,11 @@ def api_upload_attachment():
     target_date = datetime.datetime.now(THAILAND_TZ)
 
     if task_id == 'new_task_placeholder':
-        # For a new task, upload to a temporary date-based folder
         monthly_folder_name = target_date.strftime('%Y-%m')
         monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
         temp_upload_folder_name = f"New_Uploads_{target_date.strftime('%Y-%m-%d')}"
         final_upload_folder_id = find_or_create_drive_folder(temp_upload_folder_name, monthly_folder_id)
     else:
-        # Existing task logic
         task_raw = get_single_task(task_id)
         if not task_raw:
             return jsonify({'status': 'error', 'message': 'Task not found'}), 404
@@ -1118,7 +1239,6 @@ def api_upload_attachment():
         return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename}})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
-# --- END: ปรับปรุง Route ---
 
 @app.route('/summary')
 def summary():
@@ -1191,8 +1311,6 @@ def summary():
                            tasks=final_tasks, summary=stats,
                            search_query=search_query, status_filter=status_filter,
                            chart_data=chart_data)
-
-# ... (The rest of the file remains unchanged) ...
 
 @app.route('/summary/print')
 def summary_print():
@@ -1313,10 +1431,8 @@ def schedule_task_from_calendar():
         if task.get('status') == 'completed':
             return jsonify({'status': 'error', 'message': 'ไม่สามารถย้ายงานที่เสร็จสิ้นแล้วได้'}), 403
 
-        # --- FIX: Parse timezone-aware ISO string directly ---
         dt_utc = date_parse(new_due_str)
         due_date_gmt = dt_utc.isoformat().replace('+00:00', 'Z')
-        # --- END FIX ---
 
         updated_task = update_google_task(task_id, due=due_date_gmt, status='needsAction')
         
@@ -1454,7 +1570,6 @@ def task_details(task_id):
             flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
             return jsonify({'status': 'error', 'message': flash_message}), 500
 
-    # GET request logic
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
     
@@ -1496,7 +1611,6 @@ def task_details(task_id):
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
                            )
 
-# --- START: เพิ่ม Endpoint สำหรับแก้ไขข้อความรายงาน ---
 @app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
 def api_edit_report_text(task_id, report_index):
     data = request.json
@@ -1515,10 +1629,8 @@ def api_edit_report_text(task_id, report_index):
     if not (0 <= report_index < len(history)):
         return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการแก้ไข'}), 404
 
-    # อัปเดตเฉพาะ work_summary
     history[report_index]['work_summary'] = new_summary
     
-    # สร้าง notes ใหม่ทั้งหมด
     all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
     final_notes = base_notes_text
     if all_reports_text: final_notes += all_reports_text
@@ -1529,7 +1641,6 @@ def api_edit_report_text(task_id, report_index):
         return jsonify({'status': 'success', 'message': 'แก้ไขรายงานเรียบร้อยแล้ว'})
     else:
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
-# --- END: เพิ่ม Endpoint ---
 
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
@@ -2264,16 +2375,12 @@ def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
     
-    # --- START: เพิ่มการบันทึก Log ---
     app.logger.info("Request body: " + body)
-    # --- END: เพิ่มการบันทึก Log ---
 
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        # --- START: เพิ่มการบันทึก Log ---
         app.logger.error("Invalid LINE signature. Please check your channel secret.")
-        # --- END: เพิ่มการบันทึก Log ---
         abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
@@ -2545,6 +2652,4 @@ def organize_files():
     return render_template('organize_files.html')
 
 if __name__ == '__main__':
-    if not os.path.exists('credentials.json'):
-        app.logger.error("credentials.json not found! Google API functions will not work.")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
