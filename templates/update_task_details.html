@@ -100,7 +100,7 @@
     .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
     .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; animation-name: zoom; animation-duration: 0.3s; }
     @keyframes zoom { from {transform:scale(0)} to {transform:scale(1)} }
-    .lightbox-caption { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; }
+    .lightbox-caption { position: absolute; bottom: 80px; /* Adjusted for nav buttons */ left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; text-align: center; color: #ccc; padding: 10px 0; }
     .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
     
     .lightbox-nav-container {
@@ -109,19 +109,19 @@
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 3rem;
+        gap: 3rem; /* Increased space between buttons */
     }
     .lightbox-nav {
         cursor: pointer;
         color: white;
-        font-size: 3rem;
+        font-size: 3rem; /* Larger icon */
         transition: 0.3s ease;
         user-select: none;
         -webkit-user-select: none;
         background-color: rgba(30, 30, 30, 0.6);
         border-radius: 50%;
-        width: 70px;
-        height: 70px;
+        width: 70px;  /* Larger button */
+        height: 70px; /* Larger button */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -402,11 +402,13 @@
                         {% set image_files = [] %}
                         {% set other_files = [] %}
                         {% for att in report.attachments %}
-                            {% if att.name and (att.name.lower().endswith('.png') or att.name.lower().endswith('.jpg') or att.name.lower().endswith('.jpeg') or att.name.lower().endswith('.gif')) %}
-                                {% set _ = image_files.append(att) %}
-                            {% else %}
+                            {# START: Logic ใหม่ที่ฉลาดขึ้น #}
+                            {% if att.name and (att.name.lower().endswith('.pdf') or att.name.lower().endswith('.kmz') or att.name.lower().endswith('.kml')) %}
                                 {% set _ = other_files.append(att) %}
+                            {% else %}
+                                {% set _ = image_files.append(att) %}
                             {% endif %}
+                            {# END: Logic ใหม่ที่ฉลาดขึ้น #}
                         {% endfor %}
 
                         {% if image_files %}
@@ -485,7 +487,7 @@
 </div>
 
 <div id="lightboxModal" class="lightbox">
-    <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+    <span class="lightbox-close" onclick="closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
     <div id="lightboxCaption" class="lightbox-caption"></div>
     
