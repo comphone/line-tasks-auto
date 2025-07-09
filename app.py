@@ -2319,8 +2319,8 @@ def trigger_customer_follow_up_test():
         flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
     return redirect(url_for('settings_page'))
 
-@app.route('/public_report/<task_id>')
-def public_task_report(task_id):
+    @app.route('/public_report/<task_id>')
+    def public_task_report(task_id):
     task = get_single_task(task_id)
     if not task or task.get('status') != 'completed':
         abort(404)
@@ -2330,11 +2330,9 @@ def public_task_report(task_id):
     reports, _ = parse_tech_report_from_notes(notes)
     latest_report = reports[0] if reports else {}
     
-    # --- START: แก้ไขการจัดย่อหน้า และดึงข้อมูล settings ---
     app_settings = get_app_settings() 
     
     equipment = latest_report.get('equipment_used', [])
-    # แก้ไขให้ใช้ app_settings ที่ดึงมาแล้ว
     catalog = {item['item_name']: item for item in app_settings.get('equipment_catalog', [])}
     costs, total = [], 0.0
     
