@@ -423,6 +423,7 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
         app.logger.error(f"Drive service or Folder ID not configured for upload of '{file_name}'.")
         return None
 
+    uploaded_file_id = None
     try:
         file_metadata = {'name': file_name, 'parents': [folder_id]}
         app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
@@ -445,14 +446,26 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
         )
         
         if not permission_result or 'id' not in permission_result:
-            app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File may be inaccessible.")
-            return file_obj
+            app.logger.error(f"CRITICAL: Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File will be inaccessible. Aborting and cleaning up.")
+            try:
+                _execute_google_api_call_with_retry(service.files().delete, fileId=uploaded_file_id)
+                app.logger.info(f"Cleaned up file '{file_name}' (ID: {uploaded_file_id}) after permission failure.")
+            except Exception as delete_error:
+                app.logger.error(f"Could not clean up file '{uploaded_file_id}' after permission failure: {delete_error}")
+            return None
 
         app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
         return file_obj
 
     except Exception as e:
         app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
+        if uploaded_file_id:
+             app.logger.info(f"Attempting to clean up file {uploaded_file_id} after unexpected error.")
+             try:
+                _execute_google_api_call_with_retry(service.files().delete, fileId=uploaded_file_id)
+                app.logger.info(f"Cleaned up file '{file_name}' (ID: {uploaded_file_id}) after unexpected error.")
+             except Exception as cleanup_error:
+                app.logger.error(f"Failed to cleanup file '{uploaded_file_id}' after error: {cleanup_error}")
         return None
 
 def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
