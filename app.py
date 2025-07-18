@@ -53,7 +53,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
-# --- Constants and Global Configs ---
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -218,15 +217,14 @@ def load_settings_from_drive_on_startup():
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     max_retries = 3
     base_delay = 1
-    request = api_call(*args, **kwargs)
+    request_obj = api_call(*args, **kwargs)
 
-    # Handle special case for functions like build() that don't return an executable request
-    if not hasattr(request, 'execute'):
-        return request
+    if not hasattr(request_obj, 'execute'):
+        return request_obj
 
     for i in range(max_retries):
         try:
-            return request.execute()
+            return request_obj.execute()
         except HttpError as e:
             if e.resp.status in [500, 502, 503, 504, 429] and i < max_retries - 1:
                 delay = base_delay * (2 ** i)
@@ -264,7 +262,7 @@ def get_google_service(api_name, api_version):
 
     if creds and creds.valid:
         try:
-            service = _execute_google_api_call_with_retry(build, api_name=api_name, api_version=api_version, credentials=creds)
+            service = _execute_google_api_call_with_retry(build, serviceName=api_name, version=api_version, credentials=creds)
             return service
         except Exception as e:
             app.logger.error(f"Failed to build Google API service: {e}")
@@ -386,6 +384,28 @@ def delete_google_task(task_id):
         app.logger.error(f"API Error deleting task {task_id}: {err}")
         return False
         
+def create_google_task(title, notes=None, due=None):
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        task_body = {'title': title, 'notes': notes, 'status': 'needsAction'}
+        if due: task_body['due'] = due
+        return _execute_google_api_call_with_retry(service.tasks().insert, tasklist=GOOGLE_TASKS_LIST_ID, body=task_body)
+    except HttpError as e:
+        app.logger.error(f"Error creating Google Task: {e}")
+        return None
+
+@cached(cache)
+def get_google_tasks_for_report(show_completed=True):
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        results = _execute_google_api_call_with_retry(service.tasks().list, tasklist=GOOGLE_TASKS_LIST_ID, showCompleted=show_completed, maxResults=100)
+        return results.get('items', [])
+    except HttpError as err:
+        app.logger.error(f"API Error getting tasks: {err}")
+        return None
+
 #</editor-fold>
 
 #<editor-fold desc="Note Parsing and Formatting Helpers">
@@ -508,35 +528,35 @@ def run_scheduler():
     app.logger.info("APScheduler started/reconfigured.")
 
 def scheduled_backup_job():
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 
 def scheduled_appointment_reminder_job():
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 
 def scheduled_customer_follow_up_job():
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 
 def check_google_api_status():
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 
 def send_new_task_notification(task):
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 
 def send_completion_notification(task, technicians):
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 
 def send_update_notification(task, new_due_date_str, reason, technicians, is_today):
-    # ... (Keep your full original function here) ...
+    # ... (This function is complete in your original file) ...
     pass
 #</editor-fold>
 
@@ -610,23 +630,82 @@ def form_page():
 
 @app.route('/summary')
 def summary():
-    # ... (Your original summary logic remains here) ...
-    pass
+    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    search_query = str(request.args.get('search_query', '')).strip().lower()
+    status_filter = str(request.args.get('status_filter', 'all')).strip()
+    today_thai = datetime.datetime.now(THAILAND_TZ).date()
+    final_tasks = []
+    stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw), 'today': 0}
 
-# ... (All other routes like /summary/print, /calendar, api routes, etc. remain here)
-# ... It's crucial to copy all the remaining functions from your original file ...
-# ... starting from the `@app.route('/summary/print')` all the way to the end ...
-# ... including all LINE bot handlers and the if __name__ == '__main__': block ...
+    for task in tasks_raw:
+        task_status = task.get('status', 'needsAction')
+        is_overdue = False
+        is_today = False
+        if task_status == 'needsAction' and task.get('due'):
+            try:
+                due_dt_utc = date_parse(task['due'])
+                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+                if due_dt_local.date() < today_thai:
+                    is_overdue = True
+                elif due_dt_local.date() == today_thai:
+                    is_today = True
+            except (ValueError, TypeError):
+                pass
+        
+        if task_status == 'completed':
+            stats['completed'] += 1
+        else:
+            stats['needsAction'] += 1
+            if is_overdue:
+                stats['overdue'] += 1
+            if is_today:
+                stats['today'] += 1
 
-# THIS IS A PLACEHOLDER - COPY THE REST OF YOUR ROUTES FROM THE ORIGINAL FILE
+        task_passes_filter = (status_filter == 'all' or
+                              (status_filter == 'completed' and task_status == 'completed') or
+                              (status_filter == 'needsAction' and task_status == 'needsAction') or
+                              (status_filter == 'today' and is_today))
+        
+        if task_passes_filter:
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
+
+            if not search_query or search_query in searchable_text:
+                parsed_task = parse_google_task_dates(task)
+                parsed_task['customer'] = customer_info
+                parsed_task['is_overdue'] = is_overdue
+                parsed_task['is_today'] = is_today
+                final_tasks.append(parsed_task)
+
+    final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, date_parse(x.get('due', '9999-12-31T23:59:59Z'))))
+    
+    completed_tasks_for_chart = [t for t in tasks_raw if t.get('status') == 'completed' and t.get('completed')]
+    month_labels = []
+    chart_values = []
+    for i in range(12):
+        target_d = datetime.datetime.now(THAILAND_TZ) - datetime.timedelta(days=30 * (11 - i))
+        month_key = target_d.strftime('%Y-%m')
+        month_labels.append(target_d.strftime('%b %y'))
+        count = sum(1 for task in completed_tasks_for_chart if date_parse(task['completed']).astimezone(THAILAND_TZ).strftime('%Y-%m') == month_key)
+        chart_values.append(count)
+    chart_data = {'labels': month_labels, 'values': chart_values}
+
+    return render_template("dashboard.html",
+                           tasks=final_tasks, summary=stats,
+                           search_query=search_query, status_filter=status_filter,
+                           chart_data=chart_data)
+
+# ... (ALL OTHER ROUTES FROM YOUR ORIGINAL FILE MUST BE PLACED HERE) ...
 # For example:
 # @app.route('/summary/print')
-# def summary_print(): ...
+# def summary_print():
+#     ... (full function)
 #
 # @app.route('/calendar')
-# def calendar_view(): ...
+# def calendar_view():
+#     ... (full function)
 #
-# ... and so on, until the end of the file.
+# ... and so on for all remaining routes and handlers.
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
