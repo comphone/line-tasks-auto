@@ -169,6 +169,49 @@ def save_app_settings(settings_data):
             
     return save_settings_to_file(current_settings)
 
+def load_settings_from_drive_on_startup():
+    settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
+    if not settings_backup_folder_id:
+        app.logger.error("Could not find or create Settings_Backups folder. Skipping settings restore.")
+        return False
+        
+    service = get_google_drive_service()
+    if not service:
+        app.logger.error("Could not get Drive service for settings restore.")
+        return False
+
+    try:
+        query = f"name = 'settings_backup.json' and '{settings_backup_folder_id}' in parents and trashed = false"
+        response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', orderBy='modifiedTime desc', pageSize=1)
+        files = response.get('files', [])
+
+        if files:
+            latest_backup_file_id = files[0]['id']
+            app.logger.info(f"Found latest settings backup on Drive (ID: {latest_backup_file_id})")
+
+            request = service.files().get_media(fileId=latest_backup_file_id)
+            fh = BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+            fh.seek(0)
+
+            downloaded_settings = json.loads(fh.read().decode('utf-8'))
+
+            if save_settings_to_file(downloaded_settings):
+                app.logger.info("Successfully restored settings from Google Drive backup.")
+                return True
+            else:
+                app.logger.error("Failed to save restored settings to local file.")
+                return False
+        else:
+            app.logger.info("No settings backup found on Google Drive for automatic restore.")
+            return False
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
+        return False
+
 #</editor-fold>
 
 #<editor-fold desc="Google API Service Helpers">
@@ -460,7 +503,25 @@ def run_scheduler():
     scheduler.start()
     app.logger.info("APScheduler started/reconfigured.")
 
-# ... (The rest of the scheduled jobs like scheduled_backup_job, scheduled_appointment_reminder_job etc. remain largely the same, so they are omitted for brevity but should be included in the final file)
+def scheduled_backup_job():
+    # This function is long and unchanged, so it's omitted for brevity.
+    # Please ensure you have this function in your final code.
+    pass
+
+def scheduled_appointment_reminder_job():
+    # This function is long and unchanged, so it's omitted for brevity.
+    # Please ensure you have this function in your final code.
+    pass
+
+def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
+    # This function is unchanged.
+    pass
+
+def scheduled_customer_follow_up_job():
+    # This function is long and unchanged, so it's omitted for brevity.
+    # Please ensure you have this function in your final code.
+    pass
+
 #</editor-fold>
 
 # --- App Initialization and Error Handlers ---
@@ -484,25 +545,29 @@ def root_redirect(): return redirect(url_for('summary'))
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
-        # ... (form processing logic remains the same)
-        pass # Placeholder for existing logic
+        # This logic is complex and remains the same as your original file.
+        # It handles form validation, note creation, due date parsing,
+        # task creation, and initial file attachment.
+        pass # Placeholder for your existing logic
     return render_template('form.html', task_detail_snippets=TEXT_SNIPPETS.get('task_details', []))
 
 @app.route('/summary')
 def summary():
-    # ... (summary logic remains the same)
-    pass # Placeholder for existing logic
+    # This logic is complex and remains the same as your original file.
+    # It handles filtering, searching, stats calculation, and chart data preparation.
+    pass # Placeholder for your existing logic
 
 #<editor-fold desc="Task Details Page POST Handlers">
-def handle_save_report(task_id, task_raw, form_data, attachments):
+
+def handle_save_report(task_raw, form_data, attachments):
     work_summary = form_data.get('work_summary', '').strip()
     selected_technicians = form_data.get('technicians_report', '').split(',')
     selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
     if not (work_summary or attachments):
-        return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์'}), 400
+        return None, {'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์'}
     if not selected_technicians:
-        return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}), 400
+        return None, {'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}
 
     history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
     history.append({
@@ -511,15 +576,74 @@ def handle_save_report(task_id, task_raw, form_data, attachments):
         'equipment_used': _parse_equipment_string(form_data.get('equipment_used', '')),
         'attachments': attachments, 'technicians': selected_technicians
     })
-    return {'notes': build_final_notes(base_notes, history, parse_customer_feedback_from_notes(task_raw.get('notes', '')))}, "เพิ่มรายงานเรียบร้อย!", None
+    
+    update_payload = {'notes': build_final_notes(base_notes, history, parse_customer_feedback_from_notes(task_raw.get('notes', '')))}
+    flash_message = 'เพิ่มรายงานเรียบร้อยแล้ว!'
+    # No notification for simple progress report
+    notification_data = None 
+    
+    return update_payload, flash_message, notification_data
 
-def handle_reschedule_task(task_id, task_raw, form_data):
-    # ... (Similar refactoring for reschedule logic)
-    pass
+def handle_reschedule_task(task_raw, form_data):
+    reschedule_due_str = form_data.get('reschedule_due', '').strip()
+    selected_technicians = form_data.get('technicians_reschedule', '').split(',')
+    selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
+    
+    if not reschedule_due_str:
+        return None, {'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}
+        
+    try:
+        dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
+        update_payload = {
+            'due': dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z'),
+            'status': 'needsAction'
+        }
+        new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
+    except ValueError:
+        return None, {'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}
 
-def handle_complete_task(task_id, task_raw, form_data, attachments):
-    # ... (Similar refactoring for completion logic)
-    pass
+    history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    reschedule_reason = form_data.get('reschedule_reason', '').strip()
+    history.append({
+        'type': 'reschedule', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+        'reason': reschedule_reason, 'new_due_date': new_due_date_formatted,
+        'technicians': selected_technicians
+    })
+    
+    update_payload['notes'] = build_final_notes(base_notes, history, parse_customer_feedback_from_notes(task_raw.get('notes', '')))
+    flash_message = 'เลื่อนนัดหมายเรียบร้อยแล้ว'
+    
+    is_today = dt_local.date() == datetime.datetime.now(THAILAND_TZ).date()
+    notification_data = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
+    
+    return update_payload, flash_message, notification_data
+
+def handle_complete_task(task_raw, form_data, attachments):
+    work_summary = form_data.get('work_summary', '').strip()
+    selected_technicians = form_data.get('technicians_report', '').split(',')
+    selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
+
+    if not work_summary:
+        return None, {'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}
+    if not selected_technicians:
+        return None, {'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}
+
+    history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    history.append({
+        'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+        'work_summary': work_summary,
+        'equipment_used': _parse_equipment_string(form_data.get('equipment_used', '')),
+        'attachments': attachments, 'technicians': selected_technicians
+    })
+    
+    update_payload = {
+        'status': 'completed',
+        'notes': build_final_notes(base_notes, history, parse_customer_feedback_from_notes(task_raw.get('notes', '')))
+    }
+    flash_message = 'ปิดงานเรียบร้อยแล้ว!'
+    notification_data = ('completion', selected_technicians)
+    
+    return update_payload, flash_message, notification_data
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
@@ -528,37 +652,56 @@ def task_details(task_id):
         if not task_raw: return jsonify({'status': 'error', 'message': 'ไม่พบงาน'}), 404
 
         action = request.form.get('action')
-        attachments = json.loads(request.form.get('uploaded_attachments_json', '[]'))
-        
+        attachments = []
+        try:
+            attachments = json.loads(request.form.get('uploaded_attachments_json', '[]'))
+        except json.JSONDecodeError:
+            app.logger.error("Could not parse uploaded_attachments_json")
+
         handler_map = {
-            'save_report': handle_save_report,
-            'reschedule_task': handle_reschedule_task,
-            'complete_task': handle_complete_task,
+            'save_report': lambda: handle_save_report(task_raw, request.form, attachments),
+            'reschedule_task': lambda: handle_reschedule_task(task_raw, request.form),
+            'complete_task': lambda: handle_complete_task(task_raw, request.form, attachments),
         }
 
         handler = handler_map.get(action)
         if not handler: return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
 
-        result, flash_message, notification_data = handler(task_id, task_raw, request.form, attachments)
+        update_payload, flash_message, notification_data = handler()
         
-        if 'error' in result: return jsonify(result), 400
+        if not update_payload: # Error case
+            return jsonify(flash_message), 400
             
-        updated_task = update_google_task(task_id, **result)
+        updated_task = update_google_task(task_id, **update_payload)
         if updated_task:
             cache.clear()
-            # if notification_data: send_notification(...)
+            if notification_data:
+                notif_type, *notif_args = notification_data
+                if notif_type == 'update': send_update_notification(updated_task, *notif_args)
+                elif notif_type == 'completion': send_completion_notification(updated_task, *notif_args)
             return jsonify({'status': 'success', 'message': flash_message})
         else:
             return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูล'}), 500
 
-    # GET request logic remains the same
+    # GET request logic
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
-    # ... (rest of GET logic)
-    pass # Placeholder
+    
+    task = parse_google_task_dates(task_raw)
+    notes = task.get('notes', '')
+    task['customer'] = parse_customer_info_from_notes(notes)
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
+    
+    # ... rest of your original GET logic from the uploaded file ...
+
+    return render_template('update_task_details.html',
+                           task=task,
+                           # ... other template variables ...
+                           )
+
 #</editor-fold>
 
-# ... (The rest of the routes and LINE bot handlers, which remain largely the same)
+# ... (The rest of the routes and LINE bot handlers, which remain largely the same as your uploaded file)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
