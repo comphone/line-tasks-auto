@@ -29,9 +29,6 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-<!-- This area is now handled by base.html -->
-<!-- The duplicate flash message block has been removed -->
-
 <form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" id="technician_list_json" name="technician_list_json">
@@ -127,9 +124,25 @@
             <h6 class="mt-3">จัดการรายชื่อช่าง</h6>
             <div id="technician-management-list-container" class="list-group technician-management-list mb-3">
                 </div>
-            <button type="button" class="btn btn-success" onclick="openTechnicianEditModal()">
+            <button type="button" class="btn btn-success" id="addTechnicianBtn">
                 <i class="fas fa-plus me-2"></i>เพิ่มช่างใหม่
             </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-upload me-2"></i>การตั้งค่าการอัปโหลด</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row mb-3">
+                <label for="max_file_size_mb" class="col-md-4 col-form-label">ขนาดไฟล์สูงสุด (MB)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="max_file_size_mb" name="max_file_size_mb"
+                           value="{{ settings.upload_settings.max_file_size_mb }}" min="1" max="500" required>
+                    <div class="form-text">กำหนดขนาดสูงสุดของไฟล์แต่ละไฟล์ที่สามารถอัปโหลดได้</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -209,28 +222,10 @@
     </div>
 </div>
 
-<div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="testNotificationModalLabel">ทดสอบส่งข้อความ LINE</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        ข้อความทดสอบจะถูกส่งไปยัง LINE Admin Group ID ที่คุณได้ตั้งค่าไว้
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-        <form action="{{ url_for('test_notification') }}" method="POST" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
+<div class="modal fade" id="testNotificationModal" tabindex="-1">
+    ... </div>
 
-<div class="modal fade" id="technicianEditModal" tabindex="-1" aria-labelledby="technicianEditModalLabel" aria-hidden="true">
+<div class="modal fade" id="technicianEditModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
@@ -252,7 +247,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                <button type="button" class="btn btn-primary" id="save-technician-btn" onclick="saveTechnician()">บันทึก</button>
+                <button type="button" class="btn btn-primary" id="save-technician-btn">บันทึก</button>
             </div>
         </div>
     </div>
@@ -262,143 +257,7 @@
 
 
 {% block body_extra %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    let technicians = {{ settings.technician_list | tojson | safe }};
-    let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
-    let currentIndex = -1;
-    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+<script id="settings-data" data-technicians='{{ settings.technician_list | tojson | safe }}'></script>
 
-    function renderTechnicianList() {
-        const container = document.getElementById('technician-management-list-container');
-        container.innerHTML = '';
-        if (technicians.length === 0) {
-            container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
-        } else {
-            technicians.forEach((tech, index) => {
-                const initial = tech.name && tech.name.trim() !== '' ? tech.name.trim().charAt(0).toUpperCase() : '?'; 
-                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
-                
-                const item = document.createElement('div');
-                item.className = 'list-group-item';
-                item.innerHTML = `
-                    <img src="${avatarUrl}" class="technician-avatar" alt="${tech.name}">
-                    <span class="technician-name">${tech.name}</span>
-                    <button type="button" class="btn btn-sm btn-outline-primary me-2" onclick="openTechnicianEditModal(${index})"><i class="fas fa-edit"></i></button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteTechnician(${index})"><i class="fas fa-trash"></i></button>
-                `;
-                container.appendChild(item);
-            });
-        }
-    }
-
-    window.openTechnicianEditModal = (index = -1) => {
-        currentIndex = index;
-        document.getElementById('technician-avatar-file').value = '';
-        if (index > -1) {
-            const tech = technicians[index];
-            document.getElementById('technician-name').value = tech.name;
-            document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
-            document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
-        } else {
-            document.getElementById('technician-name').value = '';
-            document.getElementById('technician-avatar-id').value = '';
-            document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
-        }
-        technicianEditModal.show();
-    }
-
-    window.saveTechnician = async () => {
-        const saveBtn = document.getElementById('save-technician-btn');
-        const originalBtnText = saveBtn.innerHTML;
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...';
-
-        const name = document.getElementById('technician-name').value.trim();
-        const avatarFile = document.getElementById('technician-avatar-file').files[0];
-        let avatarId = document.getElementById('technician-avatar-id').value;
-
-        if (!name) {
-            alert('กรุณาใส่ชื่อช่าง');
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = originalBtnText;
-            return;
-        }
-
-        if (avatarFile) {
-            const formData = new FormData();
-            formData.append('file', avatarFile);
-            try {
-                const response = await fetch('/api/upload_avatar', { 
-                    method: 'POST', 
-                    body: formData,
-                    headers: { 'X-CSRFToken': csrfToken }
-                });
-                const result = await response.json();
-                if (result.status === 'success') {
-                    avatarId = result.file_id;
-                    // Using the main flash message area from base.html
-                    flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
-                } else {
-                    throw new Error(result.message);
-                }
-            } catch (error) {
-                alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + error.message);
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalBtnText;
-                return;
-            }
-        }
-
-        const newTech = { name: name, avatar_id: avatarId };
-
-        if (currentIndex > -1) {
-            technicians[currentIndex] = newTech;
-        } else {
-            technicians.push(newTech);
-        }
-        
-        renderTechnicianList();
-        technicianEditModal.hide();
-
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = originalBtnText;
-    }
-
-    window.deleteTechnician = (index) => {
-        if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบช่าง "${technicians[index].name}"?`)) {
-            technicians.splice(index, 1);
-            renderTechnicianList();
-        }
-    }
-
-    document.getElementById('settingsForm').addEventListener('submit', function(e) {
-        document.getElementById('technician_list_json').value = JSON.stringify(technicians);
-    });
-
-    renderTechnicianList();
-});
-
-// This function now targets the main flash area in base.html
-function flashMessage(message, category) {
-    const mainContainer = document.getElementById('flash-messages-area');
-    if (!mainContainer) return;
-    const newMessage = document.createElement('div');
-    newMessage.className = `alert alert-${category} alert-dismissible fade show`;
-    newMessage.setAttribute('role', 'alert');
-    newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
-    
-    mainContainer.prepend(newMessage);
-
-    setTimeout(() => {
-        const alertInstance = bootstrap.Alert.getInstance(newMessage);
-        if (alertInstance) {
-            alertInstance.close();
-        } else {
-            // Fallback for cases where the instance might not be found
-            newMessage.remove();
-        }
-    }, 5000); 
-}
-</script>
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
 {% endblock %}
