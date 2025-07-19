@@ -181,17 +181,18 @@ def save_app_settings(settings_data):
             
     return save_settings_to_file(current_settings)
 
+
+def safe_execute(request_object):
+    if hasattr(request_object, 'execute'):
+        return request_object.execute()
+    return request_object
+
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     max_retries = 3
     base_delay = 1
-    request_obj = api_call(*args, **kwargs)
-
-    if not hasattr(request_obj, 'execute'):
-        return request_obj
-
     for i in range(max_retries):
         try:
-            return request_obj.execute()
+            return safe_execute(api_call(*args, **kwargs))
         except HttpError as e:
             if e.resp.status in [500, 502, 503, 504, 429] and i < max_retries - 1:
                 delay = base_delay * (2 ** i)
@@ -200,7 +201,7 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
             else:
                 raise
         except Exception as e:
-            app.logger.error(f"Unexpected error during Google API call execution: {e}")
+            app.logger.error(f"Unexpected error during Google API call: {e}")
             raise
     return None
 
@@ -229,14 +230,16 @@ def get_google_service(api_name, api_version):
 
     if creds and creds.valid:
         try:
-            service = _execute_google_api_call_with_retry(build, serviceName=api_name, version=api_version, credentials=creds)
+            service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
             return service
         except Exception as e:
-            app.logger.error(f"Failed to build Google API service: {e}")
+            app.logger.error(f"Failed to build Google API service after retries: {e}")
             return None
     else:
         app.logger.error("No valid Google credentials available. API service cannot be built.")
+        app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set and valid, or that authorization was successful.")
         return None
+
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
@@ -1167,9 +1170,6 @@ def form_page():
 
 @app.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():
-    settings = get_app_settings()
-    max_file_size_bytes = settings.get('upload_settings', {}).get('max_file_size_mb', 50) * 1024 * 1024
-
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file part'}), 400
     file = request.files['file']
@@ -1184,7 +1184,7 @@ def api_upload_attachment():
     file_length = file.tell()
     file.seek(0)
     
-    if file_length > max_file_size_bytes:
+    if file_length > MAX_FILE_SIZE_BYTES:
         if file.mimetype and file.mimetype.startswith('image/'):
             try:
                 img = Image.open(file)
@@ -1202,7 +1202,7 @@ def api_upload_attachment():
                 app.logger.error(f"Could not compress image '{file.filename}': {e}")
                 return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
         else:
-            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({settings.get("upload_settings", {}).get("max_file_size_mb", 50)}MB)'}), 413
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
     else:
         file_to_upload = file
         filename = secure_filename(file.filename)
@@ -1246,7 +1246,7 @@ def api_upload_attachment():
         return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
 
     media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
-    drive_file = _perform_drive_upload(media_body, filename, final_upload_folder_id)
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
     
     if drive_file:
         return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename}})
@@ -1286,10 +1286,15 @@ def summary():
             if is_today:
                 stats['today'] += 1
 
-        task_passes_filter = (status_filter == 'all' or
-                              (status_filter == 'completed' and task_status == 'completed') or
-                              (status_filter == 'needsAction' and task_status == 'needsAction') or
-                              (status_filter == 'today' and is_today))
+        task_passes_filter = False
+        if status_filter == 'all':
+            task_passes_filter = True
+        elif status_filter == 'completed' and task_status == 'completed':
+            task_passes_filter = True
+        elif status_filter == 'needsAction' and task_status == 'needsAction':
+            task_passes_filter = True
+        elif status_filter == 'today' and is_today:
+            task_passes_filter = True
         
         if task_passes_filter:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
@@ -1340,10 +1345,11 @@ def summary_print():
                 elif due_dt_local.date() == today_thai: is_today = True
             except (ValueError, TypeError): pass
         
-        task_passes_filter = (status_filter == 'all' or
-                              (status_filter == 'completed' and task_status == 'completed') or
-                              (status_filter == 'needsAction' and task_status == 'needsAction') or
-                              (status_filter == 'today' and is_today))
+        task_passes_filter = False
+        if status_filter == 'all': task_passes_filter = True
+        elif status_filter == 'completed' and task_status == 'completed': task_passes_filter = True
+        elif status_filter == 'needsAction' and task_status == 'needsAction': task_passes_filter = True
+        elif status_filter == 'today' and is_today: task_passes_filter = True
 
         if task_passes_filter:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
