@@ -78,7 +78,6 @@ csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-# UPDATED: Added common video file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'mp4', 'mov', 'webm', 'avi', 'mkv'}
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -138,7 +137,8 @@ _DEFAULT_APP_SETTINGS_STORE = {
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: 
+                return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             app.logger.error(f"Error handling settings.json: {e}")
             if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) == 0:
@@ -148,7 +148,8 @@ def load_settings_from_file():
 
 def save_settings_to_file(settings_data):
     try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: 
+            json.dump(settings_data, f, ensure_ascii=False, indent=4)
         return True
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
@@ -191,9 +192,6 @@ def safe_execute(request_object):
     return request_object
 
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
-    """
-    NEW: Wrapper for Google API calls with exponential backoff for transient errors.
-    """
     max_retries = 3
     base_delay = 1
     for i in range(max_retries):
@@ -212,10 +210,6 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     return None
 
 def get_google_service(api_name, api_version):
-    """
-    UPDATED: Handles token loading, validation, and automatic refresh.
-    Logs a message with the new token if a refresh occurs.
-    """
     creds = None
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
 
@@ -227,25 +221,20 @@ def get_google_service(api_name, api_version):
             creds = None
 
     if creds and creds.expired and creds.refresh_token:
-        app.logger.info("Google credentials have expired. Attempting to refresh...")
         try:
             creds.refresh(Request())
-            # Important log message for the user to update their environment variable
             app.logger.info("="*80)
             app.logger.info("!!! Google access token refreshed successfully! !!!")
             app.logger.info("PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE ON RENDER.COM WITH THE FOLLOWING:")
             app.logger.info(f"NEW GOOGLE_TOKEN_JSON: {creds.to_json()}")
             app.logger.info("="*80)
-            # Update the environment variable for the current running process
             os.environ['GOOGLE_TOKEN_JSON'] = creds.to_json()
         except Exception as e:
-            app.logger.error(f"FATAL: Error refreshing token: {e}. The application will not be able to connect to Google APIs.")
-            app.logger.error("Please re-run get_token.py to generate a new token.")
+            app.logger.error(f"FATAL: Error refreshing token: {e}. Please re-authorize.")
             creds = None
 
     if creds and creds.valid:
         try:
-            # Use the retry wrapper for building the service as well
             service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
             return service
         except Exception as e:
@@ -253,7 +242,6 @@ def get_google_service(api_name, api_version):
             return None
     else:
         app.logger.error("No valid Google credentials available. API service cannot be built.")
-        app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set and valid, or that authorization was successful.")
         return None
 
 
@@ -605,9 +593,8 @@ def parse_tech_report_from_notes(notes):
         try:
             report_data = json.loads(json_str)
             
-            # Legacy support for old attachment format
             if 'attachments' in report_data:
-                pass # Already in the correct format
+                pass
             elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
                 report_data['attachments'] = []
                 for url in report_data['attachment_urls']:
@@ -629,7 +616,6 @@ def parse_tech_report_from_notes(notes):
         except json.JSONDecodeError:
             app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
     
-    # Remove all report and feedback blocks to get the original base notes
     temp_notes = notes
     temp_notes = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", temp_notes, flags=re.DOTALL)
     temp_notes = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", temp_notes, flags=re.DOTALL)
@@ -660,7 +646,7 @@ def _parse_equipment_string(text_input):
 
 def _format_equipment_list(equipment_data):
     if not equipment_data: return 'N/A'
-    if isinstance(equipment_data, str): return equipment_data # For legacy data
+    if isinstance(equipment_data, str): return equipment_data
     lines = []
     if isinstance(equipment_data, list):
         for item in equipment_data:
@@ -708,7 +694,6 @@ def _create_backup_zip():
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
                 for file in files:
-                    # Exclude sensitive and unnecessary files from the backup
                     if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt')) \
                        and file not in ['token.json', '.env', SETTINGS_FILE]:
                         file_path = os.path.join(folder, file)
@@ -722,23 +707,16 @@ def _create_backup_zip():
         return None, None
 
 def check_google_api_status():
-    """
-    NEW: Checks if the application can successfully authenticate with a Google API.
-    Used for the UI status indicator in the navbar.
-    """
     service = get_google_drive_service()
     if not service:
         return False
     try:
-        # A lightweight, non-data-retrieving call to check authentication
         _execute_google_api_call_with_retry(service.about().get, fields='user')
         return True
     except HttpError as e:
-        # Specifically catch authentication errors (401: Unauthorized, 403: Forbidden)
         if e.resp.status in [401, 403]:
             app.logger.warning(f"Google API authentication check failed: {e}")
             return False
-        # Other HTTP errors might not mean a total connection failure, so we can be optimistic
         app.logger.error(f"A non-auth HttpError occurred during API status check: {e}")
         return True
     except Exception as e:
@@ -747,10 +725,6 @@ def check_google_api_status():
 
 @app.context_processor
 def inject_global_vars():
-    """
-    NEW: Injects global variables into all templates.
-    This provides the `google_api_connected` status to the base template.
-    """
     return {
         'now': datetime.datetime.now(THAILAND_TZ),
         'google_api_connected': check_google_api_status()
@@ -935,7 +909,7 @@ def scheduled_appointment_reminder_job():
                 f"👤 ลูกค้า: {customer_info.get('name', '-')}\n"
                 f"📞 โทร: {customer_info.get('phone', '-')}\n"
                 f"🗓️ นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n"
-                f"📍 {location_info}\n\n"
+                f"� {location_info}\n\n"
                 f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
             )
             try:
@@ -1103,6 +1077,57 @@ def api_customers():
 @app.route("/")
 def root_redirect():
     return redirect(url_for('summary'))
+    
+@app.route('/authorize')
+def authorize():
+    # This route is now primarily for re-authentication when the API connection fails
+    # It redirects the user to the Google consent screen.
+    # The actual token generation is handled by get_token.py
+    # Note: You must have client_secrets.json available for this to work.
+    if not os.path.exists('client_secrets.json'):
+        flash("`client_secrets.json` not found. Cannot start authorization.", "danger")
+        return redirect(url_for('summary'))
+        
+    flow = InstalledAppFlow.from_client_secrets_file(
+        'client_secrets.json',
+        SCOPES,
+        redirect_uri=url_for('oauth2callback', _external=True)
+    )
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true'
+    )
+    session['state'] = state
+    return redirect(authorization_url)
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    # This is the callback URI specified in your Google Cloud Console
+    state = session['state']
+    flow = InstalledAppFlow.from_client_secrets_file(
+        'client_secrets.json',
+        SCOPES,
+        state=state,
+        redirect_uri=url_for('oauth2callback', _external=True)
+    )
+    flow.fetch_token(authorization_response=request.url)
+    
+    credentials = flow.credentials
+    # The new token is now in credentials.to_json()
+    new_token_json = credentials.to_json()
+    
+    # IMPORTANT: Manually update the environment variable on your server (e.g., Render.com)
+    # For now, we can show it to the user or just update the current session's env var
+    os.environ['GOOGLE_TOKEN_JSON'] = new_token_json
+    
+    flash("เชื่อมต่อกับ Google API สำเร็จแล้ว! กรุณาอัปเดต GOOGLE_TOKEN_JSON ของคุณด้วยข้อมูลใหม่ที่แสดงใน Log เพื่อการเชื่อมต่อถาวร", "success")
+    app.logger.info("="*80)
+    app.logger.info("!!! NEW GOOGLE TOKEN GENERATED FROM RE-AUTHORIZATION !!!")
+    app.logger.info(f"NEW GOOGLE_TOKEN_JSON: {new_token_json}")
+    app.logger.info("="*80)
+    
+    return redirect(url_for('summary'))
+
 
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
@@ -1200,10 +1225,6 @@ def form_page():
 
 @app.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():
-    """
-    UPDATED: Centralized file upload logic.
-    Handles file size checks, image compression, and uploading to a structured folder.
-    """
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file part'}), 400
     file = request.files['file']
@@ -1222,7 +1243,6 @@ def api_upload_attachment():
     filename = secure_filename(file.filename)
     mime_type = file.mimetype or mimetypes.guess_type(filename)[0] or 'application/octet-stream'
 
-    # Compress large images before upload
     if file_length > MAX_FILE_SIZE_BYTES and mime_type.startswith('image/'):
         try:
             img = Image.open(file)
@@ -1252,11 +1272,9 @@ def api_upload_attachment():
     if task_id == 'new_task_placeholder':
         monthly_folder_name = target_date.strftime('%Y-%m')
         monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-        # For new tasks, upload to a temporary dated folder to avoid clutter
         temp_upload_folder_name = f"New_Uploads_{target_date.strftime('%Y-%m-%d')}"
         final_upload_folder_id = find_or_create_drive_folder(temp_upload_folder_name, monthly_folder_id)
     else:
-        # For existing tasks, find or create the specific task folder
         task_raw = get_single_task(task_id)
         if not task_raw:
             return jsonify({'status': 'error', 'message': 'Task not found'}), 404
@@ -1513,7 +1531,6 @@ def task_details(task_id):
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
-        # UPDATED: Get pre-uploaded attachment info from the form
         new_attachments_from_ajax_json = request.form.get('uploaded_attachments_json')
         new_attachments = []
         if new_attachments_from_ajax_json:
@@ -1536,7 +1553,7 @@ def task_details(task_id):
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
-                'attachments': new_attachments, # Use the pre-uploaded attachments
+                'attachments': new_attachments,
                 'technicians': selected_technicians
             })
             flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
@@ -1584,7 +1601,7 @@ def task_details(task_id):
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'work_summary': work_summary,
                 'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
-                'attachments': new_attachments, # Use the pre-uploaded attachments
+                'attachments': new_attachments,
                 'technicians': selected_technicians
             })
             
@@ -1619,7 +1636,6 @@ def task_details(task_id):
             flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
             return jsonify({'status': 'error', 'message': flash_message}), 500
 
-    # GET Request Logic
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
     
@@ -1730,7 +1746,6 @@ def edit_report_attachments(task_id, report_index):
     
     new_files = request.files.getlist('new_files[]')
     if new_files:
-        # Determine the correct monthly folder based on task creation date
         if task_raw.get('created'):
             created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
             monthly_folder_name = created_dt_local.strftime('%Y-%m')
@@ -1767,7 +1782,7 @@ def edit_report_attachments(task_id, report_index):
                             mime_type = 'image/jpeg'
                         except Exception as e:
                             app.logger.error(f"Could not compress image in edit_report: {e}")
-                            continue # Skip this file if compression fails
+                            continue
                     
                     media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
                     drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
@@ -2435,7 +2450,6 @@ def callback():
         abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
-        #notify_admin_error(f"Webhook Handler Error: {e}")
         abort(500)
     return 'OK'
 
