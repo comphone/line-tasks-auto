@@ -40,8 +40,6 @@ from linebot.models import (
     ImageComponent, PostbackEvent
 )
 
-# === ADDED IMPORT FOR AUTHORIZATION FLOW ===
-from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -1326,84 +1324,1345 @@ def summary():
                            tasks=final_tasks, summary=stats,
                            search_query=search_query, status_filter=status_filter,
                            chart_data=chart_data)
-#
-# ... The rest of your file (from line 1056 onwards) is identical to your original ...
-# ...
-#
 
-# === ADDED AUTHORIZATION ROUTES TO FIX THE ERROR (at the end of the routes section) ===
-@app.route('/authorize')
-def authorize():
-    """
-    This new function creates the '/authorize' endpoint that was missing.
-    """
-    client_secrets_json_str = os.environ.get('GOOGLE_CLIENT_SECRETS_JSON')
-    if not client_secrets_json_str:
-        flash('ไม่สามารถเริ่มการเชื่อมต่อได้: ไม่ได้ตั้งค่า `GOOGLE_CLIENT_SECRETS_JSON` บน Server', 'danger')
-        app.logger.error("`GOOGLE_CLIENT_SECRETS_JSON` environment variable not found.")
-        return redirect(url_for('summary'))
+@app.route('/summary/print')
+def summary_print():
+    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    search_query = str(request.args.get('search_query', '')).strip().lower()
+    status_filter = str(request.args.get('status_filter', 'all')).strip()
+    today_thai = date.today()
+    final_tasks = []
+    
+    for task in tasks_raw:
+        task_status = task.get('status', 'needsAction')
+        is_overdue = False
+        is_today = False
+        if task_status == 'needsAction' and task.get('due'):
+            try:
+                due_dt_utc = date_parse(task['due'])
+                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+                if due_dt_local.date() < today_thai: is_overdue = True
+                elif due_dt_local.date() == today_thai: is_today = True
+            except (ValueError, TypeError): pass
+        
+        task_passes_filter = False
+        if status_filter == 'all': task_passes_filter = True
+        elif status_filter == 'completed' and task_status == 'completed': task_passes_filter = True
+        elif status_filter == 'needsAction' and task_status == 'needsAction': task_passes_filter = True
+        elif status_filter == 'today' and is_today: task_passes_filter = True
+
+        if task_passes_filter:
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
+            if not search_query or search_query in searchable_text:
+                parsed_task = parse_google_task_dates(task)
+                parsed_task['customer'] = customer_info
+                parsed_task['is_overdue'] = is_overdue
+                parsed_task['is_today'] = is_today
+                final_tasks.append(parsed_task)
+
+    final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, date_parse(x.get('due', '9999-12-31T23:59:59Z'))))
+    
+    return render_template("summary_print.html",
+                           tasks=final_tasks,
+                           search_query=search_query,
+                           status_filter=status_filter,
+                           now=datetime.datetime.now(THAILAND_TZ))
+
+@app.route('/calendar')
+def calendar_view():
+    tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+    unscheduled_tasks = []
+    for task in tasks_raw:
+        if not task.get('due'):
+            parsed_task = parse_google_task_dates(task)
+            parsed_task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+            unscheduled_tasks.append(parsed_task)
+            
+    unscheduled_tasks.sort(key=lambda x: x.get('created', ''), reverse=True)
+    
+    return render_template('calendar.html', unscheduled_tasks=unscheduled_tasks)
+
+@app.route('/api/calendar_tasks')
+def api_calendar_tasks():
+    try:
+        tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+        events = []
+        today_thai = datetime.datetime.now(THAILAND_TZ).date()
+
+        for task in tasks_raw:
+            if not task.get('due'):
+                continue
+
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            is_overdue = False
+            is_today = False
+            is_completed = task.get('status') == 'completed'
+
+            try:
+                due_dt_utc = date_parse(task['due'])
+                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+                if not is_completed and due_dt_local.date() < today_thai:
+                    is_overdue = True
+                elif not is_completed and due_dt_local.date() == today_thai:
+                    is_today = True
+            except (ValueError, TypeError):
+                pass
+
+            event = {
+                'id': task.get('id'),
+                'title': f"{customer_info.get('name', 'N/A')} - {task.get('title')}",
+                'start': task.get('due'),
+                'url': url_for('task_details', task_id=task.get('id')),
+                'extendedProps': {
+                    'is_completed': is_completed,
+                    'is_overdue': is_overdue,
+                    'is_today': is_today
+                }
+            }
+            events.append(event)
+            
+        return jsonify(events)
+    except Exception as e:
+        app.logger.error(f"Error fetching tasks for calendar API: {e}", exc_info=True)
+        return jsonify({"error": "Could not fetch tasks from server"}), 500
+
+
+@app.route('/api/task/schedule_from_calendar', methods=['POST'])
+def schedule_task_from_calendar():
+    data = request.json
+    task_id = data.get('task_id')
+    new_due_str = data.get('new_due_date')
+    
+    if not task_id or not new_due_str:
+        return jsonify({'status': 'error', 'message': 'ข้อมูลที่ส่งมาไม่ครบถ้วน (task_id หรือ new_due_date)'}), 400
         
     try:
-        client_config = json.loads(client_secrets_json_str)
-    except json.JSONDecodeError:
-        flash('เกิดข้อผิดพลาดในการอ่านข้อมูล `GOOGLE_CLIENT_SECRETS_JSON`', 'danger')
-        app.logger.error("Failed to parse `GOOGLE_CLIENT_SECRETS_JSON`.")
-        return redirect(url_for('summary'))
+        task = get_single_task(task_id)
+        if not task:
+            return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ระบุ'}), 404
+        if task.get('status') == 'completed':
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถย้ายงานที่เสร็จสิ้นแล้วได้'}), 403
 
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=SCOPES,
-        redirect_uri=url_for('oauth2callback', _external=True)
-    )
+        dt_utc = date_parse(new_due_str)
+        due_date_gmt = dt_utc.isoformat().replace('+00:00', 'Z')
 
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true'
-    )
-    
-    session['state'] = state
-    
-    return redirect(authorization_url)
-
-@app.route('/oauth2callback')
-def oauth2callback():
-    """
-    This new function handles the response from Google after user authorization.
-    """
-    state = session.get('state')
-    if not state or state != request.args.get('state'):
-        app.logger.error("State mismatch in OAuth callback. Possible CSRF attack.")
-        abort(401) 
-
-    client_secrets_json_str = os.environ.get('GOOGLE_CLIENT_SECRETS_JSON')
-    if not client_secrets_json_str:
-        app.logger.error("Server configuration error: Client secrets not found during callback.")
-        return "Server configuration error: Client secrets not found.", 500
+        updated_task = update_google_task(task_id, due=due_date_gmt, status='needsAction')
         
-    client_config = json.loads(client_secrets_json_str)
+        if updated_task:
+            cache.clear()
+            return jsonify({'status': 'success', 'message': f'อัปเดตวันนัดหมายสำหรับงาน {task_id} เรียบร้อยแล้ว'})
+        else:
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถอัปเดตงานใน Google Tasks ได้'}), 500
+            
+    except Exception as e:
+        app.logger.error(f"Error scheduling task from calendar: {e}")
+        return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=SCOPES,
-        state=state,
-        redirect_uri=url_for('oauth2callback', _external=True)
-    )
+@app.route('/task/<task_id>', methods=['GET', 'POST'])
+def task_details(task_id):
+    if request.method == 'POST':
+        task_raw = get_single_task(task_id)
+        if not task_raw:
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+            flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
+            abort(404)
+        
+        action = request.form.get('action')
+        update_payload = {}
+        notification_to_send = None
+        flash_message = None
+        flash_category = 'info'
 
-    flow.fetch_token(authorization_response=request.url)
-    credentials = flow.credentials
-    token_json = credentials.to_json()
+        history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        
+        new_attachments_from_ajax_json = request.form.get('uploaded_attachments_json')
+        new_attachments = []
+        if new_attachments_from_ajax_json:
+            try:
+                new_attachments = json.loads(new_attachments_from_ajax_json)
+            except json.JSONDecodeError:
+                app.logger.error("Failed to decode uploaded_attachments_json from request.")
 
-    app.logger.info("="*80)
-    app.logger.info("!!! NEW GOOGLE TOKEN GENERATED SUCCESSFULLY !!!")
-    app.logger.info("COPY THE JSON BELOW AND SET IT AS THE 'GOOGLE_TOKEN_JSON' ENVIRONMENT VARIABLE IN RENDER:")
-    app.logger.info(token_json)
-    app.logger.info("="*80)
+        if action == 'save_report':
+            work_summary = str(request.form.get('work_summary', '')).strip()
+            selected_technicians = request.form.get('technicians_report', '').split(',')
+            selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
+
+            if not (work_summary or new_attachments):
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'}), 400
+            if not selected_technicians:
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'}), 400
+
+            history.append({
+                'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                'work_summary': work_summary,
+                'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
+                'attachments': new_attachments,
+                'technicians': selected_technicians
+            })
+            flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
+            flash_category = 'success'
+        
+        elif action == 'reschedule_task':
+            reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
+            reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
+            selected_technicians = request.form.get('technicians_reschedule', '').split(',')
+            selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
+
+            if not reschedule_due_str:
+                return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
+            
+            try:
+                dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
+                update_payload['due'] = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                update_payload['status'] = 'needsAction'
+                new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
+                is_today = dt_local.date() == datetime.datetime.now(THAILAND_TZ).date()
+                notification_to_send = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
+            except ValueError:
+                return jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
+
+            history.append({
+                'type': 'reschedule', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                'reason': reschedule_reason, 'new_due_date': new_due_date_formatted,
+                'technicians': selected_technicians
+            })
+            flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
+            flash_category = 'success'
+
+        elif action == 'complete_task':
+            work_summary = str(request.form.get('work_summary', '')).strip()
+            if not work_summary:
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
+                
+            selected_technicians = request.form.get('technicians_report', '').split(',')
+            selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
+
+            if not selected_technicians:
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
+            
+            history.append({
+                'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                'work_summary': work_summary,
+                'equipment_used': _parse_equipment_string(request.form.get('equipment_used', '')),
+                'attachments': new_attachments,
+                'technicians': selected_technicians
+            })
+            
+            update_payload['status'] = 'completed'
+            notification_to_send = ('completion', selected_technicians)
+            flash_message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
+            flash_category = 'success'
+        
+        else:
+            return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
+            
+        history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+        all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+        
+        final_notes = base_notes_text
+        if all_reports_text: final_notes += all_reports_text
+        if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        
+        update_payload['notes'] = final_notes
+        
+        updated_task = update_google_task(task_id, **update_payload)
+
+        if updated_task:
+            cache.clear()
+            if notification_to_send:
+                notif_type = notification_to_send[0]
+                if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
+                elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
+            
+            return jsonify({'status': 'success', 'message': flash_message})
+        else:
+            flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
+            return jsonify({'status': 'error', 'message': flash_message}), 500
+
+    task_raw = get_single_task(task_id)
+    if not task_raw: abort(404)
     
-    os.environ['GOOGLE_TOKEN_JSON'] = token_json
+    task = parse_google_task_dates(task_raw)
+    notes = task.get('notes', '')
+    task['customer'] = parse_customer_info_from_notes(notes)
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
+    task['customer_feedback'] = parse_customer_feedback_from_notes(notes)
+    task['is_overdue'] = False
+    task['is_today'] = False
+    if task.get('status') == 'needsAction' and task.get('due'):
+        try:
+            due_dt_utc = date_parse(task['due'])
+            due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+            today_thai = datetime.datetime.now(THAILAND_TZ).date()
+            if due_dt_local.date() < today_thai:
+                task['is_overdue'] = True
+            elif due_dt_local.date() == today_thai:
+                task['is_today'] = True
+        except (ValueError, TypeError): pass
     
-    flash('เชื่อมต่อกับ Google API สำเร็จแล้ว! กรุณาตรวจสอบ Log ของระบบเพื่อคัดลอก Token ใหม่ไปตั้งค่า', 'success')
+    app_settings = get_app_settings()
+    
+    all_attachments = []
+    for report in task['tech_reports_history']:
+        if report.get('attachments'):
+            report_date = parse_google_task_dates({'summary_date': report['summary_date']}).get('summary_date_formatted', '')
+            for att in report['attachments']:
+                att_copy = att.copy()
+                att_copy['report_date'] = report_date
+                all_attachments.append(att_copy)
+
+
+    return render_template('update_task_details.html',
+                           task=task,
+                           common_equipment_items=app_settings.get('common_equipment_items', []),
+                           technician_list=app_settings.get('technician_list', []),
+                           all_attachments=all_attachments,
+                           progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
+                           )
+
+@app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
+def api_edit_report_text(task_id, report_index):
+    data = request.json
+    new_summary = data.get('summary', '').strip()
+    
+    if not new_summary:
+        return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน'}), 400
+
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการแก้ไข'}), 404
+
+    history[report_index]['work_summary'] = new_summary
+    
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'แก้ไขรายงานเรียบร้อยแล้ว'})
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
+
+
+@app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
+def edit_report_attachments(task_id, report_index):
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
+        abort(404)
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        flash('ไม่พบรายงานที่ต้องการแก้ไข', 'danger')
+        return redirect(url_for('task_details', task_id=task_id))
+
+    report_to_edit = history[report_index]
+    
+    attachments_to_keep_ids = request.form.getlist('attachments_to_keep')
+    original_attachments = report_to_edit.get('attachments', [])
+    updated_attachments = []
+    
+    drive_service = get_google_drive_service()
+    if drive_service:
+        for att in original_attachments:
+            if att['id'] in attachments_to_keep_ids:
+                updated_attachments.append(att)
+            else:
+                try:
+                    drive_service.files().delete(fileId=att['id']).execute()
+                    app.logger.info(f"Deleted attachment {att['id']} from Drive.")
+                except HttpError as e:
+                    app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
+    else:
+        updated_attachments = original_attachments
+        flash('ไม่สามารถเชื่อมต่อ Google Drive เพื่อลบไฟล์ได้', 'warning')
+    
+    new_files = request.files.getlist('new_files[]')
+    if new_files:
+        if task_raw.get('created'):
+            created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+            monthly_folder_name = created_dt_local.strftime('%Y-%m')
+        else:
+            monthly_folder_name = "Uncategorized"
+
+        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        customer_info = parse_customer_info_from_notes(base_notes_text)
+        sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
+        customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+        final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+        
+        if final_upload_folder_id:
+            for file in new_files:
+                if file and allowed_file(file.filename):
+                    file.seek(0, os.SEEK_END)
+                    file_length = file.tell()
+                    file.seek(0)
+                    if file_length > MAX_FILE_SIZE_BYTES and file.mimetype and file.mimetype.startswith('image/'):
+                        try:
+                            img = Image.open(file)
+                            if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                            output_buffer = BytesIO()
+                            img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                            output_buffer.seek(0)
+                            file_to_upload = output_buffer
+                            filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                            mime_type = 'image/jpeg'
+                        except Exception as e:
+                            app.logger.error(f"Could not compress image in edit_report: {e}")
+                            continue
+                    else:
+                        file_to_upload = file
+                        filename = secure_filename(file.filename)
+                        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+
+                    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+                    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
+                    if drive_file:
+                        updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename})
+        else:
+             flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
+
+    report_to_edit['attachments'] = updated_attachments
+    history[report_index] = report_to_edit
+
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        flash('แก้ไขรูปภาพในรายงานเรียบร้อยแล้ว!', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงรูปภาพ', 'danger')
+
+    return redirect(url_for('task_details', task_id=task_id))
+
+@app.route('/api/task/<task_id>/delete_report/<int:report_index>', methods=['POST'])
+def delete_task_report(task_id, report_index):
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการลบ'}), 404
+
+    report_to_delete = history[report_index]
+    if report_to_delete.get('attachments'):
+        drive_service = get_google_drive_service()
+        if drive_service:
+            for att in report_to_delete['attachments']:
+                try:
+                    drive_service.files().delete(fileId=att['id']).execute()
+                    app.logger.info(f"Deleted attachment {att['id']} from Drive while deleting report.")
+                except HttpError as e:
+                    app.logger.error(f"Failed to delete attachment {att['id']} from Drive during report deletion: {e}")
+
+    history.pop(report_index)
+
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'ลบรายงานเรียบร้อยแล้ว'})
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกหลังลบรายงาน'}), 500
+
+
+@app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
+def edit_task(task_id):
+    task_raw = get_single_task(task_id)
+    if not task_raw: abort(404)
+
+    if request.method == 'POST':
+        new_title = str(request.form.get('task_title', '')).strip()
+        if not new_title:
+            flash('กรุณากรอกรายละเอียดงาน', 'danger')
+            return redirect(url_for('edit_task', task_id=task_id))
+
+        notes_lines = []
+        organization_name = str(request.form.get('organization_name', '')).strip()
+        if organization_name: notes_lines.append(f"หน่วยงาน: {organization_name}")
+
+        notes_lines.extend([
+            f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
+            f"เบอร์โทรศัพท์: {str(request.form.get('customer_phone', '')).strip()}",
+            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
+        ])
+        map_url = str(request.form.get('latitude_longitude', '')).strip()
+        if map_url: notes_lines.append(map_url)
+        
+        new_base_notes = "\n".join(filter(None, notes_lines))
+
+        tech_reports, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        
+        all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in tech_reports])
+        
+        final_notes = new_base_notes
+        if all_reports_text: final_notes += all_reports_text
+        if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+        due_date_gmt = None
+        appointment_str = str(request.form.get('appointment_due', '')).strip()
+        if appointment_str:
+            try:
+                dt_local = THAILAND_TZ.localize(date_parse(appointment_str))
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            except ValueError:
+                flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
+                return redirect(url_for('edit_task', task_id=task_id))
+
+        if update_google_task(task_id, title=new_title, notes=final_notes, due=due_date_gmt):
+            cache.clear()
+            flash('บันทึกข้อมูลหลักของงานเรียบร้อยแล้ว!', 'success')
+            return redirect(url_for('summary'))
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger')
+            return redirect(url_for('edit_task', task_id=task_id))
+
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    return render_template('edit_task.html', task=task)
+
+
+@app.route('/delete_task/<task_id>', methods=['POST'])
+def delete_task(task_id):
+    if delete_google_task(task_id):
+        flash('ลบงานเรียบร้อยแล้ว!', 'success')
+        cache.clear()
+    else:
+        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
     return redirect(url_for('summary'))
 
-# --- Main execution ---
+@app.route('/api/delete_task/<task_id>', methods=['POST'])
+def api_delete_task(task_id):
+    if delete_google_task(task_id):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'Task deleted successfully.'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to delete task.'}), 500
+
+@app.route('/api/delete_tasks_batch', methods=['POST'])
+def api_delete_tasks_batch():
+    data = request.json
+    task_ids = data.get('task_ids', [])
+    if not isinstance(task_ids, list):
+        return jsonify({'status': 'error', 'message': 'Invalid input format.'}), 400
+    
+    deleted, failed = 0, 0
+    for task_id in task_ids:
+        if delete_google_task(task_id): deleted += 1
+        else: failed += 1
+    if deleted > 0: cache.clear()
+    return jsonify({ 'status': 'success', 'message': f'Deleted {deleted} tasks, {failed} failed.'})
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings_page():
+    if request.method == 'POST':
+        technician_list_json_str = request.form.get('technician_list_json', '[]')
+        try:
+            technician_list = json.loads(technician_list_json_str)
+        except json.JSONDecodeError:
+            flash('เกิดข้อผิดพลาดในการอ่านข้อมูลช่าง', 'danger')
+            return redirect(url_for('settings_page'))
+
+        appointment_reminder_hour = int(request.form.get('appointment_reminder_hour', 0))
+        outstanding_report_hour = int(request.form.get('outstanding_report_hour', 0))
+        customer_followup_hour = int(request.form.get('customer_followup_hour', 0))
+        auto_backup_hour = int(request.form.get('auto_backup_hour', 0))
+        auto_backup_minute = int(request.form.get('auto_backup_minute', 0))
+
+        settings_data = {
+            'report_times': {
+                'appointment_reminder_hour_thai': appointment_reminder_hour,
+                'outstanding_report_hour_thai': outstanding_report_hour,
+                'customer_followup_hour_thai': customer_followup_hour
+            },
+            'line_recipients': {
+                'admin_group_id': request.form.get('admin_group_id', '').strip(),
+                'technician_group_id': request.form.get('technician_group_id', '').strip(),
+                'manager_user_id': request.form.get('manager_user_id', '').strip()
+            },
+            'auto_backup': {
+                'enabled': request.form.get('auto_backup_enabled') == 'on',
+                'hour_thai': auto_backup_hour,
+                'minute_thai': auto_backup_minute
+            },
+            'shop_info': {
+                'contact_phone': request.form.get('shop_contact_phone', '').strip(),
+                'line_id': request.form.get('shop_line_id', '').strip()
+            },
+            'technician_list': technician_list
+        }
+
+        if save_app_settings(settings_data):
+            run_scheduler()
+            cache.clear()
+            if backup_settings_to_drive():
+                flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
+            else:
+                flash('บันทึกการตั้งค่าสำเร็จ แต่สำรองไปที่ Google Drive ไม่สำเร็จ!', 'warning')
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!', 'danger')
+        return redirect(url_for('settings_page'))
+
+    current_settings = get_app_settings()
+    return render_template('settings_page.html', settings=current_settings)
+
+@app.route('/api/upload_avatar', methods=['POST'])
+def api_upload_avatar():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+    
+    file.seek(0, os.SEEK_END)
+    file_length = file.tell()
+    file.seek(0)
+    
+    if file_length > MAX_FILE_SIZE_BYTES:
+        if file.mimetype and file.mimetype.startswith('image/'):
+            try:
+                img = Image.open(file)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                output_buffer = BytesIO()
+                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                output_buffer.seek(0)
+                file_to_upload = output_buffer
+                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                mime_type = 'image/jpeg'
+                app.logger.info(f"Compressed avatar '{file.filename}' successfully.")
+            except Exception as e:
+                app.logger.error(f"Could not compress avatar '{file.filename}': {e}")
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
+        else:
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+    else:
+        file_to_upload = file
+        filename = secure_filename(file.filename)
+        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+
+    avatars_folder_id = find_or_create_drive_folder("Technician_Avatars", GOOGLE_DRIVE_FOLDER_ID)
+    if not avatars_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not create or find Technician_Avatars folder'}), 500
+
+    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, avatars_folder_id)
+    
+    if drive_file:
+        return jsonify({'status': 'success', 'file_id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to upload avatar to Google Drive'}), 500
+
+
+@app.route('/test_notification', methods=['POST'])
+def test_notification():
+    recipient_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
+    if recipient_id:
+        try:
+            line_bot_api.push_message(recipient_id, TextSendMessage(text="[ทดสอบ] นี่คือข้อความทดสอบจากระบบ"))
+            flash(f'ส่งข้อความทดสอบไปที่ ID: {recipient_id} สำเร็จ!', 'success')
+        except Exception as e:
+            flash(f'เกิดข้อผิดพลาดในการส่ง: {e}', 'danger')
+    else:
+        flash('กรุณากำหนด "LINE Admin Group ID" ก่อน', 'danger')
+    return redirect(url_for('settings_page'))
+
+@app.route('/backup_data')
+def backup_data():
+    system_backup_folder_id = find_or_create_drive_folder("System_Backups", GOOGLE_DRIVE_FOLDER_ID)
+    if not system_backup_folder_id:
+        flash('ไม่สามารถหาหรือสร้างโฟลเดอร์ System_Backups ใน Google Drive ได้', 'danger')
+        return redirect(url_for('settings_page'))
+    
+    memory_file, filename = _create_backup_zip()
+    if memory_file and filename:
+        return Response(memory_file.getvalue(), mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={filename}'})
+    else:
+        flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
+        return redirect(url_for('settings_page'))
+
+@app.route('/trigger_auto_backup_now', methods=['POST'])
+def trigger_auto_backup_now():
+    if scheduled_backup_job():
+        flash('สำรองข้อมูลไปที่ Google Drive สำเร็จ!', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการสำรองข้อมูลไปที่ Google Drive!', 'danger')
+    return redirect(url_for('settings_page'))
+
+@app.route('/export_equipment_catalog', methods=['GET'])
+def export_equipment_catalog():
+    try:
+        df = pd.DataFrame(get_app_settings().get('equipment_catalog', []))
+        if df.empty:
+            flash('ไม่มีข้อมูลอุปกรณ์ในแคตตาล็อก', 'warning')
+            return redirect(url_for('settings_page') )
+        output = BytesIO()
+        df.to_excel(output, index=False, sheet_name='Equipment_Catalog')
+        output.seek(0)
+        return Response(output.getvalue(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment;filename=equipment_catalog.xlsx"})
+    except Exception as e:
+        flash(f'เกิดข้อผิดพลาดในการส่งออก: {e}', 'danger')
+        return redirect(url_for('settings_page'))
+
+@app.route('/import_equipment_catalog', methods=['POST'])
+def import_equipment_catalog():
+    if 'excel_file' not in request.files or not request.files['excel_file'].filename:
+        flash('กรุณาเลือกไฟล์ Excel', 'danger')
+        return redirect(url_for('settings_page'))
+    file = request.files['excel_file']
+    if file and file.filename.endswith(('.xls', '.xlsx')):
+        try:
+            df = pd.read_excel(file.stream)
+            required_cols = ['item_name', 'unit', 'price']
+            if not all(col in df.columns for col in required_cols):
+                flash(f'ไฟล์ Excel ต้องมีคอลัมน์: {", ".join(required_cols)}', 'danger')
+            else:
+                imported_catalog = []
+                for _, row in df.iterrows():
+                    item = {'item_name': str(row['item_name']).strip()}
+                    if pd.notna(row['unit']): item['unit'] = str(row['unit']).strip()
+                    if pd.notna(row['price']):
+                        try: item['price'] = float(row['price'])
+                        except ValueError: item['price'] = 0.0
+                    imported_catalog.append(item)
+                save_app_settings({'equipment_catalog': imported_catalog})
+                flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
+        except Exception as e:
+            flash(f"เกิดข้อผิดพลาดในการนำเข้าไฟล์: {e}", 'danger')
+    else:
+        flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
+    return redirect(url_for('settings_page'))
+
+@app.route('/api/import_backup_file', methods=['POST'])
+def api_import_backup_file():
+    if 'backup_file' not in request.files:
+        return jsonify({"status": "error", "message": "No backup file selected."}), 400
+    file, file_type = request.files['backup_file'], request.form.get('file_type')
+    if file_type not in ['tasks_json', 'settings_json'] or not file.filename.endswith('.json'):
+        return jsonify({"status": "error", "message": "Invalid file or type."}), 400
+    try:
+        data = json.load(file.stream)
+        if file_type == 'tasks_json':
+            if not isinstance(data, list): return jsonify({"status": "error", "message": "JSON is not a list."}), 400
+            service = get_google_tasks_service()
+            if not service: return jsonify({"status": "error", "message": "Cannot connect to Google Tasks."}), 500
+            created, updated, skipped = 0, 0, 0
+            for task_data in data:
+                try:
+                    original_id, clean_task_data = task_data.get('id'), {k: v for k, v in task_data.items() if k not in ['kind', 'selfLink', 'position', 'etag', 'updated', 'links', 'webViewLink']}
+                    if 'due' in clean_task_data and clean_task_data['due']: clean_task_data['due'] = date_parse(clean_task_data['due']).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                    if 'completed' in clean_task_data and clean_task_data['completed']: clean_task_data['completed'] = date_parse(clean_task_data['completed']).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                    existing_task = _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=original_id) if original_id else None
+                    if existing_task:
+                        _execute_google_api_call_with_retry(service.tasks().update, tasklist=GOOGLE_TASKS_LIST_ID, task=original_id, body={**existing_task, **clean_task_data})
+                        updated += 1
+                    else:
+                        clean_task_data.pop('id', None)
+                        _execute_google_api_call_with_retry(service.tasks().insert, tasklist=GOOGLE_TASKS_LIST_ID, body=clean_task_data)
+                        created += 1
+                except Exception: skipped += 1
+            cache.clear()
+            return jsonify({"status": "success", "message": f"นำเข้าสำเร็จ! สร้างใหม่: {created}, อัปเดต: {updated}, ข้าม: {skipped}"})
+        elif file_type == 'settings_json':
+            if not isinstance(data, dict): return jsonify({"status": "error", "message": "JSON is not a dict."}), 400
+            if save_app_settings(data):
+                run_scheduler(); cache.clear()
+                return jsonify({"status": "success", "message": "นำเข้าการตั้งค่าเรียบร้อยแล้ว!"})
+            else: return jsonify({"status": "error", "message": "เกิดข้อผิดพลาดในการบันทึกการตั้งค่า"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
+
+@app.route('/api/preview_backup_file', methods=['POST'])
+def preview_backup_file():
+    if 'backup_file' not in request.files:
+        return jsonify({"status": "error", "message": "No backup file selected."}), 400
+    file, file_type = request.files['backup_file'], request.form.get('file_type')
+    if file_type not in ['tasks_json', 'settings_json'] or not file.filename.endswith('.json'):
+        return jsonify({"status": "error", "message": "Invalid file or type."}), 400
+    try:
+        data = json.load(file.stream)
+        if file_type == 'tasks_json':
+            if not isinstance(data, list): return jsonify({"status": "error", "message": "JSON is not a list."}), 400
+            count = len(data)
+            examples = [{'title': t.get('title', 'N/A'), 'customer_name': parse_customer_info_from_notes(t.get('notes', '')).get('name', 'N/A')} for t in data[:5]]
+            return jsonify({"status": "success", "type": "tasks", "task_count": count, "example_tasks": examples})
+        elif file_type == 'settings_json':
+            if not isinstance(data, dict): return jsonify({"status": "error", "message": "JSON is not a dict."}), 400
+            preview = {
+                "admin_group_id": data.get('line_recipients', {}).get('admin_group_id', 'N/A'),
+                "technician_list_count": len(data.get('technician_list', []))
+            }
+            return jsonify({"status": "success", "type": "settings", "preview_settings": preview})
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
+
+@app.route('/technician_report')
+def technician_report():
+    now = datetime.datetime.now(THAILAND_TZ)
+    try:
+        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
+    except (ValueError, TypeError):
+        year, month = now.year, now.month
+    
+    months = [{'value': i, 'name': datetime.date(2000, i, 1).strftime('%B')} for i in range(1, 13)]
+    
+    app_settings = get_app_settings()
+    technician_list = app_settings.get('technician_list', [])
+
+    tasks = get_google_tasks_for_report(show_completed=True) or []
+    report = defaultdict(lambda: {'count': 0, 'tasks': []})
+
+    for task in tasks:
+        if task.get('status') == 'completed' and task.get('completed'):
+            try:
+                completed_dt = date_parse(task['completed']).astimezone(THAILAND_TZ)
+                if completed_dt.year == year and completed_dt.month == month:
+                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                    task_techs = set()
+                    for r in history:
+                        for t_name in r.get('technicians', []):
+                            if isinstance(t_name, str):
+                                task_techs.add(t_name.strip())
+
+                    for tech_name in sorted(list(task_techs)):
+                        report[tech_name]['count'] += 1
+                        report[tech_name]['tasks'].append({'id': task.get('id'), 'title': task.get('title'), 'completed_formatted': completed_dt.strftime("%d/%m/%Y")})
+            except Exception as e:
+                app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
+                continue
+
+    return render_template('technician_report.html',
+                           report_data=report, selected_year=year, selected_month=month,
+                           years=list(range(now.year - 5, now.year + 2)), months=months,
+                           technician_list=technician_list)
+
+@app.route('/manage_duplicates', methods=['GET'])
+def manage_duplicates():
+    tasks = get_google_tasks_for_report(show_completed=True) or []
+    duplicates = defaultdict(list)
+    for task in tasks:
+        if task.get('title'):
+            customer_name = parse_customer_info_from_notes(task.get('notes', '')).get('name', '').strip().lower()
+            duplicates[(task['title'].strip(), customer_name)].append(task)
+    
+    sets = {k: sorted(v, key=lambda t: t.get('created', ''), reverse=True) for k, v in duplicates.items() if len(v) > 1}
+    processed_sets = {}
+    for key, task_list in sets.items():
+        processed_tasks = []
+        for task in task_list:
+            parsed = parse_google_task_dates(task)
+            parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+            parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
+            processed_tasks.append(parsed)
+        processed_sets[key] = processed_tasks
+    return render_template('duplicates.html', duplicates=processed_sets)
+
+@app.route('/delete_duplicates_batch', methods=['POST'])
+def delete_duplicates_batch():
+    ids = request.form.getlist('task_ids')
+    if not ids:
+        flash('ไม่พบรายการที่เลือกเพื่อลบ', 'warning')
+        return redirect(url_for('manage_duplicates'))
+    deleted, failed = 0, 0
+    for task_id in ids:
+        if delete_google_task(task_id): deleted += 1
+        else: failed += 1
+    if deleted > 0: cache.clear()
+    flash(f'ลบงานที่เลือกสำเร็จ: {deleted} รายการ. ล้มเหลว: {failed} รายการ.', 'success' if failed == 0 else 'warning')
+    return redirect(url_for('manage_duplicates'))
+
+@app.route('/manage_equipment_duplicates', methods=['GET'])
+def manage_equipment_duplicates():
+    catalog = get_app_settings().get('equipment_catalog', [])
+    duplicates = defaultdict(list)
+    for i, item in enumerate(catalog):
+        name = item.get('item_name', '').strip().lower()
+        if name: duplicates[name].append({'original_index': i, 'data': item})
+    sets = {k: sorted(v, key=lambda x: x['original_index']) for k, v in duplicates.items() if len(v) > 1}
+    return render_template('equipment_duplicates.html', duplicates=sets)
+
+@app.route('/delete_equipment_duplicates_batch', methods=['POST'])
+def delete_equipment_duplicates_batch():
+    indices = sorted([int(idx) for idx in request.form.getlist('item_indices')], reverse=True)
+    if not indices:
+        flash('ไม่พบรายการอุปกรณ์ที่เลือกเพื่อลบ', 'warning')
+        return redirect(url_for('manage_equipment_duplicates'))
+    catalog = get_app_settings().get('equipment_catalog', [])
+    deleted_count = 0
+    for idx in indices:
+        if 0 <= idx < len(catalog):
+            catalog.pop(idx)
+            deleted_count += 1
+    if save_app_settings({'equipment_catalog': catalog}):
+        flash(f'ลบรายการอุปกรณ์ที่เลือกสำเร็จ: {deleted_count} รายการ.', 'success')
+    else:
+        flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงแคตตาล็อกอุปกรณ์', 'danger')
+    return redirect(url_for('manage_equipment_duplicates'))
+
+@app.route('/customer_onboarding/<task_id>')
+def customer_onboarding_page(task_id):
+    task = get_single_task(task_id)
+    if not task: abort(404)
+    return render_template('customer_onboarding.html', task=task, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
+
+@app.route('/generate_customer_onboarding_qr/<task_id>')
+def generate_customer_onboarding_qr(task_id):
+    task = get_single_task(task_id)
+    if not task or not LIFF_ID_FORM: abort(404)
+    onboarding_url = url_for('customer_onboarding_page', task_id=task_id, _external=True)
+    liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
+    qr_code = generate_qr_code_base64(liff_url)
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
+    return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code, task=task, customer_info=customer, public_report_url=url_for('public_task_report', task_id=task_id, _external=True), qr_code_base64_report=generate_qr_code_base64(url_for('public_task_report', task_id=task_id, _external=True)))
+
+@app.route('/customer_problem_form')
+def customer_problem_form():
+    task_id = request.args.get('task_id')
+    task = get_single_task(task_id)
+    if not task: abort(404)
+    parsed = parse_google_task_dates(task)
+    parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    return render_template('customer_problem_form.html', task=parsed, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
+
+@app.route('/generate_public_report_qr/<task_id>')
+def generate_public_report_qr(task_id):
+    task = get_single_task(task_id)
+    if not task or task.get('status') != 'completed': abort(404)
+    url = url_for('public_task_report', task_id=task_id, _external=True)
+    qr = generate_qr_code_base64(url)
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
+    return render_template('public_report_qr.html', task=task, customer_info=customer, public_report_url=url, qr_code_base64_report=qr)
+
+@app.route('/trigger_customer_follow_up_test', methods=['POST'])
+def trigger_customer_follow_up_test():
+    with app.app_context():
+        tasks = [t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed' and t.get('completed')]
+        if not tasks:
+            flash('ไม่พบงานที่เสร็จแล้วสำหรับใช้ทดสอบ.', 'warning')
+            return redirect(url_for('settings_page'))
+        latest = max(tasks, key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')))
+        notes = latest.get('notes', '')
+        feedback = parse_customer_feedback_from_notes(notes)
+        feedback.pop('follow_up_sent_date', None)
+        
+        history_reports, base_notes = parse_tech_report_from_notes(notes)
+        tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+        new_notes_content = base_notes.strip()
+        if tech_reports_text: new_notes_content += tech_reports_text
+        new_notes_content += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+        _execute_google_api_call_with_retry(update_google_task, latest['id'], notes=new_notes_content)
+        
+        latest['completed'] = (datetime.datetime.now(pytz.utc) - datetime.timedelta(days=1, minutes=5)).isoformat().replace('+00:00', 'Z')
+        _execute_google_api_call_with_retry(update_google_task, latest['id'], completed=latest['completed'])
+        
+        cache.clear()
+        scheduled_customer_follow_up_job()
+        flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
+    return redirect(url_for('settings_page'))
+
+@app.route('/public_report/<task_id>')
+def public_task_report(task_id):
+    task = get_single_task(task_id)
+    if not task or task.get('status') != 'completed':
+        abort(404)
+    
+    notes = task.get('notes', '')
+    customer = parse_customer_info_from_notes(notes)
+    reports, _ = parse_tech_report_from_notes(notes)
+    latest_report = reports[0] if reports else {}
+    
+    app_settings = get_app_settings() 
+    
+    equipment = latest_report.get('equipment_used', [])
+    catalog = {item['item_name']: item for item in app_settings.get('equipment_catalog', [])}
+    costs, total = [], 0.0
+    
+    if isinstance(equipment, list):
+        for item in equipment:
+            name, qty = item.get('item'), item.get('quantity', 0)
+            if isinstance(qty, (int, float)):
+                cat_item = catalog.get(name, {})
+                price = float(cat_item.get('price', 0))
+                subtotal = qty * price
+                total += subtotal
+                costs.append({'item': name, 'quantity': qty, 'unit': cat_item.get('unit', ''), 'price_per_unit': price, 'subtotal': subtotal})
+            else:
+                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})
+    
+    return render_template('public_task_report.html', 
+                           task=task, 
+                           customer_info=customer, 
+                           latest_report=latest_report, 
+                           detailed_costs=costs, 
+                           total_cost=total,
+                           settings=app_settings)
+
+@app.route('/submit_customer_problem', methods=['POST'])
+def submit_customer_problem():
+    data = request.json
+    task_id, problem_desc, user_id = data.get('task_id'), data.get('problem_description'), data.get('customer_line_user_id')
+    if not task_id or not problem_desc: return jsonify({"status": "error"}), 400
+    task = get_single_task(task_id)
+    if not task: return jsonify({"status": "error"}), 404
+    notes = task.get('notes', '')
+    feedback = parse_customer_feedback_from_notes(notes)
+    feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': 'problem_reported', 'customer_line_user_id': user_id})
+
+    reports_history, base = parse_tech_report_from_notes(notes)
+    reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
+    final_notes = f"{base.strip()}"
+    if reports_text: final_notes += reports_text
+    final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+    _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes, status='needsAction')
+    cache.clear()
+    admin_group = get_app_settings().get('line_recipients', {}).get('admin_group_id')
+    if admin_group:
+        customer = parse_customer_info_from_notes(notes)
+        notif = f"🚨 ลูกค้าแจ้งปัญหา!\nงาน: {task.get('title')}\nลูกค้า: {customer.get('name', 'N/A')}\nปัญหา: {problem_desc}\nดูรายละเอียด: {url_for('task_details', task_id=task_id, _external=True)}"
+        try: line_bot_api.push_message(admin_group, TextSendMessage(text=notif))
+        except Exception: pass
+    return jsonify({"status": "success"})
+
+@app.route('/save_customer_line_id', methods=['POST'])
+def save_customer_line_id():
+    data = request.json
+    task_id, user_id = data.get('task_id'), data.get('customer_line_user_id')
+    if not task_id or not user_id: return jsonify({"status": "error"}), 400
+    task = get_single_task(task_id)
+    if not task: return jsonify({"status": "error"}), 404
+    notes = task.get('notes', '')
+    feedback = parse_customer_feedback_from_notes(notes)
+    if feedback.get('customer_line_user_id') != user_id:
+        feedback['customer_line_user_id'] = user_id
+        feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
+        
+        reports_history, base = parse_tech_report_from_notes(notes)
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
+        final_notes = f"{base.strip()}"
+        if reports_text: final_notes += reports_text
+        final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        
+        if _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes):
+            cache.clear()
+            shop = get_app_settings().get('shop_info', {})
+            customer = parse_customer_info_from_notes(notes)
+            welcome = f"เรียน คุณ{customer.get('name', 'ลูกค้า')},\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: {shop.get('contact_phone', '-')}\nLINE ID: {shop.get('line_id', '-')}"
+            try: line_bot_api.push_message(user_id, TextSendMessage(text=welcome))
+            except Exception: pass
+            return jsonify({"status": "success"})
+        else: return jsonify({"status": "error"}), 500
+    return jsonify({"status": "success", "message": "already saved"})
+
+
+# --- LINE Bot Handlers ---
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    
+    app.logger.info("Request body: " + body)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        app.logger.error("Invalid LINE signature. Please check your channel secret.")
+        abort(400)
+    except Exception as e:
+        app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
+        #notify_admin_error(f"Webhook Handler Error: {e}")
+        abort(500)
+    return 'OK'
+
+def create_task_list_message(title, tasks, limit=5):
+    if not tasks:
+        return TextSendMessage(text=f"ไม่พบรายการ{title}ในขณะนี้")
+    message = f"📋 {title}\n\n"
+    tasks.sort(key=lambda x: date_parse(x['due']) if x.get('due') else datetime.datetime.max.replace(tzinfo=pytz.utc))
+    for i, task in enumerate(tasks[:limit]):
+        customer = parse_customer_info_from_notes(task.get('notes', ''))
+        due = parse_google_task_dates(task).get('due_formatted', 'ไม่มีกำหนด')
+        message += f"{i+1}. {task.get('title')}\n   - ลูกค้า: {customer.get('name', 'N/A')}\n   - นัดหมาย: {due}\n\n"
+    if len(tasks) > limit: message += f"... และอีก {len(tasks) - limit} รายการ"
+    return TextSendMessage(text=message)
+
+def create_task_flex_message(task):
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
+    dates = parse_google_task_dates(task)
+    return BubbleContainer(
+        body=BoxComponent(layout='vertical', spacing='md', contents=[
+            TextComponent(text=task.get('title', '...'), weight='bold', size='lg', wrap=True), SeparatorComponent(margin='md'),
+            BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
+                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
+                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
+            ]),
+        ]),
+        footer=BoxComponent(layout='vertical', spacing='sm', contents=[
+            ButtonComponent(style='primary', height='sm', action=URIAction(label='📝 เปิดในเว็บ', uri=url_for('task_details', task_id=task['id'], _external=True)))
+        ])
+    )
+
+def create_full_summary_message(title, tasks):
+    if not tasks: return TextSendMessage(text=f"ไม่พบรายการ{title}ในขณะนี้")
+    tasks.sort(key=lambda x: date_parse(x.get('due')) if x.get('due') else date_parse(x.get('created', '9999-12-31T23:59:59Z')))
+    lines = [f"📋 {title} (ทั้งหมด {len(tasks)} งาน)\n"]
+    for i, task in enumerate(tasks):
+        customer = parse_customer_info_from_notes(task.get('notes', ''))
+        due = parse_google_task_dates(task).get('due_formatted', 'ยังไม่ระบุ')
+        line = f"{i+1}. {task.get('title', 'N/A')}"
+        if customer.get('name'): line += f"\n   - 👤 {customer.get('name')}"
+        line += f"\n   - 🗓️ {due}"
+        lines.append(line)
+    message = "\n\n".join(lines)
+    if len(message) > 4900: message = message[:4900] + "\n\n... (ข้อความยาวเกินไป)"
+    return TextSendMessage(text=message)
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_text_message(event):
+    text = event.message.text.strip().lower()
+    reply = None
+    if text == 'งานวันนี้':
+        tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == datetime.datetime.now(THAILAND_TZ).date() and t.get('status') == 'needsAction']
+        if not tasks: return line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ไม่พบงานสำหรับวันนี้"))
+        tasks.sort(key=lambda x: date_parse(x['due']))
+        messages = []
+        for task in tasks[:5]:
+            customer, dates = parse_customer_info_from_notes(task.get('notes', '')), parse_google_task_dates(task)
+            loc = f"พิกัด: {customer.get('map_url')}" if customer.get('map_url') else "พิกัด: - (ไม่มีข้อมูล)"
+            msg_text = f"🔔 งานสำหรับวันนี้\n\nชื่องาน: {task.get('title', '-')}\n👤 ลูกค้า: {customer.get('name', '-')}\n📞 โทร: {customer.get('phone', '-')}\n🗓️ นัดหมาย: {dates.get('due_formatted', '-')}\n📍 {loc}\n\n🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
+            messages.append(TextSendMessage(text=msg_text))
+        return line_bot_api.reply_message(event.reply_token, messages)
+
+    elif text == 'งานค้าง':
+        tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('status') == 'needsAction']
+        reply = create_full_summary_message('รายการงานค้าง', tasks)
+    elif text == 'งานเสร็จ':
+        tasks = sorted([t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed'], key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')), reverse=True)
+        reply = create_task_list_message('รายการงานเสร็จล่าสุด', tasks)
+    elif text == 'งานพรุ่งนี้':
+        tasks = [t for t in (get_google_tasks_for_report(False) or []) if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == (datetime.datetime.now(THAILAND_TZ) + datetime.timedelta(days=1)).date() and t.get('status') == 'needsAction']
+        reply = create_task_list_message('งานพรุ่งนี้', tasks)
+    elif text == 'สร้างงานใหม่' and LIFF_ID_FORM:
+        reply = TextSendMessage(text="เปิดฟอร์มเพื่อสร้างงานใหม่ครับ 👇", quick_reply=QuickReply(items=[QuickReplyButton(action=URIAction(label="เปิดฟอร์มสร้างงาน", uri=f"https://liff.line.me/{LIFF_ID_FORM}"))]))
+    elif text.startswith('ดูงาน '):
+        query = event.message.text.split(maxsplit=1)[1].strip().lower()
+        if not query: return line_bot_api.reply_message(event.reply_token, TextSendMessage(text="โปรดระบุชื่อลูกค้าที่ต้องการค้นหา"))
+        tasks = [t for t in (get_google_tasks_for_report(True) or []) if query in parse_customer_info_from_notes(t.get('notes', '')).get('name', '').lower()]
+        if not tasks: return line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ไม่พบงานของลูกค้า: {query}"))
+        tasks.sort(key=lambda x: (x.get('status') == 'completed', date_parse(x.get('due', '9999-12-31T23:59:59Z'))))
+        bubbles = [create_task_flex_message(t) for t in tasks[:10]]
+        return line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text=f"ผลการค้นหา: {query}", contents=CarouselContainer(contents=bubbles)))
+    elif text == 'comphone':
+        help_text = (
+            "พิมพ์คำสั่งเพื่อดูรายงานหรือจัดการงาน:\n"
+            "- *งานค้าง*: ดูรายการงานที่ยังไม่เสร็จทั้งหมด\n"
+            "- *งานเสร็จ*: ดูรายการงานที่ทำเสร็จแล้ว 5 รายการล่าสุด\n"
+            "- *งานวันนี้*: ดูงานที่นัดหมายสำหรับวันนี้ (แยกข้อความ)\n"
+            "- *งานพรุ่งนี้*: ดูสรุปงานที่นัดหมายสำหรับพรุ่งนี้\n"
+            "- *สร้างงานใหม่*: เปิดฟอร์มสำหรับสร้างงานใหม่\n"
+            "- *ดูงาน [ชื่อลูกค้า]*: ค้นหางานตามชื่อลูกค้า\n\n"
+            f"ดูข้อมูลทั้งหมด: {url_for('summary', _external=True)}"
+        )
+        reply = TextSendMessage(text=help_text)
+    
+    if reply: line_bot_api.reply_message(event.reply_token, reply)
+
+@handler.add(PostbackEvent)
+def handle_postback(event):
+    data = dict(x.split('=') for x in event.postback.data.split('&'))
+    action, task_id = data.get('action'), data.get('task_id')
+
+    if action == 'customer_feedback':
+        task = get_single_task(task_id)
+        if not task: return
+        notes = task.get('notes', '')
+        feedback = parse_customer_feedback_from_notes(notes)
+        feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': data.get('feedback'), 'customer_line_user_id': event.source.user_id})
+        history_reports, base = parse_tech_report_from_notes(notes)
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+        final_notes = f"{base.strip()}"
+        if reports_text: final_notes += reports_text
+        final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        _execute_google_api_call_with_retry(update_google_task, task_id, notes=final_notes)
+        cache.clear()
+        try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏)"))
+        except Exception: pass
+
+@app.route("/admin/organize_files", methods=['GET', 'POST'])
+def organize_files():
+    if request.method == 'POST':
+        service = get_google_drive_service()
+        if not service:
+            flash('ไม่สามารถเชื่อมต่อ Google Drive API ได้', 'danger')
+            return redirect(url_for('organize_files'))
+
+        all_tasks = get_google_tasks_for_report(show_completed=True)
+        if all_tasks is None:
+            flash('ไม่สามารถดึงข้อมูลงานทั้งหมดได้', 'danger')
+            return redirect(url_for('organize_files'))
+            
+        moved_count, skipped_count, error_count = 0, 0, 0
+        
+        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        if not attachments_base_folder_id:
+            flash('ไม่สามารถสร้างหรือค้นหาโฟลเดอร์หลัก "Task_Attachments" ได้', 'danger')
+            return redirect(url_for('organize_files'))
+
+        unorganized_files_query = (
+            f"'{attachments_base_folder_id}' in parents "
+            f"and mimeType != 'application/vnd.google-apps.folder' and trashed = false"
+        )
+        uncategorized_folder_id = find_or_create_drive_folder("Uncategorized", attachments_base_folder_id)
+        if uncategorized_folder_id:
+            unorganized_files_query += (
+                f" or '{uncategorized_folder_id}' in parents "
+                f"and mimeType != 'application/vnd.google-apps.folder' and trashed = false"
+            )
+
+        all_files_in_base_and_uncategorized = []
+        try:
+            page_token = None
+            while True:
+                response = _execute_google_api_call_with_retry(
+                    service.files().list,
+                    q=unorganized_files_query,
+                    spaces='drive',
+                    fields='nextPageToken, files(id, name, parents)',
+                    pageSize=100,
+                    pageToken=page_token
+                )
+                all_files_in_base_and_uncategorized.extend(response.get('files', []))
+                page_token = response.get('nextPageToken', None)
+                if not page_token:
+                    break
+        except HttpError as e:
+            app.logger.error(f"Error listing files for organization: {e}")
+            flash('เกิดข้อผิดพลาดในการดึงรายการไฟล์จาก Google Drive', 'danger')
+            return redirect(url_for('organize_files'))
+
+        file_parents_map = {f['id']: f.get('parents', []) for f in all_files_in_base_and_uncategorized}
+
+        task_folder_map = {}
+        for task in all_tasks:
+            try:
+                created_dt_local = None
+                if task.get('created'):
+                    created_dt_local = date_parse(task.get('created')).astimezone(THAILAND_TZ)
+                else:
+                    app.logger.warning(f"Task {task.get('id')} has no 'created' date. Using current date for monthly folder naming.")
+                    created_dt_local = datetime.datetime.now(THAILAND_TZ)
+
+                monthly_folder_name = created_dt_local.strftime('%Y-%m')
+                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+                
+                if not monthly_folder_id:
+                    app.logger.error(f"Could not create/find monthly folder {monthly_folder_name} for task {task.get('id')}.")
+                    continue
+
+                customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+                sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
+                customer_task_folder_name = f"{sanitized_customer_name} - {task.get('id')}"
+                
+                destination_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+                if destination_folder_id:
+                    task_folder_map[task.get('id')] = destination_folder_id
+                else:
+                    app.logger.error(f"Could not create/find task folder {customer_task_folder_name} for task {task.get('id')}.")
+
+            except Exception as e:
+                app.logger.error(f"Error processing task {task.get('id')} for folder mapping: {e}")
+
+        for file_item in all_files_in_base_and_uncategorized:
+            file_id = file_item.get('id')
+            file_name = file_item.get('name', 'Unnamed File')
+            current_parents = file_parents_map.get(file_id, [])
+
+            matched_task_id = None
+            for task_id_candidate in task_folder_map.keys():
+                if task_id_candidate in file_name:
+                    matched_task_id = task_id_candidate
+                    break
+            
+            expected_folder_id = None
+            if matched_task_id and task_folder_map.get(matched_task_id):
+                expected_folder_id = task_folder_map[matched_task_id]
+            else:
+                for task in all_tasks:
+                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                    for report in history:
+                        for attachment in report.get('attachments', []):
+                            if attachment.get('id') == file_id:
+                                if task.get('id') in task_folder_map:
+                                    expected_folder_id = task_folder_map[task.get('id')]
+                                break
+                        if expected_folder_id: break
+                    if expected_folder_id: break
+
+            if not expected_folder_id:
+                app.logger.info(f"File {file_id} ('{file_name}') could not be linked to any task. Skipping.")
+                skipped_count += 1
+                continue
+
+            if expected_folder_id in current_parents:
+                skipped_count += 1
+                app.logger.info(f"File {file_id} ('{file_name}') is already in the correct folder. Skipping.")
+                continue
+            
+            try:
+                parents_to_remove = [p for p in current_parents if p != expected_folder_id]
+                
+                _execute_google_api_call_with_retry(
+                    service.files().update,
+                    fileId=file_id,
+                    addParents=expected_folder_id,
+                    removeParents=",".join(parents_to_remove),
+                    fields='id, parents'
+                )
+                moved_count += 1
+                app.logger.info(f"Moved file {file_id} ('{file_name}') to folder {expected_folder_id}")
+
+            except HttpError as file_error:
+                if file_error.resp.status == 404:
+                    app.logger.warning(f"File {file_id} ('{file_name}') not found on Drive during move, skipping. Error: {file_error}")
+                    skipped_count += 1
+                else:
+                    app.logger.error(f"Error moving file {file_id} ('{file_name}'): {file_error}")
+                    error_count += 1
+            except Exception as file_other_error:
+                app.logger.error(f"Unexpected error when processing file {file_id} ('{file_name}'): {file_other_error}")
+                error_count += 1
+
+        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว/ไม่มีข้อมูล/ไม่พบ): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} ไฟล์.', 'success')
+        return redirect(url_for('organize_files'))
+
+    return render_template('organize_files.html')
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
