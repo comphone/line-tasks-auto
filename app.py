@@ -53,7 +53,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
-# SonarCloud Refactor: Define constants for duplicated literals
+# --- Constants ---
 ISO_UTC_OFFSET = '+00:00'
 ZULU_FORMAT_SUFFIX = 'Z'
 JSON_EXTENSION = '.json'
@@ -63,7 +63,6 @@ IMAGE_MIMETYPE_PREFIX = 'image/'
 JPEG_MIMETYPE = 'image/jpeg'
 MAX_DATETIME_STR = '9999-12-31T23:59:59Z'
 TASK_NOT_FOUND_MSG = 'ไม่พบงานที่ต้องการอัปเดต'
-# End SonarCloud Refactor
 
 TEXT_SNIPPETS = {
     'task_details': [
@@ -80,6 +79,7 @@ TEXT_SNIPPETS = {
     ]
 }
 
+# --- Flask App Initialization ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
@@ -92,10 +92,10 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
-
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# --- Environment Variable Loading ---
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
@@ -113,7 +113,7 @@ if not LIFF_ID_FORM:
 if not LINE_LOGIN_CHANNEL_ID:
     app.logger.warning("LINE_LOGIN_CHANNEL_ID environment variable is not set. LIFF initialization might fail.")
 
-
+# --- Global Configurations ---
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/drive']
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
@@ -124,6 +124,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 app.jinja_env.filters['dateutil_parse'] = date_parse
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
+# --- Settings Management ---
 SETTINGS_FILE = 'settings.json'
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': {
@@ -141,13 +142,18 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
     'technician_list': []
 }
+# In-memory cache for application settings to prevent frequent disk I/O
+_APP_SETTINGS_STORE = {}
+
 
 #<editor-fold desc="Helper and Utility Functions">
 
 def load_settings_from_file():
+    """Loads settings from the local JSON file."""
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             app.logger.error(f"Error handling settings.json: {e}")
             if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) == 0:
@@ -156,17 +162,28 @@ def load_settings_from_file():
     return None
 
 def save_settings_to_file(settings_data):
+    """Saves settings to the local JSON file."""
     try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings_data, f, ensure_ascii=False, indent=4)
         return True
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
 
 def get_app_settings():
+    """
+    Gets application settings, using an in-memory cache to avoid repeated file reads.
+    Loads from file only if the cache is empty.
+    """
+    global _APP_SETTINGS_STORE
+    if _APP_SETTINGS_STORE:
+        return _APP_SETTINGS_STORE
+
+    app.logger.info("Settings cache is empty. Loading from file...")
     app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
     loaded_settings = load_settings_from_file()
-    
+
     if loaded_settings:
         for key, default_value in app_settings.items():
             if key in loaded_settings:
@@ -175,52 +192,71 @@ def get_app_settings():
                 else:
                     app_settings[key] = loaded_settings[key]
     else:
+        # If no settings file exists, save the default ones
         save_settings_to_file(app_settings)
-        
+
+    # Calculate derived properties
     equipment_catalog = app_settings.get('equipment_catalog', [])
-    # SonarCloud Refactor: Use set comprehension for clarity and consistency.
     app_settings['common_equipment_items'] = sorted({
         item.get('item_name') for item in equipment_catalog if item.get('item_name')
     })
-    
-    return app_settings
+
+    _APP_SETTINGS_STORE = app_settings
+    return _APP_SETTINGS_STORE
 
 def save_app_settings(settings_data):
-    current_settings = get_app_settings()
-    
+    """
+    Saves new settings data to the file and updates the in-memory cache.
+    """
+    global _APP_SETTINGS_STORE
+    current_settings = get_app_settings().copy()
+
     for key, value in settings_data.items():
         if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
             current_settings[key].update(value)
         else:
             current_settings[key] = value
-            
-    return save_settings_to_file(current_settings)
+
+    if save_settings_to_file(current_settings):
+        # Successfully saved to file, now update the in-memory cache
+        _APP_SETTINGS_STORE = current_settings
+        # Re-calculate derived properties
+        equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
+        _APP_SETTINGS_STORE['common_equipment_items'] = sorted({
+            item.get('item_name') for item in equipment_catalog if item.get('item_name')
+        })
+        return True
+    return False
 
 
 def safe_execute(request_object):
+    """Executes a Google API request object if it has an 'execute' method."""
     if hasattr(request_object, 'execute'):
         return request_object.execute()
     return request_object
 
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
+    """Wrapper to execute Google API calls with an exponential backoff retry mechanism."""
     max_retries = 3
     base_delay = 1
     for i in range(max_retries):
         try:
             return safe_execute(api_call(*args, **kwargs))
         except HttpError as e:
+            # Retry on transient server errors and rate limiting
             if e.resp.status in [500, 502, 503, 504, 429] and i < max_retries - 1:
                 delay = base_delay * (2 ** i)
                 app.logger.warning(f"Google API transient error (Status: {e.resp.status}). Retrying in {delay} seconds... (Attempt {i+1}/{max_retries})")
                 time.sleep(delay)
             else:
-                raise
+                raise  # Re-raise the error if it's not retryable or retries are exhausted
         except Exception as e:
             app.logger.error(f"Unexpected error during Google API call: {e}")
             raise
     return None
 
 def get_google_service(api_name, api_version):
+    """Builds and returns a Google API service object, handling credentials and token refresh."""
     creds = None
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
 
@@ -260,12 +296,14 @@ def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
 
 def sanitize_filename(name):
+    """Removes illegal characters from a string to make it a valid filename."""
     if not name:
         return "Unnamed"
     return re.sub(r'[\\/*?:"<>|]', "", name).strip()
 
 @cached(cache)
 def find_or_create_drive_folder(name, parent_id):
+    """Finds a Google Drive folder by name or creates it if it doesn't exist."""
     service = get_google_drive_service()
     if not service:
         return None
@@ -294,6 +332,7 @@ def find_or_create_drive_folder(name, parent_id):
 
 @cached(cache)
 def get_customer_database():
+    """Builds a unique customer list from all tasks in Google Tasks."""
     app.logger.info("Building customer database from Google Tasks...")
     all_tasks = get_google_tasks_for_report(show_completed=True)
     if not all_tasks:
@@ -331,6 +370,7 @@ def get_customer_database():
     return list(customers_dict.values())
 
 def load_settings_from_drive_on_startup():
+    """Restores the latest settings backup from Google Drive on application startup."""
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
     if not settings_backup_folder_id:
         app.logger.error("Could not find or create Settings_Backups folder. Skipping settings restore.")
@@ -342,7 +382,6 @@ def load_settings_from_drive_on_startup():
         return False
 
     try:
-        # SonarCloud Refactor: Use constant for 'settings_backup.json'
         query = f"name = '{SETTINGS_BACKUP_FILENAME}' and '{settings_backup_folder_id}' in parents and trashed = false"
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', orderBy='modifiedTime desc', pageSize=1)
         files = response.get('files', [])
@@ -361,7 +400,7 @@ def load_settings_from_drive_on_startup():
 
             downloaded_settings = json.loads(fh.read().decode('utf-8'))
 
-            if save_settings_to_file(downloaded_settings):
+            if save_app_settings(downloaded_settings):
                 app.logger.info("Successfully restored settings from Google Drive backup.")
                 return True
             else:
@@ -375,6 +414,7 @@ def load_settings_from_drive_on_startup():
         return False
 
 def backup_settings_to_drive():
+    """Backs up the current application settings to a file in Google Drive."""
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
     if not settings_backup_folder_id:
         app.logger.error("Cannot back up settings: Could not find or create Settings_Backups folder.")
@@ -386,7 +426,6 @@ def backup_settings_to_drive():
         return False
 
     try:
-        # SonarCloud Refactor: Use constant for 'settings_backup.json'
         query = f"name = '{SETTINGS_BACKUP_FILENAME}' and '{settings_backup_folder_id}' in parents and trashed = false"
         response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id)')
         for file_item in response.get('files', []):
@@ -399,7 +438,6 @@ def backup_settings_to_drive():
         settings_data = get_app_settings()
         settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
         
-        # SonarCloud Refactor: Use constant for 'settings_backup.json'
         file_metadata = {'name': SETTINGS_BACKUP_FILENAME, 'parents': [settings_backup_folder_id]}
         media = MediaIoBaseUpload(settings_json_bytes, mimetype='application/json', resumable=True)
         
@@ -416,6 +454,7 @@ def backup_settings_to_drive():
 
 @cached(cache)
 def get_google_tasks_for_report(show_completed=True):
+    """Retrieves all tasks from the specified Google Tasks list."""
     service = get_google_tasks_service()
     if not service: return None
     try:
@@ -426,6 +465,7 @@ def get_google_tasks_for_report(show_completed=True):
         return None
 
 def get_single_task(task_id):
+    """Retrieves a single task by its ID."""
     if not task_id: return None
     service = get_google_tasks_service()
     if not service: return None
@@ -436,6 +476,7 @@ def get_single_task(task_id):
         return None
 
 def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
+    """Handles the core logic of uploading a file to Google Drive and setting permissions."""
     service = get_google_drive_service()
     if not service or not folder_id:
         app.logger.error(f"Drive service or Folder ID not configured for upload of '{file_name}'.")
@@ -487,6 +528,7 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
         return None
 
 def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
+    """Uploads a file from a local path to Google Drive."""
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
         app.logger.error(f"File at path '{file_path}' is missing or empty. Aborting upload.")
         return None
@@ -494,12 +536,14 @@ def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
     return _perform_drive_upload(media, file_name, mime_type, folder_id)
 
 def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
+    """Uploads file data from a memory buffer to Google Drive."""
     media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
     file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id)
     return file_obj
 
 
 def create_google_task(title, notes=None, due=None):
+    """Creates a new task in Google Tasks."""
     service = get_google_tasks_service()
     if not service: return None
     try:
@@ -511,6 +555,7 @@ def create_google_task(title, notes=None, due=None):
         return None
 
 def delete_google_task(task_id):
+    """Deletes a task from Google Tasks."""
     service = get_google_tasks_service()
     if not service: return False
     try:
@@ -521,6 +566,7 @@ def delete_google_task(task_id):
         return False
 
 def update_google_task(task_id, title=None, notes=None, status=None, due=None):
+    """Updates an existing task in Google Tasks."""
     service = get_google_tasks_service()
     if not service: return None
     try:
@@ -531,7 +577,6 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
             task['status'] = status
 
         if status == 'completed':
-            # SonarCloud Refactor: Use constants for timestamp formatting.
             task['completed'] = datetime.datetime.now(pytz.utc).isoformat().replace(ISO_UTC_OFFSET, ZULU_FORMAT_SUFFIX)
             task['due'] = None
         else:
@@ -547,6 +592,7 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
         return None
 
 def parse_customer_info_from_notes(notes):
+    """Parses structured customer information from the task notes string."""
     info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
     if not notes: return info
 
@@ -564,13 +610,14 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
+            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}"
         else:
             info['map_url'] = coords_or_url
     
     return info
 
 def parse_customer_feedback_from_notes(notes):
+    """Parses the JSON block for customer feedback from task notes."""
     feedback_data = {}
     if not notes: return feedback_data
 
@@ -583,6 +630,7 @@ def parse_customer_feedback_from_notes(notes):
     return feedback_data
 
 def parse_google_task_dates(task_item):
+    """Parses and formats date fields from a Google Task item for display."""
     parsed = task_item.copy()
     for key in ['created', 'due', 'completed']:
         if parsed.get(key):
@@ -601,6 +649,7 @@ def parse_google_task_dates(task_item):
     return parsed
 
 def parse_tech_report_from_notes(notes):
+    """Parses all technician report JSON blocks from task notes into a list."""
     if not notes: return [], ""
     report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
     history = []
@@ -608,15 +657,14 @@ def parse_tech_report_from_notes(notes):
         try:
             report_data = json.loads(json_str)
             
-            if 'attachments' in report_data:
-                pass
-            elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
+            # Compatibility fix for old attachment format
+            if 'attachments' not in report_data and 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
                 report_data['attachments'] = []
                 for url in report_data['attachment_urls']:
                     if isinstance(url, str):
                         match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
                         file_id = match.group(1) if match else None
-                        report_data['attachments'].append({'id': file_id, 'url': url})
+                        report_data['attachments'].append({'id': file_id, 'url': url, 'name': 'Attached File'})
                 report_data.pop('attachment_urls', None)
             
             if isinstance(report_data.get('equipment_used'), str):
@@ -631,6 +679,7 @@ def parse_tech_report_from_notes(notes):
         except json.JSONDecodeError:
             app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
     
+    # Extract original notes text by removing all special blocks
     temp_notes = notes
     temp_notes = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", temp_notes, flags=re.DOTALL)
     temp_notes = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", temp_notes, flags=re.DOTALL)
@@ -641,9 +690,11 @@ def parse_tech_report_from_notes(notes):
 
 
 def allowed_file(filename):
+    """Checks if a filename has an allowed extension."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def _parse_equipment_string(text_input):
+    """Parses a multiline string of equipment into a list of dicts."""
     equipment_list = []
     if not text_input: return equipment_list
     for line in text_input.strip().split('\n'):
@@ -660,6 +711,7 @@ def _parse_equipment_string(text_input):
     return equipment_list
 
 def _format_equipment_list(equipment_data):
+    """Formats a list of equipment dicts into an HTML string for display."""
     if not equipment_data: return 'N/A'
     if isinstance(equipment_data, str): return equipment_data
     lines = []
@@ -679,9 +731,11 @@ def _format_equipment_list(equipment_data):
 
 @app.context_processor
 def inject_now():
+    """Injects the current time into all templates."""
     return {'now': datetime.datetime.now(THAILAND_TZ), 'thaizone': THAILAND_TZ}
 
 def generate_qr_code_base64(data, box_size=10, border=4, fill_color='#28a745', back_color='#FFFFFF'):
+    """Generates a QR code and returns it as a base64 encoded string."""
     try:
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
         qr.add_data(data)
@@ -695,6 +749,7 @@ def generate_qr_code_base64(data, box_size=10, border=4, fill_color='#28a745', b
         return ""
 
 def _create_backup_zip():
+    """Creates a zip archive containing a full system backup."""
     try:
         all_tasks = get_google_tasks_for_report(show_completed=True)
         if all_tasks is None:
@@ -703,14 +758,12 @@ def _create_backup_zip():
 
         memory_file = BytesIO()
         with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # SonarCloud Refactor: Use constant for '.json'
             zf.writestr(f'data/tasks_backup{JSON_EXTENSION}', json.dumps(all_tasks, indent=4, ensure_ascii=False))
             zf.writestr(f'data/settings_backup{JSON_EXTENSION}', json.dumps(get_app_settings(), indent=4, ensure_ascii=False))
 
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
                 for file in files:
-                    # SonarCloud Refactor: Use constant for '.json'
                     if file.endswith(('.py', '.html', '.css', '.js', JSON_EXTENSION, 'Procfile', 'requirements.txt')) \
                        and file not in ['token.json', '.env', SETTINGS_FILE]:
                         file_path = os.path.join(folder, file)
@@ -724,6 +777,7 @@ def _create_backup_zip():
         return None, None
 
 def check_google_api_status():
+    """Checks if the application is successfully connected to the Google API."""
     service = get_google_drive_service()
     if not service:
         return False
@@ -742,6 +796,7 @@ def check_google_api_status():
 
 @app.context_processor
 def inject_global_vars():
+    """Injects global variables into all templates."""
     return {
         'now': datetime.datetime.now(THAILAND_TZ),
         'google_api_connected': check_google_api_status()
@@ -752,6 +807,7 @@ def inject_global_vars():
 #<editor-fold desc="Scheduled Jobs and Notifications">
 
 def notify_admin_error(message):
+    """Sends a critical error notification to the admin LINE group."""
     try:
         admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
         if admin_group_id:
@@ -760,6 +816,7 @@ def notify_admin_error(message):
         app.logger.error(f"Failed to send critical error notification: {e}")
 
 def send_new_task_notification(task):
+    """Sends a LINE notification to admins when a new task is created."""
     settings = get_app_settings()
     recipients = settings.get('line_recipients', {})
     admin_group_id = recipients.get('admin_group_id')
@@ -770,7 +827,6 @@ def send_new_task_notification(task):
     parsed_dates = parse_google_task_dates(task)
     
     due_info = f"นัดหมาย: {parsed_dates.get('due_formatted')}" if parsed_dates.get('due_formatted') else "นัดหมาย: - (ยังไม่ระบุ)"
-    # SonarCloud Refactor: Use constant for duplicated literal.
     location_info = f"พิกัด: {customer_info.get('map_url')}" if customer_info.get('map_url') else NO_LOCATION_INFO_TEXT
 
     message_text = (
@@ -790,6 +846,7 @@ def send_new_task_notification(task):
         app.logger.error(f"Failed to send new task notification for task {task['id']}: {e}")
 
 def send_completion_notification(task, technicians):
+    """Sends a LINE notification when a task is completed."""
     settings = get_app_settings()
     recipients = settings.get('line_recipients', {})
     admin_group_id = recipients.get('admin_group_id')
@@ -821,6 +878,7 @@ def send_completion_notification(task, technicians):
         app.logger.error(f"Failed to send completion notification for task {task['id']}: {e}")
 
 def send_update_notification(task, new_due_date_str, reason, technicians, is_today):
+    """Sends a LINE notification when a task is rescheduled or updated."""
     settings = get_app_settings()
     admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
     if not admin_group_id: return
@@ -853,6 +911,7 @@ def send_update_notification(task, new_due_date_str, reason, technicians, is_tod
 
 
 def scheduled_backup_job():
+    """Scheduled job to perform a full system backup to Google Drive."""
     with app.app_context():
         app.logger.info(f"--- Starting Scheduled Backup Job ---")
         overall_success = True
@@ -884,6 +943,7 @@ def scheduled_backup_job():
 
 
 def scheduled_appointment_reminder_job():
+    """Scheduled job to send LINE reminders for today's appointments."""
     with app.app_context():
         app.logger.info("Running scheduled appointment reminder job...")
         settings = get_app_settings()
@@ -919,7 +979,6 @@ def scheduled_appointment_reminder_job():
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             parsed_dates = parse_google_task_dates(task)
             
-            # SonarCloud Refactor: Use constant for duplicated literal.
             location_info = f"พิกัด: {customer_info.get('map_url')}" if customer_info.get('map_url') else NO_LOCATION_INFO_TEXT
             
             message_text = (
@@ -943,6 +1002,7 @@ def scheduled_appointment_reminder_job():
                 app.logger.error(f"Failed to send appointment reminder for task {task['id']}: {e}")
 
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
+    """Creates a LINE Flex Message for customer follow-up."""
     problem_action = URIAction(
         label='🚨 ยังมีปัญหาอยู่',
         uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}"
@@ -976,6 +1036,7 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     )
 
 def scheduled_customer_follow_up_job():
+    """Scheduled job to send follow-up messages to customers 1-2 days after task completion."""
     with app.app_context():
         app.logger.info("Running scheduled customer follow-up job...")
         settings = get_app_settings()
@@ -1032,7 +1093,7 @@ def scheduled_customer_follow_up_job():
                     app.logger.warning(f"Could not process task {task.get('id')} for follow-up: {e}", exc_info=True)
 
 def run_scheduler():
-    """Initializes and runs the APScheduler jobs."""
+    """Initializes and runs the APScheduler jobs based on current settings."""
     global scheduler
 
     settings = get_app_settings()
@@ -1046,7 +1107,7 @@ def run_scheduler():
     ab = settings.get('auto_backup', {})
     if ab.get('enabled'):
         scheduler.add_job(scheduled_backup_job, CronTrigger(hour=ab.get('hour_thai', 2), minute=ab.get('minute_thai', 0)), id='auto_system_backup', replace_existing=True)
-        app.logger.info(f"Scheduled auto backup for {ab.get('hour_thai', 2)}:{ab.get('minute_thai', 0)} Thai time.")
+        app.logger.info(f"Scheduled auto backup for {ab.get('hour_thai', 2)}:{ab.get('minute_thai', 0):02d} Thai time.")
     else:
         if scheduler.get_job('auto_system_backup'):
             scheduler.remove_job('auto_system_backup')
@@ -1069,9 +1130,10 @@ def cleanup_scheduler():
         app.logger.info("Scheduler not running or not initialized, skipping shutdown.")
 #</editor-fold>
 
-# --- Initial app setup calls ---
+# --- Initial App Setup Calls ---
 with app.app_context():
     load_settings_from_drive_on_startup()
+    get_app_settings() # Pre-populate the settings cache on startup
     run_scheduler()
 
 atexit.register(cleanup_scheduler)
@@ -1084,12 +1146,15 @@ def page_not_found(e):
 @app.errorhandler(500)
 def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
+    # Notify admin on critical server errors
+    notify_admin_error(f"Internal Server Error: {e}")
     return render_template('500.html'), 500
 
 
 # --- Flask Routes ---
 @app.route('/api/customers')
 def api_customers():
+    """API endpoint to get the customer database."""
     customer_list = get_customer_database()
     return jsonify(customer_list)
 
@@ -1126,7 +1191,6 @@ def form_page():
         if appointment_str:
             try:
                 dt_local = THAILAND_TZ.localize(date_parse(appointment_str))
-                # SonarCloud Refactor: Use constants for timestamp formatting.
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace(ISO_UTC_OFFSET, ZULU_FORMAT_SUFFIX)
             except ValueError:
                 flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
@@ -1209,7 +1273,6 @@ def api_upload_attachment():
     file.seek(0)
     
     if file_length > MAX_FILE_SIZE_BYTES:
-        # SonarCloud Refactor: Use constant for 'image/'
         if file.mimetype and file.mimetype.startswith(IMAGE_MIMETYPE_PREFIX):
             try:
                 img = Image.open(file)
@@ -1221,7 +1284,6 @@ def api_upload_attachment():
                 output_buffer.seek(0)
                 file_to_upload = output_buffer
                 filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
-                # SonarCloud Refactor: Use constant for 'image/jpeg'
                 mime_type = JPEG_MIMETYPE
                 app.logger.info(f"Compressed image '{file.filename}' successfully.")
             except Exception as e:
@@ -1279,8 +1341,8 @@ def api_upload_attachment():
     else:
         return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
 
-# SonarCloud Refactor: Helper function to reduce complexity in summary()
 def _process_and_filter_tasks(tasks_raw, status_filter, search_query):
+    """Helper function to filter and process tasks for the summary page."""
     final_tasks = []
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw), 'today': 0}
     today_thai = datetime.datetime.now(THAILAND_TZ).date()
@@ -1309,7 +1371,6 @@ def _process_and_filter_tasks(tasks_raw, status_filter, search_query):
             if is_today:
                 stats['today'] += 1
 
-        # SonarCloud Refactor: Combine identical branches into a single boolean expression.
         task_passes_filter = (
             status_filter == 'all' or
             status_filter == task_status or
@@ -1329,8 +1390,8 @@ def _process_and_filter_tasks(tasks_raw, status_filter, search_query):
 
     return final_tasks, stats
 
-# SonarCloud Refactor: Helper function to reduce complexity in summary()
 def _generate_completion_chart_data(tasks_raw):
+    """Helper function to generate data for the completion chart."""
     completed_tasks_for_chart = [t for t in tasks_raw if t.get('status') == 'completed' and t.get('completed')]
     month_labels = []
     chart_values = []
@@ -1342,7 +1403,6 @@ def _generate_completion_chart_data(tasks_raw):
         chart_values.append(count)
     return {'labels': month_labels, 'values': chart_values}
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 26 to 4.
 @app.route('/summary')
 def summary():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
@@ -1352,7 +1412,6 @@ def summary():
     final_tasks, stats = _process_and_filter_tasks(tasks_raw, status_filter, search_query)
     chart_data = _generate_completion_chart_data(tasks_raw)
 
-    # SonarCloud Refactor: Use constant for max datetime string.
     final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, date_parse(x.get('due', MAX_DATETIME_STR))))
 
     return render_template("dashboard.html",
@@ -1366,39 +1425,8 @@ def summary_print():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
-    today_thai = date.today()
-    final_tasks = []
     
-    for task in tasks_raw:
-        task_status = task.get('status', 'needsAction')
-        is_overdue = False
-        is_today = False
-        if task_status == 'needsAction' and task.get('due'):
-            try:
-                due_dt_utc = date_parse(task['due'])
-                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
-                if due_dt_local.date() < today_thai: is_overdue = True
-                elif due_dt_local.date() == today_thai: is_today = True
-            except (ValueError, TypeError): pass
-        
-        # SonarCloud Refactor: Combine identical branches into a single boolean expression.
-        task_passes_filter = (
-            status_filter == 'all' or
-            status_filter == task_status or
-            (status_filter == 'today' and is_today)
-        )
-
-        if task_passes_filter:
-            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-            searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
-            if not search_query or search_query in searchable_text:
-                parsed_task = parse_google_task_dates(task)
-                parsed_task['customer'] = customer_info
-                parsed_task['is_overdue'] = is_overdue
-                parsed_task['is_today'] = is_today
-                final_tasks.append(parsed_task)
-
-    # SonarCloud Refactor: Use constant for max datetime string.
+    final_tasks, _ = _process_and_filter_tasks(tasks_raw, status_filter, search_query)
     final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, date_parse(x.get('due', MAX_DATETIME_STR))))
     
     return render_template("summary_print.html",
@@ -1438,8 +1466,7 @@ def api_calendar_tasks():
             is_completed = task.get('status') == 'completed'
 
             try:
-                due_dt_utc = date_parse(task['due'])
-                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+                due_dt_local = date_parse(task['due']).astimezone(THAILAND_TZ)
                 if not is_completed and due_dt_local.date() < today_thai:
                     is_overdue = True
                 elif not is_completed and due_dt_local.date() == today_thai:
@@ -1482,8 +1509,7 @@ def schedule_task_from_calendar():
         if task.get('status') == 'completed':
             return jsonify({'status': 'error', 'message': 'ไม่สามารถย้ายงานที่เสร็จสิ้นแล้วได้'}), 403
 
-        dt_utc = date_parse(new_due_str)
-        # SonarCloud Refactor: Use constants for timestamp formatting.
+        dt_utc = date_parse(new_due_str).astimezone(pytz.utc)
         due_date_gmt = dt_utc.isoformat().replace(ISO_UTC_OFFSET, ZULU_FORMAT_SUFFIX)
 
         updated_task = update_google_task(task_id, due=due_date_gmt, status='needsAction')
@@ -1498,8 +1524,8 @@ def schedule_task_from_calendar():
         app.logger.error(f"Error scheduling task from calendar: {e}")
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
-# SonarCloud Refactor: Helper functions to reduce complexity in task_details() POST handler.
 def _handle_save_report(form_data, new_attachments):
+    """Helper to process a 'save report' action from the task details form."""
     work_summary = str(form_data.get('work_summary', '')).strip()
     technicians = [t.strip() for t in form_data.get('technicians_report', '').split(',') if t.strip()]
 
@@ -1515,15 +1541,16 @@ def _handle_save_report(form_data, new_attachments):
         'attachments': new_attachments,
         'technicians': technicians
     }
-    return report_entry, None, None
+    return report_entry, None
 
 def _handle_reschedule_task(form_data):
+    """Helper to process a 'reschedule' action from the task details form."""
     due_str = str(form_data.get('reschedule_due', '')).strip()
     reason = str(form_data.get('reschedule_reason', '')).strip()
     technicians = [t.strip() for t in form_data.get('technicians_reschedule', '').split(',') if t.strip()]
 
     if not due_str:
-        return None, jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
+        return None, None, None, jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
 
     try:
         dt_local = THAILAND_TZ.localize(date_parse(due_str))
@@ -1539,18 +1566,19 @@ def _handle_reschedule_task(form_data):
             'reason': reason, 'new_due_date': new_due_formatted,
             'technicians': technicians
         }
-        return report_entry, update_payload, notification
+        return report_entry, update_payload, notification, None
     except ValueError:
-        return None, jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
+        return None, None, None, jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
 
 def _handle_complete_task(form_data, new_attachments):
+    """Helper to process a 'complete task' action from the task details form."""
     work_summary = str(form_data.get('work_summary', '')).strip()
     technicians = [t.strip() for t in form_data.get('technicians_report', '').split(',') if t.strip()]
 
     if not work_summary:
-        return None, jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
+        return None, None, None, jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
     if not technicians:
-        return None, jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
+        return None, None, None, jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
 
     update_payload = {'status': 'completed'}
     notification = ('completion', technicians)
@@ -1561,10 +1589,10 @@ def _handle_complete_task(form_data, new_attachments):
         'attachments': new_attachments,
         'technicians': technicians
     }
-    return report_entry, update_payload, notification
+    return report_entry, update_payload, notification, None
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 65 to 15.
 def _handle_task_details_post(task_id, task_raw):
+    """Main handler for POST requests on the task details page, orchestrating actions."""
     action = request.form.get('action')
     update_payload = {}
     notification_to_send = None
@@ -1574,15 +1602,13 @@ def _handle_task_details_post(task_id, task_raw):
     new_attachments = json.loads(request.form.get('uploaded_attachments_json', '[]'))
 
     if action == 'save_report':
-        new_report_entry, error_response, _ = _handle_save_report(request.form, new_attachments)
+        new_report_entry, error_response = _handle_save_report(request.form, new_attachments)
         flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
     elif action == 'reschedule_task':
-        new_report_entry, update_payload, notification_to_send = _handle_reschedule_task(request.form)
-        if new_report_entry is None: error_response = update_payload # error case returns tuple
+        new_report_entry, update_payload, notification_to_send, error_response = _handle_reschedule_task(request.form)
         flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
     elif action == 'complete_task':
-        new_report_entry, update_payload, notification_to_send = _handle_complete_task(request.form, new_attachments)
-        if new_report_entry is None: error_response = update_payload # error case returns tuple
+        new_report_entry, update_payload, notification_to_send, error_response = _handle_complete_task(request.form, new_attachments)
         flash_message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
     else:
         return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
@@ -1620,7 +1646,6 @@ def _handle_task_details_post(task_id, task_raw):
 def task_details(task_id):
     task_raw = get_single_task(task_id)
     if not task_raw:
-        # SonarCloud Refactor: Use constant for duplicated literal.
         if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'status': 'error', 'message': TASK_NOT_FOUND_MSG}), 404
         flash(TASK_NOT_FOUND_MSG, 'danger')
@@ -1673,7 +1698,6 @@ def api_edit_report_text(task_id, report_index):
 
     task_raw = get_single_task(task_id)
     if not task_raw:
-        # SonarCloud Refactor: Use constant for duplicated literal.
         return jsonify({'status': 'error', 'message': TASK_NOT_FOUND_MSG}), 404
 
     history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
@@ -1695,8 +1719,8 @@ def api_edit_report_text(task_id, report_index):
     else:
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
 
-# SonarCloud Refactor: Helper functions to reduce complexity in edit_report_attachments().
 def _process_kept_attachments(original_attachments, ids_to_keep):
+    """Processes which attachments to keep and which to delete from Drive."""
     drive_service = get_google_drive_service()
     if not drive_service:
         flash('ไม่สามารถเชื่อมต่อ Google Drive เพื่อลบไฟล์ได้', 'warning')
@@ -1716,7 +1740,8 @@ def _process_kept_attachments(original_attachments, ids_to_keep):
     return kept_attachments
 
 def _upload_new_files_for_report(files, task_raw, base_notes_text):
-    if not files:
+    """Handles the upload of new files for a specific report."""
+    if not files or not files[0].filename:
         return []
 
     created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ) if task_raw.get('created') else datetime.datetime.now(THAILAND_TZ)
@@ -1737,7 +1762,6 @@ def _upload_new_files_for_report(files, task_raw, base_notes_text):
     for file in files:
         if file and allowed_file(file.filename):
             file.seek(0, os.SEEK_END)
-            # SonarCloud Refactor: Use constant for 'image/'
             if file.tell() > MAX_FILE_SIZE_BYTES and file.mimetype and file.mimetype.startswith(IMAGE_MIMETYPE_PREFIX):
                 try:
                     img = Image.open(file)
@@ -1759,7 +1783,6 @@ def _upload_new_files_for_report(files, task_raw, base_notes_text):
                 newly_uploaded.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename})
     return newly_uploaded
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 58 to 11.
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(task_id, report_index):
     task_raw = get_single_task(task_id)
@@ -1776,15 +1799,12 @@ def edit_report_attachments(task_id, report_index):
 
     report_to_edit = history[report_index]
     
-    # Process kept attachments
     ids_to_keep = request.form.getlist('attachments_to_keep')
     updated_attachments = _process_kept_attachments(report_to_edit.get('attachments', []), ids_to_keep)
 
-    # Process new attachments
     new_files = _upload_new_files_for_report(request.files.getlist('new_files[]'), task_raw, base_notes_text)
     updated_attachments.extend(new_files)
     
-    # Update task notes
     report_to_edit['attachments'] = updated_attachments
     history[report_index] = report_to_edit
     
@@ -1801,7 +1821,6 @@ def edit_report_attachments(task_id, report_index):
 
     return redirect(url_for('task_details', task_id=task_id))
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 16 to 8.
 @app.route('/api/task/<task_id>/delete_report/<int:report_index>', methods=['POST'])
 def delete_task_report(task_id, report_index):
     task_raw = get_single_task(task_id)
@@ -1837,8 +1856,8 @@ def delete_task_report(task_id, report_index):
     else:
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกหลังลบรายงาน'}), 500
 
-# SonarCloud Refactor: Helper function to reduce complexity in edit_task().
 def _handle_edit_task_post(task_id, task_raw):
+    """Helper to process the main edit task form submission."""
     new_title = str(request.form.get('task_title', '')).strip()
     if not new_title:
         flash('กรุณากรอกรายละเอียดงาน', 'danger')
@@ -1885,7 +1904,6 @@ def _handle_edit_task_post(task_id, task_raw):
     flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger')
     return redirect(url_for('edit_task', task_id=task_id))
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 20 to 3.
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
 def edit_task(task_id):
     task_raw = get_single_task(task_id)
@@ -1931,8 +1949,8 @@ def api_delete_tasks_batch():
     if deleted > 0: cache.clear()
     return jsonify({ 'status': 'success', 'message': f'Deleted {deleted} tasks, {failed} failed.'})
 
-# SonarCloud Refactor: Helper function to reduce complexity in settings_page().
 def _parse_settings_from_form(form):
+    """Helper to parse the settings form submission into a dictionary."""
     try:
         technician_list = json.loads(form.get('technician_list_json', '[]'))
     except json.JSONDecodeError:
@@ -1962,7 +1980,6 @@ def _parse_settings_from_form(form):
         'technician_list': technician_list
     }
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 18 to 5.
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
@@ -1973,7 +1990,6 @@ def settings_page():
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
-            # SonarCloud Refactor: Removed unnecessary f-string for a static string.
             if backup_settings_to_drive():
                 flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
             else:
@@ -1998,7 +2014,6 @@ def api_upload_avatar():
     file.seek(0)
     
     if file_length > MAX_FILE_SIZE_BYTES:
-        # SonarCloud Refactor: Use constant for 'image/'
         if file.mimetype and file.mimetype.startswith(IMAGE_MIMETYPE_PREFIX):
             try:
                 img = Image.open(file)
@@ -2010,7 +2025,6 @@ def api_upload_avatar():
                 output_buffer.seek(0)
                 file_to_upload = output_buffer
                 filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
-                # SonarCloud Refactor: Use constant for 'image/jpeg'
                 mime_type = JPEG_MIMETYPE
                 app.logger.info(f"Compressed avatar '{file.filename}' successfully.")
             except Exception as e:
@@ -2115,8 +2129,8 @@ def import_equipment_catalog():
         flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
-# SonarCloud Refactor: Helper functions to reduce complexity in api_import_backup_file().
 def _import_tasks_from_json(data, service):
+    """Helper to import tasks from a JSON object."""
     if not isinstance(data, list):
         return jsonify({"status": "error", "message": "JSON is not a list."}), 400
     created, updated, skipped = 0, 0, 0
@@ -2142,6 +2156,7 @@ def _import_tasks_from_json(data, service):
     return jsonify({"status": "success", "message": f"นำเข้าสำเร็จ! สร้างใหม่: {created}, อัปเดต: {updated}, ข้าม: {skipped}"})
 
 def _import_settings_from_json(data):
+    """Helper to import settings from a JSON object."""
     if not isinstance(data, dict):
         return jsonify({"status": "error", "message": "JSON is not a dict."}), 400
     if save_app_settings(data):
@@ -2150,7 +2165,6 @@ def _import_settings_from_json(data):
         return jsonify({"status": "success", "message": "นำเข้าการตั้งค่าเรียบร้อยแล้ว!"})
     return jsonify({"status": "error", "message": "เกิดข้อผิดพลาดในการบันทึกการตั้งค่า"}), 500
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 26 to 9.
 @app.route('/api/import_backup_file', methods=['POST'])
 def api_import_backup_file():
     if 'backup_file' not in request.files:
@@ -2172,10 +2186,10 @@ def api_import_backup_file():
             return _import_settings_from_json(data)
     except Exception as e:
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
-    return jsonify({"status": "error", "message": "Invalid file type."}), 400 # Fallback
+    return jsonify({"status": "error", "message": "Invalid file type."}), 400
 
-# SonarCloud Refactor: Helper functions to reduce complexity in preview_backup_file().
 def _preview_tasks_json(data):
+    """Helper to generate a preview for a tasks JSON backup."""
     if not isinstance(data, list):
         return jsonify({"status": "error", "message": "JSON is not a list."}), 400
     count = len(data)
@@ -2183,6 +2197,7 @@ def _preview_tasks_json(data):
     return jsonify({"status": "success", "type": "tasks", "task_count": count, "example_tasks": examples})
 
 def _preview_settings_json(data):
+    """Helper to generate a preview for a settings JSON backup."""
     if not isinstance(data, dict):
         return jsonify({"status": "error", "message": "JSON is not a dict."}), 400
     preview = {
@@ -2191,7 +2206,6 @@ def _preview_settings_json(data):
     }
     return jsonify({"status": "success", "type": "settings", "preview_settings": preview})
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 35 to 8.
 @app.route('/api/preview_backup_file', methods=['POST'])
 def preview_backup_file():
     if 'backup_file' not in request.files:
@@ -2211,10 +2225,10 @@ def preview_backup_file():
             return _preview_settings_json(data)
     except Exception as e:
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
-    return jsonify({"status": "error", "message": "Invalid file type."}), 400 # Fallback
+    return jsonify({"status": "error", "message": "Invalid file type."}), 400
 
-# SonarCloud Refactor: Helper function to reduce complexity in technician_report().
 def _process_task_for_tech_report(task, year, month, report):
+    """Helper to process a single task for the technician report."""
     if not (task.get('status') == 'completed' and task.get('completed')):
         return
 
@@ -2231,7 +2245,6 @@ def _process_task_for_tech_report(task, year, month, report):
             if isinstance(t_name, str)
         }
         
-        # SonarCloud Refactor: Redundant `list()` call removed.
         for tech_name in sorted(task_techs):
             report[tech_name]['count'] += 1
             report[tech_name]['tasks'].append({
@@ -2242,7 +2255,6 @@ def _process_task_for_tech_report(task, year, month, report):
     except Exception as e:
         app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 32 to 6.
 @app.route('/technician_report')
 def technician_report():
     now = datetime.datetime.now(THAILAND_TZ)
@@ -2258,7 +2270,7 @@ def technician_report():
         _process_task_for_tech_report(task, year, month, report)
 
     return render_template('technician_report.html',
-                           report_data=report,
+                           report_data=dict(sorted(report.items())),
                            selected_year=year,
                            selected_month=month,
                            years=list(range(now.year - 5, now.year + 2)),
@@ -2282,7 +2294,6 @@ def manage_duplicates():
         for task in task_list:
             parsed = parse_google_task_dates(task)
             parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-            # SonarCloud Refactor: Use constant for timestamp formatting.
             parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
             processed_tasks.append(parsed)
         processed_sets[key] = processed_tasks
@@ -2384,7 +2395,6 @@ def trigger_customer_follow_up_test():
 
         _execute_google_api_call_with_retry(update_google_task, latest['id'], notes=new_notes_content)
         
-        # SonarCloud Refactor: Use constants for timestamp formatting.
         latest['completed'] = (datetime.datetime.now(pytz.utc) - datetime.timedelta(days=1, minutes=5)).isoformat().replace(ISO_UTC_OFFSET, ZULU_FORMAT_SUFFIX)
         _execute_google_api_call_with_retry(update_google_task, latest['id'], completed=latest['completed'])
         
@@ -2503,7 +2513,6 @@ def callback():
         abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
-        #notify_admin_error(f"Webhook Handler Error: {e}")
         abort(500)
     return 'OK'
 
@@ -2537,7 +2546,6 @@ def create_task_flex_message(task):
 
 def create_full_summary_message(title, tasks):
     if not tasks: return TextSendMessage(text=f"ไม่พบรายการ{title}ในขณะนี้")
-    # SonarCloud Refactor: Use constant for max datetime string.
     tasks.sort(key=lambda x: date_parse(x.get('due')) if x.get('due') else date_parse(x.get('created', MAX_DATETIME_STR)))
     lines = [f"📋 {title} (ทั้งหมด {len(tasks)} งาน)\n"]
     for i, task in enumerate(tasks):
@@ -2562,7 +2570,6 @@ def handle_text_message(event):
         messages = []
         for task in tasks[:5]:
             customer, dates = parse_customer_info_from_notes(task.get('notes', '')), parse_google_task_dates(task)
-            # SonarCloud Refactor: Use constant for duplicated literal.
             loc = f"พิกัด: {customer.get('map_url')}" if customer.get('map_url') else NO_LOCATION_INFO_TEXT
             msg_text = f"🔔 งานสำหรับวันนี้\n\nชื่องาน: {task.get('title', '-')}\n👤 ลูกค้า: {customer.get('name', '-')}\n📞 โทร: {customer.get('phone', '-')}\n🗓️ นัดหมาย: {dates.get('due_formatted', '-')}\n📍 {loc}\n\n🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
             messages.append(TextSendMessage(text=msg_text))
@@ -2584,7 +2591,6 @@ def handle_text_message(event):
         if not query: return line_bot_api.reply_message(event.reply_token, TextSendMessage(text="โปรดระบุชื่อลูกค้าที่ต้องการค้นหา"))
         tasks = [t for t in (get_google_tasks_for_report(True) or []) if query in parse_customer_info_from_notes(t.get('notes', '')).get('name', '').lower()]
         if not tasks: return line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ไม่พบงานของลูกค้า: {query}"))
-        # SonarCloud Refactor: Use constant for max datetime string.
         tasks.sort(key=lambda x: (x.get('status') == 'completed', date_parse(x.get('due', MAX_DATETIME_STR))))
         bubbles = [create_task_flex_message(t) for t in tasks[:10]]
         return line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text=f"ผลการค้นหา: {query}", contents=CarouselContainer(contents=bubbles)))
@@ -2605,7 +2611,6 @@ def handle_text_message(event):
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
-    # SonarCloud Refactor: Use dict comprehension and safer split for parsing.
     data = {k: v for k, v in (item.split('=', 1) for item in event.postback.data.split('&'))}
     action, task_id = data.get('action'), data.get('task_id')
 
@@ -2625,7 +2630,6 @@ def handle_postback(event):
         try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏)"))
         except Exception: pass
 
-# SonarCloud Refactor: Helper functions to reduce complexity in organize_files()
 def _get_files_to_organize(service, base_folder_id):
     """Fetches all files directly under the base folder and 'Uncategorized' folder."""
     query_parts = [
@@ -2675,7 +2679,6 @@ def _build_task_folder_and_attachment_maps(service, tasks, base_folder_id):
             app.logger.error(f"Error processing task {task.get('id')} for folder mapping: {e}")
     return task_folder_map, attachment_to_task_map
 
-# SonarCloud Refactor: This function was refactored to reduce its Cognitive Complexity from 27 to 10.
 @app.route("/admin/organize_files", methods=['GET', 'POST'])
 def organize_files():
     if request.method == 'POST':
