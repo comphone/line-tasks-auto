@@ -793,7 +793,7 @@ def _handle_task_details_post(task_id, task_raw):
         flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
     elif action == 'reschedule_task':
         new_report_entry, update_payload, notification_to_send, error_response = _handle_reschedule_task(request.form)
-        flash_message = 'เลื่อนนัดและบันทึกเimport os
+        flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'import os
 import sys
 import datetime
 import re
