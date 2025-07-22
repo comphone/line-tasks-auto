@@ -143,36 +143,9 @@ def preview_backup_file():
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
     return jsonify({"status": "error", "message": "Invalid file type."}), 400
 
-def _process_task_for_tech_report(task, year, month, report):
-    """Helper to process a single task for the technician report."""
-    if not (task.get('status') == 'completed' and task.get('completed')):
-        return
-
-    try:
-        completed_dt = date_parse(task['completed']).astimezone(THAILAND_TZ)
-        if completed_dt.year != year or completed_dt.month != month:
-            return
-
-        history, _ = parse_tech_report_from_notes(task.get('notes', ''))
-        task_techs = {
-            t_name.strip()
-            for r in history
-            for t_name in r.get('technicians', [])
-            if isinstance(t_name, str)
-        }
-        
-        for tech_name in sorted(task_techs):
-            report[tech_name]['count'] += 1
-            report[tech_name]['tasks'].append({
-                'id': task.get('id'),
-                'title': task.get('title'),
-                'completed_formatted': completed_dt.strftime("%d/%m/%Y")
-            })
-    except Exception as e:
-        app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
-
 @app.route('/technician_report')
 def technician_report():
+    """Route handler for technician report page"""
     now = datetime.datetime.now(THAILAND_TZ)
     try:
         year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
@@ -2552,10 +2525,17 @@ def create_task_flex_message(task):
     dates = parse_google_task_dates(task)
     return BubbleContainer(
         body=BoxComponent(layout='vertical', spacing='md', contents=[
-            TextComponent(text=task.get('title', '...'), weight='bold', size='lg', wrap=True), SeparatorComponent(margin='md'),
+            TextComponent(text=task.get('title', '...'), weight='bold', size='lg', wrap=True), 
+            SeparatorComponent(margin='md'),
             BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
+                BoxComponent(layout='baseline', spacing='sm', contents=[
+                    TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), 
+                    TextComponent(text=customer.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)
+                ]),
+                BoxComponent(layout='baseline', spacing='sm', contents=[
+                    TextComponent(text='นัดหมาย:', color='#AAAAAA', size='sm', flex=2), 
+                    TextComponent(text=dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)
+                ])
             ]),
         ]),
         footer=BoxComponent(layout='vertical', spacing='sm', contents=[
