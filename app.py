@@ -1136,5 +1136,6 @@ def settings_page():
     return render_template('settings_page.html', settings=current_settings)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)1].strip()
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
+1].strip()
     if name_match: info['name'] = name_match.group(1).strip().split(':')[-
