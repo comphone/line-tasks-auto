@@ -13,9 +13,7 @@ import time
 import tempfile
 import uuid
 
-# --- เพิ่มการนำเข้าสำหรับบีบอัดรูปภาพ ---
 from PIL import Image
-# ------------------------------------
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -55,17 +53,31 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
-# --- Initialization & Configurations ---
+TEXT_SNIPPETS = {
+    'task_details': [
+        {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
+        {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
+        {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
+        {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
+    ],
+    'progress_reports': [
+        {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
+        {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
+        {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
+        {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
+    ]
+}
+
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-MAX_FILE_SIZE_MB = 5
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
+MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
@@ -117,7 +129,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
     'technician_list': []
 }
-_APP_SETTINGS_STORE = {}
 
 #<editor-fold desc="Helper and Utility Functions">
 
@@ -139,6 +150,37 @@ def save_settings_to_file(settings_data):
     except IOError as e:
         app.logger.error(f"Error writing to settings.json: {e}")
         return False
+
+def get_app_settings():
+    app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
+    loaded_settings = load_settings_from_file()
+    
+    if loaded_settings:
+        for key, default_value in app_settings.items():
+            if key in loaded_settings:
+                if isinstance(default_value, dict) and isinstance(loaded_settings[key], dict):
+                    app_settings[key].update(loaded_settings[key])
+                else:
+                    app_settings[key] = loaded_settings[key]
+    else:
+        save_settings_to_file(app_settings)
+        
+    equipment_catalog = app_settings.get('equipment_catalog', [])
+    app_settings['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
+    
+    return app_settings
+
+def save_app_settings(settings_data):
+    current_settings = get_app_settings()
+    
+    for key, value in settings_data.items():
+        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
+            current_settings[key].update(value)
+        else:
+            current_settings[key] = value
+            
+    return save_settings_to_file(current_settings)
+
 
 def safe_execute(request_object):
     if hasattr(request_object, 'execute'):
@@ -235,6 +277,44 @@ def find_or_create_drive_folder(name, parent_id):
         app.logger.error(f"Error finding or creating folder '{name}': {e}")
         return None
 
+@cached(cache)
+def get_customer_database():
+    app.logger.info("Building customer database from Google Tasks...")
+    all_tasks = get_google_tasks_for_report(show_completed=True)
+    if not all_tasks:
+        return []
+
+    customers_dict = {}
+    all_tasks.sort(key=lambda x: x.get('created', '0'), reverse=True)
+
+    for task in all_tasks:
+        notes = task.get('notes', '')
+        if not notes:
+            continue
+        
+        _, base_notes = parse_tech_report_from_notes(notes)
+        customer_info = parse_customer_info_from_notes(base_notes)
+
+        name = customer_info.get('name', '').strip()
+        phone = customer_info.get('phone', '').strip()
+
+        if not name:
+            continue
+
+        customer_key = (name.lower(), phone)
+        
+        if customer_key not in customers_dict:
+            customers_dict[customer_key] = {
+                'name': name,
+                'phone': phone,
+                'organization': customer_info.get('organization', '').strip(),
+                'address': customer_info.get('address', '').strip(),
+                'map_url': customer_info.get('map_url', '')
+            }
+    
+    app.logger.info(f"Customer database built with {len(customers_dict)} unique customers.")
+    return list(customers_dict.values())
+
 def load_settings_from_drive_on_startup():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
     if not settings_backup_folder_id:
@@ -277,35 +357,6 @@ def load_settings_from_drive_on_startup():
     except Exception as e:
         app.logger.error(f"An unexpected error occurred during settings restore from Drive: {e}")
         return False
-
-def get_app_settings():
-    global _APP_SETTINGS_STORE
-    if not _APP_SETTINGS_STORE:
-        loaded = load_settings_from_file()
-        _APP_SETTINGS_STORE = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
-        if loaded:
-            for key, default_value in _APP_SETTINGS_STORE.items():
-                if key in loaded:
-                    if isinstance(default_value, dict) and isinstance(loaded[key], dict):
-                        _APP_SETTINGS_STORE[key].update(loaded[key])
-                    else:
-                        _APP_SETTINGS_STORE[key] = loaded[key]
-        else:
-            save_settings_to_file(_APP_SETTINGS_STORE)
-    equipment_catalog = _APP_SETTINGS_STORE.get('equipment_catalog', [])
-    _APP_SETTINGS_STORE['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
-    return _APP_SETTINGS_STORE
-
-def save_app_settings(settings_data):
-    global _APP_SETTINGS_STORE
-    current_settings = get_app_settings()
-    for key, value in settings_data.items():
-        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
-            current_settings[key].update(value)
-        else:
-            current_settings[key] = value
-    _APP_SETTINGS_STORE = current_settings
-    return save_settings_to_file(_APP_SETTINGS_STORE)
 
 def backup_settings_to_drive():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
@@ -372,6 +423,7 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
         app.logger.error(f"Drive service or Folder ID not configured for upload of '{file_name}'.")
         return None
 
+    uploaded_file_id = None
     try:
         file_metadata = {'name': file_name, 'parents': [folder_id]}
         app.logger.info(f"Attempting to upload file '{file_name}' to Drive folder '{folder_id}'.")
@@ -394,14 +446,26 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
         )
         
         if not permission_result or 'id' not in permission_result:
-            app.logger.error(f"Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File may be inaccessible.")
-            return file_obj
+            app.logger.error(f"CRITICAL: Failed to set permissions for '{file_name}' (ID: {uploaded_file_id}). File will be inaccessible. Aborting and cleaning up.")
+            try:
+                _execute_google_api_call_with_retry(service.files().delete, fileId=uploaded_file_id)
+                app.logger.info(f"Cleaned up file '{file_name}' (ID: {uploaded_file_id}) after permission failure.")
+            except Exception as delete_error:
+                app.logger.error(f"Could not clean up file '{uploaded_file_id}' after permission failure: {delete_error}")
+            return None
 
         app.logger.info(f"Permissions set for '{file_name}' (ID: {uploaded_file_id}).")
         return file_obj
 
     except Exception as e:
         app.logger.error(f'Unexpected error during Drive upload for {file_name}: {e}', exc_info=True)
+        if uploaded_file_id:
+             app.logger.info(f"Attempting to clean up file {uploaded_file_id} after unexpected error.")
+             try:
+                _execute_google_api_call_with_retry(service.files().delete, fileId=uploaded_file_id)
+                app.logger.info(f"Cleaned up file '{file_name}' (ID: {uploaded_file_id}) after unexpected error.")
+             except Exception as cleanup_error:
+                app.logger.error(f"Failed to cleanup file '{uploaded_file_id}' after error: {cleanup_error}")
         return None
 
 def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
@@ -985,7 +1049,6 @@ def cleanup_scheduler():
 # --- Initial app setup calls ---
 with app.app_context():
     load_settings_from_drive_on_startup()
-    _APP_SETTINGS_STORE = get_app_settings()
     run_scheduler()
 
 atexit.register(cleanup_scheduler)
@@ -998,11 +1061,15 @@ def page_not_found(e):
 @app.errorhandler(500)
 def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
-    notify_admin_error(f"Internal Server Error: {e}")
     return render_template('500.html'), 500
 
 
 # --- Flask Routes ---
+@app.route('/api/customers')
+def api_customers():
+    customer_list = get_customer_database()
+    return jsonify(customer_list)
+
 @app.route("/")
 def root_redirect():
     return redirect(url_for('summary'))
@@ -1044,12 +1111,147 @@ def form_page():
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
         if new_task:
             cache.clear()
-            flash('สร้างงานใหม่เรียบร้อยแล้ว! คุณสามารถเพิ่มรูปภาพหรือรายงานต่อได้ที่นี่', 'success')
             send_new_task_notification(new_task)
+            
+            uploaded_attachments_json = request.form.get('uploaded_attachments_json')
+            uploaded_attachments = []
+            if uploaded_attachments_json:
+                try:
+                    uploaded_attachments = json.loads(uploaded_attachments_json)
+                except json.JSONDecodeError:
+                    app.logger.warning("Could not decode uploaded_attachments_json on form submission.")
+
+            if uploaded_attachments:
+                task_id = new_task['id']
+                
+                attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+                monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
+                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+                sanitized_customer_name = sanitize_filename(customer_name)
+                customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+                final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+                
+                drive_service = get_google_drive_service()
+                if final_upload_folder_id and drive_service:
+                    for att in uploaded_attachments:
+                        try:
+                            file_meta = drive_service.files().get(fileId=att['id'], fields='parents').execute()
+                            previous_parents = ",".join(file_meta.get('parents', []))
+                            drive_service.files().update(
+                                fileId=att['id'],
+                                addParents=final_upload_folder_id,
+                                removeParents=previous_parents,
+                                fields='id, parents'
+                            ).execute()
+                        except Exception as e:
+                            app.logger.error(f"Could not move attachment {att['id']} to final folder: {e}")
+                
+                initial_report = {
+                    'type': 'report',
+                    'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                    'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
+                    'attachments': uploaded_attachments,
+                    'technicians': ['System']
+                }
+                report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+                updated_notes = new_task.get('notes', '') + report_text
+                update_google_task(task_id, notes=updated_notes)
+                cache.clear()
+
+            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
             return redirect(url_for('task_details', task_id=new_task['id']))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
-    return render_template('form.html')
+            return render_template('form.html', form_data=request.form)
+
+    return render_template('form.html',
+                           task_detail_snippets=TEXT_SNIPPETS.get('task_details', [])
+                           )
+
+@app.route('/api/upload_attachment', methods=['POST'])
+def api_upload_attachment():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+    
+    task_id = request.form.get('task_id')
+    if not task_id:
+        return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
+
+    file.seek(0, os.SEEK_END)
+    file_length = file.tell()
+    file.seek(0)
+    
+    if file_length > MAX_FILE_SIZE_BYTES:
+        if file.mimetype and file.mimetype.startswith('image/'):
+            try:
+                img = Image.open(file)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                output_buffer = BytesIO()
+                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                output_buffer.seek(0)
+                file_to_upload = output_buffer
+                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+                mime_type = 'image/jpeg'
+                app.logger.info(f"Compressed image '{file.filename}' successfully.")
+            except Exception as e:
+                app.logger.error(f"Could not compress image '{file.filename}': {e}")
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
+        else:
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+    else:
+        file_to_upload = file
+        filename = secure_filename(file.filename)
+        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
+
+    attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+    if not attachments_base_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not create or find base Task_Attachments folder'}), 500
+
+    final_upload_folder_id = None
+    target_date = datetime.datetime.now(THAILAND_TZ)
+
+    if task_id == 'new_task_placeholder':
+        monthly_folder_name = target_date.strftime('%Y-%m')
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        temp_upload_folder_name = f"New_Uploads_{target_date.strftime('%Y-%m-%d')}"
+        final_upload_folder_id = find_or_create_drive_folder(temp_upload_folder_name, monthly_folder_id)
+    else:
+        task_raw = get_single_task(task_id)
+        if not task_raw:
+            return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+        
+        if task_raw.get('created'):
+            try:
+                target_date = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
+            except (ValueError, TypeError):
+                pass
+        
+        monthly_folder_name = target_date.strftime('%Y-%m')
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        if not monthly_folder_id:
+            return jsonify({'status': 'error', 'message': f'Could not create or find monthly folder: {monthly_folder_name}'}), 500
+        
+        _, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+        customer_info = parse_customer_info_from_notes(base_notes_text)
+        sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
+        customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+        final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+    
+    if not final_upload_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
+
+    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
+    
+    if drive_file:
+        return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename}})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
 
 @app.route('/summary')
 def summary():
@@ -1183,28 +1385,48 @@ def calendar_view():
 
 @app.route('/api/calendar_tasks')
 def api_calendar_tasks():
-    app.logger.info("API call received for /api/calendar_tasks")
     try:
-        tasks_raw = get_google_tasks_for_report(show_completed=False) or []
-        app.logger.info(f"Found {len(tasks_raw)} non-completed tasks from Google.")
+        tasks_raw = get_google_tasks_for_report(show_completed=True) or []
         events = []
+        today_thai = datetime.datetime.now(THAILAND_TZ).date()
+
         for task in tasks_raw:
-            if task.get('due'):
-                customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-                event = {
-                    'id': task.get('id'),
-                    'title': f"{customer_info.get('name', 'N/A')} - {task.get('title')}",
-                    'start': task.get('due'),
-                    'url': url_for('task_details', task_id=task.get('id')),
-                    'color': '#ffc107',
-                    'textColor': '#000'
+            if not task.get('due'):
+                continue
+
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            is_overdue = False
+            is_today = False
+            is_completed = task.get('status') == 'completed'
+
+            try:
+                due_dt_utc = date_parse(task['due'])
+                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
+                if not is_completed and due_dt_local.date() < today_thai:
+                    is_overdue = True
+                elif not is_completed and due_dt_local.date() == today_thai:
+                    is_today = True
+            except (ValueError, TypeError):
+                pass
+
+            event = {
+                'id': task.get('id'),
+                'title': f"{customer_info.get('name', 'N/A')} - {task.get('title')}",
+                'start': task.get('due'),
+                'url': url_for('task_details', task_id=task.get('id')),
+                'extendedProps': {
+                    'is_completed': is_completed,
+                    'is_overdue': is_overdue,
+                    'is_today': is_today
                 }
-                events.append(event)
-        app.logger.info(f"Returning {len(events)} events for the calendar.")
+            }
+            events.append(event)
+            
         return jsonify(events)
     except Exception as e:
-        app.logger.error(f"Error fetching tasks for calendar API: {e}")
-        return jsonify({"error": "Could not fetch tasks"}), 500
+        app.logger.error(f"Error fetching tasks for calendar API: {e}", exc_info=True)
+        return jsonify({"error": "Could not fetch tasks from server"}), 500
+
 
 @app.route('/api/task/schedule_from_calendar', methods=['POST'])
 def schedule_task_from_calendar():
@@ -1213,105 +1435,29 @@ def schedule_task_from_calendar():
     new_due_str = data.get('new_due_date')
     
     if not task_id or not new_due_str:
-        return jsonify({'status': 'error', 'message': 'Missing task_id or new_due_date'}), 400
+        return jsonify({'status': 'error', 'message': 'ข้อมูลที่ส่งมาไม่ครบถ้วน (task_id หรือ new_due_date)'}), 400
         
     try:
-        dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
-        due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+        task = get_single_task(task_id)
+        if not task:
+            return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ระบุ'}), 404
+        if task.get('status') == 'completed':
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถย้ายงานที่เสร็จสิ้นแล้วได้'}), 403
 
-        updated_task = update_google_task(task_id, due=due_date_gmt)
+        dt_utc = date_parse(new_due_str)
+        due_date_gmt = dt_utc.isoformat().replace('+00:00', 'Z')
+
+        updated_task = update_google_task(task_id, due=due_date_gmt, status='needsAction')
         
         if updated_task:
             cache.clear()
-            return jsonify({'status': 'success', 'message': f'Task {task_id} updated successfully.'})
+            return jsonify({'status': 'success', 'message': f'อัปเดตวันนัดหมายสำหรับงาน {task_id} เรียบร้อยแล้ว'})
         else:
-            return jsonify({'status': 'error', 'message': 'Failed to update task in Google Tasks.'}), 500
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถอัปเดตงานใน Google Tasks ได้'}), 500
             
     except Exception as e:
         app.logger.error(f"Error scheduling task from calendar: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-@app.route('/api/upload_attachment', methods=['POST'])
-def api_upload_attachment():
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
-    
-    task_id = request.form.get('task_id')
-    if not task_id:
-        return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
-
-    # --- MODIFICATION: Image Compression Logic ---
-    file.seek(0, os.SEEK_END)
-    file_length = file.tell()
-    file.seek(0)
-    
-    if file_length > MAX_FILE_SIZE_BYTES:
-        if file.mimetype and file.mimetype.startswith('image/'):
-            try:
-                img = Image.open(file)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                
-                output_buffer = BytesIO()
-                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
-                output_buffer.seek(0)
-                file_to_upload = output_buffer
-                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
-                mime_type = 'image/jpeg'
-                app.logger.info(f"Compressed image '{file.filename}' successfully.")
-            except Exception as e:
-                app.logger.error(f"Could not compress image '{file.filename}': {e}")
-                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
-        else:
-            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
-    else:
-        file_to_upload = file
-        filename = secure_filename(file.filename)
-        mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-    # --- END MODIFICATION ---
-
-    task_raw = get_single_task(task_id)
-    if not task_raw:
-        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
-    
-    attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
-    if not attachments_base_folder_id:
-        return jsonify({'status': 'error', 'message': 'Could not create or find base Task_Attachments folder'}), 500
-
-    target_date = None
-    if task_raw.get('created'):
-        try:
-            target_date = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
-        except (ValueError, TypeError):
-            target_date = datetime.datetime.now(THAILAND_TZ)
-    else:
-        target_date = datetime.datetime.now(THAILAND_TZ)
-
-    monthly_folder_name = target_date.strftime('%Y-%m')
-    monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-    if not monthly_folder_id:
-        return jsonify({'status': 'error', 'message': f'Could not create or find monthly folder: {monthly_folder_name}'}), 500
-        
-    _, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
-    customer_info = parse_customer_info_from_notes(base_notes_text)
-    sanitized_customer_name = sanitize_filename(customer_info.get('name', 'Unknown_Customer'))
-    customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
-    final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
-    
-    if not final_upload_folder_id:
-        return jsonify({'status': 'error', 'message': 'Could not determine final upload folder'}), 500
-
-    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
-    drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
-    
-    if drive_file:
-        return jsonify({'status': 'success', 'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')}})
-    else:
-        return jsonify({'status': 'error', 'message': 'Failed to upload to Google Drive'}), 500
-
+        return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
@@ -1326,6 +1472,8 @@ def task_details(task_id):
         action = request.form.get('action')
         update_payload = {}
         notification_to_send = None
+        flash_message = None
+        flash_category = 'info'
 
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
@@ -1344,15 +1492,9 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not (work_summary or new_attachments):
-                message = 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'}), 400
             if not selected_technicians:
-                message = 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'}), 400
 
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1361,11 +1503,8 @@ def task_details(task_id):
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
-            message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                flash(message, 'success')
-                return jsonify({'status': 'success', 'message': message})
-            flash(message, 'success')
+            flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
+            flash_category = 'success'
         
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
@@ -1374,10 +1513,7 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not reschedule_due_str:
-                message = 'กรุณากำหนดวันนัดหมายใหม่'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
             
             try:
                 dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
@@ -1387,39 +1523,26 @@ def task_details(task_id):
                 is_today = dt_local.date() == datetime.datetime.now(THAILAND_TZ).date()
                 notification_to_send = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
             except ValueError:
-                message = 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
 
             history.append({
                 'type': 'reschedule', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'reason': reschedule_reason, 'new_due_date': new_due_date_formatted,
                 'technicians': selected_technicians
             })
-            
-            message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                flash(message, 'success')
-                return jsonify({'status': 'success', 'message': message})
-            flash(message, 'success')
+            flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
+            flash_category = 'success'
 
         elif action == 'complete_task':
             work_summary = str(request.form.get('work_summary', '')).strip()
             if not work_summary:
-                message = 'กรุณากรอกสรุปงานเพื่อปิดงาน'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
                 
             selected_technicians = request.form.get('technicians_report', '').split(',')
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not selected_technicians:
-                message = 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'
-                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-                flash(message, 'warning')
-                return redirect(url_for('task_details', task_id=task_id))
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
             
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1431,17 +1554,11 @@ def task_details(task_id):
             
             update_payload['status'] = 'completed'
             notification_to_send = ('completion', selected_technicians)
-            message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                flash(message, 'success')
-                return jsonify({'status': 'success', 'message': message})
-            flash(message, 'success')
+            flash_message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
+            flash_category = 'success'
         
         else:
-            message = 'ไม่พบการกระทำที่ร้องขอ'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 400
-            flash(message, 'danger')
-            return redirect(url_for('task_details', task_id=task_id))
+            return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
             
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
@@ -1460,14 +1577,11 @@ def task_details(task_id):
                 notif_type = notification_to_send[0]
                 if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
                 elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'status': 'success', 'message': 'อัปเดตงานสำเร็จแล้ว'})
+            
+            return jsonify({'status': 'success', 'message': flash_message})
         else:
-            message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({'status': 'error', 'message': message}), 500
-            flash(message, 'danger')
-
-        return redirect(url_for('task_details', task_id=task_id))
+            flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
+            return jsonify({'status': 'error', 'message': flash_message}), 500
 
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
@@ -1506,7 +1620,40 @@ def task_details(task_id):
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []),
-                           all_attachments=all_attachments)
+                           all_attachments=all_attachments,
+                           progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
+                           )
+
+@app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
+def api_edit_report_text(task_id, report_index):
+    data = request.json
+    new_summary = data.get('summary', '').strip()
+    
+    if not new_summary:
+        return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน'}), 400
+
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการแก้ไข'}), 404
+
+    history[report_index]['work_summary'] = new_summary
+    
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'แก้ไขรายงานเรียบร้อยแล้ว'})
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
 
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
@@ -1546,7 +1693,6 @@ def edit_report_attachments(task_id, report_index):
     
     new_files = request.files.getlist('new_files[]')
     if new_files:
-        # --- Find correct folder to upload ---
         if task_raw.get('created'):
             created_dt_local = date_parse(task_raw.get('created')).astimezone(THAILAND_TZ)
             monthly_folder_name = created_dt_local.strftime('%Y-%m')
@@ -1563,7 +1709,6 @@ def edit_report_attachments(task_id, report_index):
         if final_upload_folder_id:
             for file in new_files:
                 if file and allowed_file(file.filename):
-                    # --- MODIFICATION: Image Compression Logic ---
                     file.seek(0, os.SEEK_END)
                     file_length = file.tell()
                     file.seek(0)
@@ -1579,17 +1724,16 @@ def edit_report_attachments(task_id, report_index):
                             mime_type = 'image/jpeg'
                         except Exception as e:
                             app.logger.error(f"Could not compress image in edit_report: {e}")
-                            continue # Skip this file if compression fails
+                            continue
                     else:
                         file_to_upload = file
                         filename = secure_filename(file.filename)
                         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-                    # --- END MODIFICATION ---
 
                     media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
                     drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
                     if drive_file:
-                        updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink')})
+                        updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename})
         else:
              flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
 
@@ -1608,6 +1752,42 @@ def edit_report_attachments(task_id, report_index):
         flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงรูปภาพ', 'danger')
 
     return redirect(url_for('task_details', task_id=task_id))
+
+@app.route('/api/task/<task_id>/delete_report/<int:report_index>', methods=['POST'])
+def delete_task_report(task_id, report_index):
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการลบ'}), 404
+
+    report_to_delete = history[report_index]
+    if report_to_delete.get('attachments'):
+        drive_service = get_google_drive_service()
+        if drive_service:
+            for att in report_to_delete['attachments']:
+                try:
+                    drive_service.files().delete(fileId=att['id']).execute()
+                    app.logger.info(f"Deleted attachment {att['id']} from Drive while deleting report.")
+                except HttpError as e:
+                    app.logger.error(f"Failed to delete attachment {att['id']} from Drive during report deletion: {e}")
+
+    history.pop(report_index)
+
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'ลบรายงานเรียบร้อยแล้ว'})
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกหลังลบรายงาน'}), 500
 
 
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
@@ -1759,7 +1939,6 @@ def api_upload_avatar():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No selected file'}), 400
     
-    # --- MODIFICATION: Image Compression Logic ---
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
     file.seek(0)
@@ -1787,7 +1966,6 @@ def api_upload_avatar():
         file_to_upload = file
         filename = secure_filename(file.filename)
         mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-    # --- END MODIFICATION ---
 
     avatars_folder_id = find_or_create_drive_folder("Technician_Avatars", GOOGLE_DRIVE_FOLDER_ID)
     if not avatars_folder_id:
@@ -2109,18 +2287,23 @@ def trigger_customer_follow_up_test():
         flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
     return redirect(url_for('settings_page'))
 
-
 @app.route('/public_report/<task_id>')
 def public_task_report(task_id):
     task = get_single_task(task_id)
-    if not task or task.get('status') != 'completed': abort(404)
+    if not task or task.get('status') != 'completed':
+        abort(404)
+    
     notes = task.get('notes', '')
     customer = parse_customer_info_from_notes(notes)
     reports, _ = parse_tech_report_from_notes(notes)
     latest_report = reports[0] if reports else {}
+    
+    app_settings = get_app_settings() 
+    
     equipment = latest_report.get('equipment_used', [])
-    catalog = {item['item_name']: item for item in get_app_settings().get('equipment_catalog', [])}
+    catalog = {item['item_name']: item for item in app_settings.get('equipment_catalog', [])}
     costs, total = [], 0.0
+    
     if isinstance(equipment, list):
         for item in equipment:
             name, qty = item.get('item'), item.get('quantity', 0)
@@ -2132,7 +2315,14 @@ def public_task_report(task_id):
                 costs.append({'item': name, 'quantity': qty, 'unit': cat_item.get('unit', ''), 'price_per_unit': price, 'subtotal': subtotal})
             else:
                 costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})
-    return render_template('public_task_report.html', task=task, customer_info=customer, latest_report=latest_report, detailed_costs=costs, total_cost=total)
+    
+    return render_template('public_task_report.html', 
+                           task=task, 
+                           customer_info=customer, 
+                           latest_report=latest_report, 
+                           detailed_costs=costs, 
+                           total_cost=total,
+                           settings=app_settings)
 
 @app.route('/submit_customer_problem', methods=['POST'])
 def submit_customer_problem():
@@ -2197,12 +2387,17 @@ def save_customer_line_id():
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
+    
+    app.logger.info("Request body: " + body)
+
     try:
         handler.handle(body, signature)
-    except InvalidSignatureError: abort(400)
+    except InvalidSignatureError:
+        app.logger.error("Invalid LINE signature. Please check your channel secret.")
+        abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
-        notify_admin_error(f"Webhook Handler Error: {e}")
+        #notify_admin_error(f"Webhook Handler Error: {e}")
         abort(500)
     return 'OK'
 
@@ -2470,6 +2665,4 @@ def organize_files():
     return render_template('organize_files.html')
 
 if __name__ == '__main__':
-    if not os.path.exists('credentials.json'):
-        app.logger.error("credentials.json not found! Google API functions will not work.")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
