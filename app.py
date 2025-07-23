@@ -1074,8 +1074,32 @@ with app.app_context():
     load_settings_from_drive_on_startup()
     get_app_settings() 
     run_scheduler()
+    
+    # Print registered routes for debugging
+    print("=== Registered Routes ===")
+    for rule in app.url_map.iter_rules():
+        print(f"{rule.endpoint}: {rule.rule}")
+    print("========================")
 
 atexit.register(cleanup_scheduler)
+
+# Print registered routes for debugging
+@app.before_first_request
+def print_routes():
+    """Print all registered routes for debugging"""
+    print("=== Registered Routes ===")
+    for rule in app.url_map.iter_rules():
+        print(f"{rule.endpoint}: {rule.rule}")
+    print("========================")
+
+# Print registered routes for debugging
+@app.before_first_request
+def print_routes():
+    """Print all registered routes for debugging"""
+    print("=== Registered Routes ===")
+    for rule in app.url_map.iter_rules():
+        print(f"{rule.endpoint}: {rule.rule}")
+    print("========================")
 
 # Error Handlers
 @app.errorhandler(404)
