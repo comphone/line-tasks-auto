@@ -1699,6 +1699,7 @@ def form_page():
                            )
 
 @app.route('/technician_report')
+@app.route('/technician_report')
 def technician_report():
     """Route handler for technician report page"""
     now = datetime.datetime.now(THAILAND_TZ)
