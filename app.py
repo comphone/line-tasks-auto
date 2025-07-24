@@ -720,6 +720,21 @@ def _create_backup_zip():
             zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
             zf.writestr('data/settings_backup.json', json.dumps(get_app_settings(), indent=4, ensure_ascii=False))
 
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            for folder, _, files in os.walk(project_root):
+                for file in files:
+                    if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt')) and file not in ['token.json', '.env', SETTINGS_FILE]:
+                        file_path = os.path.join(folder, file)
+                        archive_name = os.path.relpath(file_path, project_root)
+                        zf.write(file_path, arcname=f'code/{archive_name}')
+
+        memory_file.seek(0)
+        backup_filename = f"full_system_backup_{datetime.datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.zip"
+        return memory_file, backup_filename
+    except Exception as e:
+        app.logger.error(f"Error creating full system backup zip: {e}")
+        return None, None
+
 def parse_job_type_from_title(title):
     """Parses job type like [หน้าร้าน] from the task title."""
     match = re.match(r'\[(.*?)\](.*)', title)
