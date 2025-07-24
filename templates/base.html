@@ -75,7 +75,7 @@
                             {% else %}
                                 <li><span class="dropdown-item-text">สถานะ: <span class="badge bg-danger">ล้มเหลว</span></span></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="#">คลิกเพื่อเชื่อมต่อใหม่</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('authorize') }}">คลิกเพื่อเชื่อมต่อใหม่</a></li>
                             {% endif %}
                         </ul>
                     </li>

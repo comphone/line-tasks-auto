@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}รับ Google API Token{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card shadow-lg">
+        <div class="card-body text-center p-4 p-md-5">
+            <h1 class="text-success"><i class="fas fa-check-circle fa-2x mb-3"></i><br>Token ถูกสร้างเรียบร้อยแล้ว</h1>
+            <p class="lead">ขั้นตอนต่อไปที่สำคัญมาก:</p>
+            <ol class="list-group list-group-numbered mb-4">
+                <li class="list-group-item"><strong>คัดลอก</strong>ข้อความ JSON ด้านล่างนี้ทั้งหมด</li>
+                <li class="list-group-item">ไปที่ Dashboard ของ Render.com</li>
+                <li class="list-group-item">ไปที่เมนู <strong>Environment</strong></li>
+                <li class="list-group-item">แก้ไขค่าของ <strong>GOOGLE_TOKEN_JSON</strong> โดยวางทับค่าเดิมทั้งหมด</li>
+                <li class="list-group-item">กด <strong>Save Changes</strong> และทำการ <strong>Manual Deploy</strong> อีกครั้ง</li>
+            </ol>
+
+            <textarea id="tokenJson" class="form-control" rows="8" readonly>{{ token_data }}</textarea>
+            <button class="btn btn-primary btn-lg mt-3" onclick="copyToken()"><i class="fas fa-copy me-2"></i>คัดลอก JSON</button>
+            <p id="copyStatus" class="mt-2" style="height: 24px;"></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    function copyToken() {
+        const tokenText = document.getElementById('tokenJson');
+        tokenText.select();
+        tokenText.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        const copyStatus = document.getElementById('copyStatus');
+        copyStatus.innerHTML = '<span class="text-success fw-bold">คัดลอกไปยังคลิปบอร์ดแล้ว!</span>';
+        setTimeout(() => { copyStatus.innerHTML = ''; }, 3000);
+    }
+</script>
+{% endblock %}
