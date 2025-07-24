@@ -18,6 +18,7 @@
             <textarea id="tokenJson" class="form-control" rows="8" readonly>{{ token_data }}</textarea>
             <button class="btn btn-primary btn-lg mt-3" onclick="copyToken()"><i class="fas fa-copy me-2"></i>คัดลอก JSON</button>
             <p id="copyStatus" class="mt-2" style="height: 24px;"></p>
+            <a href="{{ url_for('summary') }}" class="btn btn-secondary mt-3">กลับหน้าหลัก</a>
         </div>
     </div>
 </div>

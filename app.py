@@ -2678,6 +2678,48 @@ def organize_files():
         return redirect(url_for('organize_files'))
 
     return render_template('organize_files.html')
+    
+    #<editor-fold desc="Google OAuth2 Flow Routes">
+
+@app.route('/authorize')
+def authorize():
+    """Starts the OAuth 2.0 authorization flow."""
+    if not os.path.exists('client_secrets.json'):
+        flash('<strong>ข้อผิดพลาดร้ายแรง:</strong> ไม่พบไฟล์ <code>client_secrets.json</code> โปรดอัปโหลดไฟล์นี้เพื่อให้สามารถเชื่อมต่อ Google API ได้', 'danger')
+        return redirect(url_for('settings_page'))
+
+    from google_auth_oauthlib.flow import Flow
+    flow = Flow.from_client_secrets_file('client_secrets.json', scopes=SCOPES)
+    flow.redirect_uri = url_for('oauth2callback', _external=True)
+
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true'
+    )
+    session['state'] = state
+    return redirect(authorization_url)
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    """Callback route that receives the authorization response from Google."""
+    state = session['state']
+    from google_auth_oauthlib.flow import Flow
+    flow = Flow.from_client_secrets_file('client_secrets.json', scopes=SCOPES, state=state)
+    flow.redirect_uri = url_for('oauth2callback', _external=True)
+
+    authorization_response = request.url
+    flow.fetch_token(authorization_response=authorization_response)
+
+    credentials = flow.credentials
+    token_json_string = credentials.to_json()
+
+    # Invalidate the cached credentials after generating a new token
+    global _CACHED_CREDENTIALS
+    _CACHED_CREDENTIALS = None
+
+    return render_template('display_token.html', token_data=token_json_string)
+
+#</editor-fold>
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
