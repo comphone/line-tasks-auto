@@ -6,8 +6,10 @@ import json
 import pytz
 import mimetypes
 import zipfile
+import sqlite3
 from io import BytesIO
 from collections import defaultdict
+import sqlite3
 from datetime import timezone, date, timedelta
 import time
 import tempfile
@@ -54,11 +56,9 @@ from apscheduler.triggers.cron import CronTrigger
 import atexit
 
 # --- Constants ---
+
 TEXT_SNIPPETS = {
     'task_details': [
-        {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
-        {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
-        {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
         {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
     ],
     'progress_reports': [
@@ -67,19 +67,28 @@ TEXT_SNIPPETS = {
         {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
         {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
     ]
+}  # ✅ ปิด dictionary ให้ถูกต้อง
+
+DEFAULT_JOB_TYPE = 'เซอร์วิส'
+
+JOB_TYPES = {
+    'all': 'ทั้งหมด',
+    'เซอร์วิส': 'เซอร์วิส',
+    'หน้าร้าน': 'หน้าร้าน',
+    'ส่งซ่อม': 'ส่งซ่อม'
 }
 
 # --- Flask App Initialization ---
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
-csrf = CSRFProtect(app)
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'mp4', 'mov', 'doc', 'docx', 'xls', 'xlsx'}
+MAX_FILE_SIZE_MB = 100  # Increased for larger files
 
 # --- Environment & Global Configurations ---
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
-MAX_FILE_SIZE_MB = 50
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'mp4', 'mov', 'doc', 'docx', 'xls', 'xlsx'}
+MAX_FILE_SIZE_MB = 100 # Increased for larger files
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -711,9 +720,42 @@ def _create_backup_zip():
             zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
             zf.writestr('data/settings_backup.json', json.dumps(get_app_settings(), indent=4, ensure_ascii=False))
 
+def parse_job_type_from_title(title):
+    """Parses job type like [หน้าร้าน] from the task title."""
+    match = re.match(r'\[(.*?)\](.*)', title)
+    if match:
+        job_type = match.group(1).strip()
+        clean_title = match.group(2).strip()
+        if job_type in JOB_TYPES.values():
+            return job_type, clean_title
+    return DEFAULT_JOB_TYPE, title
+
+def get_file_icon(filename):
+    """Returns a Font Awesome icon class based on file extension."""
+    if not filename or '.' not in filename:
+        return 'fas fa-file'
+    ext = filename.rsplit('.', 1)[1].lower()
+    if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
+        return 'fas fa-file-image text-primary'
+    if ext in ['mp4', 'mov', 'avi', 'webm', 'mkv']:
+        return 'fas fa-file-video text-info'
+    if ext == 'pdf':
+        return 'fas fa-file-pdf text-danger'
+    if ext in ['doc', 'docx']:
+        return 'fas fa-file-word text-primary'
+    if ext in ['xls', 'xlsx']:
+        return 'fas fa-file-excel text-success'
+    return 'fas fa-file-alt text-secondary'
+
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
-                for file in files:
+@app.context_processor
+def inject_now():
+    return {
+        'now': datetime.datetime.now(THAILAND_TZ),
+        'thaizone': THAILAND_TZ,
+        'get_file_icon': get_file_icon
+    }
                     if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt')) \
                        and file not in ['token.json', '.env', SETTINGS_FILE]:
                         file_path = os.path.join(folder, file)
