@@ -40,8 +40,7 @@ from linebot.models import (
     ImageComponent, PostbackEvent
 )
 
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBaseUpload
@@ -96,16 +95,13 @@ SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/a
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
 
+SERVICE_ACCOUNT_FILE = 'service-account.json'
+
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 app.jinja_env.filters['dateutil_parse'] = date_parse
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
-# --- Robust Google API Credential Caching and Refreshing ---
-_CACHED_CREDENTIALS = None
-_CREDENTIALS_LAST_REFRESH = None
-_CREDENTIALS_REFRESH_INTERVAL = timedelta(minutes=45)
 
 # --- Settings Management ---
 SETTINGS_FILE = 'settings.json'
@@ -127,70 +123,38 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'technician_list': []
 }
 
-#<editor-fold desc="Google API Authentication & Service Management">
+#<editor-fold desc="Google API Authentication (Service Account)">
 
 def notify_admin_error(message):
     """Sends a critical error notification to the admin LINE group."""
     try:
-        # Use a temporary settings load to avoid circular dependency if settings fail
         admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
         if admin_group_id:
             line_bot_api.push_message(admin_group_id, TextSendMessage(text=f"‼️ เกิดข้อผิดพลาดร้ายแรงในระบบ ‼️\n\n{message[:900]}"))
     except Exception as e:
         app.logger.error(f"Failed to send critical error notification: {e}")
 
-def get_refreshed_credentials(force_refresh=False):
+@cached(cache=TTLCache(maxsize=1, ttl=3600))
+def get_service_account_credentials():
     """
-    Manages Google API credentials, caching them and refreshing proactively.
-    This is the core of the new, stable authentication system.
+    Loads credentials from the service account file.
+    Caches the credentials for 1 hour to avoid reading the file on every request.
     """
-    global _CACHED_CREDENTIALS, _CREDENTIALS_LAST_REFRESH
-
-    now = datetime.datetime.now(timezone.utc)
-    
-    if not force_refresh and _CACHED_CREDENTIALS and _CREDENTIALS_LAST_REFRESH and \
-       (now - _CREDENTIALS_LAST_REFRESH < _CREDENTIALS_REFRESH_INTERVAL) and _CACHED_CREDENTIALS.valid:
-        return _CACHED_CREDENTIALS
-
-    app.logger.info(f"Refreshing Google credentials. Reason: {'Forced' if force_refresh else 'Cache expired or invalid'}")
-    
-    creds = None
-    google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
-    if google_token_json_str:
-        try:
-            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-        except Exception as e:
-            app.logger.error(f"CRITICAL: Could not load token from GOOGLE_TOKEN_JSON: {e}")
-            return None
-
-    if creds and (creds.expired or force_refresh):
-        if creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                app.logger.info("Google API token refreshed successfully.")
-                os.environ['GOOGLE_TOKEN_JSON'] = creds.to_json()
-            except Exception as e:
-                app.logger.error(f"CRITICAL: Failed to refresh Google API token: {e}")
-                notify_admin_error("ไม่สามารถรีเฟรช Google API token ได้ กรุณาสร้าง GOOGLE_TOKEN_JSON ใหม่และอัปเดตในระบบ Render.com โดยด่วน!")
-                _CACHED_CREDENTIALS = None
-                return None
-        else:
-            app.logger.error("CRITICAL: No refresh_token found. Cannot refresh credentials.")
-            notify_admin_error("ไม่พบ Refresh Token! กรุณาสร้าง GOOGLE_TOKEN_JSON ใหม่ทั้งหมดและอัปเดตในระบบ Render.com")
-            _CACHED_CREDENTIALS = None
-            return None
-
-    if creds and creds.valid:
-        _CACHED_CREDENTIALS = creds
-        _CREDENTIALS_LAST_REFRESH = now
-        return _CACHED_CREDENTIALS
-    
-    app.logger.error("Could not obtain valid Google credentials.")
-    return None
+    app.logger.info("Loading Service Account credentials...")
+    if not os.path.exists(SERVICE_ACCOUNT_FILE):
+        app.logger.error(f"CRITICAL: Service Account file '{SERVICE_ACCOUNT_FILE}' not found.")
+        return None
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        return creds
+    except Exception as e:
+        app.logger.error(f"Failed to load credentials from Service Account file: {e}")
+        return None
 
 def get_google_service(api_name, api_version):
-    """Builds a Google API service object using the robust credential management system."""
-    creds = get_refreshed_credentials()
+    """Builds a Google API service object using Service Account credentials."""
+    creds = get_service_account_credentials()
     if creds:
         try:
             service = build(api_name, api_version, credentials=creds, cache_discovery=False)
@@ -205,23 +169,15 @@ def safe_execute(request_object):
     if hasattr(request_object, 'execute'):
         return request_object.execute()
     return request_object
-    
+
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
-    """
-    Wrapper for Google API calls with retry logic and reactive token refresh on 401 errors.
-    """
+    """Wrapper for Google API calls with retry logic."""
     max_retries = 3
     base_delay = 1
-    
     for i in range(max_retries):
         try:
             return safe_execute(api_call(*args, **kwargs))
         except HttpError as e:
-            if e.resp.status == 401 and i == 0:
-                app.logger.warning("Received 401 Unauthorized. Forcing token refresh and retrying call.")
-                get_refreshed_credentials(force_refresh=True)
-                continue
-
             if e.resp.status in [500, 502, 503, 504, 429] and i < max_retries - 1:
                 delay = base_delay * (2 ** i)
                 app.logger.warning(f"Google API transient error (Status: {e.resp.status}). Retrying in {delay} seconds...")
@@ -233,13 +189,6 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
             app.logger.error(f"Unexpected error during Google API call: {e}")
             raise
     return None
-
-def scheduled_token_refresh_job():
-    """Proactively refreshes the Google API token to keep it valid."""
-    with app.app_context():
-        app.logger.info("--- Running scheduled Google token refresh job ---")
-        get_refreshed_credentials(force_refresh=True)
-        app.logger.info("--- Finished scheduled Google token refresh job ---")
 
 #</editor-fold>
 
@@ -267,6 +216,7 @@ def save_settings_to_file(settings_data):
 def get_app_settings():
     global _APP_SETTINGS_STORE
     if not _APP_SETTINGS_STORE:
+        app.logger.info("Settings cache is empty. Loading from file...")
         app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
         loaded_settings = load_settings_from_file()
         if loaded_settings:
@@ -1033,10 +983,6 @@ def run_scheduler():
         scheduler.shutdown(wait=False)
     
     scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
-    # Add the new proactive token refresh job
-    scheduler.add_job(scheduled_token_refresh_job, 'interval', minutes=30, id='google_token_refresh', replace_existing=True)
-    app.logger.info("Scheduled Google token refresh job to run every 30 minutes.")
 
     # Existing jobs
     ab = settings.get('auto_backup', {})

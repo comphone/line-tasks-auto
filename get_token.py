@@ -5,10 +5,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import webbrowser
 
-# กำหนด SCOPES ตาม API ที่คุณใช้งาน
+# กำหนด SCOPES ตาม API ที่คุณใช้งาน (เพิ่ม Calendar scope แล้ว)
 SCOPES = [
     "https://www.googleapis.com/auth/tasks",       # สำหรับ Google Tasks
-    "https://www.googleapis.com/auth/drive"        # สำหรับ Google Drive
+    "https://www.googleapis.com/auth/drive",       # สำหรับ Google Drive
+    "https://www.googleapis.com/auth/calendar"   # สำหรับ Google Calendar (ที่เพิ่มเข้ามา)
 ]
 
 # HTML template สำหรับแสดงผล Token และปุ่ม Copy
