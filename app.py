@@ -2679,4 +2679,4 @@ def oauth2callback():
 #</editor-fold>
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=Tr
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
