@@ -784,7 +784,7 @@ def send_update_notification(task, new_due_date_str, reason, technicians, is_tod
         f"{title}\n\n"
         f"ชื่องาน: {task.get('title', '-')}\n"
         f"ลูกค้า: {customer_info.get('name', '-')}\n"
-        f"� โทร: {customer_info.get('phone', '-')}\n"
+        f"📞 โทร: {customer_info.get('phone', '-')}\n"
         f"นัดหมายใหม่: {new_due_date_str}\n"
         f"{reason_str}"
         f"ช่าง: {technician_str}\n\n"
