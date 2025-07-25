@@ -26,7 +26,7 @@ _CREDENTIALS_REFRESH_INTERVAL = timedelta(minutes=45)
 
 def _notify_admin_error(message):
     """Sends a critical error notification related to Google API issues."""
-    try {
+    try 
         # This is a self-contained notifier to avoid circular dependencies with app.py
         admin_group_id = os.environ.get('LINE_ADMIN_GROUP_ID')
         access_token = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
