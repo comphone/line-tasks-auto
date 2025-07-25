@@ -699,6 +699,7 @@ def inject_global_template_vars():
         'get_file_icon': get_file_icon,
         'job_types': JOB_TYPES,
         'LIFF_ID_FORM': LIFF_ID_FORM
+        'dateutil_parse': date_parse
     }
 
 #</editor-fold>
