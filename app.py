@@ -1236,6 +1236,44 @@ def authorize():
     return redirect(url_for('settings_page'))
 # ... (the rest of the app.py file)
 
+@app.route('/qr/customer_onboarding/<task_id>')
+def generate_customer_onboarding_qr(task_id):
+    """สร้างและแสดงหน้า QR Code สำหรับให้ลูกค้าสแกน"""
+    task = gs.get_single_task(task_id)
+    if not task:
+        abort(404)
+        
+    # URL ที่จะถูกแปลงเป็น QR Code ควรเป็นหน้าฟอร์มสำหรับลูกค้า (อาจเป็น LIFF App)
+    onboarding_url = url_for('customer_onboarding_form', task_id=task_id, _external=True)
+    
+    qr_code_b64 = generate_qr_code_base64(onboarding_url)
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    customer_name = customer_info.get('name', 'ลูกค้า')
+
+    return render_template('display_qr.html', 
+                           qr_code_base64=qr_code_b64, 
+                           task=task,
+                           customer_name=customer_name)
+
+@app.route('/customer_onboarding_form/<task_id>')
+def customer_onboarding_form(task_id):
+    """
+    หน้านี้คือหน้าที่ลูกค้าจะเห็นหลังจากสแกน QR Code
+    (ในความเป็นจริง หน้านี้ควรเป็น LIFF App เพื่อเก็บ LINE User ID)
+    """
+    task = gs.get_single_task(task_id)
+    if not task:
+        return "<h3><center>ไม่พบข้อมูลงานในระบบ</center></h3>", 404
+    
+    # สำหรับตอนนี้จะแสดงเป็นข้อความธรรมดาก่อน
+    return f"""
+    <div style='font-family: sans-serif; text-align: center; padding: 2rem;'>
+        <h2>ติดตามงานซ่อม</h2>
+        <p>สำหรับงาน: <strong>{task.get('title')}</strong></p>
+        <p>ขอบคุณที่ใช้บริการครับ/ค่ะ</p>
+    </div>
+    """, 200
+    
 if __name__ == '__main__':
     # The remaining functions in app.py should be checked to ensure they call gs.* functions
     # For example, in /api/import_backup_file:
