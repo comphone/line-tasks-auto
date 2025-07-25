@@ -1,3 +1,4 @@
+import google_services
 import os
 import sys
 import datetime
@@ -654,7 +655,7 @@ def cleanup_scheduler():
 
 # --- Initial app setup calls ---
 with app.app_context():
-    load_settings_from_drive_on_startup()
+    google_services.load_settings_from_drive_on_startup(save_settings_to_file)
     run_scheduler()
 
 atexit.register(cleanup_scheduler)
