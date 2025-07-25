@@ -1236,7 +1236,41 @@ def authorize():
     return redirect(url_for('settings_page'))
 # ... (the rest of the app.py file)
 
-task = gs.get_single_task(task_id)
+@app.route('/qr/public_report/<task_id>')
+def generate_public_report_qr(task_id):
+    """สร้างและแสดงหน้า QR Code สำหรับหน้ารายงานสาธารณะ"""
+    task = gs.get_single_task(task_id)
+    if not task:
+        abort(404)
+    
+    # URL ของหน้ารายงานสาธารณะที่จะนำไปสร้าง QR Code
+    report_url = url_for('public_report_view', task_id=task_id, _external=True)
+    
+    qr_code_b64 = generate_qr_code_base64(report_url)
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    customer_name = customer_info.get('name', 'ลูกค้า')
+
+    # ใช้ Template เดิมในการแสดง QR Code ได้เลย
+    return render_template('display_qr.html', 
+                           qr_code_base64=qr_code_b64, 
+                           task=task,
+                           customer_name=customer_name)
+
+@app.route('/report/public/<task_id>')
+def public_report_view(task_id):
+    """หน้ารายงานสาธารณะสำหรับให้ลูกค้าดูสถานะและประวัติงาน"""
+    task_raw = gs.get_single_task(task_id)
+    if not task_raw:
+        abort(404)
+    
+    # ประมวลผลข้อมูล task เพื่อส่งไปที่ Template
+    task = parse_google_task_dates(task_raw)
+    notes = task.get('notes', '')
+    task['customer'] = parse_customer_info_from_notes(notes)
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
+
+    # แสดงผลโดยใช้ Template ใหม่
+    return render_template('public_report.html', task=task)
     
 if __name__ == '__main__':
     # The remaining functions in app.py should be checked to ensure they call gs.* functions
