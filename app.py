@@ -86,6 +86,8 @@ DRIVE_SYSTEM_BACKUP_FOLDER_NAME = "System_Backups"
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
+LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
+
 
 # --- Job Type Settings ---
 DEFAULT_JOB_TYPE = 'เซอร์วิส'
@@ -198,7 +200,7 @@ def get_google_service(api_name, api_version):
             app.logger.error(f"Failed to build Google API service '{api_name} v{api_version}': {e}")
     return None
 
-def execute_google_api_call(api_call, *args, **kwargs):
+def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     """Wrapper for Google API calls with retry logic and reactive token refresh."""
     for i in range(3):
         try:
@@ -275,9 +277,6 @@ def save_app_settings(settings_data):
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
 
-# ... (The rest of the file is identical to the one you provided)
-# ... I will now append the rest of your original code to ensure no features are lost.
-# ... All functions from sanitize_filename to the end of the file will be from your version.
 def sanitize_filename(name):
     if not name:
         return "Unnamed"
@@ -483,7 +482,6 @@ def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folde
     file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id)
     return file_obj
 
-
 def create_google_task(title, notes=None, due=None):
     service = get_google_tasks_service()
     if not service: return None
@@ -505,7 +503,7 @@ def delete_google_task(task_id):
         app.logger.error(f"API Error deleting task {task_id}: {err}")
         return False
 
-def update_google_task(task_id, title=None, notes=None, status=None, due=None):
+def update_google_task(task_id, title=None, notes=None, status=None, due=None, completed=None):
     service = get_google_tasks_service()
     if not service: return None
     try:
@@ -522,9 +520,10 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
             task.pop('completed', None)
             if due is not None:
                 task['due'] = due
-        if due is None and status == 'needsAction':
-             pass
-
+        
+        if completed is not None:
+             task['completed'] = completed
+        
         return _execute_google_api_call_with_retry(service.tasks().update, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id, body=task)
     except HttpError as e:
         app.logger.error(f"Failed to update task {task_id}: {e}")
@@ -548,7 +547,7 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
+            info['map_url'] = f"https://www.google.com/maps?q=${coords_or_url}" 
         else:
             info['map_url'] = coords_or_url
     
@@ -623,8 +622,8 @@ def parse_tech_report_from_notes(notes):
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, original_notes_text
 
-
 def allowed_file(filename):
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'mp4', 'mov', 'doc', 'docx', 'xls', 'xlsx'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def _parse_equipment_string(text_input):
@@ -698,7 +697,8 @@ def inject_global_template_vars():
         'now': datetime.datetime.now(THAILAND_TZ),
         'thaizone': THAILAND_TZ,
         'get_file_icon': get_file_icon,
-        'job_types': JOB_TYPES
+        'job_types': JOB_TYPES,
+        'LIFF_ID_FORM': LIFF_ID_FORM
     }
 
 #</editor-fold>
@@ -1038,8 +1038,6 @@ def api_customers():
 def root_redirect():
     return redirect(url_for('summary'))
 
-# ... (The rest of the Flask routes from /form onwards are identical to your file)
-# ... (All 2000+ lines of your route logic are preserved here)
 @app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
@@ -1075,65 +1073,65 @@ def form_page():
                 return render_template('form.html', form_data=request.form)
 
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
-if new_task:
-    cache.clear()
-    send_new_task_notification(new_task)
+        if new_task:
+            cache.clear()
+            send_new_task_notification(new_task)
 
-    # --- NEW LOGIC FOR HANDLING INITIAL ATTACHMENTS ---
-    uploaded_attachments_json = request.form.get('uploaded_attachments_json')
-    uploaded_attachments = []
-    if uploaded_attachments_json:
-        try:
-            uploaded_attachments = json.loads(uploaded_attachments_json)
-        except json.JSONDecodeError:
-            app.logger.warning("Could not decode uploaded_attachments_json on form submission.")
-
-    if uploaded_attachments:
-        task_id = new_task['id']
-
-        # Create the correctly named folder now that we have the task ID
-        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
-        monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
-        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-        sanitized_customer_name = sanitize_filename(customer_name)
-        customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
-        final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
-
-        drive_service = get_google_drive_service()
-        if final_upload_folder_id and drive_service:
-            for att in uploaded_attachments:
+            # --- NEW LOGIC FOR HANDLING INITIAL ATTACHMENTS ---
+            uploaded_attachments_json = request.form.get('uploaded_attachments_json')
+            uploaded_attachments = []
+            if uploaded_attachments_json:
                 try:
-                    # Move the file from the temporary folder to the final, correctly named folder
-                    file_meta = drive_service.files().get(fileId=att['id'], fields='parents').execute()
-                    previous_parents = ",".join(file_meta.get('parents', []))
-                    drive_service.files().update(
-                        fileId=att['id'],
-                        addParents=final_upload_folder_id,
-                        removeParents=previous_parents,
-                        fields='id, parents'
-                    ).execute()
-                    app.logger.info(f"Moved attachment {att['id']} to final folder {final_upload_folder_id}")
-                except Exception as e:
-                    app.logger.error(f"Could not move attachment {att['id']} to final folder: {e}")
+                    uploaded_attachments = json.loads(uploaded_attachments_json)
+                except json.JSONDecodeError:
+                    app.logger.warning("Could not decode uploaded_attachments_json on form submission.")
 
-        # Add the attachments to the first history entry
-        initial_report = {
-            'type': 'report',
-            'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-            'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
-            'attachments': uploaded_attachments,
-            'technicians': ['System']
-        }
-        report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-        updated_notes = new_task.get('notes', '') + report_text
-        update_google_task(task_id, notes=updated_notes)
-        cache.clear()
+            if uploaded_attachments:
+                task_id = new_task['id']
 
-    flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
-    return redirect(url_for('task_details', task_id=new_task['id']))
-else:
-    flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
-    return render_template('form.html', form_data=request.form)
+                # Create the correctly named folder now that we have the task ID
+                attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+                monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
+                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+                sanitized_customer_name = sanitize_filename(customer_name)
+                customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+                final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+
+                drive_service = get_google_drive_service()
+                if final_upload_folder_id and drive_service:
+                    for att in uploaded_attachments:
+                        try:
+                            # Move the file from the temporary folder to the final, correctly named folder
+                            file_meta = drive_service.files().get(fileId=att['id'], fields='parents').execute()
+                            previous_parents = ",".join(file_meta.get('parents', []))
+                            drive_service.files().update(
+                                fileId=att['id'],
+                                addParents=final_upload_folder_id,
+                                removeParents=previous_parents,
+                                fields='id, parents'
+                            ).execute()
+                            app.logger.info(f"Moved attachment {att['id']} to final folder {final_upload_folder_id}")
+                        except Exception as e:
+                            app.logger.error(f"Could not move attachment {att['id']} to final folder: {e}")
+
+                # Add the attachments to the first history entry
+                initial_report = {
+                    'type': 'report',
+                    'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+                    'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
+                    'attachments': uploaded_attachments,
+                    'technicians': ['System']
+                }
+                report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+                updated_notes = new_task.get('notes', '') + report_text
+                update_google_task(task_id, notes=updated_notes)
+                cache.clear()
+
+            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
+            return redirect(url_for('task_details', task_id=new_task['id']))
+        else:
+            flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
+            return render_template('form.html', form_data=request.form)
 
     return render_template('form.html',
                            task_detail_snippets=TEXT_SNIPPETS.get('task_details', [])
@@ -2393,7 +2391,7 @@ def create_task_flex_message(task):
         body=BoxComponent(layout='vertical', spacing='md', contents=[
             TextComponent(text=task.get('title', '...'), weight='bold', size='lg', wrap=True), SeparatorComponent(margin='md'),
             BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
+                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer.get('name', '-', wrap=True, color='#666666', size='sm', flex=5)]),
                 BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
             ]),
         ]),
@@ -2680,4 +2678,4 @@ def oauth2callback():
 #</editor-fold>
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=Tr
