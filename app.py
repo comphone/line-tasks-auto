@@ -784,7 +784,7 @@ def send_update_notification(task, new_due_date_str, reason, technicians, is_tod
         f"{title}\n\n"
         f"ชื่องาน: {task.get('title', '-')}\n"
         f"ลูกค้า: {customer_info.get('name', '-')}\n"
-        f"📞 โทร: {customer_info.get('phone', '-')}\n"
+        f"� โทร: {customer_info.get('phone', '-')}\n"
         f"นัดหมายใหม่: {new_due_date_str}\n"
         f"{reason_str}"
         f"ช่าง: {technician_str}\n\n"
@@ -2391,7 +2391,7 @@ def create_task_flex_message(task):
         body=BoxComponent(layout='vertical', spacing='md', contents=[
             TextComponent(text=task.get('title', '...'), weight='bold', size='lg', wrap=True), SeparatorComponent(margin='md'),
             BoxComponent(layout='vertical', margin='lg', spacing='sm', contents=[
-                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer.get('name', '-', wrap=True, color='#666666', size='sm', flex=5)]),
+                BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='ลูกค้า:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=customer.get('name', '-'), wrap=True, color='#666666', size='sm', flex=5)]),
                 BoxComponent(layout='baseline', spacing='sm', contents=[TextComponent(text='นัดหมาย:', color='#AAAAAA', size='sm', flex=2), TextComponent(text=dates.get('due_formatted', '-'), wrap=True, color='#666666', size='sm', flex=5)])
             ]),
         ]),
@@ -2678,4 +2678,4 @@ def oauth2callback():
 #</editor-fold>
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=Tr
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
