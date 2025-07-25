@@ -64,7 +64,6 @@ csrf = CSRFProtect(app)
 # --- General Settings ---
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 SETTINGS_FILE = 'settings.json'
-# The cache is defined here, and caching is applied as a decorator within this app file.
 cache = TTLCache(maxsize=100, ttl=60)
 
 # --- File Upload Settings ---
@@ -72,10 +71,9 @@ MAX_FILE_SIZE_MB = 100
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 # --- Google API Settings ---
-# These are now mainly used for folder names, as IDs are handled by google_services.py
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 DRIVE_BASE_ATTACHMENT_FOLDER_NAME = "Task_Attachments"
-DRIVE_AVATAR_FOLDER_NAME = "Technician_Avatars"
+DRIVE_AVATار_FOLDER_NAME = "Technician_Avatars"
 DRIVE_SETTINGS_BACKUP_FOLDER_NAME = "Settings_Backups"
 DRIVE_SYSTEM_BACKUP_FOLDER_NAME = "System_Backups"
 
@@ -131,7 +129,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
 # --- GOOGLE API FUNCTION WRAPPERS (FOR CACHING) ---
 # ==============================================================================
 
-# By defining wrappers here, we keep app-specific caching separate from the core API logic.
 @cached(cache)
 def find_or_create_drive_folder(name, parent_id):
     """Cached wrapper for the gs.find_or_create_drive_folder function."""
@@ -142,18 +139,15 @@ def get_google_tasks_for_report(show_completed=True, max_results=100):
     """Cached wrapper for gs.get_google_tasks_for_report."""
     return gs.get_google_tasks_for_report(show_completed=show_completed, max_results=max_results)
 
-# get_single_task is not cached by default as task details can change frequently.
-
 @cached(cache)
 def get_customer_database():
     """Builds a customer database from Google Tasks. Cached for performance."""
     app.logger.info("Building customer database from Google Tasks...")
-    all_tasks = get_google_tasks_for_report(show_completed=True, max_results=500) # Get more tasks for a better db
+    all_tasks = get_google_tasks_for_report(show_completed=True, max_results=500)
     if not all_tasks:
         return []
 
     customers_dict = {}
-    # Sort by creation date to prioritize the latest info for a customer
     all_tasks.sort(key=lambda x: x.get('created', '0'), reverse=True)
 
     for task in all_tasks:
@@ -172,7 +166,6 @@ def get_customer_database():
 
         customer_key = (name.lower(), phone)
         
-        # Only add the first (most recent) entry for a given customer
         if customer_key not in customers_dict:
             customers_dict[customer_key] = {
                 'name': name,
@@ -323,7 +316,6 @@ def parse_tech_report_from_notes(notes):
         try:
             report_data = json.loads(json_str)
             
-            # Compatibility for older data format
             if 'attachments' not in report_data and 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
                 report_data['attachments'] = []
                 for url in report_data['attachment_urls']:
@@ -447,7 +439,6 @@ def generate_qr_code_base64(data_to_encode):
 
 @app.context_processor
 def inject_global_template_vars():
-    # ตรวจสอบสถานะการเชื่อมต่อ Google API
     try:
         creds = gs.get_refreshed_credentials()
         api_connected = creds and creds.valid
@@ -1043,42 +1034,82 @@ def summary():
                            chart_data=chart_data,
                            job_type_filter=job_type_filter, job_types=JOB_TYPES)
 
-# ... (the rest of the app.py file remains largely the same, but with all Google API calls prefixed with `gs.`)
-# I will make the replacements for key functions to demonstrate the pattern.
-
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
-        # Use gs.get_single_task
         task_raw = gs.get_single_task(task_id)
         if not task_raw:
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
             flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
             abort(404)
         
-        # ... (rest of the POST logic)
+        # This is a flag to check if a notification should be sent
+        notification_to_send = None
         
-        # In the final update call, use gs.update_google_task
+        # --- Handle Tech Report Submission ---
+        if request.form.get('submit_action') == 'add_report':
+            history_reports, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+            
+            try:
+                new_report = {
+                    'type': 'report',
+                    'work_summary': request.form.get('work_summary', '').strip(),
+                    'summary_date': request.form.get('summary_date', datetime.datetime.now(THAILAND_TZ).isoformat()),
+                    'technicians': json.loads(request.form.get('technicians_json', '[]')),
+                    'equipment_used': _parse_equipment_string(request.form.get('equipment_used_text', '')),
+                    'cost': request.form.get('cost', '0'),
+                    'attachments': json.loads(request.form.get('uploaded_attachments_json', '[]'))
+                }
+            except json.JSONDecodeError:
+                return jsonify({'status': 'error', 'message': 'ข้อมูลจากฟอร์มไม่ถูกต้อง (JSON format error)'}), 400
+
+            tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+            new_report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(new_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+            
+            customer_feedback = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+            feedback_text = ""
+            if customer_feedback:
+                feedback_text = f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+            updated_notes = base_notes.strip() + tech_reports_text + new_report_text + feedback_text
+            
+            update_payload = {'notes': updated_notes}
+            flash_message = "เพิ่มรายงานการทำงานเรียบร้อยแล้ว"
+
+        # --- Handle Status Update ---
+        else:
+            update_payload = {}
+            task_status = request.form.get('task_status')
+            if task_status and task_status != task_raw.get('status'):
+                update_payload['status'] = task_status
+            
+            flash_message = "อัปเดตสถานะเรียบร้อยแล้ว"
+            
+            if task_status == 'completed':
+                technicians = json.loads(request.form.get('technicians_json', '[]'))
+                notification_to_send = ('completion', technicians)
+
+        if not update_payload:
+             return jsonify({'status': 'info', 'message': 'ไม่มีข้อมูลให้อัปเดต'})
+
         updated_task = gs.update_google_task(task_id, **update_payload)
 
         if updated_task:
             cache.clear()
             if notification_to_send:
                 notif_type = notification_to_send[0]
-                if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
-                elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
+                if notif_type == 'completion': 
+                    send_completion_notification(updated_task, *notification_to_send[1:])
             
             return jsonify({'status': 'success', 'message': flash_message})
         else:
-            # ... (error handling)
-            return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'}), 500
+            return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูล!'}), 500
 
     # In the GET request part
     task_raw = gs.get_single_task(task_id)
     if not task_raw: abort(404)
     
-    # ... (rest of GET logic is the same)
     task = parse_google_task_dates(task_raw)
     notes = task.get('notes', '')
     task['customer'] = parse_customer_info_from_notes(notes)
@@ -1102,7 +1133,7 @@ def task_details(task_id):
     all_attachments = []
     for report in task['tech_reports_history']:
         if report.get('attachments'):
-            report_date = parse_google_task_dates({'summary_date': report['summary_date']}).get('summary_date_formatted', '')
+            report_date = date_parse(report['summary_date']).astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
             for att in report['attachments']:
                 att_copy = att.copy()
                 att_copy['report_date'] = report_date
@@ -1110,7 +1141,7 @@ def task_details(task_id):
 
     return render_template('update_task_details.html',
                            task=task,
-                           common_equipment_items=app_settings.get('common_equipment_items', []),
+                           common_equipment_items=app_settings.get('equipment_catalog', []),
                            technician_list=app_settings.get('technician_list', []),
                            all_attachments=all_attachments,
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
@@ -1119,7 +1150,6 @@ def task_details(task_id):
 
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
-    # Use gs.delete_google_task
     if gs.delete_google_task(task_id):
         flash('ลบงานเรียบร้อยแล้ว!', 'success')
         cache.clear()
@@ -1130,12 +1160,11 @@ def delete_task(task_id):
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
-        # ... (form processing logic is the same)
         settings_data = {
             'report_times': {
-                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour', 0)),
-                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour', 0)),
-                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour', 0))
+                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour', 7)),
+                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour', 20)),
+                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour', 9))
             },
             'line_recipients': {
                 'admin_group_id': request.form.get('admin_group_id', '').strip(),
@@ -1144,20 +1173,20 @@ def settings_page():
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('auto_backup_hour', 0)),
+                'hour_thai': int(request.form.get('auto_backup_hour', 2)),
                 'minute_thai': int(request.form.get('auto_backup_minute', 0))
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
-            'technician_list': json.loads(request.form.get('technician_list_json', '[]'))
+            'technician_list': json.loads(request.form.get('technician_list_json', '[]')),
+            'equipment_catalog': json.loads(request.form.get('equipment_catalog_json', '[]'))
         }
 
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
-            # Use gs.backup_settings_to_drive
             if gs.backup_settings_to_drive(settings_data):
                 flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
             else:
@@ -1169,7 +1198,6 @@ def settings_page():
     current_settings = get_app_settings()
     return render_template('settings_page.html', settings=current_settings)
 
-# NEW ROUTE FOR API STATUS
 @app.route('/settings/api_status')
 def api_status():
     """Renders a page with the status of the Google API connection."""
@@ -1181,13 +1209,11 @@ def api_status():
         if not creds or not creds.valid:
             connection['message'] = 'ไม่พบ Google credentials ที่ถูกต้อง หรือ token หมดอายุและไม่สามารถรีเฟรชได้ กรุณาสร้าง token ใหม่ผ่านหน้าตั้งค่า'
         else:
-            # Test the connection by trying to get a service
             service = gs.get_google_drive_service()
             if service:
                 connection['status'] = 'ok'
                 connection['message'] = 'เชื่อมต่อ Google API สำเร็จ'
             else:
-                # This case might be redundant if get_refreshed_credentials already failed, but it's a good safeguard.
                 connection['message'] = 'Credentials ถูกต้อง แต่การสร้าง Service object ไม่สำเร็จ'
 
             if creds.expiry:
@@ -1203,7 +1229,7 @@ def api_status():
     
     return render_template('api_status.html', connection=connection, token_info=token_info)
 
-# === ROUTES ที่ขาดไป (เพิ่มส่วนนี้เข้าไป) ===
+# === PLACEHOLDER ROUTES ===
 
 @app.route('/calendar')
 def calendar_view():
@@ -1232,11 +1258,10 @@ def edit_task(task_id):
 @app.route('/authorize')
 def authorize():
     """Route สำหรับการเชื่อมต่อ Google API ใหม่"""
-    # หมายเหตุ: ส่วนนี้ต้องใช้โค้ด OAuth2 ของ Google เพื่อการทำงานจริง
-    # สำหรับตอนนี้ จะเป็นเพียงหน้าจำลองไปก่อน
     flash('ฟังก์ชันเชื่อมต่อ Google API ใหม่ยังไม่ถูกสร้างขึ้น', 'warning')
     return redirect(url_for('settings_page'))
-# ... (the rest of the app.py file)
+
+# === QR CODE ROUTES ===
 
 @app.route('/qr/customer_onboarding/<task_id>')
 def generate_customer_onboarding_qr(task_id):
@@ -1245,7 +1270,6 @@ def generate_customer_onboarding_qr(task_id):
     if not task:
         abort(404)
         
-    # URL ที่จะถูกแปลงเป็น QR Code ควรเป็นหน้าฟอร์มสำหรับลูกค้า (อาจเป็น LIFF App)
     onboarding_url = url_for('customer_onboarding_form', task_id=task_id, _external=True)
     
     qr_code_b64 = generate_qr_code_base64(onboarding_url)
@@ -1259,15 +1283,11 @@ def generate_customer_onboarding_qr(task_id):
 
 @app.route('/customer_onboarding_form/<task_id>')
 def customer_onboarding_form(task_id):
-    """
-    หน้านี้คือหน้าที่ลูกค้าจะเห็นหลังจากสแกน QR Code
-    (ในความเป็นจริง หน้านี้ควรเป็น LIFF App เพื่อเก็บ LINE User ID)
-    """
+    """หน้านี้คือหน้าที่ลูกค้าจะเห็นหลังจากสแกน QR Code"""
     task = gs.get_single_task(task_id)
     if not task:
         return "<h3><center>ไม่พบข้อมูลงานในระบบ</center></h3>", 404
     
-    # สำหรับตอนนี้จะแสดงเป็นข้อความธรรมดาก่อน
     return f"""
     <div style='font-family: sans-serif; text-align: center; padding: 2rem;'>
         <h2>ติดตามงานซ่อม</h2>
@@ -1283,14 +1303,12 @@ def generate_public_report_qr(task_id):
     if not task:
         abort(404)
     
-    # URL ของหน้ารายงานสาธารณะที่จะนำไปสร้าง QR Code
     report_url = url_for('public_report_view', task_id=task_id, _external=True)
     
     qr_code_b64 = generate_qr_code_base64(report_url)
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     customer_name = customer_info.get('name', 'ลูกค้า')
 
-    # ใช้ Template เดิมในการแสดง QR Code ได้เลย
     return render_template('display_qr.html', 
                            qr_code_base64=qr_code_b64, 
                            task=task,
@@ -1303,23 +1321,143 @@ def public_report_view(task_id):
     if not task_raw:
         abort(404)
     
-    # ประมวลผลข้อมูล task เพื่อส่งไปที่ Template
     task = parse_google_task_dates(task_raw)
     notes = task.get('notes', '')
     task['customer'] = parse_customer_info_from_notes(notes)
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
 
-    # แสดงผลโดยใช้ Template ใหม่
     return render_template('public_report.html', task=task)
 
-if __name__ == '__main__':
-    # The remaining functions in app.py should be checked to ensure they call gs.* functions
-    # For example, in /api/import_backup_file:
-    # service = gs.get_google_tasks_service()
-    # existing_task = gs._execute_google_api_call_with_retry(...)
-    # and so on...
+# === API ROUTES FOR TASK DETAILS PAGE ===
+
+@app.route('/api/task/<task_id>/delete_report/<int:report_index>', methods=['POST'])
+def delete_report(task_id, report_index):
+    """API สำหรับลบรายงานย่อย (Tech Report)"""
+    task_raw = gs.get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานหลัก'}), 404
+
+    history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
     
-    # This is a placeholder for the rest of your app.py file which remains unchanged except for the gs.* calls
+    if 0 <= report_index < len(history):
+        # ลบไฟล์แนบใน Drive ที่เกี่ยวข้องกับรายงานนี้
+        report_to_delete = history[report_index]
+        if report_to_delete.get('attachments'):
+            drive_service = gs.get_google_drive_service()
+            if drive_service:
+                for att in report_to_delete['attachments']:
+                    try:
+                        drive_service.files().delete(fileId=att['id']).execute()
+                        app.logger.info(f"Deleted attachment {att['id']} from Drive for report {report_index}.")
+                    except Exception as e:
+                        app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
+
+        # ลบรายงานออกจาก list
+        del history[report_index]
+        
+        # สร้าง notes ใหม่
+        tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+        customer_feedback = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        feedback_text = ""
+        if customer_feedback:
+            feedback_text = f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        
+        new_notes = base_notes.strip() + tech_reports_text + feedback_text
+        
+        # อัปเดต Task
+        if gs.update_google_task(task_id, notes=new_notes):
+            cache.clear()
+            return jsonify({'status': 'success', 'message': 'ลบรายงานเรียบร้อยแล้ว'})
+        else:
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถอัปเดตข้อมูลงานได้'}), 500
+    else:
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการลบ'}), 404
+
+@app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
+def edit_report_text(task_id, report_index):
+    """API สำหรับแก้ไขข้อความสรุปในรายงานย่อย"""
+    data = request.get_json()
+    if not data or 'summary' not in data:
+        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ถูกต้อง'}), 400
+
+    task_raw = gs.get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานหลัก'}), 404
+        
+    history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    
+    if 0 <= report_index < len(history):
+        history[report_index]['work_summary'] = data['summary'].strip()
+        
+        tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+        customer_feedback = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        feedback_text = ""
+        if customer_feedback:
+            feedback_text = f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+        new_notes = base_notes.strip() + tech_reports_text + feedback_text
+
+        if gs.update_google_task(task_id, notes=new_notes):
+            cache.clear()
+            return jsonify({'status': 'success', 'message': 'บันทึกข้อความสรุปใหม่เรียบร้อยแล้ว'})
+        else:
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถอัปเดตข้อมูลงานได้'}), 500
+    else:
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการแก้ไข'}), 404
+
+@app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
+def edit_report_attachments(task_id, report_index):
+    """API สำหรับแก้ไขไฟล์แนบในรายงานย่อย"""
+    task_raw = gs.get_single_task(task_id)
+    if not task_raw:
+        flash('ไม่พบงานที่ต้องการแก้ไข', 'danger')
+        return redirect(url_for('summary'))
+
+    history, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    if not (0 <= report_index < len(history)):
+        flash('ไม่พบรายงานที่ต้องการแก้ไข', 'danger')
+        return redirect(url_for('task_details', task_id=task_id))
+
+    report_to_edit = history[report_index]
+    
+    # 1. Handle attachments to keep
+    attachments_to_keep_ids = set(request.form.getlist('attachments_to_keep'))
+    current_attachments = report_to_edit.get('attachments', [])
+    final_attachments = []
+
+    drive_service = gs.get_google_drive_service()
+    for att in current_attachments:
+        if att['id'] in attachments_to_keep_ids:
+            final_attachments.append(att)
+        else:
+            # Delete from Drive
+            if drive_service:
+                try:
+                    drive_service.files().delete(fileId=att['id']).execute()
+                except Exception as e:
+                    app.logger.warning(f"Could not delete file {att['id']} from Drive: {e}")
+
+    # 2. Handle new file uploads
+    # (This part is simplified. The JS handles uploads via /api/upload_attachment,
+    # so we assume this route is for managing the list of attachments, not uploading)
+    # If your JS were to submit files here, you'd add the upload logic.
+    
+    report_to_edit['attachments'] = final_attachments
+    history[report_index] = report_to_edit
+
+    # Rebuild notes and update task
+    tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    customer_feedback = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    feedback_text = ""
+    if customer_feedback:
+        feedback_text = f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(customer_feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    
+    new_notes = base_notes.strip() + tech_reports_text + feedback_text
+    gs.update_google_task(task_id, notes=new_notes)
+    cache.clear()
+    
+    flash('แก้ไขไฟล์แนบในรายงานเรียบร้อยแล้ว', 'success')
+    return redirect(url_for('task_details', task_id=task_id))
+    
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
-}
-มีบางส่วนที่ซ้ำกัน ให้คุณแก้ไขโค้ดใหม่ทั้งหมดอีกครั้ง
