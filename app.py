@@ -447,13 +447,21 @@ def generate_qr_code_base64(data_to_encode):
 
 @app.context_processor
 def inject_global_template_vars():
+    # ตรวจสอบสถานะการเชื่อมต่อ Google API
+    try:
+        creds = gs.get_refreshed_credentials()
+        api_connected = creds and creds.valid
+    except Exception:
+        api_connected = False
+        
     return {
         'now': datetime.datetime.now(THAILAND_TZ),
         'thaizone': THAILAND_TZ,
         'get_file_icon': get_file_icon,
         'job_types': JOB_TYPES,
         'LIFF_ID_FORM': LIFF_ID_FORM,
-        'dateutil_parse': date_parse
+        'dateutil_parse': date_parse,
+        'google_api_connected': api_connected  # <-- บรรทัดที่เพิ่มเข้ามา
     }
 
 #</editor-fold>
@@ -1195,6 +1203,37 @@ def api_status():
     
     return render_template('api_status.html', connection=connection, token_info=token_info)
 
+@app.route('/calendar')
+def calendar_view():
+    """Route สำหรับหน้าปฏิทิน"""
+    flash('หน้าปฏิทินยังไม่พร้อมใช้งานค่ะ', 'info')
+    return redirect(url_for('summary'))
+
+@app.route('/technician_report')
+def technician_report():
+    """Route สำหรับหน้ารายงานช่าง"""
+    flash('หน้ารายงานช่างยังไม่พร้อมใช้งานค่ะ', 'info')
+    return redirect(url_for('summary'))
+
+@app.route('/summary/print')
+def summary_print():
+    """Route สำหรับหน้าพิมพ์สรุปงาน"""
+    flash('หน้าสำหรับพิมพ์ยังไม่พร้อมใช้งานค่ะ', 'info')
+    return redirect(url_for('summary'))
+    
+@app.route('/task/<task_id>/edit')
+def edit_task(task_id):
+    """Route สำหรับหน้าแก้ไขงาน (คนละส่วนกับหน้ารายละเอียด)"""
+    flash('หน้าแก้ไขข้อมูลหลักยังไม่พร้อมใช้งานค่ะ', 'info')
+    return redirect(url_for('task_details', task_id=task_id))
+
+@app.route('/authorize')
+def authorize():
+    """Route สำหรับการเชื่อมต่อ Google API ใหม่"""
+    # หมายเหตุ: ส่วนนี้ต้องใช้โค้ด OAuth2 ของ Google เพื่อการทำงานจริง
+    # สำหรับตอนนี้ จะเป็นเพียงหน้าจำลองไปก่อน
+    flash('ฟังก์ชันเชื่อมต่อ Google API ใหม่ยังไม่ถูกสร้างขึ้น', 'warning')
+    return redirect(url_for('settings_page'))
 # ... (the rest of the app.py file)
 
 if __name__ == '__main__':
