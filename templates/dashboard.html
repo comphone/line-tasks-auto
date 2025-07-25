@@ -39,6 +39,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
             cursor: pointer;
+            vertical-align: top; /* Aligns content to the top */
         }
         .clickable-cell {
             cursor: pointer;
@@ -58,6 +59,13 @@
             background-color: #fff;
             border-color: #dee2e6 #dee2e6 #fff;
             font-weight: 600;
+        }
+        .nav-pills .nav-link {
+            margin: 0 4px;
+            border: 1px solid #dee2e6;
+        }
+        .nav-pills .nav-link.active {
+            border-color: var(--bs-primary);
         }
     </style>
 {% endblock %}
@@ -143,6 +151,18 @@
                     </div>
                 </form>
 
+                <!-- NEW: Job Type Filter Buttons -->
+                <div class="d-flex justify-content-center flex-wrap mb-3">
+                    <ul class="nav nav-pills">
+                        {% for key, value in job_types.items() %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if job_type_filter == key or (job_type_filter == 'all' and key == 'all') %}active{% endif %}" 
+                               href="{{ url_for('summary', job_type_filter=key) }}">{{ value }}</a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
                 <div id="table-loading-spinner" class="text-center p-5">
                     <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
                         <span class="visually-hidden">Loading...</span>
@@ -174,16 +194,13 @@
                                         <strong>{{ task.customer.name or '-' }}</strong>
                                     {% endif %}
                                 </td>
-                                <td class="task-title-cell" title="{{ task.title }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
-                                    {% if '\n' in task.title %}
-                                        <ul class="list-unstyled mb-0 ps-2">
-                                        {% for item in task.title.split('\n') %}
-                                            {% if item.strip() %}<li>- {{ item.strip() }}</li>{% endif %}
-                                        {% endfor %}
-                                        </ul>
-                                    {% else %}
-                                        {{ task.title }}
+                                <!-- UPDATED: Task Title Cell -->
+                                <td class="task-title-cell" title="{{ task.clean_title }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
+                                    {% if task.job_type != 'เซอร์วิส' %}
+                                        <span class="badge bg-secondary mb-1">{{ task.job_type }}</span>
                                     {% endif %}
+                                    <br>
+                                    {{ task.clean_title }}
                                 </td>
                                 <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
                                 <td class="text-center clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">

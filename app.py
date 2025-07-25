@@ -9,6 +9,7 @@ import zipfile
 from io import BytesIO
 from collections import defaultdict
 from datetime import timezone, date, timedelta
+import sqlite3
 import time
 import tempfile
 import uuid
@@ -54,11 +55,9 @@ from apscheduler.triggers.cron import CronTrigger
 import atexit
 
 # --- Constants ---
+
 TEXT_SNIPPETS = {
     'task_details': [
-        {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
-        {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
-        {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
         {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
     ],
     'progress_reports': [
@@ -67,6 +66,15 @@ TEXT_SNIPPETS = {
         {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
         {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
     ]
+}
+
+DEFAULT_JOB_TYPE = 'เซอร์วิส'
+
+JOB_TYPES = {
+    'all': 'ทั้งหมด',
+    'เซอร์วิส': 'เซอร์วิส',
+    'หน้าร้าน': 'หน้าร้าน',
+    'ส่งซ่อม': 'ส่งซ่อม'
 }
 
 # --- Flask App Initialization ---
@@ -78,8 +86,8 @@ csrf = CSRFProtect(app)
 # --- Environment & Global Configurations ---
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
-MAX_FILE_SIZE_MB = 50
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'mp4', 'mov', 'doc', 'docx', 'xls', 'xlsx'}
+MAX_FILE_SIZE_MB = 100 # Increased for larger files
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -682,9 +690,43 @@ def _format_equipment_list(equipment_data):
                 lines.append(item)
     return "<br>".join(lines) if lines else 'N/A'
 
+# --- Job Type and File Icon Helpers ---
+
+def parse_job_type_from_title(title):
+    """Parses job type like [หน้าร้าน] from the task title."""
+    match = re.match(r'\[(.*?)\](.*)', title)
+    if match:
+        job_type = match.group(1).strip()
+        clean_title = match.group(2).strip()
+        if job_type in JOB_TYPES.values():
+            return job_type, clean_title
+    return DEFAULT_JOB_TYPE, title
+
+def get_file_icon(filename):
+    """Returns a Font Awesome icon class based on file extension."""
+    if not filename or '.' not in filename:
+        return 'fas fa-file'
+    ext = filename.rsplit('.', 1)[1].lower()
+    if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
+        return 'fas fa-file-image text-primary'
+    if ext in ['mp4', 'mov', 'avi', 'webm', 'mkv']:
+        return 'fas fa-file-video text-info'
+    if ext == 'pdf':
+        return 'fas fa-file-pdf text-danger'
+    if ext in ['doc', 'docx']:
+        return 'fas fa-file-word text-primary'
+    if ext in ['xls', 'xlsx']:
+        return 'fas fa-file-excel text-success'
+    return 'fas fa-file-alt text-secondary'
+
+@app.context_processor
 @app.context_processor
 def inject_now():
-    return {'now': datetime.datetime.now(THAILAND_TZ), 'thaizone': THAILAND_TZ}
+    return {
+        'now': datetime.datetime.now(THAILAND_TZ),
+        'thaizone': THAILAND_TZ,
+        'get_file_icon': get_file_icon
+    }
 
 def generate_qr_code_base64(data, box_size=10, border=4, fill_color='#28a745', back_color='#FFFFFF'):
     try:
@@ -1124,60 +1166,65 @@ def form_page():
                 return render_template('form.html', form_data=request.form)
 
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
-        if new_task:
-            cache.clear()
-            send_new_task_notification(new_task)
-            
-            uploaded_attachments_json = request.form.get('uploaded_attachments_json')
-            uploaded_attachments = []
-            if uploaded_attachments_json:
+if new_task:
+    cache.clear()
+    send_new_task_notification(new_task)
+
+    # --- NEW LOGIC FOR HANDLING INITIAL ATTACHMENTS ---
+    uploaded_attachments_json = request.form.get('uploaded_attachments_json')
+    uploaded_attachments = []
+    if uploaded_attachments_json:
+        try:
+            uploaded_attachments = json.loads(uploaded_attachments_json)
+        except json.JSONDecodeError:
+            app.logger.warning("Could not decode uploaded_attachments_json on form submission.")
+
+    if uploaded_attachments:
+        task_id = new_task['id']
+
+        # Create the correctly named folder now that we have the task ID
+        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        sanitized_customer_name = sanitize_filename(customer_name)
+        customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
+        final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
+
+        drive_service = get_google_drive_service()
+        if final_upload_folder_id and drive_service:
+            for att in uploaded_attachments:
                 try:
-                    uploaded_attachments = json.loads(uploaded_attachments_json)
-                except json.JSONDecodeError:
-                    app.logger.warning("Could not decode uploaded_attachments_json on form submission.")
+                    # Move the file from the temporary folder to the final, correctly named folder
+                    file_meta = drive_service.files().get(fileId=att['id'], fields='parents').execute()
+                    previous_parents = ",".join(file_meta.get('parents', []))
+                    drive_service.files().update(
+                        fileId=att['id'],
+                        addParents=final_upload_folder_id,
+                        removeParents=previous_parents,
+                        fields='id, parents'
+                    ).execute()
+                    app.logger.info(f"Moved attachment {att['id']} to final folder {final_upload_folder_id}")
+                except Exception as e:
+                    app.logger.error(f"Could not move attachment {att['id']} to final folder: {e}")
 
-            if uploaded_attachments:
-                task_id = new_task['id']
-                
-                attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
-                monthly_folder_name = datetime.datetime.now(THAILAND_TZ).strftime('%Y-%m')
-                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
-                sanitized_customer_name = sanitize_filename(customer_name)
-                customer_task_folder_name = f"{sanitized_customer_name} - {task_id}"
-                final_upload_folder_id = find_or_create_drive_folder(customer_task_folder_name, monthly_folder_id)
-                
-                drive_service = get_google_drive_service()
-                if final_upload_folder_id and drive_service:
-                    for att in uploaded_attachments:
-                        try:
-                            file_meta = drive_service.files().get(fileId=att['id'], fields='parents').execute()
-                            previous_parents = ",".join(file_meta.get('parents', []))
-                            drive_service.files().update(
-                                fileId=att['id'],
-                                addParents=final_upload_folder_id,
-                                removeParents=previous_parents,
-                                fields='id, parents'
-                            ).execute()
-                        except Exception as e:
-                            app.logger.error(f"Could not move attachment {att['id']} to final folder: {e}")
-                
-                initial_report = {
-                    'type': 'report',
-                    'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                    'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
-                    'attachments': uploaded_attachments,
-                    'technicians': ['System']
-                }
-                report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
-                updated_notes = new_task.get('notes', '') + report_text
-                update_google_task(task_id, notes=updated_notes)
-                cache.clear()
+        # Add the attachments to the first history entry
+        initial_report = {
+            'type': 'report',
+            'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+            'work_summary': 'ไฟล์แนบจากการสร้างงานครั้งแรก',
+            'attachments': uploaded_attachments,
+            'technicians': ['System']
+        }
+        report_text = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(initial_report, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
+        updated_notes = new_task.get('notes', '') + report_text
+        update_google_task(task_id, notes=updated_notes)
+        cache.clear()
 
-            flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
-            return redirect(url_for('task_details', task_id=new_task['id']))
-        else:
-            flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
-            return render_template('form.html', form_data=request.form)
+    flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
+    return redirect(url_for('task_details', task_id=new_task['id']))
+else:
+    flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
+    return render_template('form.html', form_data=request.form)
 
     return render_template('form.html',
                            task_detail_snippets=TEXT_SNIPPETS.get('task_details', [])
@@ -1273,45 +1320,47 @@ def summary():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
+    job_type_filter = str(request.args.get('job_type_filter', 'all')).strip()
+
     today_thai = datetime.datetime.now(THAILAND_TZ).date()
     final_tasks = []
     stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw), 'today': 0}
 
     for task in tasks_raw:
+        # --- JOB TYPE PARSING ---
+        job_type, clean_title = parse_job_type_from_title(task.get('title', ''))
+        task['job_type'] = job_type
+        task['clean_title'] = clean_title
+        # --- END JOB TYPE PARSING ---
+
+        # Filter by job type if a filter is active
+        if job_type_filter != 'all' and job_type != job_type_filter:
+            continue
+
         task_status = task.get('status', 'needsAction')
         is_overdue = False
         is_today = False
         if task_status == 'needsAction' and task.get('due'):
             try:
-                due_dt_utc = date_parse(task['due'])
-                due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
-                if due_dt_local.date() < today_thai:
-                    is_overdue = True
-                elif due_dt_local.date() == today_thai:
-                    is_today = True
-            except (ValueError, TypeError):
-                pass
-        
-        if task_status == 'completed':
-            stats['completed'] += 1
+                due_dt_local = date_parse(task['due']).astimezone(THAILAND_TZ)
+                if due_dt_local.date() < today_thai: is_overdue = True
+                elif due_dt_local.date() == today_thai: is_today = True
+            except (ValueError, TypeError): pass
+
+        if task_status == 'completed': stats['completed'] += 1
         else:
             stats['needsAction'] += 1
-            if is_overdue:
-                stats['overdue'] += 1
-            if is_today:
-                stats['today'] += 1
+            if is_overdue: stats['overdue'] += 1
+            if is_today: stats['today'] += 1
 
-        task_passes_filter = False
-        if status_filter == 'all':
-            task_passes_filter = True
-        elif status_filter == 'completed' and task_status == 'completed':
-            task_passes_filter = True
-        elif status_filter == 'needsAction' and task_status == 'needsAction':
-            task_passes_filter = True
-        elif status_filter == 'today' and is_today:
-            task_passes_filter = True
-        
-        if task_passes_filter:
+        task_passes_status_filter = (
+            status_filter == 'all' or
+            (status_filter == 'completed' and task_status == 'completed') or
+            (status_filter == 'needsAction' and task_status == 'needsAction') or
+            (status_filter == 'today' and is_today)
+        )
+
+        if task_passes_status_filter:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
 
@@ -1323,22 +1372,22 @@ def summary():
                 final_tasks.append(parsed_task)
 
     final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, date_parse(x.get('due', '9999-12-31T23:59:59Z'))))
-    
+
     completed_tasks_for_chart = [t for t in tasks_raw if t.get('status') == 'completed' and t.get('completed')]
-    month_labels = []
-    chart_values = []
+    month_labels, chart_values = [], []
     for i in range(12):
         target_d = datetime.datetime.now(THAILAND_TZ) - datetime.timedelta(days=30 * (11 - i))
         month_key = target_d.strftime('%Y-%m')
         month_labels.append(target_d.strftime('%b %y'))
-        count = sum(1 for task in completed_tasks_for_chart if date_parse(task['completed']).astimezone(THAILAND_TZ).strftime('%Y-%m') == month_key)
+        count = sum(1 for t in completed_tasks_for_chart if date_parse(t['completed']).astimezone(THAILAND_TZ).strftime('%Y-%m') == month_key)
         chart_values.append(count)
     chart_data = {'labels': month_labels, 'values': chart_values}
 
     return render_template("dashboard.html",
                            tasks=final_tasks, summary=stats,
                            search_query=search_query, status_filter=status_filter,
-                           chart_data=chart_data)
+                           chart_data=chart_data,
+                           job_type_filter=job_type_filter, job_types=JOB_TYPES)
 
 @app.route('/summary/print')
 def summary_print():
