@@ -377,7 +377,7 @@
                             {% if report.type == 'reschedule' %}เลื่อนนัดหมาย{% else %}รายงานการปฏิบัติงาน{% endif %}
                         </span>
                         <div class="d-flex align-items-center flex-wrap">
-                            <small class="text-muted me-3 mb-2">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
+                            <small class="text-muted me-3 mb-2">{{ dateutil_parse(report.summary_date).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}
                             {% if report.type == 'report' %}
                             <button class="btn btn-sm btn-outline-primary mb-2 me-1" onclick="openEditReportTextModal({{ loop.index0 }})" title="แก้ไขข้อความสรุป">
                                 <i class="fas fa-pen"></i>
