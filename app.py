@@ -690,6 +690,45 @@ def get_file_icon(filename):
             return icon_class
     return 'fas fa-file-alt text-secondary'
 
+def _create_backup_zip():
+    """Creates a zip file in memory containing tasks and settings."""
+    memory_file = BytesIO()
+    timestamp = datetime.datetime.now(THAILAND_TZ).strftime("%Y%m%d_%H%M%S")
+    filename = f"backup_{timestamp}.zip"
+
+    all_tasks = get_google_tasks_for_report(show_completed=True) or []
+    settings_data = get_app_settings()
+
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Add tasks to the zip
+        tasks_json = json.dumps(all_tasks, ensure_ascii=False, indent=4)
+        zf.writestr('tasks_backup.json', tasks_json)
+        
+        # Add settings to the zip
+        settings_json = json.dumps(settings_data, ensure_ascii=False, indent=4)
+        zf.writestr('settings_backup.json', settings_json)
+
+    memory_file.seek(0)
+    return memory_file, filename
+
+def generate_qr_code_base64(data_to_encode):
+    """Generates a QR code and returns it as a Base64 encoded string."""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(data_to_encode)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{img_str}"
+
 @app.context_processor
 def inject_global_template_vars():
     """Makes variables and functions available in all Jinja2 templates."""
@@ -827,7 +866,6 @@ def scheduled_backup_job():
         
         app.logger.info(f"--- Finished Scheduled Backup Job ---")
         return overall_success
-
 
 def scheduled_appointment_reminder_job():
     with app.app_context():
@@ -2247,7 +2285,7 @@ def trigger_customer_follow_up_test():
         tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
         new_notes_content = base_notes.strip()
         if tech_reports_text: new_notes_content += tech_reports_text
-        new_notes_content += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        new_notes_content += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
         _execute_google_api_call_with_retry(update_google_task, latest['id'], notes=new_notes_content)
         
