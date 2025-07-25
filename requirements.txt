@@ -26,3 +26,6 @@ cachetools
 
 # Scheduler
 APScheduler
+
+redis
+flask-caching
