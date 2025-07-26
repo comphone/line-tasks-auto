@@ -29,10 +29,7 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-<!-- This area is now handled by base.html -->
-<!-- The duplicate flash message block has been removed -->
-
-<form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
+<form method="POST" action="{{ url_for('main.settings_page') }}" id="settingsForm" class="needs-validation" novalidate> {# CORRECTED LINE #}
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" id="technician_list_json" name="technician_list_json">
 
@@ -153,9 +150,9 @@
     </div>
     <div class="card-body p-4">
         <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
-        <a href="{{ url_for('organize_files') }}" class="btn btn-info mb-2"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
-        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
-        <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
+        <a href="{{ url_for('tools.organize_files') }}" class="btn btn-info mb-2"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
+        <a href="{{ url_for('tools.manage_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
+        <a href="{{ url_for('tools.manage_equipment_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
     </div>
 </div>
 
@@ -192,13 +189,13 @@
     <div class="card-body p-4">
         <h6>ส่งออกข้อมูลทั้งหมด</h6>
         <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงาน, การตั้งค่า, และซอร์สโค้ดปัจจุบันทั้งหมด</p>
-        <a href="{{ url_for('backup_data') }}" class="btn btn-danger mb-4"><i class="fas fa-file-archive me-1"></i> ดาวน์โหลด Full Backup (.zip)</a>
+        <a href="{{ url_for('tools.backup_data') }}" class="btn btn-danger mb-4"><i class="fas fa-file-archive me-1"></i> ดาวน์โหลด Full Backup (.zip)</a>
         <hr>
         <h6 class="mt-4">สำรองข้อมูลขึ้น Google Drive</h6>
         <p>สำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive ทันที</p>
         <div class="row align-items-center">
             <div class="col-md-6">
-                <form class="d-inline" method="POST" action="{{ url_for('trigger_auto_backup_now') }}" onsubmit="return confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')">
+                <form class="d-inline" method="POST" action="{{ url_for('tools.trigger_auto_backup_now') }}" onsubmit="return confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                      <button type="submit" class="btn btn-info">
                         <i class="fas fa-cloud-upload-alt me-1"></i> Backup to Drive Now
@@ -221,7 +218,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-        <form action="{{ url_for('test_notification') }}" method="POST" class="d-inline">
+        <form action="{{ url_for('tools.test_notification') }}" method="POST" class="d-inline"> {# CORRECTED LINE #}
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
         </form>

@@ -118,7 +118,7 @@
                                             <div id="collapseTask-{{ task.id }}-{{ outer_loop.index }}" class="accordion-collapse collapse" aria-labelledby="headingTask-{{ task.id }}-{{ outer_loop.index }}" data-bs-parent="#accordionTasks-{{ outer_loop.index }}">
                                                 <div class="accordion-body task-details-content">
                                                     <p class="mb-1"><strong>Task ID:</strong> {{ task.id }}</p>
-                                                    <p class="mb-1"><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">ดูรายละเอียดงาน</a></p>
+                                                    <p class="mb-1"><a href="{{ url_for('main.task_details', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">ดูรายละเอียดงาน</a></p> {# CORRECTED LINE #}
                                                 </div>
                                             </div>
                                         </div>

@@ -154,7 +154,7 @@
     .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .history-entry-title { font-weight: 600; font-size: 1.05em; margin-right: auto; }
-    .history-entry-body p { margin-bottom: 0.5rem; font-size: 1rem; }
+    .history-entry-body p { margin-bottom: 0.25rem; }
     .image-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
     .thumbnail { cursor: pointer; border-radius: .375rem; overflow: hidden; aspect-ratio: 1 / 1; background-color: #e9ecef; position: relative; }
     .thumbnail img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s ease-in-out; }
@@ -312,9 +312,9 @@
         <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
         <div class="card-body text-center">
             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                <a href="{{ url_for('main.generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
+                <a href="{{ url_for('customer.generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a> {# CORRECTED LINE #}
                 {% if task.status == 'completed' %}
-                <a href="{{ url_for('main.generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
+                <a href="{{ url_for('customer.generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a> {# CORRECTED LINE #}
                 {% endif %}
             </div>
             <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
@@ -472,7 +472,7 @@
     <div class="collapse" id="dangerZoneCollapse">
         <div class="card card-body border-danger mt-2">
             <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
-            <form method="POST" action="{{ url_for('main.delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+            <form method="POST" action="{{ url_for('main.delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');"> {# CORRECTED LINE #}
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-danger w-100">
                     <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
@@ -723,7 +723,7 @@
         slideIndex = index;
         document.getElementById('lightboxModal').style.display = "block";
         document.body.style.overflow = 'hidden';
-        showSlide(index);
+        showSlide(slideIndex);
     }
 
     function changeSlide(n) {
@@ -890,7 +890,7 @@
             container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
         }
         const form = document.getElementById('editReportForm');
-        form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
+        form.action = `/api/task/{{ task.id }}/edit_report/${reportIndex}`;
         editReportModal.show();
     }
     function flashMessage(message, category) {
