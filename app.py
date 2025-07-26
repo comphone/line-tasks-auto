@@ -62,6 +62,73 @@ def calendar_page():
         ]
     return render_template('calendar.html', unscheduled_tasks=unscheduled_tasks)
 
+# New API endpoint for FullCalendar events
+@main_bp.route('/api/calendar_tasks')
+def api_calendar_tasks():
+    tasks = gs.get_google_tasks_for_report(show_completed=True) or []
+    events = []
+    today_thai = datetime.datetime.now(utils.THAILAND_TZ).date()
+
+    for task in tasks:
+        event = {
+            'id': task.get('id'),
+            'title': task.get('title', 'No Title'),
+            'extendedProps': {
+                'is_completed': False,
+                'is_overdue': False,
+                'is_today': False
+            }
+        }
+        
+        # Add customer info to title for better display
+        customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
+        event['title'] = f"{customer_info.get('name', '')}: {task.get('title', 'No Title')}".strip()
+
+        if task.get('due'):
+            try:
+                due_dt_utc = date_parse(task['due'])
+                due_dt_local = due_dt_utc.astimezone(utils.THAILAND_TZ)
+                event['start'] = due_dt_local.isoformat()
+                event['allDay'] = (due_dt_local.hour == 0 and due_dt_local.minute == 0 and due_dt_local.second == 0) # Assuming all-day if time is midnight
+
+                if task.get('status') == 'completed':
+                    event['extendedProps']['is_completed'] = True
+                    event['color'] = '#198754' # Bootstrap success color
+                    event['borderColor'] = '#198754'
+                elif due_dt_local.date() < today_thai:
+                    event['extendedProps']['is_overdue'] = True
+                    event['color'] = '#dc3545' # Bootstrap danger color
+                    event['borderColor'] = '#dc3545'
+                elif due_dt_local.date() == today_thai:
+                    event['extendedProps']['is_today'] = True
+                    event['color'] = '#0dcaf0' # Bootstrap info color
+                    event['borderColor'] = '#0dcaf0'
+                else: # Upcoming
+                    event['color'] = '#ffc107' # Bootstrap warning color
+                    event['borderColor'] = '#ffc107'
+                
+            except (ValueError, TypeError):
+                # If due date is malformed, skip adding it to calendar or handle as unscheduled
+                pass
+        
+        # For completed tasks, also set their 'start' based on 'completed' date if 'due' is missing
+        if task.get('status') == 'completed' and task.get('completed') and not event.get('start'):
+            try:
+                completed_dt_utc = date_parse(task['completed'])
+                completed_dt_local = completed_dt_utc.astimezone(utils.THAILAND_TZ)
+                event['start'] = completed_dt_local.isoformat()
+                event['extendedProps']['is_completed'] = True
+                event['color'] = '#198754'
+                event['borderColor'] = '#198754'
+            except (ValueError, TypeError):
+                pass
+        
+        if event.get('start'): # Only add if it has a valid start date
+            events.append(event)
+
+    return jsonify(events)
+
+
 @main_bp.route('/form', methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
