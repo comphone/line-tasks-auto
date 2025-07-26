@@ -23,10 +23,10 @@ from linebot.models import MessageEvent, TextMessage, PostbackEvent
 import google_services as gs
 import utils
 from settings_manager import get_app_settings, save_app_settings
-from tool_routes import tools_bp 
-from customer_routes import customer_bp 
-# Import main_bp from the new main_routes.py file, and specific handlers from line_handler
-from main_routes import main_bp, handle_text_message, handle_postback # Only import main_bp and central handlers
+from tool_routes import tools_bp # Import tool_routes blueprint
+from customer_routes import customer_bp # Import customer_routes blueprint
+# Import main_bp from the new main_routes.py file, and specific handlers for webhook
+from main_routes import main_bp, handle_text_message, handle_postback # Import main_bp and LINE handlers
 
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
@@ -58,7 +58,7 @@ app.register_blueprint(main_bp)
 app.register_blueprint(tools_bp)
 app.register_blueprint(customer_bp)
 
-# --- Context Processers & Error Handlers ---
+# --- Context Processors & Error Handlers ---
 @app.context_processor
 def inject_global_vars():
     """Injects variables into all templates."""
@@ -76,19 +76,16 @@ def internal_server_error(e):
 # --- LINE Webhook Handlers (attached to the global 'handler' object, not a blueprint) ---
 # These handlers are now explicitly attached to the global 'handler' instance,
 # which is then handled by the central '/callback' route in main_bp.
+# The handle_text_message and handle_postback functions are imported from main_routes.py
 @handler.add(MessageEvent, message=TextMessage)
 def handle_line_message_event(event):
     with app.app_context():
-        # This calls the handler function from line_handler.py (which is part of main_routes now if it moved)
-        # Ensure that handle_text_message in utils.py or line_handler.py exists and is imported correctly if needed.
-        utils.handle_text_message(event) # If utils.handle_text_message is intended
+        handle_text_message(event) # Call handler function imported from main_routes
 
 @handler.add(PostbackEvent)
 def handle_line_postback_event(event):
     with app.app_context():
-        # This calls the handler function from line_handler.py (which is part of main_routes now if it moved)
-        # Ensure that handle_postback in utils.py or line_handler.py exists and is imported correctly if needed.
-        utils.handle_postback(event) # If utils.handle_postback is intended
+        handle_postback(event) # Call handler function imported from main_routes
 
 
 # --- App Startup ---
