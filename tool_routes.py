@@ -346,8 +346,8 @@ def import_equipment_catalog():
 @tools_bp.route('/backup_data')
 def backup_data():
     """Triggers the creation and download of a full system backup zip file."""
-    from app import _create_backup_zip
-    memory_file, filename = _create_backup_zip()
+    from utils import create_backup_zip
+    memory_file, filename = create_backup_zip()
     if memory_file and filename:
         return Response(memory_file.getvalue(), mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={filename}'})
     else:

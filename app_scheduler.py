@@ -55,7 +55,7 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
 
 def scheduled_backup_job():
     """Job สำหรับการสำรองข้อมูลอัตโนมัติไปยัง Google Drive"""
-    from app import _create_backup_zip
+    from utils import create_backup_zip
     with current_app.app_context():
         current_app.logger.info("--- Starting Scheduled Backup Job ---")
         system_backup_folder_id = gs.find_or_create_drive_folder("System_Backups", gs.GOOGLE_DRIVE_FOLDER_ID)
@@ -63,7 +63,7 @@ def scheduled_backup_job():
             current_app.logger.error("Could not find or create System_Backups folder for backup.")
             return
 
-        memory_file_zip, filename_zip = _create_backup_zip()
+        memory_file_zip, filename_zip = create_backup_zip()
         if memory_file_zip and filename_zip:
             if not gs.upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', system_backup_folder_id):
                 current_app.logger.error("Automatic full system backup failed.")
