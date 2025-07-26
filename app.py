@@ -26,7 +26,10 @@ from settings_manager import get_app_settings, save_app_settings
 from tool_routes import tools_bp # Import tool_routes blueprint
 from customer_routes import customer_bp # Import customer_routes blueprint
 # Import main_bp from the new main_routes.py file
-from main_routes import main_bp, handle_text_message, handle_postback, api_upload_attachment, api_upload_avatar, api_edit_report_text, edit_report_attachments, delete_task_report, delete_task # Import all necessary components from main_routes
+from main_routes import main_bp # Only import the blueprint object itself.
+# Handlers and APIs that were in app.py's main section need to be part of main_routes or handled by central dispatcher.
+# Ensure handle_text_message and handle_postback are defined in line_handler.py and used correctly.
+# The APIs (api_upload_attachment, api_upload_avatar, etc.) are now part of main_routes.py
 
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
@@ -47,14 +50,14 @@ app.config['UPLOAD_FOLDER'] = 'static/uploads'
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
-app.ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'} # Expanded allowed extensions
+app.ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'} 
 app.MAX_FILE_SIZE_MB = 50
 app.MAX_FILE_SIZE_BYTES = app.MAX_FILE_SIZE_MB * 1024 * 1024
 
 
 # --- Register Blueprints ---
 # Register blueprints AFTER all their routes have been defined in their respective files
-app.register_blueprint(main_bp) # main_bp now contains all main routes
+app.register_blueprint(main_bp) # main_bp now contains all main routes, imported from main_routes.py
 app.register_blueprint(tools_bp)
 app.register_blueprint(customer_bp)
 
@@ -73,11 +76,31 @@ def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
     return render_template('500.html'), 500
 
+# --- LINE Webhook Handlers (attached to the global 'handler' object, not a blueprint) ---
+# These handlers are now explicitly attached to the global 'handler' instance,
+# which is then handled by the central '/callback' route in main_bp.
+# Ensure handle_text_message and handle_postback are imported from line_handler.py
+@handler.add(MessageEvent, message=TextMessage)
+def handle_line_message_event(event): # Renamed to avoid conflict if handle_text_message is elsewhere
+    with app.app_context():
+        # This calls the handler function from line_handler.py
+        utils.handle_text_message(event) 
+
+@handler.add(PostbackEvent)
+def handle_line_postback_event(event): # Renamed to avoid conflict if handle_postback is elsewhere
+    with app.app_context():
+        # This calls the handler function from line_handler.py
+        utils.handle_postback(event)
+
+
 # --- App Startup ---
 if __name__ == '__main__':
     with app.app_context():
+        # Load settings from Drive on startup (if configured)
         gs.load_settings_from_drive_on_startup(save_app_settings)
-        initialize_scheduler(app)
+        # Initialize and start scheduler
+        initialize_scheduler(app) 
+    # Register scheduler cleanup function to run on app exit
     atexit.register(cleanup_scheduler)
     
     port = int(os.environ.get('PORT', 8080))
