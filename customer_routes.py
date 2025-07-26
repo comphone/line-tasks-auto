@@ -9,7 +9,6 @@ from linebot.models import TextSendMessage
 
 import google_services as gs
 import utils
-# --- FIX: Import directly from settings_manager ---
 from settings_manager import get_app_settings
 from line_notifications import send_problem_notification
 
@@ -80,13 +79,13 @@ def customer_onboarding_page(task_id):
     """Page for a customer to link their LINE account to a task."""
     task = gs.get_single_task(task_id)
     if not task: abort(404)
-    return render_template('customer_onboarding.html', task=task, LINE_LOGIN_CHANNEL_ID=os.environ.get('LINE_LOGIN_CHANNEL_ID'))
+    return render_template('customer_onboarding.html', task=task, LIFF_ID_FORM=current_app.LIFF_ID_FORM) # Use current_app.LIFF_ID_FORM
 
 @customer_bp.route('/generate_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
     """Generates a QR code for the customer onboarding page."""
     task = gs.get_single_task(task_id)
-    liff_id = os.environ.get('LIFF_ID_FORM')
+    liff_id = current_app.LIFF_ID_FORM
     if not task or not liff_id: abort(404)
     
     onboarding_url = url_for('customer.customer_onboarding_page', task_id=task_id, _external=True)
@@ -103,9 +102,9 @@ def customer_problem_form():
     if not task: abort(404)
     parsed = utils.parse_google_task_dates(task)
     parsed['customer'] = utils.parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('customer_problem_form.html', task=parsed, LINE_LOGIN_CHANNEL_ID=os.environ.get('LINE_LOGIN_CHANNEL_ID'))
+    return render_template('customer_problem_form.html', task=parsed, LIFF_ID_FORM=current_app.LIFF_ID_FORM) # Use current_app.LIFF_ID_FORM
 
-@customer_bp.route('/submit_problem', methods=['POST'])
+@customer_bp.route('/submit_customer_problem', methods=['POST'])
 def submit_customer_problem():
     """API endpoint to handle problem form submissions."""
     data = request.json
@@ -174,3 +173,13 @@ def save_customer_line_id():
             return jsonify({"status": "error"}), 500
             
     return jsonify({"status": "success", "message": "already saved"})
+
+@customer_bp.route('/generate_public_report_qr/<task_id>')
+def generate_public_report_qr(task_id):
+    """Generates a QR code for the public report page."""
+    task = gs.get_single_task(task_id)
+    if not task or task.get('status') != 'completed': abort(404)
+    url = url_for('customer.public_task_report', task_id=task_id, _external=True) # Ensure this points to customer_bp's public_task_report
+    qr = utils.generate_qr_code_base64(url)
+    customer = utils.parse_customer_info_from_notes(task.get('notes', ''))
+    return render_template('public_report_qr.html', task=task, customer_info=customer, public_report_url=url, qr_code_base64_report=qr)

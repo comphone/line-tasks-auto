@@ -23,8 +23,8 @@ from linebot.models import MessageEvent, TextMessage, PostbackEvent
 import google_services as gs
 import utils
 from settings_manager import get_app_settings, save_app_settings
-from tool_routes import tools_bp
-from customer_routes import customer_bp
+from tool_routes import tools_bp # tools_bp will contain tools-related routes
+from customer_routes import customer_bp # customer_bp will contain customer-related routes
 from line_handler import handle_text_message, handle_postback
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
@@ -34,7 +34,7 @@ app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
 csrf = CSRFProtect(app)
 
-# --- Global Objects & Environment Variables (Moved handler definition here) ---
+# --- Global Objects & Environment Variables ---
 app.cache = TTLCache(maxsize=100, ttl=60)
 app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET')) 
@@ -62,7 +62,7 @@ def calendar_page():
         ]
     return render_template('calendar.html', unscheduled_tasks=unscheduled_tasks)
 
-# New API endpoint for FullCalendar events
+# API endpoint for FullCalendar events
 @main_bp.route('/api/calendar_tasks')
 def api_calendar_tasks():
     tasks = gs.get_google_tasks_for_report(show_completed=True) or []
@@ -80,41 +80,38 @@ def api_calendar_tasks():
             }
         }
         
-        # Add customer info to title for better display
         customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
         event['title'] = f"{customer_info.get('name', '')}: {task.get('title', 'No Title')}".strip()
 
         if task.get('due'):
             try:
-                due_dt_utc = date_parse(task['due'])
+                due_dt_utc = utils.date_parse(task['due']) # Use utils.date_parse
                 due_dt_local = due_dt_utc.astimezone(utils.THAILAND_TZ)
                 event['start'] = due_dt_local.isoformat()
-                event['allDay'] = (due_dt_local.hour == 0 and due_dt_local.minute == 0 and due_dt_local.second == 0) # Assuming all-day if time is midnight
+                event['allDay'] = (due_dt_local.hour == 0 and due_dt_local.minute == 0 and due_dt_local.second == 0)
 
                 if task.get('status') == 'completed':
                     event['extendedProps']['is_completed'] = True
-                    event['color'] = '#198754' # Bootstrap success color
+                    event['color'] = '#198754'
                     event['borderColor'] = '#198754'
                 elif due_dt_local.date() < today_thai:
                     event['extendedProps']['is_overdue'] = True
-                    event['color'] = '#dc3545' # Bootstrap danger color
+                    event['color'] = '#dc3545'
                     event['borderColor'] = '#dc3545'
                 elif due_dt_local.date() == today_thai:
                     event['extendedProps']['is_today'] = True
-                    event['color'] = '#0dcaf0' # Bootstrap info color
+                    event['color'] = '#0dcaf0'
                     event['borderColor'] = '#0dcaf0'
-                else: # Upcoming
-                    event['color'] = '#ffc107' # Bootstrap warning color
+                else:
+                    event['color'] = '#ffc107'
                     event['borderColor'] = '#ffc107'
                 
             except (ValueError, TypeError):
-                # If due date is malformed, skip adding it to calendar or handle as unscheduled
                 pass
         
-        # For completed tasks, also set their 'start' based on 'completed' date if 'due' is missing
         if task.get('status') == 'completed' and task.get('completed') and not event.get('start'):
             try:
-                completed_dt_utc = date_parse(task['completed'])
+                completed_dt_utc = utils.date_parse(task['completed']) # Use utils.date_parse
                 completed_dt_local = completed_dt_utc.astimezone(utils.THAILAND_TZ)
                 event['start'] = completed_dt_local.isoformat()
                 event['extendedProps']['is_completed'] = True
@@ -123,12 +120,12 @@ def api_calendar_tasks():
             except (ValueError, TypeError):
                 pass
         
-        if event.get('start'): # Only add if it has a valid start date
+        if event.get('start'):
             events.append(event)
 
     return jsonify(events)
 
-# New API endpoint for scheduling task from calendar drag-and-drop
+# API endpoint for scheduling task from calendar drag-and-drop
 @main_bp.route('/api/task/schedule_from_calendar', methods=['POST'])
 def schedule_from_calendar():
     data = request.json
@@ -139,23 +136,19 @@ def schedule_from_calendar():
         return jsonify({'status': 'error', 'message': 'Missing task_id or new_due_date'}), 400
 
     try:
-        # Parse the new_due_date string (which is ISO format from JS) to datetime and then to Google Tasks format
-        dt_utc = date_parse(new_due_date_str)
-        # Ensure it's in UTC and formatted as required by Google Tasks API
+        dt_utc = utils.date_parse(new_due_date_str) # Use utils.date_parse
         new_due_date_gmt = dt_utc.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
     except ValueError:
         return jsonify({'status': 'error', 'message': 'Invalid date format'}), 400
 
-    # Get the existing task to preserve notes/status
     task = gs.get_single_task(task_id)
     if not task:
         return jsonify({'status': 'error', 'message': 'Task not found'}), 404
 
-    # Update only the due date, keep existing status and notes (if not completed)
     updated_task = gs.update_google_task(task_id=task_id, due=new_due_date_gmt)
     
     if updated_task:
-        current_app.cache.clear()
+        app.cache.clear()
         return jsonify({'status': 'success', 'message': 'Task due date updated successfully'})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to update task due date'}), 500
@@ -183,7 +176,7 @@ def form_page():
         appointment_str = str(request.form.get('appointment', '')).strip()
         if appointment_str:
             try:
-                dt_local = utils.THAILAND_TZ.localize(date_parse(appointment_str))
+                dt_local = utils.THAILAND_TZ.localize(utils.date_parse(appointment_str)) # Use utils.date_parse
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             except ValueError:
                 flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
@@ -240,7 +233,7 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in request.form.get('technicians_reschedule', '').split(',') if t.strip()]
             if not reschedule_due_str: return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
             
-            dt_local = utils.THAILAND_TZ.localize(date_parse(reschedule_due_str))
+            dt_local = utils.THAILAND_TZ.localize(utils.date_parse(reschedule_due_str)) # Use utils.date_parse
             update_payload['due'] = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             update_payload['status'] = 'needsAction'
             new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
@@ -280,17 +273,19 @@ def task_details(task_id):
     p_task['customer'] = utils.parse_customer_info_from_notes(p_task.get('notes', ''))
     p_task['feedback'] = utils.parse_customer_feedback_from_notes(p_task.get('notes', ''))
     
-    all_attachments = [att for r in p_task['tech_history'] for att in r.get('attachments', [])]
-    
+    # All attachments list for lightbox/gallery in update_task_details
+    all_attachments = []
+    for report_item in p_task['tech_history']:
+        if report_item.get('attachments'):
+            for att in report_item['attachments']:
+                all_attachments.append(att)
+
     return render_template('update_task_details.html', task=p_task, settings=get_app_settings(), all_attachments=all_attachments)
 
 # Added this route to address the TemplateNotFound error (as a summary view)
 @main_bp.route("/summary")
 def summary():
     """Redirects to the dashboard as a general summary page to fix TemplateNotFound."""
-    # This function is added to handle potential requests for a /summary route
-    # and redirects them to the /tools/dashboard route, which serves as a comprehensive summary.
-    # It passes along any query arguments (e.g., search_query, status_filter)
     return redirect(url_for('tools.dashboard', **request.args))
 
 # Added the edit_task route
@@ -301,7 +296,6 @@ def edit_task(task_id):
         abort(404)
 
     if request.method == 'POST':
-        # Extract form data
         task_title = str(request.form.get('task_title', '')).strip()
         organization_name = str(request.form.get('organization_name', '')).strip()
         customer_name = str(request.form.get('customer_name', '')).strip()
@@ -314,12 +308,10 @@ def edit_task(task_id):
             flash('กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน', 'danger')
             return redirect(url_for('main.edit_task', task_id=task_id))
 
-        # Reconstruct notes field
         existing_notes = task_raw.get('notes', '')
-        history_reports, _ = utils.parse_tech_report_from_notes(existing_notes) # Base notes from previous parsing are not needed for reconstruction
+        history_reports, _ = utils.parse_tech_report_from_notes(existing_notes)
         feedback_data = utils.parse_customer_feedback_from_notes(existing_notes)
 
-        # Build new base notes from form data
         new_base_notes_lines = [
             f"หน่วยงาน: {organization_name}",
             f"ลูกค้า: {customer_name}",
@@ -329,31 +321,26 @@ def edit_task(task_id):
         ]
         new_base_notes = "\n".join(filter(None, new_base_notes_lines))
 
-
-        # Re-assemble all notes, ensuring existing structured data is preserved
         final_notes = new_base_notes
         if history_reports:
-            # Re-serialize history reports into their structured blocks
             all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
             final_notes += all_reports_text
         if feedback_data:
-            # Re-serialize feedback data into its structured block
             final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
-
-        # Parse new due date
-        new_due_date_gmt = None
+        due_date_gmt = None
         if appointment_due_str:
             try:
-                dt_local = utils.THAILAND_TZ.localize(date_parse(appointment_due_str))
-                new_due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                dt_local = utils.THAILAND_TZ.localize(utils.date_parse(appointment_due_str)) # Use utils.date_parse
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             except ValueError:
                 flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
+                return redirect(url_for('main.edit_task', task_id=task_id))
 
         update_payload = {
             'title': task_title,
             'notes': final_notes,
-            'due': new_due_date_gmt # Update the due date
+            'due': due_date_gmt
         }
 
         updated_task = gs.update_google_task(task_id, **update_payload)
@@ -365,7 +352,6 @@ def edit_task(task_id):
             flash('เกิดข้อผิดพลาดในการบันทึกการแก้ไขงาน', 'danger')
             return redirect(url_for('main.edit_task', task_id=task_id))
 
-    # GET request: Prepare data for the form
     p_task = utils.parse_google_task_dates(task_raw)
     p_task['customer'] = utils.parse_customer_info_from_notes(task_raw.get('notes', ''))
     
@@ -389,8 +375,8 @@ def settings_page():
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('hour_thai', 2)),
-                'minute_thai': int(request.form.get('minute_thai', 0))
+                'hour_thai': int(request.form.get('auto_backup_hour', 2)), # Changed from 'hour_thai' for consistency with form
+                'minute_thai': int(request.form.get('auto_backup_minute', 0)) # Changed from 'minute_thai' for consistency with form
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
@@ -410,7 +396,7 @@ def settings_page():
         return redirect(url_for('main.settings_page'))
     return render_template('settings_page.html', settings=get_app_settings())
 
-# --- Webhook & OAuth Routes (These now use the defined handler) ---
+# --- Webhook & OAuth Routes ---
 @main_bp.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
