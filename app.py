@@ -1261,6 +1261,17 @@ def authorize():
     flash('ฟังก์ชันเชื่อมต่อ Google API ใหม่ยังไม่ถูกสร้างขึ้น', 'warning')
     return redirect(url_for('settings_page'))
 
+@app.route('/tools/organize_files')
+def organize_files():
+    """Route สำหรับจัดระเบียบไฟล์ (ยังไม่พร้อมใช้งาน)"""
+    flash('ฟังก์ชัน "จัดระเบียบไฟล์" ยังไม่พร้อมใช้งานค่ะ', 'info')
+    return redirect(url_for('settings_page'))
+# --- สิ้นสุดส่วนที่ต้องเพิ่ม ---
+
+#</editor-fold>
+
+#<editor-fold desc="QR Code Routes">
+
 # === QR CODE ROUTES ===
 
 @app.route('/qr/customer_onboarding/<task_id>')
