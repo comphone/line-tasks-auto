@@ -7,7 +7,7 @@ services:
     startCommand: "gunicorn app:app"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.5 # แนะนำให้ระบุเวอร์ชัน Python
+        value: 3.11.9 # แนะนำให้ระบุเวอร์ชัน Python ที่ใช้
       - key: FLASK_APP
         value: app.py
       - key: FLASK_DEBUG
