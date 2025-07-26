@@ -174,6 +174,16 @@ def task_details(task_id):
     
     return render_template('update_task_details.html', task=p_task, settings=get_app_settings(), all_attachments=all_attachments)
 
+# Added this route to address the TemplateNotFound error
+@main_bp.route("/summary")
+def summary():
+    """Redirects to the dashboard as a general summary page to fix TemplateNotFound."""
+    # This function is added to handle potential requests for a /summary route
+    # and redirects them to the /tools/dashboard route, which serves as a comprehensive summary.
+    # It passes along any query arguments (e.g., search_query, status_filter)
+    return redirect(url_for('tools.dashboard', **request.args))
+
+
 @main_bp.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
@@ -191,8 +201,8 @@ def settings_page():
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('auto_backup_hour', 2)),
-                'minute_thai': int(request.form.get('auto_backup_minute', 0))
+                'hour_thai': int(request.form.get('hour_thai', 2)),
+                'minute_thai': int(request.form.get('minute_thai', 0))
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
