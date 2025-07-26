@@ -80,7 +80,22 @@ def dashboard():
         chart_values.append(count)
     chart_data = {'labels': month_labels, 'values': chart_values}
 
-    return render_template("dashboard.html", tasks=final_tasks, summary=stats, search_query=search_query, status_filter=status_filter, chart_data=chart_data)
+    # Added job_types and job_type_filter for consistency with dashboard.html
+    # This might need refinement based on how job types are stored/filtered in your actual app.
+    # For now, it's a placeholder to prevent error if these variables are expected.
+    job_types = {'all': 'ทั้งหมด', 'service': 'เซอร์วิส (นอกสถานที่)', 'in_shop': 'ซ่อมหน้าร้าน', 'supplier': 'ส่งซ่อมร้านนอก'}
+    job_type_filter = str(request.args.get('job_type_filter', 'all')).strip()
+
+
+    return render_template("dashboard.html", tasks=final_tasks, summary=stats, search_query=search_query, status_filter=status_filter, chart_data=chart_data, job_types=job_types, job_type_filter=job_type_filter)
+
+@tools_bp.route('/summary')
+def summary():
+    """Redirects to the dashboard as a general summary page."""
+    # This function is added to handle potential requests for a /summary route
+    # and redirects them to the /dashboard route, which serves as a comprehensive summary.
+    return redirect(url_for('tools.dashboard', **request.args))
+
 
 @tools_bp.route('/summary/print')
 def summary_print():
@@ -128,7 +143,9 @@ def summary_print():
     return render_template("summary_print.html",
                            tasks=final_tasks,
                            search_query=search_query,
-                           status_filter=status_filter_display)
+                           status_filter=status_filter_display,
+                           now=datetime.datetime.now(utils.THAILAND_TZ)) # Pass 'now' to template
+
 
 @tools_bp.route('/technician_report')
 def technician_report():
