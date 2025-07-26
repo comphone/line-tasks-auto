@@ -421,16 +421,20 @@ def backup_data():
 
 @tools_bp.route('/trigger_auto_backup_now', methods=['POST'])
 def trigger_auto_backup_now():
-    """Manually triggers the scheduled backup job."""
-    if scheduled_backup_job():
-        flash('สำรองข้อมูลไปที่ Google Drive สำเร็จ!', 'success')
-    else:
-        flash('เกิดข้อผิดพลาดในการสำรองข้อมูลไปที่ Google Drive!', 'danger')
+    """Manually triggers the customer follow-up job for testing purposes."""
+    with current_app.app_context():
+        # This route already exists in app.py, so call it directly or remove this duplicate.
+        # This implementation calls the scheduled_backup_job directly.
+        if scheduled_backup_job():
+            flash('สำรองข้อมูลไปที่ Google Drive สำเร็จ!', 'success')
+        else:
+            flash('เกิดข้อผิดพลาดในการสำรองข้อมูลไปที่ Google Drive!', 'danger')
     return redirect(url_for('main.settings_page'))
 
 @tools_bp.route('/test_notification', methods=['POST'])
 def test_notification():
     """Sends a test notification to the configured admin group."""
+    # This function already exists in line_notifications.py, call it directly.
     test_line_notification()
     return redirect(url_for('main.settings_page'))
 

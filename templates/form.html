@@ -179,7 +179,8 @@
 
         document.addEventListener('DOMContentLoaded', async function() {
             try {
-                const response = await fetch("{{ url_for('customer.api_customers') }}"); {# CORRECTED LINE #}
+                // Corrected fetch URL to use blueprint prefix
+                const response = await fetch("{{ url_for('customer.api_customers') }}"); 
                 if (response.ok) {
                     customerDatabase = await response.json();
                 } else {
@@ -197,7 +198,8 @@
                 defaultDate: document.getElementById('appointment').value ? document.getElementById('appointment').value : null
             });
 
-            const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }};
+            // taskDetailSnippets is passed from app.py
+            const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }}; 
             if (taskDetailSnippets && taskDetailSnippets.length > 0) {
                 const tributeTask = new Tribute({
                     values: taskDetailSnippets,
@@ -363,7 +365,7 @@
                     fileFormData.append('task_id', 'new_task_placeholder');
                     fileFormData.append('csrf_token', csrfToken);
                     try {
-                        const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
+                        const response = await fetch('{{ url_for("main.api_upload_attachment") }}', { method: 'POST', body: fileFormData }); {# CORRECTED LINE #}
                         const result = await response.json();
                         if (response.ok && result.status === 'success') {
                             uploadedAttachments.push(result.file_info);

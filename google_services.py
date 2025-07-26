@@ -110,7 +110,7 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
                 get_refreshed_credentials(force_refresh=True)
                 continue # Retry the API call
             # If server error or rate limited, wait and retry
-            if e.resp.status in [500, 503, 429] and i < 2: # Don't sleep on the last attempt
+            if e.resp.status in [500, 502, 503, 504, 429] and i < 2: # Don't sleep on the last attempt
                 sleep_time = (2 ** i)
                 current_app.logger.warning(f"Received status {e.resp.status}. Retrying in {sleep_time}s.")
                 time.sleep(sleep_time)

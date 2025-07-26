@@ -16,6 +16,23 @@ import google_services as gs
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
+# Define text snippets for quick replies/autocomplete in forms
+TEXT_SNIPPETS = {
+    'task_details': [
+        {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
+        {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
+        {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
+        {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
+    ],
+    'progress_reports': [
+        {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
+        {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
+        {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
+        {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
+    ]
+}
+
+
 def sanitize_filename(name):
     """Removes illegal characters from a string to make it a valid filename."""
     if not name:
@@ -56,7 +73,7 @@ def parse_customer_feedback_from_notes(notes):
         try:
             feedback_data = json.loads(feedback_match.group(1))
         except json.JSONDecodeError:
-            print(f"Warning: Failed to decode customer feedback JSON.")
+            print(f"Warning: Failed to decode customer feedback JSON.") # In Flask context, use current_app.logger
     return feedback_data
 
 def parse_google_task_dates(task_item):
@@ -92,7 +109,7 @@ def parse_tech_report_from_notes(notes):
                 report_data['type'] = 'report'
             history.append(report_data)
         except json.JSONDecodeError:
-            print(f"Warning: Failed to decode tech report JSON: {json_str[:100]}...")
+            print(f"Warning: Failed to decode tech report JSON: {json_str[:100]}...") # In Flask context, use current_app.logger
     
     temp_notes = re.sub(r"--- (TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*?--- (TECH_REPORT_END|CUSTOMER_FEEDBACK_END) ---", "", notes, flags=re.DOTALL)
     original_notes_text = temp_notes.strip()
@@ -111,7 +128,7 @@ def generate_qr_code_base64(data, box_size=10, border=4, fill_color='#28a745', b
         img.save(buffered, format="PNG")
         return "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
     except Exception as e:
-        print(f"Error generating QR code: {e}")
+        print(f"Error generating QR code: {e}") # In Flask context, use current_app.logger
         return ""
 
 def create_backup_zip():
@@ -119,7 +136,7 @@ def create_backup_zip():
     try:
         all_tasks = gs.get_google_tasks_for_report(show_completed=True)
         if all_tasks is None:
-            print('Failed to get tasks for backup.')
+            print('Failed to get tasks for backup.') # In Flask context, use current_app.logger
             return None, None
 
         memory_file = BytesIO()
@@ -141,5 +158,66 @@ def create_backup_zip():
         backup_filename = f"full_system_backup_{datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.zip"
         return memory_file, backup_filename
     except Exception as e:
-        print(f"Error creating full system backup zip: {e}")
+        print(f"Error creating full system backup zip: {e}") # In Flask context, use current_app.logger
         return None, None
+
+def allowed_file(filename):
+    """Checks if a file extension is allowed."""
+    from app import ALLOWED_EXTENSIONS # Import locally to avoid circular dependency
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def _parse_equipment_string(text_input):
+    """Parses equipment string from notes into a list of dicts."""
+    equipment_list = []
+    if not text_input: return equipment_list
+    for line in text_input.strip().split('\n'):
+        if not line.strip(): continue
+        parts = line.split(',', 1) # Split only on first comma
+        item_name = parts[0].strip()
+        if item_name:
+            quantity_str = parts[1].strip() if len(parts) > 1 else '1'
+            try:
+                quantity_num = float(quantity_str)
+                equipment_list.append({"item": item_name, "quantity": quantity_num})
+            except ValueError:
+                equipment_list.append({"item": item_name, "quantity": quantity_str}) # Keep as string if not a valid number
+    return equipment_list
+
+def _format_equipment_list(equipment_data):
+    """Formats equipment list for display in HTML."""
+    if not equipment_data: return 'N/A'
+    if isinstance(equipment_data, str): return equipment_data # Already a string
+    lines = []
+    if isinstance(equipment_data, list):
+        for item in equipment_data:
+            if isinstance(item, dict) and "item" in item:
+                line = item['item']
+                if item.get("quantity") is not None:
+                    if isinstance(item['quantity'], (int, float)):
+                        line += f" (x{item['quantity']:g})" # :g for generic float/int representation
+                    else:
+                        line += f" ({item['quantity']})"
+                lines.append(line)
+            elif isinstance(item, str):
+                lines.append(item)
+    return "<br>".join(lines) if lines else 'N/A'
+
+def get_file_icon(filename):
+    """Returns a Font Awesome icon class based on file extension."""
+    extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    if extension in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
+        return 'fas fa-file-image'
+    elif extension == 'pdf':
+        return 'fas fa-file-pdf'
+    elif extension in ['doc', 'docx']:
+        return 'fas fa-file-word'
+    elif extension in ['xls', 'xlsx']:
+        return 'fas fa-file-excel'
+    elif extension in ['zip', 'rar']:
+        return 'fas fa-file-archive'
+    elif extension in ['kml', 'kmz']:
+        return 'fas fa-map'
+    elif extension in ['mp4', 'mov', 'avi']:
+        return 'fas fa-file-video'
+    else:
+        return 'fas fa-file'

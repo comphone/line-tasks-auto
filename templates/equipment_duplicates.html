@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2">จัดการข้อมูลอุปกรณ์ซ้ำซ้อน</h1>
-    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
+    <a href="{{ url_for('main.settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a> {# CORRECTED LINE #}
 </div>
 
 <div class="card">
@@ -14,7 +14,7 @@
     </div>
     <div class="card-body">
         {% if duplicates %}
-            <form action="{{ url_for('delete_equipment_duplicates_batch') }}" method="POST" id="deleteEquipmentForm">
+            <form action="{{ url_for('tools.delete_equipment_duplicates_batch') }}" method="POST" id="deleteEquipmentForm"> {# CORRECTED LINE #}
                 <p class="text-muted">
                     ระบบพบกลุ่มข้อมูลอุปกรณ์ที่อาจซ้ำกัน {{ duplicates|length }} กลุ่ม (ตรวจสอบจากชื่ออุปกรณ์ที่ตรงกัน)
                     โปรด **เลือกรายการที่ต้องการลบ** และรายการที่ **ไม่ถูกเลือก** จะถูกเก็บไว้

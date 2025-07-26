@@ -107,9 +107,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const taskTitle = this.dataset.taskTitle;
 
             if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบงาน:\n"${taskTitle}"\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) {
-                fetch(`/api/delete_task/${taskId}`, {
+                fetch(`{{ url_for('main.api_delete_task', task_id='') }}${taskId}`, { {# CORRECTED LINE #}
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'} {# Added CSRF token #}
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -140,9 +140,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const accordionTarget = document.querySelector(this.dataset.accordionTarget);
 
             if (confirm(`คุณแน่ใจหรือไม่ที่จะลบงานที่ซ้ำกันทั้งหมด ${taskCount} รายการ?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้!`)) {
-                fetch('/api/delete_tasks_batch', {
+                fetch('{{ url_for('main.api_delete_tasks_batch') }}', { {# CORRECTED LINE #}
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'}, {# Added CSRF token #}
                     body: JSON.stringify({ task_ids: taskIds })
                 })
                 .then(response => response.json())

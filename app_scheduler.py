@@ -193,17 +193,17 @@ def initialize_scheduler(app):
         ab = settings.get('auto_backup', {})
         if ab.get('enabled'):
             scheduler.add_job(scheduled_backup_job, CronTrigger(hour=ab.get('hour_thai', 2), minute=ab.get('minute_thai', 0)), id='auto_system_backup', replace_existing=True)
-            app.logger.info(f"Scheduled auto backup for {ab.get('hour_thai', 2)}:{ab.get('minute_thai', 0):02d} Thai time.")
+            current_app.logger.info(f"Scheduled auto backup for {ab.get('hour_thai', 2)}:{ab.get('minute_thai', 0):02d} Thai time.")
 
         rt = settings.get('report_times', {})
         scheduler.add_job(scheduled_appointment_reminder_job, CronTrigger(hour=rt.get('appointment_reminder_hour_thai', 7)), id='daily_appointment_reminder', replace_existing=True)
         scheduler.add_job(scheduled_customer_follow_up_job, CronTrigger(hour=rt.get('customer_followup_hour_thai', 9)), id='daily_customer_followup', replace_existing=True)
-        app.logger.info(f"Scheduled appointment reminders for {rt.get('appointment_reminder_hour_thai', 7)}:00 and customer follow-up for {rt.get('customer_followup_hour_thai', 9)}:05 Thai time.")
+        current_app.logger.info(f"Scheduled appointment reminders for {rt.get('appointment_reminder_hour_thai', 7)}:00 and customer follow-up for {rt.get('customer_followup_hour_thai', 9)}:05 Thai time.")
 
         if not scheduler.running:
             try:
                 scheduler.start()
-                app.logger.info("APScheduler started/reconfigured.")
+                current_app.logger.info("APScheduler started/reconfigured.")
             except (KeyboardInterrupt, SystemExit):
                 pass
 

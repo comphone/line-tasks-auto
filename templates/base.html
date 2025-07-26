@@ -9,7 +9,18 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='custom.css') }}">
     <style>
-        /* ... CSS styles remain the same ... */
+        /* CSS styles from custom.css are now handled by the linked custom.css file */
+        /* Any base styles specific to base.html can go here */
+        .navbar-logo {
+            height: 35px; /* Adjust height as needed */
+            width: auto; /* Maintain aspect ratio */
+            margin-right: 10px; /* Space between logo and text */
+        }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+        }
     </style>
     {% block head_extra %}{% endblock %}
 </head>
@@ -58,7 +69,7 @@
                     </li>
 
                     <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
-                        <a class="btn btn-success" href="{{ url_for('main.form_page') }}"> {# Changed 'form_page' to 'main.form_page' #}
+                        <a class="btn btn-success" href="{{ url_for('main.form_page') }}"> {# CORRECTED LINE #}
                             <i class="fas fa-plus-circle me-1"></i>สร้างงานใหม่
                         </a>
                     </li>

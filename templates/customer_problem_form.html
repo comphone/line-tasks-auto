@@ -51,40 +51,46 @@
             const statusMessageDiv = document.getElementById('statusMessage');
             const liffUserIdInput = document.getElementById('liffUserId'); // Get the hidden input
 
-            // Initialize LIFF and get user profile to capture LIFF User ID
-            liff.init({ liffId: "{{ LIFF_ID_FORM }}" })
-                .then(() => {
-                    if (liff.isLoggedIn()) {
-                        liff.getProfile().then(profile => {
-                            liffUserIdInput.value = profile.userId; // Store LIFF User ID
-                        }).catch(err => {
-                            console.error("Error getting LIFF profile:", err);
-                        });
-                    } else {
-                        console.log("LIFF not logged in. Will proceed without user ID.");
-                    }
-                })
-                .catch(err => {
-                    console.error("Error initializing LIFF:", err.code, err.message);
-                    statusMessageDiv.innerHTML = '<h5 class="text-danger"><i class="fas fa-times-circle"></i> LIFF Error</h5><p>ไม่สามารถโหลดหน้าฟอร์มได้ กรุณาลองใหม่ในภายหลัง</p>';
-                    statusMessageDiv.style.display = 'block';
-                    problemFormDiv.style.display = 'none';
-                });
+            function displayStatus(icon, message, isError = false) {
+                loadingDiv.style.display = 'none';
+                statusMessageDiv.innerHTML = `<i class="fas ${icon}"></i><br>${message}`;
+                statusMessageDiv.className = `message-box alert ${isError ? 'alert-danger' : 'alert-success'}`; // Use Bootstrap classes
+                statusMessageDiv.style.display = 'block';
+                closeButton.style.display = 'block';
+            }
 
-            submitBtn.addEventListener('click', function() {
-                const taskId = document.getElementById('task_id').value;
-                const problemDescription = document.getElementById('problem_description').value;
-                const customerLineUserId = liffUserIdInput.value; // Get the captured LIFF user ID
+            // Check if LIFF is initialized and in LIFF environment
+            if (!liff.isInClient()) {
+                displayStatus('fa-exclamation-triangle', 'กรุณาเปิดหน้านี้ในแอปพลิเคชัน LINE เพื่อเชื่อมต่อ', true);
+                return; // Exit if not in LIFF client
+            }
 
-                if (!problemDescription.trim()) {
-                    alert('กรุณากรอกรายละเอียดปัญหา');
+            liff.init({
+                liffId: "{{ LIFF_ID_FORM }}"
+            })
+            .then(() => {
+                if (!liff.isLoggedIn()) {
+                    liff.login(); // Prompt user to log in if not already
+                } else {
+                    return liff.getProfile(); // Get profile only if logged in
+                }
+            })
+            .then(profile => {
+                if (!profile) {
+                    // This can happen if liff.login() was just called and is redirecting
+                    // Or if getProfile fails for some reason
+                    console.log("LIFF profile not available yet or failed to retrieve.");
+                    // You might want a different message or a loading state here
+                    displayStatus('fa-exclamation-triangle', 'ไม่สามารถดึงข้อมูลโปรไฟล์ LINE ได้ โปรดลองอีกครั้ง', true);
                     return;
                 }
 
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังส่ง...';
-
-                fetch("{{ url_for('submit_customer_problem') }}", {
+                const customerLineUserId = profile.userId;
+                liffUserIdInput.value = customerLineUserId; // Store LIFF User ID
+                displayStatus('fa-spinner fa-spin', 'กำลังส่งข้อมูลปัญหา...');
+                
+                // Corrected fetch URL to include blueprint prefix
+                fetch("{{ url_for('customer.submit_problem') }}", { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -93,13 +99,18 @@
                         customer_line_user_id: customerLineUserId // Send LIFF user ID
                     })
                 })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server responded with status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     problemFormDiv.style.display = 'none'; 
                     if (data.status === 'success') {
-                        statusMessageDiv.innerHTML = '<h5 class="text-success"><i class="fas fa-check-circle"></i> ส่งข้อมูลเรียบร้อยแล้ว</h5><p>ทางเราจะรีบติดต่อกลับเพื่อดูแลท่านโดยเร็วที่สุดครับ/ค่ะ</p>';
+                        displayStatus('fa-check-circle', 'ส่งข้อมูลเรียบร้อยแล้ว<br>ทางเราจะรีบติดต่อกลับเพื่อดูแลท่านโดยเร็วที่สุดครับ/ค่ะ!');
                     } else {
-                        statusMessageDiv.innerHTML = '<h5 class="text-danger"><i class="fas fa-times-circle"></i> เกิดข้อผิดพลาด</h5><p>' + (data.message || 'ไม่สามารถส่งข้อมูลได้') + '</p>';
+                        displayStatus('fa-exclamation-triangle', `เกิดข้อผิดพลาดในการส่งข้อมูล: ${data.message || 'ไม่ทราบสาเหตุ'}`, true);
                     }
                     statusMessageDiv.style.display = 'block';
                     
@@ -113,8 +124,21 @@
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>ส่งข้อมูลปัญหา';
                     console.error("Error submitting problem:", err);
-                    alert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err);
+                    displayStatus('fa-times-circle', `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}<br>โปรดลองอีกครั้ง`, true);
                 });
+            })
+            .catch(err => {
+                console.error("Error during LIFF initialization or profile retrieval:", err);
+                displayStatus('fa-times-circle', `เกิดข้อผิดพลาดในการเริ่มต้น LIFF: ${err.message}`, true);
+            });
+
+            closeButton.addEventListener('click', function() {
+                if (liff.isInClient()) {
+                    liff.closeWindow();
+                } else {
+                    // For debugging outside LIFF, close the browser tab
+                    window.close();
+                }
             });
         };
     </script>

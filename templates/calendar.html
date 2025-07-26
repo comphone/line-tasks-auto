@@ -136,7 +136,7 @@
         right: 'dayGridMonth,timeGridWeek,listWeek'
       },
       events: {
-          url: '{{ url_for("main.api_calendar_tasks") }}', {# บรรทัดที่แก้ไข #}
+          url: '{{ url_for("main.api_calendar_tasks") }}', {# CORRECTED LINE #}
           failure: function(error) {
               Swal.fire({
                   icon: 'error',
@@ -211,7 +211,7 @@
         });
 
         try {
-            const response = await fetch('/api/task/schedule_from_calendar', {
+            const response = await fetch('{{ url_for("main.schedule_from_calendar") }}', { {# CORRECTED LINE #}
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

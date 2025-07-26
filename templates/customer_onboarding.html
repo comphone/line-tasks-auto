@@ -77,7 +77,8 @@
                 const customerLineUserId = profile.userId;
                 displayStatus('fa-spinner fa-spin', 'กำลังเชื่อมต่อข้อมูลของคุณ...');
                 
-                fetch('/save_customer_line_id', {
+                // Changed fetch URL to include blueprint prefix
+                fetch("{{ url_for('customer.save_line_id') }}", { 
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

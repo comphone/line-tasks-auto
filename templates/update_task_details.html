@@ -75,6 +75,11 @@
         font-size: 1.1em;
         font-weight: 600;
     }
+    .info-value-small {
+        font-size: 0.85em !important;
+        font-weight: 400 !important;
+        color: #6c757d !important;
+    }
     .info-value a {
         color: #0d6efd;
         text-decoration: none;
@@ -189,7 +194,7 @@
     <div class="summary-container">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
-            <a href="{{ url_for('main.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a> {# CORRECTED LINE #}
+            <a href="{{ url_for('main.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
         </div>
 
         <div class="info-grid">
@@ -260,7 +265,7 @@
                     <input type="hidden" id="technicians_final" name="technicians_report" required>
                 </div>
                 <div class="mb-3">
-                    <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
+                    <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
                 </div>
                 <hr>
@@ -312,9 +317,9 @@
         <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
         <div class="card-body text-center">
             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                <a href="{{ url_for('customer.generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a> {# CORRECTED LINE #}
+                <a href="{{ url_for('customer.generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
                 {% if task.status == 'completed' %}
-                <a href="{{ url_for('customer.generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a> {# CORRECTED LINE #}
+                <a href="{{ url_for('customer.generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
                 {% endif %}
             </div>
             <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
@@ -723,7 +728,7 @@
         slideIndex = index;
         document.getElementById('lightboxModal').style.display = "block";
         document.body.style.overflow = 'hidden';
-        showSlide(slideIndex);
+        showSlide(index);
     }
 
     function changeSlide(n) {

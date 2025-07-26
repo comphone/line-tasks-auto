@@ -94,6 +94,7 @@
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card shadow-sm report-card h-100">
                         <div class="card-header d-flex align-items-center">
+                            {# Fetch technician avatar from technician_list passed from settings #}
                             {% set tech_avatar_obj = (technician_list | selectattr('name', 'equalto', tech_name) | first) %}
                             {% if tech_avatar_obj and tech_avatar_obj.avatar_id %}
                                 <img src="https://drive.google.com/thumbnail?id={{ tech_avatar_obj.avatar_id }}&sz=s30-c" class="technician-avatar-small" alt="{{ tech_name }}">

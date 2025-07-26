@@ -101,6 +101,7 @@
 
     <div class="report-container">
         <header class="report-header">
+            {# Corrected url_for for static logo #}
             <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-height: 50px; margin-bottom: 1rem;">
             <h1>รายงานสรุปการบริการ</h1>
             <p>งานเลขที่ #{{ task.id[-6:].upper() }}</p>
