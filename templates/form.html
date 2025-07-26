@@ -179,7 +179,7 @@
 
         document.addEventListener('DOMContentLoaded', async function() {
             try {
-                const response = await fetch("{{ url_for('api_customers') }}");
+                const response = await fetch("{{ url_for('customer.api_customers') }}"); {# CORRECTED LINE #}
                 if (response.ok) {
                     customerDatabase = await response.json();
                 } else {
@@ -384,7 +384,7 @@
                 const mainFormData = new FormData(form);
                 mainFormData.delete('files[]');
 
-                const response = await fetch("{{ url_for('form_page') }}", {
+                const response = await fetch("{{ url_for('main.form_page') }}", {
                     method: 'POST',
                     body: mainFormData
                 });

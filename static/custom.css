@@ -80,3 +80,16 @@
 #secondaryActionsTab .form-control, #secondaryActionsTab .form-select {
     font-size: 1rem;
 }
+
+/* Added style for navbar logo */
+.navbar-logo {
+    height: 35px; /* Adjust height as needed */
+    width: auto; /* Maintain aspect ratio */
+    margin-right: 10px; /* Space between logo and text */
+}
+
+/* Ensure the navbar brand container aligns items */
+.navbar-brand {
+    display: flex;
+    align-items: center;
+}

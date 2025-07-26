@@ -18,6 +18,32 @@ customer_bp = Blueprint('customer', __name__, url_prefix='/customer')
 def get_line_bot_api():
     return current_app.line_bot_api
 
+@customer_bp.route('/api/customers')
+def api_customers():
+    """Returns a JSON list of unique customer information extracted from tasks."""
+    tasks = gs.get_google_tasks_for_report(show_completed=True) or []
+    customers = {} # Using a dict to store unique customers by a key (e.g., name+organization)
+
+    for task in tasks:
+        customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
+        name = customer_info.get('name', '').strip()
+        organization = customer_info.get('organization', '').strip()
+        
+        if name: # Only add if customer has a name
+            # Use a combination of name and organization as a unique key
+            customer_key = (name, organization)
+            if customer_key not in customers:
+                customers[customer_key] = {
+                    'name': name,
+                    'organization': organization,
+                    'phone': customer_info.get('phone', ''),
+                    'address': customer_info.get('address', ''),
+                    'map_url': customer_info.get('map_url', '')
+                }
+    
+    return jsonify(list(customers.values()))
+
+
 @customer_bp.route('/report/<task_id>')
 def public_task_report(task_id):
     """Displays a public report for a completed task, including costs."""
