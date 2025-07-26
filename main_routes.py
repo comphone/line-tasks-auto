@@ -5,7 +5,7 @@ import pytz
 from io import BytesIO
 
 from flask import (Blueprint, request, render_template, redirect, url_for, abort,
-                   session, jsonify, flash, current_app) # Added current_app
+                   session, jsonify, flash, current_app)
 from werkzeug.utils import secure_filename # Moved here from app.py
 from PIL import Image # Moved here from app.py
 import mimetypes # For guessing mime type
@@ -20,7 +20,7 @@ main_bp = Blueprint('main', __name__)
 
 # Define constants for file uploads (re-defined locally or get from app.py context)
 # It's better to get them from current_app context if defined in app.py
-# If they are not in app.py, define them here or get from config
+# These will be fetched from current_app.ALLOWED_EXTENSIONS etc.
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'} # Expanded allowed extensions
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -166,7 +166,7 @@ def form_page():
         
         new_task = gs.create_google_task(task_title, notes=notes, due=due_date_gmt)
         if new_task:
-            current_app.cache.clear()
+            current_app.cache.clear() # Use current_app.cache
             send_new_task_notification(new_task)
             flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
             return redirect(url_for('main.task_details', task_id=new_task['id']))
@@ -739,7 +739,7 @@ def edit_task(task_id):
             return redirect(url_for('main.edit_task', task_id=task_id))
 
     p_task = utils.parse_google_task_dates(task_raw)
-    p_task['customer'] = utils.parse_customer_info_from_notes(task_raw.get('notes', ''))
+p_task['customer'] = utils.parse_customer_info_from_notes(task_raw.get('notes', ''))
     
     return render_template('edit_task.html', task=p_task)
 
@@ -858,7 +858,7 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    current_app.logger.error(f"Server Error: {e}", exc_info=True) # Use current_app.logger
+    current_app.logger.error(f"Server Error: {e}", exc_info=True)
     return render_template('500.html'), 500
 
 # --- App Startup ---
