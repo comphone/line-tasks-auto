@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import (Flask, request, render_template, redirect, url_for, abort,
-                   session, jsonify, flash, Blueprint) # Added Blueprint here
+                   session, jsonify, flash, Blueprint)
 from flask_wtf.csrf import CSRFProtect
 from cachetools import TTLCache
 from google_auth_oauthlib.flow import Flow
