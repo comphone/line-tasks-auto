@@ -35,10 +35,11 @@ app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
 csrf = CSRFProtect(app)
 
-# --- Global Objects ---
+# --- Global Objects & Environment Variables ---
 app.cache = TTLCache(maxsize=100, ttl=60)
 app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
+app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM') # Make LIFF ID available in app context
 
 # --- Register Blueprints ---
 main_bp = Blueprint('main', __name__)
@@ -49,20 +50,26 @@ app.register_blueprint(customer_bp)
 # --- Context Processors & Error Handlers ---
 @app.context_processor
 def inject_global_vars():
+    """Injects variables into all templates."""
     return {'now': datetime.datetime.now(utils.THAILAND_TZ), 'google_api_connected': gs.get_refreshed_credentials() is not None}
 
 @app.errorhandler(404)
-def page_not_found(e): return render_template('404.html'), 404
+def page_not_found(e):
+    return render_template('404.html'), 404
+
 @app.errorhandler(500)
 def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
     return render_template('500.html'), 500
 
-# --- Utility function required by scheduler ---
+# --- Utility function required by other modules ---
 def _create_backup_zip():
+    """Creates a zip archive of important application data and code."""
     try:
         all_tasks = gs.get_google_tasks_for_report(show_completed=True)
-        if all_tasks is None: return None, None
+        if all_tasks is None:
+            app.logger.error('Failed to get tasks for backup.')
+            return None, None
 
         memory_file = BytesIO()
         with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -72,7 +79,7 @@ def _create_backup_zip():
             project_root = os.path.dirname(os.path.abspath(__file__))
             for folder, _, files in os.walk(project_root):
                 for file in files:
-                    if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt')) and file not in ['.env', SETTINGS_FILE]:
+                    if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt', '.yaml')) and '.venv' not in folder:
                         file_path = os.path.join(folder, file)
                         archive_name = os.path.relpath(file_path, project_root)
                         zf.write(file_path, arcname=f'code/{archive_name}')
@@ -97,7 +104,23 @@ def form_page():
             flash('กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน', 'danger')
             return redirect(url_for('main.form_page'))
 
-        # ... (full logic from original file to construct notes and due date) ...
+        notes_lines = [
+            f"หน่วยงาน: {str(request.form.get('organization_name', '')).strip()}",
+            f"ลูกค้า: {customer_name}",
+            f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
+            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
+            f"พิกัด: {str(request.form.get('latitude_longitude', '')).strip()}"
+        ]
+        notes = "\n".join(filter(None, [line.split(': ', 1)[1] and line for line in notes_lines]))
+
+        due_date_gmt = None
+        appointment_str = str(request.form.get('appointment', '')).strip()
+        if appointment_str:
+            try:
+                dt_local = utils.THAILAND_TZ.localize(date_parse(appointment_str))
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            except ValueError:
+                flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
         
         new_task = gs.create_google_task(task_title, notes=notes, due=due_date_gmt)
         if new_task:
@@ -107,8 +130,6 @@ def form_page():
             return redirect(url_for('main.task_details', task_id=new_task['id']))
         else:
             flash('เกิดข้อผิดพลาดในการสร้างงาน', 'danger')
-            return render_template('form.html', form_data=request.form)
-
     return render_template('form.html')
 
 @main_bp.route('/task/<task_id>', methods=['GET', 'POST'])
@@ -117,31 +138,110 @@ def task_details(task_id):
         task_raw = gs.get_single_task(task_id)
         if not task_raw: abort(404)
         
-        # ... (full logic for POST: save_report, reschedule_task, complete_task) ...
+        action = request.form.get('action')
+        update_payload = {}
+        notification_to_send = None
+        
+        history, base_notes_text = utils.parse_tech_report_from_notes(task_raw.get('notes', ''))
+        feedback_data = utils.parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        
+        new_attachments = json.loads(request.form.get('uploaded_attachments_json', '[]'))
+
+        if action in ['save_report', 'complete_task']:
+            work_summary = str(request.form.get('work_summary', '')).strip()
+            selected_technicians = [t.strip() for t in request.form.get('technicians_report', '').split(',') if t.strip()]
+            if not (work_summary or new_attachments): return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์'}), 400
+            if not selected_technicians: return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่าง'}), 400
+            
+            report_item = {
+                'type': 'report', 'summary_date': datetime.datetime.now(utils.THAILAND_TZ).isoformat(),
+                'work_summary': work_summary, 'equipment_used': utils._parse_equipment_string(request.form.get('equipment_used', '')),
+                'attachments': new_attachments, 'technicians': selected_technicians
+            }
+            if action == 'complete_task':
+                report_item['task_status'] = 'completed'
+                update_payload['status'] = 'completed'
+                notification_to_send = ('completion', selected_technicians)
+                flash_message = 'ปิดงานเรียบร้อยแล้ว!'
+            else:
+                flash_message = 'เพิ่มรายงานเรียบร้อยแล้ว!'
+            history.append(report_item)
+
+        elif action == 'reschedule_task':
+            reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
+            reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
+            selected_technicians = [t.strip() for t in request.form.get('technicians_reschedule', '').split(',') if t.strip()]
+            if not reschedule_due_str: return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
+            
+            dt_local = utils.THAILAND_TZ.localize(date_parse(reschedule_due_str))
+            update_payload['due'] = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            update_payload['status'] = 'needsAction'
+            new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
+            is_today = dt_local.date() == datetime.datetime.now(utils.THAILAND_TZ).date()
+            notification_to_send = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
+            
+            history.append({
+                'type': 'reschedule', 'summary_date': datetime.datetime.now(utils.THAILAND_TZ).isoformat(),
+                'reason': reschedule_reason, 'new_due_date': new_due_date_formatted, 'technicians': selected_technicians
+            })
+            flash_message = 'เลื่อนนัดเรียบร้อยแล้ว'
+        
+        else: return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
+            
+        history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+        all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+        final_notes = base_notes_text
+        if all_reports_text: final_notes += all_reports_text
+        if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        update_payload['notes'] = final_notes
         
         updated_task = gs.update_google_task(task_id, **update_payload)
         if updated_task:
             app.cache.clear()
-            # ... (logic to send notifications based on action) ...
+            if notification_to_send:
+                notif_type = notification_to_send[0]
+                if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
+                elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
             return jsonify({'status': 'success', 'message': flash_message})
-        else:
-            return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูล!'}), 500
+        else: return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูล!'}), 500
 
     task_raw = gs.get_single_task(task_id)
     if not task_raw: abort(404)
     
     p_task = utils.parse_google_task_dates(task_raw)
     p_task['tech_history'], _ = utils.parse_tech_report_from_notes(p_task.get('notes', ''))
-    # ... (rest of the GET logic to prepare data for template) ...
+    p_task['customer'] = utils.parse_customer_info_from_notes(p_task.get('notes', ''))
+    p_task['feedback'] = utils.parse_customer_feedback_from_notes(p_task.get('notes', ''))
     
-    return render_template('task_details.html', task=p_task, settings=get_app_settings())
+    all_attachments = [att for r in p_task['tech_history'] for att in r.get('attachments', [])]
+    
+    return render_template('update_task_details.html', task=p_task, settings=get_app_settings(), all_attachments=all_attachments)
 
 @main_bp.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
         technician_list = json.loads(request.form.get('technician_list_json', '[]'))
         settings_data = {
-            # ... (full logic to gather all form data into a dict) ...
+            'report_times': {
+                'appointment_reminder_hour_thai': int(request.form.get('appointment_reminder_hour', 7)),
+                'outstanding_report_hour_thai': int(request.form.get('outstanding_report_hour', 20)),
+                'customer_followup_hour_thai': int(request.form.get('customer_followup_hour', 9))
+            },
+            'line_recipients': {
+                'admin_group_id': request.form.get('admin_group_id', '').strip(),
+                'technician_group_id': request.form.get('technician_group_id', '').strip(),
+                'manager_user_id': request.form.get('manager_user_id', '').strip()
+            },
+            'auto_backup': {
+                'enabled': request.form.get('auto_backup_enabled') == 'on',
+                'hour_thai': int(request.form.get('auto_backup_hour', 2)),
+                'minute_thai': int(request.form.get('auto_backup_minute', 0))
+            },
+            'shop_info': {
+                'contact_phone': request.form.get('shop_contact_phone', '').strip(),
+                'line_id': request.form.get('shop_line_id', '').strip()
+            },
+            'technician_list': technician_list
         }
         if save_app_settings(settings_data):
             initialize_scheduler(app)
@@ -158,7 +258,12 @@ def settings_page():
 # --- Webhook & OAuth Routes ---
 @app.route("/callback", methods=['POST'])
 def callback():
-    # ... (full callback logic) ...
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
     return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
@@ -186,8 +291,19 @@ def oauth2callback():
     state = session.get('state')
     if not state or state != request.args.get('state'): abort(401) 
     
-    # ... (full logic to fetch token) ...
+    client_secrets_json_str = os.environ.get('GOOGLE_CLIENT_SECRETS_JSON')
+    client_config = json.loads(client_secrets_json_str)
+    flow = Flow.from_client_config(client_config, scopes=gs.SCOPES, state=state, redirect_uri=url_for('authorize', _external=True, _scheme='https'))
+    flow.fetch_token(authorization_response=request.url)
+    credentials = flow.credentials
+    token_json = credentials.to_json()
 
+    app.logger.info("="*80)
+    app.logger.info("!!! NEW GOOGLE TOKEN GENERATED SUCCESSFULLY !!!")
+    app.logger.info("COPY THE JSON BELOW AND SET IT AS THE 'GOOGLE_TOKEN_JSON' ENVIRONMENT VARIABLE IN RENDER:")
+    app.logger.info(token_json)
+    app.logger.info("="*80)
+    
     os.environ['GOOGLE_TOKEN_JSON'] = token_json
     gs.get_refreshed_credentials(force_refresh=True)
     
