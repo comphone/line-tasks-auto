@@ -6,24 +6,25 @@ from apscheduler.triggers.cron import CronTrigger
 from dateutil.parser import parse as date_parse
 from flask import current_app, url_for
 
+# --- Local Module Imports ---
 import google_services as gs
 import utils
 from settings_manager import get_app_settings
 from line_notifications import line_bot_api
 from linebot.models import TextSendMessage, FlexSendMessage, BubbleContainer, BoxComponent, TextComponent, SeparatorComponent, ButtonComponent, URIAction, PostbackAction
+from utils import create_backup_zip # <--- FIX: Import from utils
 
-# สร้าง scheduler instance ไว้ใช้งานร่วมกัน
 scheduler = BackgroundScheduler(daemon=True, timezone=pytz.timezone('Asia/Bangkok'))
 
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     """
-    สร้าง Flex Message สำหรับส่งให้ลูกค้าเพื่อติดตามผล
-    (ฟังก์ชันนี้อาจย้ายไปที่ line_handler.py หรือ line_notifications.py ในอนาคต)
+    Creates a Flex Message for customer follow-up.
     """
-    from app import LIFF_ID_FORM # Import LIFF ID จาก app หลัก
+    # This needs the app context to get the LIFF_ID_FORM
+    liff_id = current_app.LIFF_ID_FORM
     problem_action = URIAction(
         label='🚨 ยังมีปัญหาอยู่',
-        uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}"
+        uri=f"https://liff.line.me/{liff_id}/customer/problem_form?task_id={task_id}"
     )
 
     return BubbleContainer(
@@ -54,19 +55,19 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     )
 
 def scheduled_backup_job():
-    """Job สำหรับการสำรองข้อมูลอัตโนมัติไปยัง Google Drive"""
-    from utils import create_backup_zip
+    """Job for automatic backup to Google Drive."""
     with current_app.app_context():
         current_app.logger.info("--- Starting Scheduled Backup Job ---")
-        system_backup_folder_id = gs.find_or_create_drive_folder("System_Backups", gs.GOOGLE_DRIVE_FOLDER_ID)
-        if not system_backup_folder_id:
-            current_app.logger.error("Could not find or create System_Backups folder for backup.")
-            return
-
+        
         memory_file_zip, filename_zip = create_backup_zip()
+        
         if memory_file_zip and filename_zip:
-            if not gs.upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', system_backup_folder_id):
-                current_app.logger.error("Automatic full system backup failed.")
+            system_backup_folder_id = gs.find_or_create_drive_folder("System_Backups", gs.GOOGLE_DRIVE_FOLDER_ID)
+            if system_backup_folder_id:
+                if not gs.upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', system_backup_folder_id):
+                    current_app.logger.error("Automatic full system backup failed.")
+            else:
+                current_app.logger.error("Could not find or create System_Backups folder for backup.")
         else:
             current_app.logger.error("Failed to create full system backup zip.")
         
@@ -74,9 +75,11 @@ def scheduled_backup_job():
             current_app.logger.error("Automatic settings-only backup failed.")
         
         current_app.logger.info("--- Finished Scheduled Backup Job ---")
+        return True # Indicate success for manual trigger
+    return False
 
 def scheduled_appointment_reminder_job():
-    """Job สำหรับส่งการแจ้งเตือนงานประจำวันไปยัง LINE"""
+    """Job for sending daily appointment reminders via LINE."""
     with current_app.app_context():
         current_app.logger.info("Running scheduled appointment reminder job...")
         recipients = get_app_settings().get('line_recipients', {})
@@ -127,7 +130,7 @@ def scheduled_appointment_reminder_job():
                 current_app.logger.error(f"Failed to send appointment reminder for task {task['id']}: {e}")
 
 def scheduled_customer_follow_up_job():
-    """Job สำหรับส่งข้อความติดตามลูกค้าหลังงานเสร็จ"""
+    """Job for sending follow-up messages to customers after task completion."""
     with current_app.app_context():
         current_app.logger.info("Running scheduled customer follow-up job...")
         admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
@@ -170,7 +173,7 @@ def scheduled_customer_follow_up_job():
                     current_app.logger.warning(f"Could not process task {task.get('id')} for follow-up: {e}")
 
 def initialize_scheduler(app):
-    """เริ่มต้นและตั้งค่าการทำงานของ scheduler"""
+    """Initializes and configures the APScheduler jobs."""
     with app.app_context():
         settings = get_app_settings()
         

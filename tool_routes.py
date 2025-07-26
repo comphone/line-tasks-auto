@@ -14,8 +14,9 @@ import google_services as gs
 import utils
 from app_scheduler import scheduled_backup_job, scheduled_customer_follow_up_job
 from line_notifications import test_line_notification
-# --- FIX: Import directly from settings_manager ---
 from settings_manager import get_app_settings, save_app_settings
+# --- FIX: Import create_backup_zip directly from utils ---
+from utils import create_backup_zip
 
 tools_bp = Blueprint('tools', __name__, url_prefix='/tools')
 
@@ -81,6 +82,54 @@ def dashboard():
 
     return render_template("dashboard.html", tasks=final_tasks, summary=stats, search_query=search_query, status_filter=status_filter, chart_data=chart_data)
 
+@tools_bp.route('/summary/print')
+def summary_print():
+    """Generates a printable summary report based on current filters."""
+    search_query = str(request.args.get('search_query', '')).strip().lower()
+    status_filter_key = str(request.args.get('status_filter', 'all')).strip()
+    status_map = {'all': 'ทั้งหมด', 'needsAction': 'ยังไม่เสร็จ', 'completed': 'เสร็จเรียบร้อย', 'today': 'งานวันนี้'}
+    status_filter_display = status_map.get(status_filter_key, 'ทั้งหมด')
+
+    tasks_raw = gs.get_google_tasks_for_report(show_completed=True) or []
+    final_tasks = []
+    today_thai = datetime.datetime.now(utils.THAILAND_TZ).date()
+
+    for task in tasks_raw:
+        task_status = task.get('status', 'needsAction')
+        is_today = False
+        is_overdue = False
+        if task_status == 'needsAction' and task.get('due'):
+            try:
+                due_dt_local = date_parse(task['due']).astimezone(utils.THAILAND_TZ)
+                if due_dt_local.date() == today_thai:
+                    is_today = True
+                if due_dt_local.date() < today_thai:
+                    is_overdue = True
+            except (ValueError, TypeError):
+                pass
+        
+        task_passes_filter = (status_filter_key == 'all' or
+                              (status_filter_key == 'completed' and task_status == 'completed') or
+                              (status_filter_key == 'needsAction' and task_status == 'needsAction') or
+                              (status_filter_key == 'today' and is_today))
+        
+        if task_passes_filter:
+            customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
+            searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
+            if not search_query or search_query in searchable_text:
+                parsed_task = utils.parse_google_task_dates(task)
+                parsed_task['customer'] = customer_info
+                parsed_task['is_today'] = is_today
+                parsed_task['is_overdue'] = is_overdue
+                final_tasks.append(parsed_task)
+
+    final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, date_parse(x.get('due', '9999-12-31T23:59:59Z'))))
+
+    return render_template("summary_print.html",
+                           tasks=final_tasks,
+                           search_query=search_query,
+                           status_filter=status_filter_display)
+
 @tools_bp.route('/technician_report')
 def technician_report():
     """Generates a report of completed tasks per technician for a selected month and year."""
@@ -138,7 +187,7 @@ def manage_duplicates():
             parsed['is_overdue'] = task.get('status') == 'needsAction' and task.get('due') and date_parse(task['due']) < datetime.datetime.now(pytz.utc)
             processed_tasks.append(parsed)
         processed_sets[key] = processed_tasks
-    return render_template('duplicates.html', duplicates=processed_sets)
+    return render_template('manage_duplicates.html', potential_duplicate_sets=processed_sets)
 
 @tools_bp.route('/delete_duplicates_batch', methods=['POST'])
 def delete_duplicates_batch():
@@ -346,7 +395,6 @@ def import_equipment_catalog():
 @tools_bp.route('/backup_data')
 def backup_data():
     """Triggers the creation and download of a full system backup zip file."""
-    from utils import create_backup_zip
     memory_file, filename = create_backup_zip()
     if memory_file and filename:
         return Response(memory_file.getvalue(), mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={filename}'})
