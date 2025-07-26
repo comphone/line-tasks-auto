@@ -83,9 +83,9 @@ def parse_google_task_dates(task_item):
         if parsed.get(key):
             try:
                 dt_utc = date_parse(parsed[key])
-                parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
+                parsed[f'{key}_formatted'] = dt_utc.astimezone(utils.THAILAND_TZ).strftime("%d/%m/%y %H:%M")
                 if key == 'due':
-                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+                    parsed['due_for_input'] = dt_utc.astimezone(utils.THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
             except (ValueError, TypeError):
                 parsed[f'{key}_formatted'] = ''
                 if key == 'due': parsed['due_for_input'] = ''
@@ -149,13 +149,16 @@ def create_backup_zip():
                 if '.venv' in folder or '__pycache__' in folder:
                     continue
                 for file in files:
-                    if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt', '.yaml')):
+                    # Access ALLOWED_EXTENSIONS from current_app if it's set there, otherwise use a local list if defined.
+                    # For now, assuming relevant extensions are common.
+                    if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt', '.yaml')) \
+                       and file not in ['token.json', '.env', SETTINGS_FILE]: # Exclude sensitive files
                         file_path = os.path.join(folder, file)
                         archive_name = os.path.relpath(file_path, project_root)
                         zf.write(file_path, arcname=f'code/{archive_name}')
         
         memory_file.seek(0)
-        backup_filename = f"full_system_backup_{datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.zip"
+        backup_filename = f"full_system_backup_{datetime.datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.zip"
         return memory_file, backup_filename
     except Exception as e:
         print(f"Error creating full system backup zip: {e}") # In Flask context, use current_app.logger
@@ -163,8 +166,10 @@ def create_backup_zip():
 
 def allowed_file(filename):
     """Checks if a file extension is allowed."""
-    from app import ALLOWED_EXTENSIONS # Import locally to avoid circular dependency
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    # Assuming ALLOWED_EXTENSIONS is set on current_app.
+    # If not, this might need a fallback.
+    allowed = current_app.ALLOWED_EXTENSIONS if hasattr(current_app, 'ALLOWED_EXTENSIONS') else {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
 
 def _parse_equipment_string(text_input):
     """Parses equipment string from notes into a list of dicts."""

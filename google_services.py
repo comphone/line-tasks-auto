@@ -110,7 +110,7 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
                 get_refreshed_credentials(force_refresh=True)
                 continue # Retry the API call
             # If server error or rate limited, wait and retry
-            if e.resp.status in [500, 502, 503, 504, 429] and i < 2: # Don't sleep on the last attempt
+            if e.resp.status in [500, 503, 429] and i < 2: # Don't sleep on the last attempt
                 sleep_time = (2 ** i)
                 current_app.logger.warning(f"Received status {e.resp.status}. Retrying in {sleep_time}s.")
                 time.sleep(sleep_time)
@@ -269,7 +269,8 @@ def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
 def upload_data_from_memory_to_drive(data_in_memory, file_name, mime_type, folder_id):
     """Uploads data from an in-memory BytesIO object to Google Drive."""
     media = MediaIoBaseUpload(data_in_memory, mimetype=mime_type, resumable=True)
-    return _perform_drive_upload(media, file_name, mime_type, folder_id)
+    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id)
+    return file_obj
 
 def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
     """Uploads a local file from a given path to Google Drive."""
@@ -277,7 +278,8 @@ def upload_file_from_path_to_drive(file_path, file_name, mime_type, folder_id):
         current_app.logger.error(f"File at path '{file_path}' is missing or empty. Aborting upload.")
         return None
     media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
-    return _perform_drive_upload(media, file_name, mime_type, folder_id)
+    file_obj = _perform_drive_upload(media, file_name, mime_type, folder_id)
+    return file_obj
 
 def load_settings_from_drive_on_startup(save_settings_func):
     """Loads the latest 'settings_backup.json' from Drive and saves it locally using a provided function."""
