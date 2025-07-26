@@ -3,28 +3,27 @@ import datetime
 import json
 import pytz
 from io import BytesIO
+import re # Added re for parsing map_url
+from PIL import Image # For image compression in api_upload_attachment, api_upload_avatar
+import mimetypes # For guessing mime type
 
 from flask import (Blueprint, request, render_template, redirect, url_for, abort,
                    session, jsonify, flash, current_app)
-from werkzeug.utils import secure_filename # Moved here from app.py
-from PIL import Image # Moved here from app.py
-import mimetypes # For guessing mime type
+from werkzeug.utils import secure_filename
 
 import google_services as gs
 import utils
-from settings_manager import get_app_settings, save_app_settings
-from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
-from app_scheduler import initialize_scheduler # Only initialize, no direct job calls here
+from settings_manager import get_app_settings # Only get_app_settings needed here
+from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification # Specific imports for clarity
 
 main_bp = Blueprint('main', __name__)
 
-# Define constants for file uploads (re-defined locally or get from app.py context)
-# It's better to get them from current_app context if defined in app.py
-# These will be fetched from current_app.ALLOWED_EXTENSIONS etc.
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'} # Expanded allowed extensions
-MAX_FILE_SIZE_MB = 50
-MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-
+# --- Constants for file uploads (should be fetched from current_app.config or current_app directly if defined in app.py) ---
+# If these are defined in app.py, they will be accessible via current_app
+# For robustness in case app.py is not yet defining them in current_app,
+# we can define fallback values or ensure app.py sets them.
+# Assuming app.py now sets these on current_app for consistency.
+# Example: current_app.ALLOWED_EXTENSIONS, current_app.MAX_FILE_SIZE_BYTES
 
 # --- Core App Routes (under main_bp) ---
 @main_bp.route("/")
@@ -166,7 +165,7 @@ def form_page():
         
         new_task = gs.create_google_task(task_title, notes=notes, due=due_date_gmt)
         if new_task:
-            current_app.cache.clear() # Use current_app.cache
+            current_app.cache.clear()
             send_new_task_notification(new_task)
             flash('สร้างงานใหม่เรียบร้อยแล้ว!', 'success')
             return redirect(url_for('main.task_details', task_id=new_task['id']))
@@ -362,9 +361,9 @@ def delete_task(task_id):
 # API for file uploads (attachments for tasks, etc.)
 @main_bp.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():
-    from werkzeug.utils import secure_filename # Import here to avoid circular dependency
-    from PIL import Image # For image compression
-    import mimetypes # For guessing mime type
+    # from werkzeug.utils import secure_filename # Already imported by app.py
+    # from PIL import Image # Already imported by app.py
+    # import mimetypes # Already imported by app.py
 
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file part'}), 400
@@ -539,9 +538,9 @@ def api_edit_report_text(task_id, report_index):
 
 @main_bp.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(task_id, report_index):
-    from werkzeug.utils import secure_filename
-    from PIL import Image
-    import mimetypes
+    # from werkzeug.utils import secure_filename # Already imported in function
+    # from PIL import Image # Already imported in function
+    # import mimetypes # Already imported in function
 
     task_raw = gs.get_single_task(task_id)
     if not task_raw:
