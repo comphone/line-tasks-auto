@@ -3,9 +3,9 @@ import datetime
 import json
 import pytz
 from io import BytesIO
-import re # Added re for parsing map_url
-from PIL import Image # For image compression in api_upload_attachment, api_upload_avatar
-import mimetypes # For guessing mime type
+import re
+from PIL import Image
+import mimetypes
 
 from flask import (Blueprint, request, render_template, redirect, url_for, abort,
                    session, jsonify, flash, current_app)
@@ -538,9 +538,9 @@ def api_edit_report_text(task_id, report_index):
 
 @main_bp.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(task_id, report_index):
-    # from werkzeug.utils import secure_filename # Already imported in function
-    # from PIL import Image # Already imported in function
-    # import mimetypes # Already imported in function
+    from werkzeug.utils import secure_filename
+    from PIL import Image
+    import mimetypes
 
     task_raw = gs.get_single_task(task_id)
     if not task_raw:
@@ -738,7 +738,7 @@ def edit_task(task_id):
             return redirect(url_for('main.edit_task', task_id=task_id))
 
     p_task = utils.parse_google_task_dates(task_raw)
-p_task['customer'] = utils.parse_customer_info_from_notes(task_raw.get('notes', ''))
+    p_task['customer'] = utils.parse_customer_info_from_notes(task_raw.get('notes', ''))
     
     return render_template('edit_task.html', task=p_task)
 
@@ -770,7 +770,7 @@ def settings_page():
             'technician_list': technician_list
         }
         if save_app_settings(settings_data):
-            initialize_scheduler(app)
+            initialize_scheduler(current_app) # Pass current_app
             current_app.cache.clear()
             if gs.backup_settings_to_drive(get_app_settings()):
                 flash('บันทึกและสำรองการตั้งค่าเรียบร้อยแล้ว!', 'success')
@@ -790,16 +790,16 @@ def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
     try:
-        handler.handle(body, signature)
+        current_app.handler.handle(body, signature) # Use current_app.handler
     except InvalidSignatureError:
         abort(400)
     return 'OK'
 
-@handler.add(MessageEvent, message=TextMessage)
+@current_app.handler.add(MessageEvent, message=TextMessage) # Use current_app.handler
 def message_handler(event):
     with current_app.app_context(): handle_text_message(event)
 
-@handler.add(PostbackEvent)
+@current_app.handler.add(PostbackEvent) # Use current_app.handler
 def postback_handler(event):
     with current_app.app_context(): handle_postback(event)
 
@@ -857,7 +857,7 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    current_app.logger.error(f"Server Error: {e}", exc_info=True)
+    current_app.logger.error(f"Server Error: {e}", exc_info=True) # Use current_app.logger
     return render_template('500.html'), 500
 
 # --- App Startup ---
