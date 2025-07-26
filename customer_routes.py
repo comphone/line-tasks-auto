@@ -9,19 +9,18 @@ from linebot.models import TextSendMessage
 
 import google_services as gs
 import utils
+# --- FIX: Import directly from settings_manager ---
+from settings_manager import get_app_settings
+from line_notifications import send_problem_notification
 
-# Create a Blueprint for customer-facing routes
 customer_bp = Blueprint('customer', __name__, url_prefix='/customer')
 
-# Get LINE Bot API instance from the main app context
 def get_line_bot_api():
     return current_app.line_bot_api
 
 @customer_bp.route('/report/<task_id>')
 def public_task_report(task_id):
     """Displays a public report for a completed task, including costs."""
-    from main_app import get_app_settings # Import here to avoid circular dependency
-    
     task = gs.get_single_task(task_id)
     if not task or task.get('status') != 'completed':
         abort(404)
@@ -83,9 +82,6 @@ def customer_problem_form():
 @customer_bp.route('/submit_problem', methods=['POST'])
 def submit_customer_problem():
     """API endpoint to handle problem form submissions."""
-    from main_app import get_app_settings # Import here to avoid circular dependency
-    from line_notifications import send_problem_notification # Import notification function
-
     data = request.json
     task_id, problem_desc, user_id = data.get('task_id'), data.get('problem_description'), data.get('customer_line_user_id')
     if not task_id or not problem_desc: return jsonify({"status": "error"}), 400
@@ -111,7 +107,6 @@ def submit_customer_problem():
     gs.update_google_task(task_id=task_id, notes=final_notes, status='needsAction')
     current_app.cache.clear()
     
-    # Send notification to admin
     send_problem_notification(task, problem_desc)
 
     return jsonify({"status": "success"})
@@ -119,8 +114,6 @@ def submit_customer_problem():
 @customer_bp.route('/save_line_id', methods=['POST'])
 def save_customer_line_id():
     """API endpoint to save a customer's LINE User ID to a task."""
-    from main_app import get_app_settings # Import here to avoid circular dependency
-
     data = request.json
     task_id, user_id = data.get('task_id'), data.get('customer_line_user_id')
     if not task_id or not user_id: return jsonify({"status": "error"}), 400
