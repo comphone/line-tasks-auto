@@ -29,37 +29,8 @@ from line_handler import handle_text_message, handle_postback
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
 
-# --- App Initialization ---
-app = Flask(__name__, static_folder='static')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
-csrf = CSRFProtect(app)
-
-# --- Global Objects & Environment Variables ---
-app.cache = TTLCache(maxsize=100, ttl=60)
-app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
-handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
-app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
-
-# --- Register Blueprints ---
+# --- Define Blueprints and their routes BEFORE app initialization and registration ---
 main_bp = Blueprint('main', __name__)
-app.register_blueprint(main_bp)
-app.register_blueprint(tools_bp)
-app.register_blueprint(customer_bp)
-
-# --- Context Processors & Error Handlers ---
-@app.context_processor
-def inject_global_vars():
-    """Injects variables into all templates."""
-    return {'now': datetime.datetime.now(utils.THAILAND_TZ), 'google_api_connected': gs.get_refreshed_credentials() is not None}
-
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_server_error(e):
-    app.logger.error(f"Server Error: {e}", exc_info=True)
-    return render_template('500.html'), 500
 
 # --- Core App Routes (under main_bp) ---
 @main_bp.route("/")
@@ -242,7 +213,7 @@ def settings_page():
     return render_template('settings_page.html', settings=get_app_settings())
 
 # --- Webhook & OAuth Routes ---
-@app.route("/callback", methods=['POST'])
+@main_bp.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
@@ -260,7 +231,7 @@ def message_handler(event):
 def postback_handler(event):
     with app.app_context(): handle_postback(event)
 
-@app.route('/authorize')
+@main_bp.route('/authorize')
 def authorize():
     client_secrets_json_str = os.environ.get('GOOGLE_CLIENT_SECRETS_JSON')
     if not client_secrets_json_str:
@@ -272,7 +243,7 @@ def authorize():
     session['state'] = state
     return redirect(authorization_url)
 
-@app.route('/oauth2callback')
+@main_bp.route('/oauth2callback')
 def oauth2callback():
     state = session.get('state')
     if not state or state != request.args.get('state'): abort(401) 
@@ -295,6 +266,38 @@ def oauth2callback():
     
     flash('เชื่อมต่อ Google API สำเร็จ! กรุณาคัดลอก Token ใหม่จาก Log และรีสตาร์ทแอป', 'success')
     return redirect(url_for('main.settings_page'))
+
+# --- App Initialization ---
+app = Flask(__name__, static_folder='static')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
+csrf = CSRFProtect(app)
+
+# --- Global Objects & Environment Variables ---
+app.cache = TTLCache(maxsize=100, ttl=60)
+app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
+handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
+app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
+
+# --- Register Blueprints ---
+# Register blueprints AFTER all their routes have been defined
+app.register_blueprint(main_bp)
+app.register_blueprint(tools_bp)
+app.register_blueprint(customer_bp)
+
+# --- Context Processors & Error Handlers ---
+@app.context_processor
+def inject_global_vars():
+    """Injects variables into all templates."""
+    return {'now': datetime.datetime.now(utils.THAILAND_TZ), 'google_api_connected': gs.get_refreshed_credentials() is not None}
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    app.logger.error(f"Server Error: {e}", exc_info=True)
+    return render_template('500.html'), 500
 
 # --- App Startup ---
 if __name__ == '__main__':
