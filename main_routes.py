@@ -361,9 +361,9 @@ def delete_task(task_id):
 # API for file uploads (attachments for tasks, etc.)
 @main_bp.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():
-    # from werkzeug.utils import secure_filename # Already imported by app.py
-    # from PIL import Image # Already imported by app.py
-    # import mimetypes # Already imported by app.py
+    from werkzeug.utils import secure_filename # Import here to avoid circular dependency
+    from PIL import Image # For image compression
+    import mimetypes # For guessing mime type
 
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file part'}), 400
@@ -795,13 +795,17 @@ def callback():
         abort(400)
     return 'OK'
 
-@current_app.handler.add(MessageEvent, message=TextMessage) # Use current_app.handler
-def message_handler(event):
-    with current_app.app_context(): handle_text_message(event)
+@current_app.handler.add(MessageEvent, message=TextMessage)
+def handle_line_message_event(event): # Renamed to avoid conflict if handle_text_message is elsewhere
+    with current_app.app_context():
+        # This calls the handler function from line_handler.py
+        utils.handle_text_message(event) 
 
-@current_app.handler.add(PostbackEvent) # Use current_app.handler
-def postback_handler(event):
-    with current_app.app_context(): handle_postback(event)
+@current_app.handler.add(PostbackEvent)
+def handle_line_postback_event(event): # Renamed to avoid conflict if handle_postback is elsewhere
+    with current_app.app_context():
+        # This calls the handler function from line_handler.py
+        utils.handle_postback(event)
 
 @main_bp.route('/authorize')
 def authorize():
@@ -857,7 +861,7 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    current_app.logger.error(f"Server Error: {e}", exc_info=True) # Use current_app.logger
+    current_app.logger.error(f"Server Error: {e}", exc_info=True)
     return render_template('500.html'), 500
 
 # --- App Startup ---
