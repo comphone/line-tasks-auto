@@ -75,11 +75,6 @@
         font-size: 1.1em;
         font-weight: 600;
     }
-    .info-value-small {
-        font-size: 0.85em !important;
-        font-weight: 400 !important;
-        color: #6c757d !important;
-    }
     .info-value a {
         color: #0d6efd;
         text-decoration: none;
@@ -159,7 +154,7 @@
     .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .history-entry-title { font-weight: 600; font-size: 1.05em; margin-right: auto; }
-    .history-entry-body p { margin-bottom: 0.25rem; }
+    .history-entry-body p { margin-bottom: 0.5rem; font-size: 1rem; }
     .image-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
     .thumbnail { cursor: pointer; border-radius: .375rem; overflow: hidden; aspect-ratio: 1 / 1; background-color: #e9ecef; position: relative; }
     .thumbnail img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s ease-in-out; }
@@ -194,7 +189,7 @@
     <div class="summary-container">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
-            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
+            <a href="{{ url_for('main.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a> {# CORRECTED LINE #}
         </div>
 
         <div class="info-grid">
@@ -265,7 +260,7 @@
                     <input type="hidden" id="technicians_final" name="technicians_report" required>
                 </div>
                 <div class="mb-3">
-                    <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
+                    <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
                 </div>
                 <hr>
@@ -317,9 +312,9 @@
         <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
         <div class="card-body text-center">
             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
+                <a href="{{ url_for('main.generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
                 {% if task.status == 'completed' %}
-                <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
+                <a href="{{ url_for('main.generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
                 {% endif %}
             </div>
             <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
@@ -477,7 +472,7 @@
     <div class="collapse" id="dangerZoneCollapse">
         <div class="card card-body border-danger mt-2">
             <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
-            <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+            <form method="POST" action="{{ url_for('main.delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-danger w-100">
                     <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
@@ -846,7 +841,7 @@
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     ไม่พบรายชื่อช่างในระบบ
                     <hr>
-                    <p class="mb-0 small">กรุณาไปที่หน้า <a href="{{ url_for('settings_page') }}" class="alert-link">ตั้งค่า</a> เพื่อเพิ่มรายชื่อช่างก่อน</p>
+                    <p class="mb-0 small">กรุณาไปที่หน้า <a href="{{ url_for('main.settings_page') }}" class="alert-link">ตั้งค่า</a> เพื่อเพิ่มรายชื่อช่างก่อน</p>
                 </div>
             `;
         } else {
@@ -937,7 +932,7 @@
         if (filesInput) mainFormData.delete('files[]');
         mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
         try {
-            const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
+            const response = await fetch(`{{ url_for('main.task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
             const result = await response.json();
             if (response.ok) {
                 Swal.fire({ toast: true, icon: 'success', title: result.message || "บันทึกข้อมูลเรียบร้อยแล้ว!", position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true, }).then(() => { window.location.reload(); });
