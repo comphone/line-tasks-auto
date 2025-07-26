@@ -22,9 +22,9 @@ from linebot.models import MessageEvent, TextMessage, PostbackEvent
 # --- Local Module Imports ---
 import google_services as gs
 import utils
-from settings_manager import get_app_settings, save_app_settings
-from tool_routes import tools_bp # tools_bp will contain tools-related routes
-from customer_routes import customer_bp # customer_bp will contain customer-related routes
+from settings_manager import get_app_settings, save_app_settings # Ensure these are imported correctly
+from tool_routes import tools_bp 
+from customer_routes import customer_bp 
 from line_handler import handle_text_message, handle_postback
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
@@ -40,7 +40,7 @@ app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET')) 
 app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 
-# --- Define Blueprints and their routes BEFORE app initialization and registration ---
+# --- Define Blueprints and their routes BEFORE app registration ---
 main_bp = Blueprint('main', __name__)
 
 # --- Core App Routes (under main_bp) ---
@@ -85,7 +85,7 @@ def api_calendar_tasks():
 
         if task.get('due'):
             try:
-                due_dt_utc = utils.date_parse(task['due']) # Use utils.date_parse
+                due_dt_utc = utils.date_parse(task['due'])
                 due_dt_local = due_dt_utc.astimezone(utils.THAILAND_TZ)
                 event['start'] = due_dt_local.isoformat()
                 event['allDay'] = (due_dt_local.hour == 0 and due_dt_local.minute == 0 and due_dt_local.second == 0)
@@ -111,7 +111,7 @@ def api_calendar_tasks():
         
         if task.get('status') == 'completed' and task.get('completed') and not event.get('start'):
             try:
-                completed_dt_utc = utils.date_parse(task['completed']) # Use utils.date_parse
+                completed_dt_utc = utils.date_parse(task['completed'])
                 completed_dt_local = completed_dt_utc.astimezone(utils.THAILAND_TZ)
                 event['start'] = completed_dt_local.isoformat()
                 event['extendedProps']['is_completed'] = True
@@ -136,7 +136,7 @@ def schedule_from_calendar():
         return jsonify({'status': 'error', 'message': 'Missing task_id or new_due_date'}), 400
 
     try:
-        dt_utc = utils.date_parse(new_due_date_str) # Use utils.date_parse
+        dt_utc = utils.date_parse(new_due_date_str)
         new_due_date_gmt = dt_utc.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
     except ValueError:
         return jsonify({'status': 'error', 'message': 'Invalid date format'}), 400
@@ -176,7 +176,7 @@ def form_page():
         appointment_str = str(request.form.get('appointment', '')).strip()
         if appointment_str:
             try:
-                dt_local = utils.THAILAND_TZ.localize(utils.date_parse(appointment_str)) # Use utils.date_parse
+                dt_local = utils.THAILAND_TZ.localize(utils.date_parse(appointment_str))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             except ValueError:
                 flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
@@ -233,7 +233,7 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in request.form.get('technicians_reschedule', '').split(',') if t.strip()]
             if not reschedule_due_str: return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
             
-            dt_local = utils.THAILAND_TZ.localize(utils.date_parse(reschedule_due_str)) # Use utils.date_parse
+            dt_local = utils.THAILAND_TZ.localize(utils.date_parse(reschedule_due_str))
             update_payload['due'] = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             update_payload['status'] = 'needsAction'
             new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
@@ -273,7 +273,6 @@ def task_details(task_id):
     p_task['customer'] = utils.parse_customer_info_from_notes(p_task.get('notes', ''))
     p_task['feedback'] = utils.parse_customer_feedback_from_notes(p_task.get('notes', ''))
     
-    # All attachments list for lightbox/gallery in update_task_details
     all_attachments = []
     for report_item in p_task['tech_history']:
         if report_item.get('attachments'):
@@ -331,7 +330,7 @@ def edit_task(task_id):
         due_date_gmt = None
         if appointment_due_str:
             try:
-                dt_local = utils.THAILAND_TZ.localize(utils.date_parse(appointment_due_str)) # Use utils.date_parse
+                dt_local = utils.THAILAND_TZ.localize(utils.date_parse(appointment_due_str))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             except ValueError:
                 flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
@@ -375,8 +374,8 @@ def settings_page():
             },
             'auto_backup': {
                 'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': int(request.form.get('auto_backup_hour', 2)), # Changed from 'hour_thai' for consistency with form
-                'minute_thai': int(request.form.get('auto_backup_minute', 0)) # Changed from 'minute_thai' for consistency with form
+                'hour_thai': int(request.form.get('auto_backup_hour', 2)), # Consistent with form name
+                'minute_thai': int(request.form.get('auto_backup_minute', 0)) # Consistent with form name
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_contact_phone', '').strip(),
@@ -394,7 +393,10 @@ def settings_page():
         else:
             flash('เกิดข้อผิดพลาดในการบันทึก!', 'danger')
         return redirect(url_for('main.settings_page'))
-    return render_template('settings_page.html', settings=get_app_settings())
+    
+    current_settings = get_app_settings()
+    app.logger.info(f"Loading settings page. Technician list: {current_settings.get('technician_list')}") # Log to check technician_list
+    return render_template('settings_page.html', settings=current_settings)
 
 # --- Webhook & OAuth Routes ---
 @main_bp.route("/callback", methods=['POST'])
