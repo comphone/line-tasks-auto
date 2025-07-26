@@ -37,7 +37,7 @@ csrf = CSRFProtect(app)
 # --- Global Objects & Environment Variables (Moved handler definition here) ---
 app.cache = TTLCache(maxsize=100, ttl=60)
 app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
-handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET')) # Moved this line up
+handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET')) 
 app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 
 # --- Define Blueprints and their routes BEFORE app initialization and registration ---
@@ -127,6 +127,38 @@ def api_calendar_tasks():
             events.append(event)
 
     return jsonify(events)
+
+# New API endpoint for scheduling task from calendar drag-and-drop
+@main_bp.route('/api/task/schedule_from_calendar', methods=['POST'])
+def schedule_from_calendar():
+    data = request.json
+    task_id = data.get('task_id')
+    new_due_date_str = data.get('new_due_date')
+
+    if not task_id or not new_due_date_str:
+        return jsonify({'status': 'error', 'message': 'Missing task_id or new_due_date'}), 400
+
+    try:
+        # Parse the new_due_date string (which is ISO format from JS) to datetime and then to Google Tasks format
+        dt_utc = date_parse(new_due_date_str)
+        # Ensure it's in UTC and formatted as required by Google Tasks API
+        new_due_date_gmt = dt_utc.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Invalid date format'}), 400
+
+    # Get the existing task to preserve notes/status
+    task = gs.get_single_task(task_id)
+    if not task:
+        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+
+    # Update only the due date, keep existing status and notes (if not completed)
+    updated_task = gs.update_google_task(task_id=task_id, due=new_due_date_gmt)
+    
+    if updated_task:
+        current_app.cache.clear()
+        return jsonify({'status': 'success', 'message': 'Task due date updated successfully'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to update task due date'}), 500
 
 
 @main_bp.route('/form', methods=['GET', 'POST'])
