@@ -185,7 +185,7 @@ def task_details(task_id):
     
     return render_template('update_task_details.html', task=p_task, settings=get_app_settings(), all_attachments=all_attachments)
 
-# Added this route to address the TemplateNotFound error
+# Added this route to address the TemplateNotFound error (as a summary view)
 @main_bp.route("/summary")
 def summary():
     """Redirects to the dashboard as a general summary page to fix TemplateNotFound."""
@@ -193,6 +193,84 @@ def summary():
     # and redirects them to the /tools/dashboard route, which serves as a comprehensive summary.
     # It passes along any query arguments (e.g., search_query, status_filter)
     return redirect(url_for('tools.dashboard', **request.args))
+
+# Added the edit_task route
+@main_bp.route('/edit_task/<task_id>', methods=['GET', 'POST'])
+def edit_task(task_id):
+    task_raw = gs.get_single_task(task_id)
+    if not task_raw:
+        abort(404)
+
+    if request.method == 'POST':
+        # Extract form data
+        task_title = str(request.form.get('task_title', '')).strip()
+        organization_name = str(request.form.get('organization_name', '')).strip()
+        customer_name = str(request.form.get('customer_name', '')).strip()
+        customer_phone = str(request.form.get('customer_phone', '')).strip()
+        address = str(request.form.get('address', '')).strip()
+        latitude_longitude = str(request.form.get('latitude_longitude', '')).strip()
+        appointment_due_str = str(request.form.get('appointment_due', '')).strip()
+
+        if not task_title or not customer_name:
+            flash('กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน', 'danger')
+            return redirect(url_for('main.edit_task', task_id=task_id))
+
+        # Reconstruct notes field
+        existing_notes = task_raw.get('notes', '')
+        history_reports, _ = utils.parse_tech_report_from_notes(existing_notes) # Base notes from previous parsing are not needed for reconstruction
+        feedback_data = utils.parse_customer_feedback_from_notes(existing_notes)
+
+        # Build new base notes from form data
+        new_base_notes_lines = [
+            f"หน่วยงาน: {organization_name}",
+            f"ลูกค้า: {customer_name}",
+            f"เบอร์โทรศัพท์: {customer_phone}",
+            f"ที่อยู่: {address}",
+            f"พิกัด: {latitude_longitude}"
+        ]
+        new_base_notes = "\n".join(filter(None, new_base_notes_lines))
+
+
+        # Re-assemble all notes, ensuring existing structured data is preserved
+        final_notes = new_base_notes
+        if history_reports:
+            # Re-serialize history reports into their structured blocks
+            all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+            final_notes += all_reports_text
+        if feedback_data:
+            # Re-serialize feedback data into its structured block
+            final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+
+        # Parse new due date
+        new_due_date_gmt = None
+        if appointment_due_str:
+            try:
+                dt_local = utils.THAILAND_TZ.localize(date_parse(appointment_due_str))
+                new_due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            except ValueError:
+                flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
+
+        update_payload = {
+            'title': task_title,
+            'notes': final_notes,
+            'due': new_due_date_gmt # Update the due date
+        }
+
+        updated_task = gs.update_google_task(task_id, **update_payload)
+        if updated_task:
+            app.cache.clear()
+            flash('แก้ไขข้อมูลงานเรียบร้อยแล้ว!', 'success')
+            return redirect(url_for('main.task_details', task_id=task_id))
+        else:
+            flash('เกิดข้อผิดพลาดในการบันทึกการแก้ไขงาน', 'danger')
+            return redirect(url_for('main.edit_task', task_id=task_id))
+
+    # GET request: Prepare data for the form
+    p_task = utils.parse_google_task_dates(task_raw)
+    p_task['customer'] = utils.parse_customer_info_from_notes(task_raw.get('notes', ''))
+    
+    return render_template('edit_task.html', task=p_task)
 
 
 @main_bp.route('/settings', methods=['GET', 'POST'])
