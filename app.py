@@ -13,8 +13,8 @@ from flask import (Flask, request, render_template, redirect, url_for, abort,
                    session, jsonify, flash, Blueprint)
 from flask_wtf.csrf import CSRFProtect
 from cachetools import TTLCache
-from google_auth_oauthlib.flow import Flow
-from dateutil.parser import parse as date_parse
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, PostbackEvent
@@ -28,6 +28,17 @@ from customer_routes import customer_bp
 from line_handler import handle_text_message, handle_postback
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
+
+# --- App Initialization ---
+app = Flask(__name__, static_folder='static')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
+csrf = CSRFProtect(app)
+
+# --- Global Objects & Environment Variables (Moved handler definition here) ---
+app.cache = TTLCache(maxsize=100, ttl=60)
+app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
+handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET')) # Moved this line up
+app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 
 # --- Define Blueprints and their routes BEFORE app initialization and registration ---
 main_bp = Blueprint('main', __name__)
@@ -222,7 +233,7 @@ def settings_page():
         return redirect(url_for('main.settings_page'))
     return render_template('settings_page.html', settings=get_app_settings())
 
-# --- Webhook & OAuth Routes ---
+# --- Webhook & OAuth Routes (These now use the defined handler) ---
 @main_bp.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
@@ -276,17 +287,6 @@ def oauth2callback():
     
     flash('เชื่อมต่อ Google API สำเร็จ! กรุณาคัดลอก Token ใหม่จาก Log และรีสตาร์ทแอป', 'success')
     return redirect(url_for('main.settings_page'))
-
-# --- App Initialization ---
-app = Flask(__name__, static_folder='static')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
-csrf = CSRFProtect(app)
-
-# --- Global Objects & Environment Variables ---
-app.cache = TTLCache(maxsize=100, ttl=60)
-app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
-handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
-app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 
 # --- Register Blueprints ---
 # Register blueprints AFTER all their routes have been defined
