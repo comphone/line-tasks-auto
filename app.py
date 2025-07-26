@@ -22,9 +22,9 @@ from linebot.models import MessageEvent, TextMessage, PostbackEvent
 # --- Local Module Imports ---
 import google_services as gs
 import utils
-from settings_manager import get_app_settings, save_app_settings # Ensure these are imported correctly
-from tool_routes import tools_bp 
-from customer_routes import customer_bp 
+from settings_manager import get_app_settings, save_app_settings
+from tool_routes import tools_bp # Import tool_routes blueprint
+from customer_routes import customer_bp # Import customer_routes blueprint
 from line_handler import handle_text_message, handle_postback
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
@@ -124,34 +124,6 @@ def api_calendar_tasks():
             events.append(event)
 
     return jsonify(events)
-
-# API endpoint for scheduling task from calendar drag-and-drop
-@main_bp.route('/api/task/schedule_from_calendar', methods=['POST'])
-def schedule_from_calendar():
-    data = request.json
-    task_id = data.get('task_id')
-    new_due_date_str = data.get('new_due_date')
-
-    if not task_id or not new_due_date_str:
-        return jsonify({'status': 'error', 'message': 'Missing task_id or new_due_date'}), 400
-
-    try:
-        dt_utc = utils.date_parse(new_due_date_str)
-        new_due_date_gmt = dt_utc.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-    except ValueError:
-        return jsonify({'status': 'error', 'message': 'Invalid date format'}), 400
-
-    task = gs.get_single_task(task_id)
-    if not task:
-        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
-
-    updated_task = gs.update_google_task(task_id=task_id, due=new_due_date_gmt)
-    
-    if updated_task:
-        app.cache.clear()
-        return jsonify({'status': 'success', 'message': 'Task due date updated successfully'})
-    else:
-        return jsonify({'status': 'error', 'message': 'Failed to update task due date'}), 500
 
 
 @main_bp.route('/form', methods=['GET', 'POST'])
