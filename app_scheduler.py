@@ -10,9 +10,9 @@ from flask import current_app, url_for
 import google_services as gs
 import utils
 from settings_manager import get_app_settings
-from line_notifications import line_bot_api
+import line_notifications # แก้ไข: Import ทั้งโมดูลแทนที่จะนำเข้า line_bot_api โดยตรง
 from linebot.models import TextSendMessage, FlexSendMessage, BubbleContainer, BoxComponent, TextComponent, SeparatorComponent, ButtonComponent, URIAction, PostbackAction
-from utils import create_backup_zip # <--- FIX: Import from utils
+from utils import create_backup_zip
 
 scheduler = BackgroundScheduler(daemon=True, timezone=pytz.timezone('Asia/Bangkok'))
 
@@ -85,7 +85,11 @@ def scheduled_appointment_reminder_job():
         recipients = get_app_settings().get('line_recipients', {})
         admin_group_id = recipients.get('admin_group_id')
         technician_group_id = recipients.get('technician_group_id')
-        if not (admin_group_id or technician_group_id) or not line_bot_api: return
+
+        # แก้ไข: ดึง line_bot_api instance จาก current_app context
+        line_bot_api_instance = line_notifications.get_line_bot_api()
+        
+        if not (admin_group_id or technician_group_id) or not line_bot_api_instance: return
 
         tasks_raw = gs.get_google_tasks_for_report(show_completed=False) or []
         today_thai = datetime.date.today()
@@ -122,10 +126,10 @@ def scheduled_appointment_reminder_job():
             try:
                 sent_to = set()
                 if admin_group_id:
-                    line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
+                    line_bot_api_instance.push_message(admin_group_id, TextSendMessage(text=message_text))
                     sent_to.add(admin_group_id)
                 if technician_group_id and technician_group_id not in sent_to:
-                    line_bot_api.push_message(technician_group_id, TextSendMessage(text=message_text))
+                    line_bot_api_instance.push_message(technician_group_id, TextSendMessage(text=message_text))
             except Exception as e:
                 current_app.logger.error(f"Failed to send appointment reminder for task {task['id']}: {e}")
 
@@ -138,6 +142,9 @@ def scheduled_customer_follow_up_job():
         now_utc = datetime.datetime.now(pytz.utc)
         one_day_ago_utc = now_utc - datetime.timedelta(days=1)
         two_days_ago_utc = now_utc - datetime.timedelta(days=2)
+
+        # แก้ไข: ดึง line_bot_api instance จาก current_app context
+        line_bot_api_instance = line_notifications.get_line_bot_api()
 
         for task in tasks_raw:
             if task.get('status') == 'completed' and task.get('completed'):
@@ -156,19 +163,19 @@ def scheduled_customer_follow_up_job():
                         flex_message = FlexSendMessage(alt_text="สอบถามความพึงพอใจหลังการซ่อม", contents=flex_content)
 
                         try:
-                            line_bot_api.push_message(customer_line_id, flex_message)
+                            line_bot_api_instance.push_message(customer_line_id, flex_message)
                             feedback_data['follow_up_sent_date'] = datetime.datetime.now(utils.THAILAND_TZ).isoformat()
                             history_reports, base_notes = utils.parse_tech_report_from_notes(notes)
                             tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
                             new_notes = base_notes.strip()
                             if tech_reports_text: new_notes += tech_reports_text
-                            new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+                            new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
                             gs.update_google_task(task['id'], notes=new_notes)
                             current_app.cache.clear()
                         except Exception as e:
                             current_app.logger.error(f"Failed to send direct follow-up to {customer_line_id}: {e}. Notifying admin.")
                             if admin_group_id:
-                                line_bot_api.push_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} ไม่สำเร็จ:"), flex_message])
+                                line_bot_api_instance.push_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} ไม่สำเร็จ:"), flex_message])
                 except Exception as e:
                     current_app.logger.warning(f"Could not process task {task.get('id')} for follow-up: {e}")
 
