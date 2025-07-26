@@ -74,7 +74,7 @@
 
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h1 class="h2 mb-0">📝 สร้างงานใหม่</h1>
-                <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+                <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
             </div>
 
             <div class="card shadow-sm mb-4">
@@ -154,7 +154,6 @@
                         </div>
                     </div>
 
-                    <!-- UPDATED: File Input Section -->
                     <div class="mb-3">
                         <label for="files" class="form-label">แนบรูปภาพ/ไฟล์แนบอื่นๆ</label>
                         <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.kml,.kmz" capture="environment">

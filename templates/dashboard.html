@@ -80,7 +80,7 @@
 
 <div class="row">
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='all') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('tools.dashboard', status_filter='all') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-primary h-100">
                 <div class="icon"><i class="fas fa-globe-asia"></i></div>
                 <div class="text-content">
@@ -91,7 +91,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('tools.dashboard', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-warning h-100">
                 <div class="icon"><i class="fas fa-hourglass-half"></i></div>
                 <div class="text-content">
@@ -102,7 +102,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='completed') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('tools.dashboard', status_filter='completed') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-success h-100">
                 <div class="icon"><i class="fas fa-check-double"></i></div>
                 <div class="text-content">
@@ -113,7 +113,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='today') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('tools.dashboard', status_filter='today') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-info h-100">
                 <div class="icon"><i class="fas fa-calendar-day"></i></div>
                 <div class="text-content">
@@ -143,21 +143,20 @@
     <div class="card-body">
         <div class="tab-content" id="dashboardTabContent">
             <div class="tab-pane fade show active" id="task-list-pane" role="tabpanel" aria-labelledby="task-list-tab" tabindex="0">
-                <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
+                <form method="GET" action="{{ url_for('tools.dashboard') }}" class="mb-3">
                     <div class="input-group">
                         <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หน่วยงาน หรือเบอร์โทร..." value="{{ search_query or '' }}">
                         <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
-                        <a href="{{ url_for('summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
+                        <a href="{{ url_for('tools.summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
                     </div>
                 </form>
 
-                <!-- NEW: Job Type Filter Buttons -->
                 <div class="d-flex justify-content-center flex-wrap mb-3">
                     <ul class="nav nav-pills">
                         {% for key, value in job_types.items() %}
                         <li class="nav-item">
                             <a class="nav-link {% if job_type_filter == key or (job_type_filter == 'all' and key == 'all') %}active{% endif %}" 
-                               href="{{ url_for('summary', job_type_filter=key) }}">{{ value }}</a>
+                               href="{{ url_for('tools.dashboard', job_type_filter=key) }}">{{ value }}</a>
                         </li>
                         {% endfor %}
                     </ul>
@@ -194,7 +193,6 @@
                                         <strong>{{ task.customer.name or '-' }}</strong>
                                     {% endif %}
                                 </td>
-                                <!-- UPDATED: Task Title Cell -->
                                 <td class="task-title-cell" title="{{ task.clean_title }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                                     {% if task.job_type != 'เซอร์วิส' %}
                                         <span class="badge bg-secondary mb-1">{{ task.job_type }}</span>

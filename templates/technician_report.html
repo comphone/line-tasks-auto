@@ -51,7 +51,7 @@
 <div class="container mt-4 mb-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">📊 รายงานผลงานช่าง</h1>
-        <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
     <div class="card shadow-sm mb-4">
@@ -59,7 +59,7 @@
             <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>เลือกช่วงเวลา</h5>
         </div>
         <div class="card-body">
-            <form method="GET" action="{{ url_for('technician_report') }}">
+            <form method="GET" action="{{ url_for('tools.technician_report') }}">
                 <div class="row g-3 align-items-end">
                     <div class="col-md-4">
                         <label for="month_select" class="form-label">เดือน</label>
