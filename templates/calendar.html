@@ -136,7 +136,7 @@
         right: 'dayGridMonth,timeGridWeek,listWeek'
       },
       events: {
-          url: '{{ url_for("api_calendar_tasks") }}',
+          url: '{{ url_for("main.api_calendar_tasks") }}', {# บรรทัดที่แก้ไข #}
           failure: function(error) {
               Swal.fire({
                   icon: 'error',
