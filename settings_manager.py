@@ -1,57 +1,45 @@
-import os
+# ... (Existing imports and functions in settings_manager.py)
 import json
+from io import BytesIO
 
-SETTINGS_FILE = 'settings.json'
-_DEFAULT_APP_SETTINGS_STORE = {
-    'report_times': { 'appointment_reminder_hour_thai': 7, 'outstanding_report_hour_thai': 20, 'customer_followup_hour_thai': 9 },
-    'line_recipients': { 'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''), 'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''), 'manager_user_id': '' },
-    'equipment_catalog': [],
-    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
-    'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
-    'technician_list': [] # Ensure this default is always present
-}
+# Import google_services locally to avoid circular dependencies
+import google_services
 
-def get_app_settings():
-    """Reads settings from the JSON file, falling back to defaults."""
-    app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE)) # Start with a deep copy of defaults
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                loaded_settings = json.load(f)
-                # Merge loaded settings with defaults, preserving keys from defaults if not in loaded
-                for key, default_value in app_settings.items():
-                    if key in loaded_settings:
-                        if isinstance(default_value, dict) and isinstance(loaded_settings[key], dict):
-                            # Recursively update for nested dictionaries
-                            app_settings[key].update(loaded_settings[key])
-                        else:
-                            app_settings[key] = loaded_settings[key]
-        except (json.JSONDecodeError, IOError):
-            # In case of error (corrupted file, permission issue), just use the default and attempt to overwrite
-            # This ensures app starts even with bad settings.json
-            pass
-    # After loading, ensure common_equipment_items is always generated
-    equipment_catalog = app_settings.get('equipment_catalog', [])
-    app_settings['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
-    
-    return app_settings
+# ... (Existing functions like get_setting, save_setting, etc.)
 
-def save_app_settings(settings_data):
-    """Saves the provided settings dictionary to the JSON file."""
-    current_settings = get_app_settings() # Load current to merge, not overwrite entirely
-    
-    for key, value in settings_data.items():
-        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
-            current_settings[key].update(value) # Update nested dicts
-        else:
-            current_settings[key] = value # Overwrite non-dict values
-            
+def backup_settings_to_drive():
+    """
+    Backs up the current settings dictionary to 'settings_backup.json' in Google Drive.
+    Moved from old google_services.py.
+    Reason: This function's primary role is settings persistence, using Drive as a backend.
+    """
     try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(current_settings, f, ensure_ascii=False, indent=4)
+        settings_data = get_all_settings() # Assuming this function gets current settings
+        settings_backup_folder_id = google_services.find_or_create_drive_folder("Settings_Backups", os.environ.get('GOOGLE_DRIVE_FOLDER_ID'))
+        if not settings_backup_folder_id:
+            return False
+        
+        # ... (Logic to delete old backup and upload new one) ...
+        settings_json_bytes = BytesIO(json.dumps(settings_data, ensure_ascii=False, indent=4).encode('utf-8'))
+        google_services.upload_data_from_memory_to_drive(settings_json_bytes, 'settings_backup.json', 'application/json', settings_backup_folder_id)
+        
         return True
-    except IOError:
-        # Log the error for debugging
-        # For Flask app context, use current_app.logger.error if available
-        # For this standalone file, just return False
+    except Exception as e:
+        # Log error
+        return False
+
+def load_settings_from_drive():
+    """
+    Loads the latest 'settings_backup.json' from Drive and saves it locally.
+    Moved from old google_services.py.
+    Reason: This is the restore counterpart to the backup function.
+    """
+    try:
+        settings_backup_folder_id = google_services.find_or_create_drive_folder("Settings_Backups", os.environ.get('GOOGLE_DRIVE_FOLDER_ID'))
+        # ... (Logic to find and download the latest settings_backup.json from Drive) ...
+        # downloaded_settings = ...
+        # save_all_settings(downloaded_settings) # Save the restored settings
+        return True
+    except Exception as e:
+        # Log error
         return False

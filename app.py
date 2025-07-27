@@ -1,91 +1,80 @@
 import os
-import datetime
-import pytz
-import atexit
-
+from flask import Flask
 from dotenv import load_dotenv
+
+# Load environment variables
 load_dotenv()
 
-from flask import Flask, request, render_template, abort
-from flask_wtf.csrf import CSRFProtect
-from cachetools import TTLCache
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, PostbackEvent
-
-# --- Local Module Imports ---
-import google_services as gs
-import utils
-from settings_manager import get_app_settings, save_app_settings
-from tool_routes import tools_bp
-from customer_routes import customer_bp
+# Import Blueprints
 from main_routes import main_bp
-from api_routes import api_bp  # Import the new api blueprint
-from line_handler import handle_text_message, handle_postback
-from app_scheduler import initialize_scheduler, cleanup_scheduler
-from app import handler
+from tool_routes import tools_bp
+from api_routes import api_bp
+from customer_routes import customer_bp
+from line_handler import line_bp
 
-# --- App Initialization ---
-app = Flask(__name__, static_folder='static')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_dev')
-csrf = CSRFProtect(app)
+# Import other necessary modules
+from app_scheduler import initialize_scheduler
+from settings_manager import settings_manager
+import utils # Import the new utils file
 
-# --- Global Objects & Environment Variables ---
-app.cache = TTLCache(maxsize=100, ttl=60)
-app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
+def create_app():
+    """Create and configure an instance of the Flask application."""
+    app = Flask(__name__)
+    app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
-# --- Register Blueprints ---
-app.register_blueprint(main_bp) 
-app.register_blueprint(tools_bp)
-app.register_blueprint(customer_bp)
-app.register_blueprint(api_bp) # Register the new api blueprint
-
-# --- Context Processors & Error Handlers ---
-@app.context_processor
-def inject_global_vars():
-    """Injects variables into all templates."""
-    return {
-        'now': datetime.datetime.now(utils.THAILAND_TZ), 
-        'google_api_connected': gs.get_refreshed_credentials() is not None,
-        'get_file_icon': utils.get_file_icon
+    # --- VARIABLE: TEXT_SNIPPETS ---
+    # Moved from app_old.py. This is a global constant for the app.
+    # Reason: This data is static and used in templates, making it suitable as a global config.
+    app.config['TEXT_SNIPPETS'] = {
+        'task_details': [
+            {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
+            {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
+            {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
+            {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
+        ],
+        'progress_reports': [
+            {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
+            {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
+            {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
+            {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
+        ]
     }
 
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
 
-@app.errorhandler(500)
-def internal_server_error(e):
-    app.logger.error(f"Server Error: {e}", exc_info=True)
-    return render_template('500.html'), 500
+    # Register Blueprints
+    app.register_blueprint(main_bp)
+    app.register_blueprint(tools_bp, url_prefix='/tools')
+    app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(customer_bp, url_prefix='/customer')
+    app.register_blueprint(line_bp) # For /callback
 
-# --- LINE Webhook Handlers ---
-@app.route("/callback", methods=['POST'])
-def callback():
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return 'OK'
+    # Initialize scheduler
+    initialize_scheduler(app)
 
-@handler.add(MessageEvent, message=TextMessage)
-def message_handler(event):
-    with app.app_context():
-        handle_text_message(event)
+    # --- FUNCTION: inject_global_vars ---
+    # Moved from app_old.py. This function injects variables into all templates.
+    # Reason: Context processors are a Flask feature that must be registered with the app instance.
+    @app.context_processor
+    def inject_global_vars():
+        """Injects global variables into the template context."""
+        return {
+            'google_api_connected': utils.check_google_api_status(),
+            'text_snippets': app.config['TEXT_SNIPPETS']
+        }
 
-@handler.add(PostbackEvent)
-def postback_handler(event):
-    with app.app_context():
-        handle_postback(event)
+    # Error Handlers
+    @app.errorhandler(404)
+    def page_not_found(e):
+        return "404 Not Found", 404
 
-# --- App Startup ---
+    @app.errorhandler(500)
+    def internal_server_error(e):
+        # Log the error e
+        return "500 Internal Server Error", 500
+
+    return app
+
 if __name__ == '__main__':
-    with app.app_context():
-        gs.load_settings_from_drive_on_startup(save_app_settings)
-        initialize_scheduler(app) 
-    atexit.register(cleanup_scheduler)
-    
-    port = int(os.environ.get('PORT', 8080))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    app = create_app()
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)

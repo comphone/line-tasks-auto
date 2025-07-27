@@ -1,46 +1,47 @@
 {% extends "base.html" %}
 
-{% block title %}จัดระเบียบไฟล์ใน Google Drive{% endblock %}
+{% block title %}จัดระเบียบไฟล์ - {{ super() }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2">🗂️ จัดระเบียบไฟล์ใน Google Drive</h1>
-        <a href="{{ url_for('main.settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a> {# CORRECTED LINE #}
-    </div>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                    {{ message | safe }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="bi bi-folder-symlink-fill"></i> จัดระเบียบไฟล์ใน Google Drive</h4>
                 </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
-    <div class="card border-warning">
-        <div class="card-header bg-warning text-dark">
-            <h5 class="mb-0">คำเตือนและคำแนะนำ</h5>
-        </div>
-        <div class="card-body">
-            <p>สคริปต์นี้จะทำการค้นหาไฟล์แนบทั้งหมดที่เคยอัปโหลดไว้ในระบบ และทำการย้ายไฟล์เหล่านั้นเข้าไปยังโฟลเดอร์ที่จัดระเบียบตามโครงสร้างใหม่:</p>
-            <p class="text-center"><code>/Task_Attachments/YYYY-MM/ชื่อลูกค้า - [รหัสงาน]/</code></p>
-            <ul>
-                <li>กระบวนการนี้อาจใช้เวลานานหากคุณมีไฟล์จำนวนมาก</li>
-                <li>ระหว่างที่สคริปต์ทำงาน **ห้ามปิดหน้านี้** หรือรีเฟรชเบราว์เซอร์</li>
-                <li>แนะนำให้ทำการจัดระเบียบนี้ **เพียงครั้งเดียว**</li>
-                <li>ไฟล์ที่ถูกจัดระเบียบเรียบร้อยแล้ว จะไม่ถูกย้ายซ้ำ</li>
-            </ul>
-            <div class="text-center mt-4">
-                <form method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการเริ่มการจัดระเบียบไฟล์ทั้งหมด?');">
-                    <button type="submit" class="btn btn-primary btn-lg">
-                        <i class="fas fa-play-circle me-2"></i>เริ่มการจัดระเบียบไฟล์
-                    </button>
-                </form>
+                <div class="card-body">
+                    <p class="card-text">
+                        เครื่องมือนี้จะทำการสแกนหาไฟล์แนบทั้งหมดที่ยังไม่ได้ถูกจัดเก็บในโฟลเดอร์ของงาน (Task) ที่ถูกต้อง และทำการย้ายไฟล์เหล่านั้นไปยังโฟลเดอร์ที่เกี่ยวข้องโดยอัตโนมัติ
+                    </p>
+                    <p class="text-muted">
+                        กระบวนการนี้อาจใช้เวลาหลายนาที ขึ้นอยู่กับจำนวนไฟล์ที่ยังไม่ได้จัดระเบียบ กรุณาอย่าปิดหน้านี้ระหว่างที่ระบบกำลังทำงาน
+                    </p>
+                    <hr>
+                    <form id="organizeForm" method="POST" action="{{ url_for('tools.organize_files') }}">
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <span id="button-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                <span id="button-text"><i class="bi bi-play-circle"></i> เริ่มการจัดระเบียบไฟล์</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-muted">
+                    แนะนำให้รันเครื่องมือนี้สัปดาห์ละครั้งเพื่อรักษาความเป็นระเบียบของข้อมูล
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    document.getElementById('organizeForm').addEventListener('submit', function() {
+        document.getElementById('button-text').textContent = 'กำลังทำงาน...';
+        document.getElementById('button-spinner').classList.remove('d-none');
+        document.querySelector('button[type="submit"]').disabled = true;
+    });
+</script>
 {% endblock %}
