@@ -4,6 +4,7 @@ import pytz
 import time
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
+import fnmatch # Added import for fnmatch
 
 from flask import current_app
 from google.oauth2.credentials import Credentials
@@ -13,6 +14,9 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
+
+# --- Local Module Imports ---
+import utils
 
 # --- Constants ---
 SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/drive']
@@ -348,3 +352,71 @@ def backup_settings_to_drive(settings_data):
     except Exception as e:
         current_app.logger.error(f"Failed to backup settings to Google Drive: {e}", exc_info=True)
         return False
+
+def create_backup_zip():
+    """Creates a zip archive of current tasks, settings, and optionally code files."""
+    try:
+        current_app.logger.info("Starting to create system backup zip.")
+        memory_file = BytesIO()
+        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # 1. Backup current settings.json (if exists, or use default)
+            from settings_manager import get_app_settings # Local import to prevent circular dependency
+            settings = get_app_settings()
+            settings_json_content = json.dumps(settings, ensure_ascii=False, indent=4)
+            zipf.writestr('settings.json', settings_json_content)
+            current_app.logger.info("Added settings.json to backup.")
+
+            # 2. Backup Google Tasks (simplified)
+            tasks = get_google_tasks_for_report(show_completed=True, max_results=500)
+            if tasks:
+                tasks_json_content = json.dumps(tasks, ensure_ascii=False, indent=4)
+                zipf.writestr('tasks_backup.json', tasks_json_content)
+                current_app.logger.info(f"Added {len(tasks)} tasks to backup.")
+            else:
+                current_app.logger.warning("No tasks found for backup.")
+
+            # 3. Backup Code Files (from current directory)
+            # You might want to be selective here. For simplicity, let's include .py files.
+            # Exclude sensitive files like client_secrets.json, token.json, .env, __pycache__ etc.
+            # The .gitignore file gives hints on what to exclude.
+            exclude_patterns = [
+                '__pycache__', '.env', '.venv', 'venv', '.idea', '.vscode', '*.log',
+                'htmlcov', '.tox', '.coverage*', '.cache', 'nosetests.xml', 'coverage.xml',
+                '*.cover', '.hypothesis', '*.egg-info', '*.egg', 'dist', 'build',
+                'credentials.json', 'client_secrets.json', 'token.json', 'secrets.json',
+                'config.yaml', 'config.yml', '*.zip', '*.tar.gz', '*.tar', '*.7z',
+                '*.exe', '*.dll', 'static/*.log', '*.pid', 'service-account.json'
+            ]
+            
+            # Function to check if a path should be excluded
+            def should_exclude(path, patterns):
+                for pattern in patterns:
+                    if os.path.isabs(pattern):
+                        if fnmatch.fnmatch(path, pattern):
+                            return True
+                    else:
+                        if fnmatch.fnmatch(os.path.basename(path), pattern):
+                            return True
+                return False
+
+            for root, _, files in os.walk(os.path.dirname(os.path.abspath(__file__))):
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    relative_path = os.path.relpath(file_path, os.path.dirname(os.path.abspath(__file__)))
+                    
+                    if not should_exclude(relative_path, exclude_patterns):
+                        try:
+                            zipf.write(file_path, arcname=relative_path)
+                            # current_app.logger.debug(f"Added {relative_path} to backup.")
+                        except Exception as e:
+                            current_app.logger.error(f"Failed to add '{relative_path}' to zip: {e}")
+            current_app.logger.info("Added code files to backup.")
+
+        memory_file.seek(0)
+        timestamp = datetime.now(utils.THAILAND_TZ).strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"full_backup_{timestamp}.zip"
+        current_app.logger.info("Successfully created system backup zip.")
+        return memory_file, backup_filename
+    except Exception as e:
+        current_app.logger.error(f"Error creating full system backup zip: {e}", exc_info=True)
+        return None, None

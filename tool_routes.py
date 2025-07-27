@@ -15,8 +15,7 @@ import utils
 from app_scheduler import scheduled_backup_job, scheduled_customer_follow_up_job
 from line_notifications import test_line_notification
 from settings_manager import get_app_settings, save_app_settings
-# --- FIX: Import create_backup_zip directly from utils ---
-from utils import create_backup_zip
+from google_services import create_backup_zip # Modified: Import from google_services
 
 tools_bp = Blueprint('tools', __name__, url_prefix='/tools')
 

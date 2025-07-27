@@ -12,7 +12,7 @@ import base64
 
 # --- Local Module Imports ---
 from settings_manager import get_app_settings
-import google_services as gs
+import google_services as gs # This import remains for other utility functions
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 

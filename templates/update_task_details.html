@@ -569,11 +569,7 @@
 <script>
     const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
-	{% if task.tech_reports_history is defined and task.tech_reports_history %}
-	const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
-	{% else %}
-	const techReportsHistory = [];
-	{% endif %}
+	const techReportsHistory = {{ (task.tech_reports_history if task.tech_reports_history is not none else []) | tojson | safe }}; {# MODIFIED LINE #}
     let slideIndex;
     let technicianSelectionModal;
     let editReportModal;
