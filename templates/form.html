@@ -199,7 +199,13 @@
             });
 
             // taskDetailSnippets is passed from app.py
+            // FIX: Add a check for task_detail_snippets to prevent TypeError if it's None or Undefined
+            {% if task_detail_snippets is defined and task_detail_snippets %}
             const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }}; 
+            {% else %}
+            const taskDetailSnippets = [];
+            {% endif %}
+
             if (taskDetailSnippets && taskDetailSnippets.length > 0) {
                 const tributeTask = new Tribute({
                     values: taskDetailSnippets,
