@@ -12,7 +12,7 @@ import utils
 from settings_manager import get_app_settings
 import line_notifications # แก้ไข: Import ทั้งโมดูลแทนที่จะนำเข้า line_bot_api โดยตรง
 from linebot.models import TextSendMessage, FlexSendMessage, BubbleContainer, BoxComponent, TextComponent, SeparatorComponent, ButtonComponent, URIAction, PostbackAction
-from google_services import create_backup_zip # Modified: Import from google_services
+from utils import create_backup_zip
 
 scheduler = BackgroundScheduler(daemon=True, timezone=pytz.timezone('Asia/Bangkok'))
 
@@ -169,7 +169,7 @@ def scheduled_customer_follow_up_job():
                             tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
                             new_notes = base_notes.strip()
                             if tech_reports_text: new_notes += tech_reports_text
-                            new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---" # Changed `feedback` to `feedback_data`
+                            new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
                             gs.update_google_task(task['id'], notes=new_notes)
                             current_app.cache.clear()
                         except Exception as e:

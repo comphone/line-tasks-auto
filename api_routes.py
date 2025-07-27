@@ -1,64 +1,189 @@
-from flask import Blueprint, request, jsonify
-import google_services as gs
+import os
+import datetime
 import json
+import pytz
+from io import BytesIO
+from PIL import Image
+import mimetypes
 
-api_bp = Blueprint('api', __name__)
+from flask import Blueprint, request, jsonify, current_app
+from werkzeug.utils import secure_filename
+from googleapiclient.http import MediaIoBaseUpload
 
-# ... existing API routes ...
+import google_services as gs
+import utils
 
-# --- NEW API Endpoints for Task Details Page ---
+api_bp = Blueprint('api', __name__, url_prefix='/api')
 
-@api_bp.route('/task/<task_id>/action', methods=['POST'])
-def handle_task_action(task_id):
-    """A single route to handle complete, reschedule, and save_report actions."""
-    action = request.form.get('action')
-    if not action:
-        return jsonify({'status': 'error', 'message': 'Action not specified.'}), 400
+# --- Constants ---
+MAX_FILE_SIZE_MB = 50
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 
-    # This is a simplified example. You would have specific logic for each action.
-    # For example, you would call gs.update_task with different parameters.
+
+# --- Helper Function for File Upload ---
+def _handle_file_upload(file, task_id, is_avatar=False):
+    """Handles file validation, compression, and uploading to a structured folder in Drive."""
+    if not file or file.filename == '':
+        return {'status': 'error', 'message': 'No file selected'}, 400
+
+    file.seek(0, os.SEEK_END)
+    file_length = file.tell()
+    file.seek(0)
     
-    # Logic to get form data
-    work_summary = request.form.get('work_summary')
-    technicians = request.form.get('technicians_report')
-    uploaded_attachments_json = request.form.get('uploaded_attachments_json', '[]')
-    new_attachments = json.loads(uploaded_attachments_json)
+    filename = secure_filename(file.filename)
+    mime_type = file.mimetype or mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    file_to_upload = file
 
-    # Here you would call a service function to update the task
-    # success = gs.add_task_report(task_id, work_summary, technicians, new_attachments)
+    # Image compression for large files
+    if file_length > MAX_FILE_SIZE_BYTES:
+        if mime_type.startswith('image/'):
+            try:
+                img = Image.open(file)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                
+                output_buffer = BytesIO()
+                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                output_buffer.seek(0)
+                file_to_upload = output_buffer
+                filename = os.path.splitext(filename)[0] + '.jpg'
+                mime_type = 'image/jpeg'
+                current_app.logger.info(f"Compressed image '{file.filename}' successfully.")
+            except Exception as e:
+                current_app.logger.error(f"Could not compress image '{file.filename}': {e}")
+                return {'status': 'error', 'message': 'Image is too large and compression failed'}, 413
+        else:
+            return {'status': 'error', 'message': f'File size exceeds the {MAX_FILE_SIZE_MB}MB limit'}, 413
     
-    message_map = {
-        'complete_task': 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!',
-        'reschedule_task': 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว',
-        'save_report': 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
-    }
-    
-    return jsonify({'status': 'success', 'message': message_map.get(action, 'ดำเนินการสำเร็จ')})
+    # Determine upload folder
+    if is_avatar:
+        upload_folder_id = gs.find_or_create_drive_folder("Technician_Avatars", GOOGLE_DRIVE_FOLDER_ID)
+    else:
+        attachments_base_folder_id = gs.find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        if not attachments_base_folder_id:
+            return {'status': 'error', 'message': 'Could not access base attachments folder'}, 500
+        
+        task_raw = gs.get_single_task(task_id) if task_id != 'new_task_placeholder' else None
+        target_date = datetime.datetime.now(utils.THAILAND_TZ)
+        if task_raw and task_raw.get('created'):
+            try:
+                target_date = utils.date_parse(task_raw['created']).astimezone(utils.THAILAND_TZ)
+            except (ValueError, TypeError): pass
 
-@api_bp.route('/task/<task_id>/report/<int:report_index>', methods=['POST', 'DELETE'])
-def manage_task_report(task_id, report_index):
-    if request.method == 'POST': # Edit text
-        data = request.json
-        new_summary = data.get('summary')
-        # success = gs.edit_report_summary(task_id, report_index, new_summary)
-        return jsonify({'status': 'success', 'message': 'แก้ไขรายงานเรียบร้อยแล้ว'})
-    
-    elif request.method == 'DELETE':
-        # success = gs.delete_task_report(task_id, report_index)
-        return jsonify({'status': 'success', 'message': 'ลบรายงานเรียบร้อยแล้ว'})
+        monthly_folder_name = target_date.strftime('%Y-%m')
+        monthly_folder_id = gs.find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+
+        customer_name = "Unknown_Customer"
+        if task_raw:
+             customer_name = utils.parse_customer_info_from_notes(task_raw.get('notes', '')).get('name', customer_name)
+        
+        task_folder_name = f"{utils.sanitize_filename(customer_name)} - {task_id}"
+        upload_folder_id = gs.find_or_create_drive_folder(task_folder_name, monthly_folder_id)
+
+    if not upload_folder_id:
+         return {'status': 'error', 'message': 'Could not determine the final upload folder'}, 500
+
+    # Perform upload
+    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+    drive_file = gs._perform_drive_upload(media_body, filename, mime_type, upload_folder_id)
+
+    if drive_file:
+        return {
+            'status': 'success',
+            'file_info': {'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename}
+        }, 200
+    else:
+        return {'status': 'error', 'message': 'Failed to upload to Google Drive'}, 500
+
+# --- API Routes ---
 
 @api_bp.route('/upload_attachment', methods=['POST'])
 def api_upload_attachment():
-    # Logic from app_old.py to handle file upload to Google Drive
-    # It should return a JSON with file_info on success
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files.get('file')
+    task_id = request.form.get('task_id', 'new_task_placeholder')
+    result, status_code = _handle_file_upload(file, task_id, is_avatar=False)
+    return jsonify(result), status_code
+
+@api_bp.route('/upload_avatar', methods=['POST'])
+def api_upload_avatar():
+    file = request.files.get('file')
+    # Avatar is not tied to a specific task, so task_id is a placeholder
+    result, status_code = _handle_file_upload(file, task_id="avatar", is_avatar=True)
+    return jsonify(result), status_code
     
-    # file = request.files['file']
-    # task_id = request.form.get('task_id')
-    # drive_file_info = gs.upload_file_from_request(file, task_id)
-    # if drive_file_info:
-    #    return jsonify({'status': 'success', 'file_info': drive_file_info})
-    # else:
-    #    return jsonify({'status': 'error', 'message': 'Upload failed'}), 500
-    return jsonify({'status': 'success', 'file_info': {'id': 'dummy_id', 'url': '#', 'name': 'dummy.jpg'}}) # Dummy response
+@api_bp.route('/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
+def api_edit_report_text(task_id, report_index):
+    new_summary = request.json.get('summary', '').strip()
+    if not new_summary:
+        return jsonify({'status': 'error', 'message': 'Summary text cannot be empty'}), 400
+    
+    task_raw = gs.get_single_task(task_id)
+    if not task_raw: return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+
+    history, base_notes, feedback = utils.get_notes_parts(task_raw.get('notes', ''))
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'Report index out of bounds'}), 404
+
+    history[report_index]['work_summary'] = new_summary
+    new_notes = utils.build_notes_string(base_notes, history, feedback)
+    
+    if gs.update_google_task(task_id, notes=new_notes):
+        current_app.cache.clear()
+        return jsonify({'status': 'success', 'message': 'Report updated successfully'})
+    return jsonify({'status': 'error', 'message': 'Failed to save updated notes'}), 500
+
+@api_bp.route('/task/<task_id>/delete_report/<int:report_index>', methods=['POST'])
+def api_delete_report(task_id, report_index):
+    task_raw = gs.get_single_task(task_id)
+    if not task_raw: return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+
+    history, base_notes, feedback = utils.get_notes_parts(task_raw.get('notes', ''))
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'Report index out of bounds'}), 404
+
+    # Delete attachments from Drive
+    report_to_delete = history.pop(report_index)
+    if report_to_delete.get('attachments'):
+        drive_service = gs.get_google_drive_service()
+        for att in report_to_delete['attachments']:
+            try:
+                gs._execute_google_api_call_with_retry(drive_service.files().delete, fileId=att['id'])
+            except Exception as e:
+                current_app.logger.error(f"Failed to delete attachment {att.get('id')} from Drive: {e}")
+
+    new_notes = utils.build_notes_string(base_notes, history, feedback)
+    if gs.update_google_task(task_id, notes=new_notes):
+        current_app.cache.clear()
+        return jsonify({'status': 'success', 'message': 'Report deleted successfully'})
+    return jsonify({'status': 'error', 'message': 'Failed to save changes after deletion'}), 500
+
+@api_bp.route('/task/delete/<task_id>', methods=['POST'])
+def api_delete_task(task_id):
+    if gs.delete_google_task(task_id):
+        current_app.cache.clear()
+        return jsonify({'status': 'success', 'message': 'Task deleted successfully'})
+    return jsonify({'status': 'error', 'message': 'Failed to delete task'}), 500
+
+@api_bp.route('/tasks/delete_batch', methods=['POST'])
+def api_delete_tasks_batch():
+    task_ids = request.json.get('task_ids', [])
+    if not task_ids:
+        return jsonify({'status': 'warning', 'message': 'No task IDs provided'}), 400
+    
+    deleted_count, failed_count = 0, 0
+    for task_id in task_ids:
+        if gs.delete_google_task(task_id):
+            deleted_count += 1
+        else:
+            failed_count += 1
+    
+    if deleted_count > 0:
+        current_app.cache.clear()
+
+    return jsonify({
+        'status': 'success' if failed_count == 0 else 'warning',
+        'message': f'Deleted: {deleted_count}, Failed: {failed_count}',
+        'deleted_count': deleted_count,
+        'failed_count': failed_count
+    })
