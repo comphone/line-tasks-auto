@@ -16,7 +16,6 @@ import google_services as gs
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
-# Define text snippets for quick replies/autocomplete in forms
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -32,197 +31,96 @@ TEXT_SNIPPETS = {
     ]
 }
 
-
 def sanitize_filename(name):
-    """Removes illegal characters from a string to make it a valid filename."""
-    if not name:
-        return "Unnamed"
+    if not name: return "Unnamed"
     return re.sub(r'[\\/*?:"<>|]', "", name).strip()
 
 def parse_customer_info_from_notes(notes):
-    """Extracts customer information from the notes string of a task."""
     info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
     if not notes: return info
+    # Use non-capturing groups for the keywords to extract only the value
+    org_match = re.search(r"(?i)หน่วยงาน:\s*(.*)", notes)
+    name_match = re.search(r"(?i)ลูกค้า:\s*(.*)", notes)
+    phone_match = re.search(r"(?i)เบอร์โทรศัพท์:\s*(.*)", notes)
+    address_match = re.search(r"(?i)ที่อยู่:\s*(.*)", notes)
+    map_url_match = re.search(r"(https?:\/\/[^\s]+|maps\.google\.com\/\?q=\-?\d+\.\d+,\-?\d+\.\d+)", notes)
 
-    org_match = re.search(r"หน่วยงาน:\s*(.*)", notes, re.IGNORECASE)
-    name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
-    phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
-    address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
-    map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
-
-    if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
-    if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
-    if phone_match: info['phone'] = phone_match.group(1).strip().split(':')[-1].strip()
-    if address_match: info['address'] = address_match.group(1).strip().split(':')[-1].strip()
-    
-    if map_url_match:
-        coords_or_url = map_url_match.group(1).strip()
-        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
-        else:
-            info['map_url'] = coords_or_url
+    if org_match: info['organization'] = org_match.group(1).strip()
+    if name_match: info['name'] = name_match.group(1).strip()
+    if phone_match: info['phone'] = phone_match.group(1).strip()
+    if address_match: info['address'] = address_match.group(1).strip()
+    if map_url_match: info['map_url'] = map_url_match.group(1).strip()
     
     return info
 
-def parse_customer_feedback_from_notes(notes):
-    """Extracts the structured customer feedback block from notes."""
-    feedback_data = {}
-    if not notes: return feedback_data
-    feedback_match = re.search(r"--- CUSTOMER_FEEDBACK_START ---\s*\n(.*?)\n--- CUSTOMER_FEEDBACK_END ---", notes, re.DOTALL)
-    if feedback_match:
-        try:
-            feedback_data = json.loads(feedback_match.group(1))
-        except json.JSONDecodeError:
-            print(f"Warning: Failed to decode customer feedback JSON.") # In Flask context, use current_app.logger
-    return feedback_data
+def get_notes_parts(notes):
+    """Separates notes into base info, tech reports, and customer feedback."""
+    if not notes:
+        return {}, [], {}
+
+    report_pattern = r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---"
+    feedback_pattern = r"--- CUSTOMER_FEEDBACK_START ---\s*\n(.*?)\n--- CUSTOMER_FEEDBACK_END ---"
+
+    report_blocks = re.findall(report_pattern, notes, re.DOTALL)
+    feedback_blocks = re.findall(feedback_pattern, notes, re.DOTALL)
+    
+    history = [json.loads(block) for block in report_blocks]
+    feedback = json.loads(feedback_blocks[0]) if feedback_blocks else {}
+
+    base_notes_text = re.sub(report_pattern, '', notes, flags=re.DOTALL)
+    base_notes_text = re.sub(feedback_pattern, '', base_notes_text, flags=re.DOTALL).strip()
+    
+    base_info = parse_customer_info_from_notes(base_notes_text)
+
+    history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+    
+    return base_info, history, feedback
+
+def build_notes_string(base_info, history, feedback):
+    """Constructs the full notes string from its component parts."""
+    lines = [
+        f"หน่วยงาน: {base_info.get('organization', '')}",
+        f"ลูกค้า: {base_info.get('name', '')}",
+        f"เบอร์โทรศัพท์: {base_info.get('phone', '')}",
+        f"ที่อยู่: {base_info.get('address', '')}",
+        f"พิกัด: {base_info.get('map_url', '')}"
+    ]
+    base_text = "\n".join(line for line in lines if line.split(': ', 1)[1])
+    
+    history_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    feedback_text = f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---" if feedback else ""
+    
+    return f"{base_text}{history_text}{feedback_text}"
+
 
 def parse_google_task_dates(task_item):
-    """Parses and formats various date fields from a Google Task item."""
     parsed = task_item.copy()
     for key in ['created', 'due', 'completed', 'updated']:
         if parsed.get(key):
             try:
                 dt_utc = date_parse(parsed[key])
-                parsed[f'{key}_formatted'] = dt_utc.astimezone(utils.THAILAND_TZ).strftime("%d/%m/%y %H:%M")
+                parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
                 if key == 'due':
-                    parsed['due_for_input'] = dt_utc.astimezone(utils.THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
             except (ValueError, TypeError):
                 parsed[f'{key}_formatted'] = ''
                 if key == 'due': parsed['due_for_input'] = ''
-        else:
-            parsed[f'{key}_formatted'] = ''
-            if key == 'due': parsed['due_for_input'] = ''
     return parsed
 
-def parse_tech_report_from_notes(notes):
-    """Extracts all technician report blocks and the remaining base notes text."""
-    if not notes: return [], ""
-    report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
-    history = []
-    for json_str in report_blocks:
-        try:
-            report_data = json.loads(json_str)
-            if 'attachments' not in report_data and 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
-                report_data['attachments'] = [{'id': re.search(r'/d/([a-zA-Z0-9_-]+)', url).group(1) if re.search(r'/d/([a-zA-Z0-9_-]+)', url) else None, 'url': url} for url in report_data['attachment_urls'] if isinstance(url, str)]
-                report_data.pop('attachment_urls', None)
-            if 'type' not in report_data:
-                report_data['type'] = 'report'
-            history.append(report_data)
-        except json.JSONDecodeError:
-            print(f"Warning: Failed to decode tech report JSON: {json_str[:100]}...") # In Flask context, use current_app.logger
-    
-    temp_notes = re.sub(r"--- (TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*?--- (TECH_REPORT_END|CUSTOMER_FEEDBACK_END) ---", "", notes, flags=re.DOTALL)
-    original_notes_text = temp_notes.strip()
-
-    history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
-    return history, original_notes_text
-
-def generate_qr_code_base64(data, box_size=10, border=4, fill_color='#28a745', back_color='#FFFFFF'):
-    """Generates a QR code and returns it as a base64 encoded string."""
-    try:
-        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
-        qr.add_data(data)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color=fill_color, back_color=back_color)
-        buffered = BytesIO()
-        img.save(buffered, format="PNG")
-        return "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
-    except Exception as e:
-        print(f"Error generating QR code: {e}") # In Flask context, use current_app.logger
-        return ""
-
-def create_backup_zip():
-    """Creates a zip archive of important application data and code."""
-    try:
-        all_tasks = gs.get_google_tasks_for_report(show_completed=True)
-        if all_tasks is None:
-            print('Failed to get tasks for backup.') # In Flask context, use current_app.logger
-            return None, None
-
-        memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr('data/tasks_backup.json', json.dumps(all_tasks, indent=4, ensure_ascii=False))
-            zf.writestr('data/settings_backup.json', json.dumps(get_app_settings(), indent=4, ensure_ascii=False))
-
-            project_root = os.path.dirname(os.path.abspath(__file__))
-            for folder, _, files in os.walk(project_root):
-                if '.venv' in folder or '__pycache__' in folder:
-                    continue
-                for file in files:
-                    # Access ALLOWED_EXTENSIONS from current_app if it's set there, otherwise use a local list if defined.
-                    # For now, assuming relevant extensions are common.
-                    if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt', '.yaml')) \
-                       and file not in ['token.json', '.env', SETTINGS_FILE]: # Exclude sensitive files
-                        file_path = os.path.join(folder, file)
-                        archive_name = os.path.relpath(file_path, project_root)
-                        zf.write(file_path, arcname=f'code/{archive_name}')
-        
-        memory_file.seek(0)
-        backup_filename = f"full_system_backup_{datetime.datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.zip"
-        return memory_file, backup_filename
-    except Exception as e:
-        print(f"Error creating full system backup zip: {e}") # In Flask context, use current_app.logger
-        return None, None
-
-def allowed_file(filename):
-    """Checks if a file extension is allowed."""
-    # Assuming ALLOWED_EXTENSIONS is set on current_app.
-    # If not, this might need a fallback.
-    allowed = current_app.ALLOWED_EXTENSIONS if hasattr(current_app, 'ALLOWED_EXTENSIONS') else {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'}
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
-
-def _parse_equipment_string(text_input):
-    """Parses equipment string from notes into a list of dicts."""
-    equipment_list = []
-    if not text_input: return equipment_list
-    for line in text_input.strip().split('\n'):
-        if not line.strip(): continue
-        parts = line.split(',', 1) # Split only on first comma
-        item_name = parts[0].strip()
-        if item_name:
-            quantity_str = parts[1].strip() if len(parts) > 1 else '1'
-            try:
-                quantity_num = float(quantity_str)
-                equipment_list.append({"item": item_name, "quantity": quantity_num})
-            except ValueError:
-                equipment_list.append({"item": item_name, "quantity": quantity_str}) # Keep as string if not a valid number
-    return equipment_list
-
-def _format_equipment_list(equipment_data):
-    """Formats equipment list for display in HTML."""
-    if not equipment_data: return 'N/A'
-    if isinstance(equipment_data, str): return equipment_data # Already a string
-    lines = []
-    if isinstance(equipment_data, list):
-        for item in equipment_data:
-            if isinstance(item, dict) and "item" in item:
-                line = item['item']
-                if item.get("quantity") is not None:
-                    if isinstance(item['quantity'], (int, float)):
-                        line += f" (x{item['quantity']:g})" # :g for generic float/int representation
-                    else:
-                        line += f" ({item['quantity']})"
-                lines.append(line)
-            elif isinstance(item, str):
-                lines.append(item)
-    return "<br>".join(lines) if lines else 'N/A'
+def generate_qr_code_base64(data, box_size=10, border=4):
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 def get_file_icon(filename):
-    """Returns a Font Awesome icon class based on file extension."""
     extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
-    if extension in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
-        return 'fas fa-file-image'
-    elif extension == 'pdf':
-        return 'fas fa-file-pdf'
-    elif extension in ['doc', 'docx']:
-        return 'fas fa-file-word'
-    elif extension in ['xls', 'xlsx']:
-        return 'fas fa-file-excel'
-    elif extension in ['zip', 'rar']:
-        return 'fas fa-file-archive'
-    elif extension in ['kml', 'kmz']:
-        return 'fas fa-map'
-    elif extension in ['mp4', 'mov', 'avi']:
-        return 'fas fa-file-video'
-    else:
-        return 'fas fa-file'
+    if extension in ['jpg', 'jpeg', 'png', 'gif']: return 'fas fa-file-image'
+    if extension == 'pdf': return 'fas fa-file-pdf'
+    if extension in ['doc', 'docx']: return 'fas fa-file-word'
+    if extension in ['xls', 'xlsx']: return 'fas fa-file-excel'
+    if extension in ['kml', 'kmz']: return 'fas fa-map'
+    return 'fas fa-file'

@@ -2,16 +2,10 @@ import os
 import datetime
 import json
 import pytz
-from io import BytesIO
-import re
-from PIL import Image
-import mimetypes
 
 from flask import (Blueprint, request, render_template, redirect, url_for, abort,
                    session, jsonify, flash, current_app)
-from werkzeug.utils import secure_filename
 from google_auth_oauthlib.flow import Flow
-
 
 import google_services as gs
 import utils
@@ -88,7 +82,7 @@ def task_details(task_id):
         action = request.form.get('action')
         update_payload = {}
         
-        history, base_notes, feedback = utils.get_notes_parts(task_raw.get('notes', ''))
+        base_info, history, feedback = utils.get_notes_parts(task_raw.get('notes', ''))
         
         uploaded_attachments = json.loads(request.form.get('uploaded_attachments_json', '[]'))
         
@@ -129,7 +123,7 @@ def task_details(task_id):
         else:
             return jsonify({'status': 'error', 'message': 'Invalid action'}), 400
             
-        update_payload['notes'] = utils.build_notes_string(base_notes, history, feedback)
+        update_payload['notes'] = utils.build_notes_string(base_info, history, feedback)
         
         if gs.update_google_task(task_id, **update_payload):
             current_app.cache.clear()
@@ -141,11 +135,11 @@ def task_details(task_id):
     if not task_raw: abort(404)
     
     p_task = utils.parse_google_task_dates(task_raw)
-    p_task['customer'] = utils.parse_customer_info_from_notes(p_task.get('notes', ''))
     
-    # Ensure tech_reports_history is always a list and format dates
-    history, _, _ = utils.get_notes_parts(p_task.get('notes', ''))
+    base_info, history, _ = utils.get_notes_parts(p_task.get('notes', ''))
+    p_task['customer'] = base_info
     p_task['tech_reports_history'] = history
+
     for report in p_task['tech_reports_history']:
         if report.get('summary_date'):
             try:
