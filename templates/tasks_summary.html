@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}แดชบอร์ดสรุปภาพรวม{% endblock %}
+
+{% block head_extra %}
+    <style>
+        .summary-card-link { text-decoration: none; }
+        .summary-card {
+            color: white;
+            border-radius: .75rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+        }
+        .summary-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+        }
+        .summary-card .icon { font-size: 1.5rem; }
+        .summary-card .text-content { margin-left: 1rem; }
+        .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
+        .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
+        .table-hover tbody tr { cursor: pointer; }
+        .table-hover tbody tr:hover { background-color: #f1f1f1; }
+        .badge { font-size: 0.9em; padding: .5em .75em; }
+        .task-title-cell {
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">แดชบอร์ด</h1>
+    <a href="{{ url_for('form_page') }}" class="btn btn-success btn-lg">
+        <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('summary', status_filter='all') }}" class="summary-card-link">
+            <div class="summary-card bg-primary h-100">
+                <div class="icon"><i class="fas fa-globe-asia"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">ทั้งหมด</h5>
+                    <p class="card-text mb-0">{{ summary.total or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('summary', status_filter='needsAction') }}" class="summary-card-link">
+            <div class="summary-card bg-warning h-100">
+                <div class="icon"><i class="fas fa-hourglass-half"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">ยังไม่เสร็จ</h5>
+                    <p class="card-text mb-0">{{ summary.needsAction or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('summary', status_filter='completed') }}" class="summary-card-link">
+            <div class="summary-card bg-success h-100">
+                <div class="icon"><i class="fas fa-check-double"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">เสร็จแล้ว</h5>
+                    <p class="card-text mb-0">{{ summary.completed or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('summary', status_filter='overdue') }}" class="summary-card-link">
+            <div class="summary-card bg-danger h-100">
+                <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">เลยกำหนด</h5>
+                    <p class="card-text mb-0">{{ summary.overdue or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <i class="fas fa-chart-bar me-1"></i>
+                จำนวนงานที่เสร็จสิ้น (12 เดือนย้อนหลัง)
+            </div>
+            <div class="card-body">
+                <canvas id="monthlyTasksChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
+            <div class="input-group">
+                <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หน่วยงาน หรือเบอร์โทร..." value="{{ search_query or '' }}">
+                <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width: 5%;">#</th>
+                        <th>ลูกค้า / หน่วยงาน</th>
+                        <th>รายละเอียดงาน</th>
+                        <th>วันเวลานัดหมาย</th>
+                        <th class="text-center">สถานะ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue else '' }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
+                        <td>{{ loop.index }}</td>
+                        <td>
+                            <strong>{{ task.customer.name or '-' }}</strong>
+                            {% if task.customer.organization %}
+                                <br><small class="text-muted">{{ task.customer.organization }}</small>
+                            {% endif %}
+                        </td>
+                        <td class="task-title-cell">{{ task.title }}</td>
+                        <td>{{ task.due_formatted or '-' }}</td>
+                        <td class="text-center">
+                            {% if task.status == 'completed' %}
+                                <span class="badge bg-success">เสร็จเรียบร้อย</span>
+                            {% elif task.is_overdue %}
+                                <span class="badge bg-danger">เลยกำหนด</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center p-4">
+                            <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const monthlyCtx = document.getElementById('monthlyTasksChart');
+        const chartDataElement = document.querySelector('script[data-chart-data]');
+        let chartData = { labels: [], values: [] };
+
+        if (chartDataElement) {
+            try {
+                chartData = JSON.parse(chartDataElement.textContent);
+            } catch (e) {
+                console.error("Error parsing chart data from script tag:", e);
+            }
+        }
+        
+        if (monthlyCtx) {
+            new Chart(monthlyCtx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'จำนวนงานที่เสร็จ',
+                        data: chartData.values,
+                        backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                        borderColor: 'rgba(25, 135, 84, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    },
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+<script type="application/json" data-chart-data>{{ chart_data | tojson | safe }}</script>
+{% endblock %}

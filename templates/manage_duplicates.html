@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="mb-0"><i class="fas fa-copy me-2"></i>จัดการข้อมูลงานซ้ำ</h1>
-    <a href="{{ url_for('main.settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a> {# CORRECTED LINE #}
+    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
 </div>
 
 {% if not potential_duplicate_sets %}
@@ -65,7 +65,7 @@
                                 <tbody>
                                     {% for task in tasks %}
                                     <tr id="task-row-{{ task.id }}">
-                                        <td><a href="{{ url_for('main.task_details', task_id=task.id) }}" target="_blank">{{ task.customer.name or '-' }}</a></td> {# CORRECTED LINE #}
+                                        <td><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank">{{ task.customer.name or '-' }}</a></td>
                                         <td>{{ task.due_formatted or '-' }}</td>
                                         <td>
                                             {% if task.status == 'completed' %}
@@ -107,9 +107,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const taskTitle = this.dataset.taskTitle;
 
             if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบงาน:\n"${taskTitle}"\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) {
-                fetch(`{{ url_for('main.api_delete_task', task_id='') }}${taskId}`, { {# CORRECTED LINE #}
+                fetch(`/api/delete_task/${taskId}`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'} {# Added CSRF token #}
+                    headers: {'Content-Type': 'application/json'}
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -140,9 +140,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const accordionTarget = document.querySelector(this.dataset.accordionTarget);
 
             if (confirm(`คุณแน่ใจหรือไม่ที่จะลบงานที่ซ้ำกันทั้งหมด ${taskCount} รายการ?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้!`)) {
-                fetch('{{ url_for('main.api_delete_tasks_batch') }}', { {# CORRECTED LINE #}
+                fetch('/api/delete_tasks_batch', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'}, {# Added CSRF token #}
+                    headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ task_ids: taskIds })
                 })
                 .then(response => response.json())

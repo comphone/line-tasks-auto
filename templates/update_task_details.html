@@ -188,13 +188,13 @@
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">📝 จัดการงาน</h1>
-        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+        <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
     <div class="summary-container">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
-            <a href="{{ url_for('main.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
+            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
         </div>
 
         <div class="info-grid">
@@ -317,9 +317,9 @@
         <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
         <div class="card-body text-center">
             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                <a href="{{ url_for('customer.generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
+                <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
                 {% if task.status == 'completed' %}
-                <a href="{{ url_for('customer.generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
+                <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสาธารณะ</a>
                 {% endif %}
             </div>
             <button type="button" class="btn btn-secondary mt-3" onclick="showActionCard('chooseActionCard')">ยกเลิก</button>
@@ -377,7 +377,7 @@
                             {% if report.type == 'reschedule' %}เลื่อนนัดหมาย{% else %}รายงานการปฏิบัติงาน{% endif %}
                         </span>
                         <div class="d-flex align-items-center flex-wrap">
-                            <small class="text-muted me-3 mb-2">{{ dateutil_parse(report.summary_date).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}
+                            <small class="text-muted me-3 mb-2">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
                             {% if report.type == 'report' %}
                             <button class="btn btn-sm btn-outline-primary mb-2 me-1" onclick="openEditReportTextModal({{ loop.index0 }})" title="แก้ไขข้อความสรุป">
                                 <i class="fas fa-pen"></i>
@@ -402,22 +402,19 @@
                          {% endif %}
                          <p class="mb-0"><small class="text-muted"><strong>ช่าง/ผู้บันทึก:</strong> {{ report.technicians | join(', ') if report.technicians else '-' }}</small></p>
                     </div>
-                    
                     {% if report.type == 'report' and report.attachments %}
                     <div class="mt-3">
                         {% set image_files = [] %}
                         {% set other_files = [] %}
                         {% for att in report.attachments %}
-                            {% set ext = att.name.split('.')[-1].lower() if '.' in att.name else '' %}
-                            {% if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'] %}
-                                {% set _ = image_files.append(att) %}
-                            {% else %}
+                            {% if att.name and (att.name.lower().endswith('.pdf') or att.name.lower().endswith('.kmz') or att.name.lower().endswith('.kml')) %}
                                 {% set _ = other_files.append(att) %}
+                            {% else %}
+                                {% set _ = image_files.append(att) %}
                             {% endif %}
                         {% endfor %}
-                    
+
                         {% if image_files %}
-                        <h6 class="info-label" style="font-size: 0.8rem;"><i class="fas fa-images"></i> รูปภาพ</h6>
                         <div class="image-gallery-grid">
                             {% for att in image_files %}
                                 <div class="thumbnail" onclick="openLightboxById('{{ att.id }}')">
@@ -427,26 +424,31 @@
                             {% endfor %}
                         </div>
                         {% endif %}
-                    
+
                         {% if other_files %}
-                        <h6 class="info-label mt-3" style="font-size: 0.8rem;"><i class="fas fa-paperclip"></i> ไฟล์แนบอื่นๆ</h6>
-                        <ul class="list-group list-group-flush">
-                            {% for att in other_files %}
-                            <li class="list-group-item px-0 py-1 d-flex justify-content-between align-items-center">
-                                <a href="https://drive.google.com/uc?export=view&id={{ att.id }}" target="_blank" class="text-decoration-none text-dark">
-                                    <i class="{{ get_file_icon(att.name) }} me-2"></i>
-                                    {{ att.name or 'ไฟล์ไม่มีชื่อ' }}
-                                </a>
-                                <a href="https://drive.google.com/uc?export=download&id={{ att.id }}" class="btn btn-sm btn-outline-secondary" title="ดาวน์โหลด">
-                                    <i class="fas fa-download"></i>
-                                </a>
-                            </li>
-                            {% endfor %}
-                        </ul>
+                        <div class="mt-3">
+                            <h6 class="info-label" style="font-size: 0.8rem;"><i class="fas fa-paperclip"></i>ไฟล์แนบอื่นๆ</h6>
+                            <ul class="list-group list-group-flush">
+                                {% for att in other_files %}
+                                <li class="list-group-item px-0 py-1">
+                                    <a href="https://drive.google.com/uc?export=download&id={{ att.id }}" target="_blank">
+                                        {% if att.name and (att.name.lower().endswith('.kmz') or att.name.lower().endswith('.kml')) %}
+                                            <i class="fas fa-globe-americas text-success me-2"></i>
+                                        {% elif att.name and att.name.lower().endswith('.pdf') %}
+                                            <i class="fas fa-file-pdf text-danger me-2"></i>
+                                        {% else %}
+                                            <i class="fas fa-file-alt text-secondary me-2"></i>
+                                        {% endif %}
+                                        {{ att.name or 'ไฟล์ไม่มีชื่อ' }}
+                                    </a>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
                         {% endif %}
                     </div>
                     {% endif %}
-                    <div class="multi-select-controls" id="multi-select-controls-{{ loop.index0 }}">
+                     <div class="multi-select-controls" id="multi-select-controls-{{ loop.index0 }}">
                         <div class="d-flex justify-content-between align-items-center">
                             <button class="btn btn-secondary" onclick="toggleSelectionMode({{ loop.index0 }})">ยกเลิก</button>
                             <span id="selection-counter-{{ loop.index0 }}">เลือก 0 รูป</span>
@@ -477,7 +479,7 @@
     <div class="collapse" id="dangerZoneCollapse">
         <div class="card card-body border-danger mt-2">
             <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
-            <form method="POST" action="{{ url_for('main.delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+            <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-danger w-100">
                     <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
@@ -846,7 +848,7 @@
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     ไม่พบรายชื่อช่างในระบบ
                     <hr>
-                    <p class="mb-0 small">กรุณาไปที่หน้า <a href="{{ url_for('main.settings_page') }}" class="alert-link">ตั้งค่า</a> เพื่อเพิ่มรายชื่อช่างก่อน</p>
+                    <p class="mb-0 small">กรุณาไปที่หน้า <a href="{{ url_for('settings_page') }}" class="alert-link">ตั้งค่า</a> เพื่อเพิ่มรายชื่อช่างก่อน</p>
                 </div>
             `;
         } else {
@@ -895,7 +897,7 @@
             container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
         }
         const form = document.getElementById('editReportForm');
-        form.action = `/api/task/{{ task.id }}/edit_report/${reportIndex}`;
+        form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
         editReportModal.show();
     }
     function flashMessage(message, category) {
@@ -937,7 +939,7 @@
         if (filesInput) mainFormData.delete('files[]');
         mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
         try {
-            const response = await fetch(`{{ url_for('main.task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
+            const response = await fetch(`{{ url_for('task_details', task_id=task.id) }}`, { method: 'POST', body: mainFormData });
             const result = await response.json();
             if (response.ok) {
                 Swal.fire({ toast: true, icon: 'success', title: result.message || "บันทึกข้อมูลเรียบร้อยแล้ว!", position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true, }).then(() => { window.location.reload(); });

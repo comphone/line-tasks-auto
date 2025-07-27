@@ -29,7 +29,10 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-<form method="POST" action="{{ url_for('main.settings_page') }}" id="settingsForm" class="needs-validation" novalidate> {# CORRECTED LINE #}
+<!-- This area is now handled by base.html -->
+<!-- The duplicate flash message block has been removed -->
+
+<form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" id="technician_list_json" name="technician_list_json">
 
@@ -123,8 +126,7 @@
             <hr>
             <h6 class="mt-3">จัดการรายชื่อช่าง</h6>
             <div id="technician-management-list-container" class="list-group technician-management-list mb-3">
-                {# Technician list will be rendered by JavaScript #}
-            </div>
+                </div>
             <button type="button" class="btn btn-success" onclick="openTechnicianEditModal()">
                 <i class="fas fa-plus me-2"></i>เพิ่มช่างใหม่
             </button>
@@ -151,9 +153,9 @@
     </div>
     <div class="card-body p-4">
         <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
-        <a href="{{ url_for('tools.organize_files') }}" class="btn btn-info mb-2"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
-        <a href="{{ url_for('tools.manage_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
-        <a href="{{ url_for('tools.manage_equipment_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
+        <a href="{{ url_for('organize_files') }}" class="btn btn-info mb-2"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
+        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
+        <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
     </div>
 </div>
 
@@ -190,13 +192,13 @@
     <div class="card-body p-4">
         <h6>ส่งออกข้อมูลทั้งหมด</h6>
         <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงาน, การตั้งค่า, และซอร์สโค้ดปัจจุบันทั้งหมด</p>
-        <a href="{{ url_for('tools.backup_data') }}" class="btn btn-danger mb-4"><i class="fas fa-file-archive me-1"></i> ดาวน์โหลด Full Backup (.zip)</a>
+        <a href="{{ url_for('backup_data') }}" class="btn btn-danger mb-4"><i class="fas fa-file-archive me-1"></i> ดาวน์โหลด Full Backup (.zip)</a>
         <hr>
         <h6 class="mt-4">สำรองข้อมูลขึ้น Google Drive</h6>
         <p>สำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive ทันที</p>
         <div class="row align-items-center">
             <div class="col-md-6">
-                <form class="d-inline" method="POST" action="{{ url_for('tools.trigger_auto_backup_now') }}" onsubmit="return confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')">
+                <form class="d-inline" method="POST" action="{{ url_for('trigger_auto_backup_now') }}" onsubmit="return confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                      <button type="submit" class="btn btn-info">
                         <i class="fas fa-cloud-upload-alt me-1"></i> Backup to Drive Now
@@ -219,7 +221,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-        <form action="{{ url_for('tools.test_notification') }}" method="POST" class="d-inline">
+        <form action="{{ url_for('test_notification') }}" method="POST" class="d-inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
         </form>
@@ -262,7 +264,7 @@
 {% block body_extra %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    let technicians = {{ settings.technician_list | tojson | safe }}; 
+    let technicians = {{ settings.technician_list | tojson | safe }};
     let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
     let currentIndex = -1;
     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
@@ -275,9 +277,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             technicians.forEach((tech, index) => {
                 const initial = tech.name && tech.name.trim() !== '' ? tech.name.trim().charAt(0).toUpperCase() : '?'; 
-                const avatarUrl = tech.avatar_id 
-                    ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` 
-                    : `https://via.placeholder.com/40/6c757d/ffffff?text=${encodeURIComponent(initial)}`;
+                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
                 
                 const item = document.createElement('div');
                 item.className = 'list-group-item';
@@ -294,7 +294,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.openTechnicianEditModal = (index = -1) => {
         currentIndex = index;
-        document.getElementById('technician-avatar-file').value = ''; // Clear file input
+        document.getElementById('technician-avatar-file').value = '';
         if (index > -1) {
             const tech = technicians[index];
             document.getElementById('technician-name').value = tech.name;
@@ -329,8 +329,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             formData.append('file', avatarFile);
             try {
-                // Ensure this API endpoint exists and handles the upload
-                const response = await fetch('{{ url_for('main.api_upload_avatar') }}', { 
+                const response = await fetch('/api/upload_avatar', { 
                     method: 'POST', 
                     body: formData,
                     headers: { 'X-CSRFToken': csrfToken }
@@ -377,9 +376,10 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('technician_list_json').value = JSON.stringify(technicians);
     });
 
-    renderTechnicianList(); // Initial render of the technician list when the page loads
+    renderTechnicianList();
 });
 
+// This function now targets the main flash area in base.html
 function flashMessage(message, category) {
     const mainContainer = document.getElementById('flash-messages-area');
     if (!mainContainer) return;

@@ -28,8 +28,7 @@
             </div>
         </div>
         <div class="card-footer">
-            {# Corrected url_for to use main.task_details blueprint prefix #}
-            <a href="{{ url_for('main.task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
+            <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
         </div>
     </div>
 </div>

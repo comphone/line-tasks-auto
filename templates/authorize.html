@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}เชื่อมต่อกับ Google{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center">
+            <div class="card shadow-sm">
+                <div class="card-body p-5">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google Logo" style="width: 70px; margin-bottom: 20px;">
+                    <h2 class="card-title mb-3">เชื่อมต่อกับบัญชี Google</h2>
+                    <p class="text-muted mb-4">
+                        แอปพลิเคชันนี้จำเป็นต้องได้รับอนุญาตจากคุณเพื่อเข้าถึงและจัดการข้อมูลใน Google Tasks และ Google Drive (สำหรับแนบไฟล์) โปรดคลิกปุ่มด้านล่างเพื่อเริ่มการเชื่อมต่อ
+                    </p>
+                    <p class="text-muted small">
+                        ข้อมูลของคุณจะถูกเก็บไว้อย่างปลอดภัยและใช้เพื่อการทำงานของแอปพลิเคชันนี้เท่านั้น
+                    </p>
+                    <a href="{{ url_for('authorize') }}" class="btn btn-primary btn-lg mt-3">
+                        <i class="fab fa-google me-2"></i>เชื่อมต่อกับ Google
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -66,4 +66,3 @@ node_modules/
 # Others
 static/*.log
 *.pid
-service-account.json 

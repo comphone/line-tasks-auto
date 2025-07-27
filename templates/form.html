@@ -74,7 +74,7 @@
 
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h1 class="h2 mb-0">📝 สร้างงานใหม่</h1>
-                <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+                <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
             </div>
 
             <div class="card shadow-sm mb-4">
@@ -155,8 +155,8 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="files" class="form-label">แนบรูปภาพ/ไฟล์แนบอื่นๆ</label>
-                        <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.kml,.kmz" capture="environment">
+                        <label for="files" class="form-label">แนบรูปภาพ/ไฟล์อื่นๆ (PDF, KMZ)</label>
+                        <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml" capture="environment">
                     </div>
                 </div>
             </div>
@@ -179,7 +179,7 @@
 
         document.addEventListener('DOMContentLoaded', async function() {
             try {
-                const response = await fetch("{{ url_for('main.api_customers') }}"); {# CORRECTED LINE #}
+                const response = await fetch("{{ url_for('api_customers') }}");
                 if (response.ok) {
                     customerDatabase = await response.json();
                 } else {
@@ -197,13 +197,7 @@
                 defaultDate: document.getElementById('appointment').value ? document.getElementById('appointment').value : null
             });
 
-            // FIX: Add a check for task_detail_snippets to prevent TypeError if it's None or Undefined
-            {% if task_detail_snippets is defined and task_detail_snippets %}
-            const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }}; 
-            {% else %}
-            const taskDetailSnippets = [];
-            {% endif %}
-
+            const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }};
             if (taskDetailSnippets && taskDetailSnippets.length > 0) {
                 const tributeTask = new Tribute({
                     values: taskDetailSnippets,
@@ -369,7 +363,7 @@
                     fileFormData.append('task_id', 'new_task_placeholder');
                     fileFormData.append('csrf_token', csrfToken);
                     try {
-                        const response = await fetch('{{ url_for("main.api_upload_attachment") }}', { method: 'POST', body: fileFormData }); {# CORRECTED LINE #}
+                        const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
                         const result = await response.json();
                         if (response.ok && result.status === 'success') {
                             uploadedAttachments.push(result.file_info);
@@ -390,7 +384,7 @@
                 const mainFormData = new FormData(form);
                 mainFormData.delete('files[]');
 
-                const response = await fetch("{{ url_for('main.form_page') }}", {
+                const response = await fetch("{{ url_for('form_page') }}", {
                     method: 'POST',
                     body: mainFormData
                 });

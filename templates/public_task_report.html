@@ -116,18 +116,7 @@
                     </div>
                     <div class="info-item">
                         <p class="label">วันที่ให้บริการ</p>
-                        <p class="value">
-                            {% if latest_report.summary_date %}
-                                {% set date_obj = latest_report.summary_date %}
-                                {% if date_obj is string %}
-                                    {{ date_obj }}
-                                {% else %}
-                                    {{ date_obj.strftime('%d %B %Y') }}
-                                {% endif %}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </p>
+                        <p class="value">{{ (latest_report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d %B %Y') }}</p>
                     </div>
                 </div>
             </section>

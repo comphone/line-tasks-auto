@@ -6,7 +6,7 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">🗂️ จัดระเบียบไฟล์ใน Google Drive</h1>
-        <a href="{{ url_for('main.settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a> {# CORRECTED LINE #}
+        <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}

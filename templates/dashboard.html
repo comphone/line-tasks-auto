@@ -39,7 +39,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
             cursor: pointer;
-            vertical-align: top; /* Aligns content to the top */
         }
         .clickable-cell {
             cursor: pointer;
@@ -60,27 +59,20 @@
             border-color: #dee2e6 #dee2e6 #fff;
             font-weight: 600;
         }
-        .nav-pills .nav-link {
-            margin: 0 4px;
-            border: 1px solid #dee2e6;
-        }
-        .nav-pills .nav-link.active {
-            border-color: var(--bs-primary);
-        }
     </style>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="mb-0">แดชบอร์ด</h1>
-    <a href="{{ url_for('main.form_page') }}" class="btn btn-success btn-lg"> {# CORRECTED LINE #}
+    <a href="{{ url_for('form_page') }}" class="btn btn-success btn-lg">
         <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
     </a>
 </div>
 
 <div class="row">
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('tools.dashboard', status_filter='all') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='all') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-primary h-100">
                 <div class="icon"><i class="fas fa-globe-asia"></i></div>
                 <div class="text-content">
@@ -91,7 +83,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('tools.dashboard', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-warning h-100">
                 <div class="icon"><i class="fas fa-hourglass-half"></i></div>
                 <div class="text-content">
@@ -102,7 +94,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('tools.dashboard', status_filter='completed') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='completed') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-success h-100">
                 <div class="icon"><i class="fas fa-check-double"></i></div>
                 <div class="text-content">
@@ -113,7 +105,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('tools.dashboard', status_filter='today') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('summary', status_filter='today') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-info h-100">
                 <div class="icon"><i class="fas fa-calendar-day"></i></div>
                 <div class="text-content">
@@ -143,24 +135,13 @@
     <div class="card-body">
         <div class="tab-content" id="dashboardTabContent">
             <div class="tab-pane fade show active" id="task-list-pane" role="tabpanel" aria-labelledby="task-list-tab" tabindex="0">
-                <form method="GET" action="{{ url_for('tools.dashboard') }}" class="mb-3">
+                <form method="GET" action="{{ url_for('summary') }}" class="mb-3">
                     <div class="input-group">
                         <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หน่วยงาน หรือเบอร์โทร..." value="{{ search_query or '' }}">
                         <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
-                        <a href="{{ url_for('tools.summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
+                        <a href="{{ url_for('summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
                     </div>
                 </form>
-
-                <div class="d-flex justify-content-center flex-wrap mb-3">
-                    <ul class="nav nav-pills">
-                        {% for key, value in job_types.items() %}
-                        <li class="nav-item">
-                            <a class="nav-link {% if job_type_filter == key or (job_type_filter == 'all' and key == 'all') %}active{% endif %}" 
-                               href="{{ url_for('tools.dashboard', job_type_filter=key) }}">{{ value }}</a>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                </div>
 
                 <div id="table-loading-spinner" class="text-center p-5">
                     <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
@@ -184,8 +165,8 @@
                         <tbody>
                             {% for task in tasks %}
                             <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}">
-                                <td class="clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">{{ loop.index }}</td>
-                                <td class="clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">
+                                <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ loop.index }}</td>
+                                <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                                     {% if task.customer.organization %}
                                         <strong>{{ task.customer.organization }}</strong>
                                         <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
@@ -193,15 +174,19 @@
                                         <strong>{{ task.customer.name or '-' }}</strong>
                                     {% endif %}
                                 </td>
-                                <td class="task-title-cell" title="{{ task.clean_title }}" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">
-                                    {% if task.job_type != 'เซอร์วิส' %}
-                                        <span class="badge bg-secondary mb-1">{{ task.job_type }}</span>
+                                <td class="task-title-cell" title="{{ task.title }}" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
+                                    {% if '\n' in task.title %}
+                                        <ul class="list-unstyled mb-0 ps-2">
+                                        {% for item in task.title.split('\n') %}
+                                            {% if item.strip() %}<li>- {{ item.strip() }}</li>{% endif %}
+                                        {% endfor %}
+                                        </ul>
+                                    {% else %}
+                                        {{ task.title }}
                                     {% endif %}
-                                    <br>
-                                    {{ task.clean_title }}
                                 </td>
-                                <td class="clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
-                                <td class="text-center clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">
+                                <td class="clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
+                                <td class="text-center clickable-cell" onclick="window.location='{{ url_for('task_details', task_id=task.id) }}';">
                                     {% if task.status == 'completed' %}
                                         <span class="badge bg-success">เสร็จเรียบร้อย</span>
                                     {% elif task.is_today %}
@@ -213,10 +198,10 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-center">
-                                    <a href="{{ url_for('main.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
+                                    <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <a href="{{ url_for('main.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+                                    <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
                                         <i class="fas fa-file-alt"></i>
                                     </a>
                                 </td>
@@ -225,7 +210,7 @@
                             <tr>
                                 <td colspan="6" class="text-center p-4">
                                     <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
-                                    <p>ลอง<a href="{{ url_for('main.form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
+                                    <p>ลอง<a href="{{ url_for('form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
                                 </td>
                             </tr>
                             {% endfor %}

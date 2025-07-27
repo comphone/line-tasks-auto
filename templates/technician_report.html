@@ -51,7 +51,7 @@
 <div class="container mt-4 mb-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">📊 รายงานผลงานช่าง</h1>
-        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+        <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
     <div class="card shadow-sm mb-4">
@@ -59,7 +59,7 @@
             <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>เลือกช่วงเวลา</h5>
         </div>
         <div class="card-body">
-            <form method="GET" action="{{ url_for('tools.technician_report') }}">
+            <form method="GET" action="{{ url_for('technician_report') }}">
                 <div class="row g-3 align-items-end">
                     <div class="col-md-4">
                         <label for="month_select" class="form-label">เดือน</label>
@@ -94,7 +94,6 @@
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card shadow-sm report-card h-100">
                         <div class="card-header d-flex align-items-center">
-                            {# Fetch technician avatar from technician_list passed from settings #}
                             {% set tech_avatar_obj = (technician_list | selectattr('name', 'equalto', tech_name) | first) %}
                             {% if tech_avatar_obj and tech_avatar_obj.avatar_id %}
                                 <img src="https://drive.google.com/thumbnail?id={{ tech_avatar_obj.avatar_id }}&sz=s30-c" class="technician-avatar-small" alt="{{ tech_name }}">
@@ -119,7 +118,7 @@
                                             <div id="collapseTask-{{ task.id }}-{{ outer_loop.index }}" class="accordion-collapse collapse" aria-labelledby="headingTask-{{ task.id }}-{{ outer_loop.index }}" data-bs-parent="#accordionTasks-{{ outer_loop.index }}">
                                                 <div class="accordion-body task-details-content">
                                                     <p class="mb-1"><strong>Task ID:</strong> {{ task.id }}</p>
-                                                    <p class="mb-1"><a href="{{ url_for('main.task_details', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">ดูรายละเอียดงาน</a></p> {# CORRECTED LINE #}
+                                                    <p class="mb-1"><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">ดูรายละเอียดงาน</a></p>
                                                 </div>
                                             </div>
                                         </div>

@@ -68,7 +68,6 @@
                         {% endif %}
                     </td>
                     <td>
-                        {# No url_for here, as it's for printing #}
                         {% if '\n' in task.title %}
                             <ul class="list-unstyled mb-0 ps-2">
                             {% for item in task.title.split('\n') %}
