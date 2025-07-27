@@ -16,13 +16,16 @@ def task_details(task_id):
     task = utils.parse_google_task_dates(task)
     notes = task.get('notes', '')
     task['customer'] = utils.parse_customer_info_from_notes(notes)
-    task['tech_reports_history'], _ = gs.parse_tech_report_from_notes(notes)
+    
+    # --- FIX: Ensure tech_reports_history is always a list ---
+    # Use the newly added function from utils.py and provide a default empty list
+    reports, base_notes = utils.parse_tech_report_from_notes(notes)
+    task['tech_reports_history'] = reports if reports is not None else []
+    # --- END FIX ---
     
     all_attachments = [att for report in task['tech_reports_history'] for att in report.get('attachments', [])]
 
     settings = settings_manager.get_all_settings()
-    
-    # Assuming text_snippets are stored in settings now
     text_snippets = settings.get('text_snippets', {})
     
     return render_template('update_task_details.html',
@@ -32,4 +35,4 @@ def task_details(task_id):
                            progress_report_snippets=text_snippets.get('progress_reports', [])
                           )
 
-# ... other main routes like /form, /edit_task, /delete_task ...
+# ... (โค้ดส่วนอื่นๆ ของ main_routes.py) ...

@@ -1,41 +1,37 @@
-# ... (Existing imports and functions in utils.py)
-import zipfile
+import re
 import json
+import pytz
 from datetime import datetime
-import os
+from dateutil.parser import parse as date_parse
 
-# Import necessary modules from the new structure
-from google_services import get_google_tasks_for_report # Example
-from settings_manager import settings_manager
+# ... (โค้ดอื่นๆ ที่มีอยู่แล้วใน utils.py) ...
 
-# ... (Existing functions like sanitize_filename, generate_qr_code_base64, etc.)
-
-def create_backup_zip():
+def parse_tech_report_from_notes(notes):
     """
-    Creates a zip archive of current tasks, settings, and code files.
-    Moved from old google_services.py.
-    Reason: This is a utility function for data packaging, not a direct Google API call.
+    Parses technician reports embedded in the main notes string of a task.
+    This function was missing from the refactoring and is now restored.
     """
-    try:
-        current_app.logger.info("Starting to create system backup zip.")
-        memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # 1. Backup settings
-            settings = settings_manager.get_all_settings()
-            zipf.writestr('settings.json', json.dumps(settings, ensure_ascii=False, indent=4))
+    if not notes:
+        return [], ""
+    
+    # Find all report blocks
+    report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
+    history = []
+    for json_str in report_blocks:
+        try:
+            report_data = json.loads(json_str)
+            history.append(report_data)
+        except json.JSONDecodeError:
+            # Log this warning in a real application
+            print(f"Warning: Failed to decode tech report JSON.")
+            continue
+    
+    # Remove report blocks to get the original base notes
+    temp_notes = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", notes, flags=re.DOTALL)
+    temp_notes = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", temp_notes, flags=re.DOTALL)
+    original_notes_text = temp_notes.strip()
 
-            # 2. Backup Google Tasks
-            tasks = get_google_tasks_for_report(show_completed=True, max_results=500) # Assuming this function exists
-            if tasks:
-                zipf.writestr('tasks_backup.json', json.dumps(tasks, ensure_ascii=False, indent=4))
-
-            # 3. Backup Code Files (optional, can be complex)
-            # ... (Logic to walk through project directory and add files) ...
-
-        memory_file.seek(0)
-        timestamp = datetime.now(BANGKOK_TZ).strftime("%Y%m%d_%H%M%S")
-        backup_filename = f"full_backup_{timestamp}.zip"
-        return memory_file, backup_filename
-    except Exception as e:
-        current_app.logger.error(f"Error creating full system backup zip: {e}")
-        return None, None
+    # Sort history by date, newest first
+    history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+    
+    return history, original_notes_text
