@@ -2,16 +2,23 @@ import os
 import datetime
 import json
 import pytz
+from io import BytesIO
+import re
+from PIL import Image
+import mimetypes
 
 from flask import (Blueprint, request, render_template, redirect, url_for, abort,
                    session, jsonify, flash, current_app)
+from werkzeug.utils import secure_filename
 from google_auth_oauthlib.flow import Flow
+
 
 import google_services as gs
 import utils
 from settings_manager import get_app_settings, save_app_settings
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
 from app_scheduler import initialize_scheduler
+from app import app
 
 main_bp = Blueprint('main', __name__)
 
@@ -135,7 +142,17 @@ def task_details(task_id):
     
     p_task = utils.parse_google_task_dates(task_raw)
     p_task['customer'] = utils.parse_customer_info_from_notes(p_task.get('notes', ''))
-    p_task['tech_reports_history'], _, _ = utils.get_notes_parts(p_task.get('notes', ''))
+    
+    # Ensure tech_reports_history is always a list and format dates
+    history, _, _ = utils.get_notes_parts(p_task.get('notes', ''))
+    p_task['tech_reports_history'] = history
+    for report in p_task['tech_reports_history']:
+        if report.get('summary_date'):
+            try:
+                parsed_date = utils.date_parse(report['summary_date'])
+                report['summary_date_formatted'] = parsed_date.astimezone(utils.THAILAND_TZ).strftime('%d/%m/%y %H:%M')
+            except (ValueError, TypeError):
+                report['summary_date_formatted'] = report['summary_date']
     
     all_attachments = [att for report in p_task['tech_reports_history'] for att in report.get('attachments', [])]
 
@@ -243,7 +260,7 @@ def oauth2callback():
     state = session.get('state')
     if not state or state != request.args.get('state'): abort(401) 
     
-    flow = Flow.from_client_config(json.loads(os.environ.get('GOOGLE_CLIENT_SECRETS_JSON')), scopes=gs.SCOPES, state=state, redirect_uri=url_for('main.oauth2callback', _external=True, _scheme='https'))
+    flow = Flow.from_client_config(json.loads(os.environ.get('GOOGLE_CLIENT_SECRETS_JSON')), scopes=gs.SCOPES, state=state, redirect_uri=url_for('main.oauth2callback', _external=True, _scheme=''))
     flow.fetch_token(authorization_response=request.url)
     
     os.environ['GOOGLE_TOKEN_JSON'] = flow.credentials.to_json()

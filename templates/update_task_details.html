@@ -569,7 +569,7 @@
 <script>
     const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
-    const techReportsHistory = {{ (task.tech_reports_history or []) | tojson | safe }};
+    const techReportsHistory = {{ task.tech_reports_history | default([]) | tojson | safe }};
     let slideIndex;
     let technicianSelectionModal;
     let editReportModal;
@@ -667,7 +667,7 @@
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
         try {
-            const response = await fetch(`{{ url_for('api.api_edit_report_text', task_id=task.id, report_index=reportIndex) }}`, {
+            const response = await fetch(`{{ url_for('api.api_edit_report_text', task_id=task.id, report_index=0) }}`.replace('/0', `/${reportIndex}`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -806,7 +806,7 @@
         }).then(async (result) => {
             if (result.isConfirmed) {
                 try {
-                    const response = await fetch(`{{ url_for('api.api_delete_report', task_id=task.id, report_index=reportIndex) }}`, { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
+                    const response = await fetch(`{{ url_for('api.api_delete_report', task_id=task.id, report_index=0) }}`.replace('/0', `/${reportIndex}`), { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
                     const data = await response.json();
                     if (response.ok && data.status === 'success') {
                         await Swal.fire('ลบแล้ว!', data.message, 'success');
@@ -895,7 +895,7 @@
             container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
         }
         const form = document.getElementById('editReportForm');
-        form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
+        form.action = `{{ url_for('main.edit_report_attachments', task_id=task.id, report_index=0) }}`.replace('/0', `/${reportIndex}`);
         editReportModal.show();
     }
     function flashMessage(message, category) {
