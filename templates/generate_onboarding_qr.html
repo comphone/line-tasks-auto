@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}QR Code สำหรับเชื่อมต่อ LINE{% endblock %}
+
+{% block content %}
+<div class="container mt-4 text-center">
+    <h1 class="mb-4">QR Code สำหรับลูกค้าเชื่อมต่อ LINE</h1>
+
+    <div class="card shadow-sm mx-auto" style="max-width: 500px;">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">งาน: {{ task.title }} (ลูกค้า: {{ customer_info.name or '-' }})</h5>
+        </div>
+        <div class="card-body">
+            <p class="lead">ให้ลูกค้าสแกน QR Code นี้เพื่อรับข้อความต้อนรับ, โปรโมชั่น และแบบสอบถามหลังการซ่อมผ่าน LINE</p>
+            
+            {% if qr_code_base64 %}
+                <img src="{{ qr_code_base64 }}" alt="QR Code for Customer Onboarding" class="img-fluid border border-dark rounded mb-3" style="max-width: 300px; height: auto;">
+            {% else %}
+                <div class="alert alert-danger">ไม่สามารถสร้าง QR Code ได้ โปรดตรวจสอบการตั้งค่า LIFF_ID_FORM</div>
+            {% endif %}
+
+            <div class="mt-4">
+                <h6>ลิงก์ LIFF สำหรับสแกน:</h6>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" value="{{ onboarding_url }}" readonly>
+                </div>
+                <div class="form-text text-muted">เมื่อสแกน ลูกค้าจะเข้าสู่หน้ายินยอมใน LINE เพื่อเชื่อมต่อกับร้านค้า</div>
+            </div>
+        </div>
+        <div class="card-footer">
+            {# Corrected url_for to use main.task_details blueprint prefix #}
+            <a href="{{ url_for('main.task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

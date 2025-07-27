@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}จัดระเบียบไฟล์ใน Google Drive{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2">🗂️ จัดระเบียบไฟล์ใน Google Drive</h1>
+        <a href="{{ url_for('main.settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a> {# CORRECTED LINE #}
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message | safe }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card border-warning">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">คำเตือนและคำแนะนำ</h5>
+        </div>
+        <div class="card-body">
+            <p>สคริปต์นี้จะทำการค้นหาไฟล์แนบทั้งหมดที่เคยอัปโหลดไว้ในระบบ และทำการย้ายไฟล์เหล่านั้นเข้าไปยังโฟลเดอร์ที่จัดระเบียบตามโครงสร้างใหม่:</p>
+            <p class="text-center"><code>/Task_Attachments/YYYY-MM/ชื่อลูกค้า - [รหัสงาน]/</code></p>
+            <ul>
+                <li>กระบวนการนี้อาจใช้เวลานานหากคุณมีไฟล์จำนวนมาก</li>
+                <li>ระหว่างที่สคริปต์ทำงาน **ห้ามปิดหน้านี้** หรือรีเฟรชเบราว์เซอร์</li>
+                <li>แนะนำให้ทำการจัดระเบียบนี้ **เพียงครั้งเดียว**</li>
+                <li>ไฟล์ที่ถูกจัดระเบียบเรียบร้อยแล้ว จะไม่ถูกย้ายซ้ำ</li>
+            </ul>
+            <div class="text-center mt-4">
+                <form method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการเริ่มการจัดระเบียบไฟล์ทั้งหมด?');">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-play-circle me-2"></i>เริ่มการจัดระเบียบไฟล์
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

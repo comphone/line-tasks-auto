@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}QR Code สำหรับติดตามงาน #{{ task.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 text-center">
+    <h1 class="mb-4">QR Code สำหรับลูกค้าติดตามงาน</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message | safe }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card shadow-sm mx-auto" style="max-width: 500px;">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">งาน: {{ task.title }} (ลูกค้า: {{ customer_info.name or '-' }})</h5>
+        </div>
+        <div class="card-body">
+            <p class="lead">ให้ลูกค้าสแกน QR Code ด้านล่างนี้ เพื่อดูรายงานความคืบหน้าของงาน</p>
+            
+            {% if qr_code_base64_report %}
+                <img src="{{ qr_code_base64_report }}" alt="QR Code for Public Report" class="img-fluid border border-dark rounded mb-3" style="max-width: 300px; height: auto;">
+            {% else %}
+                <div class="alert alert-danger">ไม่สามารถสร้าง QR Code ได้ โปรดตรวจสอบการตั้งค่า.</div>
+            {% endif %}
+
+            <div class="mt-4">
+                <h6>หรือคัดลอกลิงก์สำหรับแชร์:</h6>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" value="{{ public_report_url }}" readonly id="publicReportUrl">
+                    <button class="btn btn-outline-secondary" type="button" id="copyUrlBtn" title="คัดลอกลิงก์">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <div id="copy-success" class="text-success" style="display: none;">คัดลอกลิงก์แล้ว!</div>
+                <div class="form-text text-muted">ลูกค้าสามารถเข้าถึงลิงก์นี้ได้โดยตรงโดยไม่ต้องเข้าสู่ระบบ</div>
+            </div>
+        </div>
+        <div class="card-footer">
+            {# Corrected url_for to use main.task_details blueprint prefix #}
+            <a href="{{ url_for('main.task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const copyUrlBtn = document.getElementById('copyUrlBtn');
+        if (copyUrlBtn) {
+            copyUrlBtn.addEventListener('click', function() {
+                const publicReportUrlInput = document.getElementById('publicReportUrl');
+                const copySuccessMessage = document.getElementById('copy-success');
+                
+                publicReportUrlInput.select();
+                publicReportUrlInput.setSelectionRange(0, 99999); // For mobile devices
+
+                try {
+                    // Use modern clipboard API if available
+                    navigator.clipboard.writeText(publicReportUrlInput.value).then(function() {
+                        copySuccessMessage.style.display = 'block';
+                        setTimeout(() => {
+                           copySuccessMessage.style.display = 'none';
+                        }, 2000);
+                    }, function(err) {
+                        // Fallback to execCommand
+                        document.execCommand('copy');
+                        copySuccessMessage.style.display = 'block';
+                        setTimeout(() => {
+                           copySuccessMessage.style.display = 'none';
+                        }, 2000);
+                    });
+                } catch (err) {
+                     // Fallback for older browsers
+                    document.execCommand('copy');
+                    copySuccessMessage.style.display = 'block';
+                    setTimeout(() => {
+                        copySuccessMessage.style.display = 'none';
+                    }, 2000);
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

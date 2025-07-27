@@ -1,0 +1,31 @@
+# Flask and Web Server
+Flask>=3.0.0
+Flask-WTF
+gunicorn
+python-dotenv
+Werkzeug
+
+# Google API Services
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# LINE Bot SDK
+line-bot-sdk
+
+# Data and Utilities
+pandas
+openpyxl
+python-dateutil
+pytz
+Pillow
+qrcode
+geopy
+cachetools
+
+# Scheduler
+APScheduler
+
+# Caching (from your original file)
+redis
+Flask-Caching

@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}ตั้งค่าระบบ{% endblock %}
+
+{% block head_extra %}
+<style>
+    .technician-management-list .list-group-item {
+        display: flex;
+        align-items: center;
+    }
+    .technician-management-list .technician-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-right: 1rem;
+        background-color: #e9ecef;
+    }
+    .technician-management-list .technician-name {
+        flex-grow: 1;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
+</div>
+
+<form method="POST" action="{{ url_for('main.settings_page') }}" id="settingsForm" class="needs-validation" novalidate> {# CORRECTED LINE #}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" id="technician_list_json" name="technician_list_json">
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-bell me-2"></i>การตั้งค่าการแจ้งเตือนและรายงาน</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row mb-3">
+                <label for="appointment_reminder_hour" class="col-md-4 col-form-label">แจ้งเตือนนัดหมาย (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour"
+                           value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="outstanding_report_hour" class="col-md-4 col-form-label">รายงานค้างงาน (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour"
+                           value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="customer_followup_hour" class="col-md-4 col-form-label">ติดตามลูกค้า (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour"
+                           value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fab fa-line me-2"></i>ข้อมูล LINE Bot</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row mb-3">
+                <label for="admin_group_id" class="col-md-4 col-form-label">LINE Admin Group ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="admin_group_id" name="admin_group_id"
+                           value="{{ settings.line_recipients.admin_group_id }}">
+                    <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนภายใน</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="technician_group_id" class="col-md-4 col-form-label">LINE Technician Group ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="technician_group_id" name="technician_group_id"
+                           value="{{ settings.line_recipients.technician_group_id }}">
+                    <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนให้ช่าง (ถ้าแยกจาก Admin)</div>
+                </div>
+            </div>
+             <div class="row mb-3">
+                <label for="manager_user_id" class="col-md-4 col-form-label">LINE Manager User ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="manager_user_id" name="manager_user_id"
+                           value="{{ settings.line_recipients.manager_user_id }}">
+                    <div class="form-text">LINE User ID ของผู้จัดการ (ถ้ามี)</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-8 offset-md-4">
+                    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#testNotificationModal">
+                        <i class="fas fa-paper-plane me-2"></i>ทดสอบส่งข้อความ LINE
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-store me-2"></i>ข้อมูลร้านค้าและช่าง</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row mb-3">
+                <label for="shop_contact_phone" class="col-md-4 col-form-label">เบอร์โทรศัพท์ติดต่อ</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="shop_contact_phone" name="shop_contact_phone"
+                           value="{{ settings.shop_info.contact_phone }}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="shop_line_id" class="col-md-4 col-form-label">LINE ID ร้าน</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="shop_line_id" name="shop_line_id"
+                           value="{{ settings.shop_info.line_id }}">
+                </div>
+            </div>
+            <hr>
+            <h6 class="mt-3">จัดการรายชื่อช่าง</h6>
+            <div id="technician-management-list-container" class="list-group technician-management-list mb-3">
+                {# Technician list will be rendered by JavaScript #}
+            </div>
+            <button type="button" class="btn btn-success" onclick="openTechnicianEditModal()">
+                <i class="fas fa-plus me-2"></i>เพิ่มช่างใหม่
+            </button>
+        </div>
+    </div>
+
+    <div class="text-center mb-5">
+        <button type="submit" class="btn btn-success btn-lg">
+            <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด
+        </button>
+        <p class="form-text mt-2">
+            การกดปุ่มนี้จะบันทึกการเปลี่ยนแปลงทั้งหมดในหน้านี้
+        </p>
+    </div>
+</form>
+
+<hr class="my-5">
+
+<h2 class="mb-4">เครื่องมือและการจัดการข้อมูล</h2>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือดูแลและจัดการข้อมูล</h5>
+    </div>
+    <div class="card-body p-4">
+        <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
+        <a href="{{ url_for('tools.organize_files') }}" class="btn btn-info mb-2"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
+        <a href="{{ url_for('tools.manage_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
+        <a href="{{ url_for('tools.manage_equipment_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-info text-dark">
+        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>นำเข้าข้อมูลสำรอง (.json)</h5>
+    </div>
+    <div class="card-body p-4">
+        <form id="importBackupForm" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="mb-3">
+                <label for="backupFileType" class="form-label">ประเภทไฟล์:</label>
+                <select class="form-select" id="backupFileType" name="file_type" required>
+                    <option value="">-- เลือกประเภท --</option>
+                    <option value="tasks_json">งานเก่า (tasks_backup.json)</option>
+                    <option value="settings_json">ตั้งค่าระบบ (settings_backup.json)</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="backupFile" class="form-label">เลือกไฟล์ .json</label>
+                <input class="form-control" type="file" id="backupFile" name="backup_file" accept=".json" required>
+            </div>
+            <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่าง</button>
+            <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยันการนำเข้า</button>
+        </form>
+        <div id="importBackupPreview" class="mt-3"></div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="fas fa-download me-2"></i>ส่งออกและสำรองข้อมูลขึ้น Drive</h5>
+    </div>
+    <div class="card-body p-4">
+        <h6>ส่งออกข้อมูลทั้งหมด</h6>
+        <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงาน, การตั้งค่า, และซอร์สโค้ดปัจจุบันทั้งหมด</p>
+        <a href="{{ url_for('tools.backup_data') }}" class="btn btn-danger mb-4"><i class="fas fa-file-archive me-1"></i> ดาวน์โหลด Full Backup (.zip)</a>
+        <hr>
+        <h6 class="mt-4">สำรองข้อมูลขึ้น Google Drive</h6>
+        <p>สำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive ทันที</p>
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <form class="d-inline" method="POST" action="{{ url_for('tools.trigger_auto_backup_now') }}" onsubmit="return confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                     <button type="submit" class="btn btn-info">
+                        <i class="fas fa-cloud-upload-alt me-1"></i> Backup to Drive Now
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="testNotificationModalLabel">ทดสอบส่งข้อความ LINE</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        ข้อความทดสอบจะถูกส่งไปยัง LINE Admin Group ID ที่คุณได้ตั้งค่าไว้
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+        <form action="{{ url_for('tools.test_notification') }}" method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="technicianEditModal" tabindex="-1" aria-labelledby="technicianEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="technicianEditModalLabel">เพิ่ม/แก้ไขข้อมูลช่าง</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="technician-edit-index">
+                <div class="mb-3">
+                    <label for="technician-name" class="form-label">ชื่อช่าง</label>
+                    <input type="text" class="form-control" id="technician-name" placeholder="เช่น ช่างโต้">
+                </div>
+                <div class="mb-3">
+                    <label for="technician-avatar-file" class="form-label">รูปภาพโปรไฟล์ (Avatar)</label>
+                    <input type="file" class="form-control" id="technician-avatar-file" accept="image/*">
+                    <div class="form-text">เลือกไฟล์รูปภาพใหม่เพื่ออัปโหลด (ถ้าไม่เลือกจะใช้รูปเดิม)</div>
+                    <input type="hidden" id="technician-avatar-id">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-technician-btn" onclick="saveTechnician()">บันทึก</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let technicians = {{ settings.technician_list | tojson | safe }}; 
+    let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
+    let currentIndex = -1;
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    function renderTechnicianList() {
+        const container = document.getElementById('technician-management-list-container');
+        container.innerHTML = '';
+        if (technicians.length === 0) {
+            container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
+        } else {
+            technicians.forEach((tech, index) => {
+                const initial = tech.name && tech.name.trim() !== '' ? tech.name.trim().charAt(0).toUpperCase() : '?'; 
+                const avatarUrl = tech.avatar_id 
+                    ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` 
+                    : `https://via.placeholder.com/40/6c757d/ffffff?text=${encodeURIComponent(initial)}`;
+                
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <img src="${avatarUrl}" class="technician-avatar" alt="${tech.name}">
+                    <span class="technician-name">${tech.name}</span>
+                    <button type="button" class="btn btn-sm btn-outline-primary me-2" onclick="openTechnicianEditModal(${index})"><i class="fas fa-edit"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteTechnician(${index})"><i class="fas fa-trash"></i></button>
+                `;
+                container.appendChild(item);
+            });
+        }
+    }
+
+    window.openTechnicianEditModal = (index = -1) => {
+        currentIndex = index;
+        document.getElementById('technician-avatar-file').value = ''; // Clear file input
+        if (index > -1) {
+            const tech = technicians[index];
+            document.getElementById('technician-name').value = tech.name;
+            document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
+            document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
+        } else {
+            document.getElementById('technician-name').value = '';
+            document.getElementById('technician-avatar-id').value = '';
+            document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
+        }
+        technicianEditModal.show();
+    }
+
+    window.saveTechnician = async () => {
+        const saveBtn = document.getElementById('save-technician-btn');
+        const originalBtnText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...';
+
+        const name = document.getElementById('technician-name').value.trim();
+        const avatarFile = document.getElementById('technician-avatar-file').files[0];
+        let avatarId = document.getElementById('technician-avatar-id').value;
+
+        if (!name) {
+            alert('กรุณาใส่ชื่อช่าง');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnText;
+            return;
+        }
+
+        if (avatarFile) {
+            const formData = new FormData();
+            formData.append('file', avatarFile);
+            try {
+                // Ensure this API endpoint exists and handles the upload
+                const response = await fetch('{{ url_for('main.api_upload_avatar') }}', { 
+                    method: 'POST', 
+                    body: formData,
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    avatarId = result.file_id;
+                    // Using the main flash message area from base.html
+                    flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + error.message);
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalBtnText;
+                return;
+            }
+        }
+
+        const newTech = { name: name, avatar_id: avatarId };
+
+        if (currentIndex > -1) {
+            technicians[currentIndex] = newTech;
+        } else {
+            technicians.push(newTech);
+        }
+        
+        renderTechnicianList();
+        technicianEditModal.hide();
+
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalBtnText;
+    }
+
+    window.deleteTechnician = (index) => {
+        if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบช่าง "${technicians[index].name}"?`)) {
+            technicians.splice(index, 1);
+            renderTechnicianList();
+        }
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        document.getElementById('technician_list_json').value = JSON.stringify(technicians);
+    });
+
+    renderTechnicianList(); // Initial render of the technician list when the page loads
+});
+
+function flashMessage(message, category) {
+    const mainContainer = document.getElementById('flash-messages-area');
+    if (!mainContainer) return;
+    const newMessage = document.createElement('div');
+    newMessage.className = `alert alert-${category} alert-dismissible fade show`;
+    newMessage.setAttribute('role', 'alert');
+    newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
+    
+    mainContainer.prepend(newMessage);
+
+    setTimeout(() => {
+        const alertInstance = bootstrap.Alert.getInstance(newMessage);
+        if (alertInstance) {
+            alertInstance.close();
+        } else {
+            // Fallback for cases where the instance might not be found
+            newMessage.remove();
+        }
+    }, 5000); 
+}
+</script>
+{% endblock %}

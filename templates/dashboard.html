@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}แดชบอร์ดสรุปภาพรวม{% endblock %}
+
+{% block head_extra %}
+    <style>
+        .summary-card-link { text-decoration: none; }
+        .summary-card {
+            color: white;
+            border-radius: .75rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+        }
+        .summary-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+        }
+        .summary-card .icon { font-size: 1.5rem; }
+        .summary-card .text-content { margin-left: 1rem; }
+        .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
+        .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
+        
+        .table-hover tbody tr:hover { background-color: #f1f1f1; }
+        .badge { font-size: 0.9em; padding: .5em .75em; }
+
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table {
+            min-width: 700px;
+        }
+        .task-title-cell {
+            max-width: 220px;
+            white-space: normal;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+            vertical-align: top; /* Aligns content to the top */
+        }
+        .clickable-cell {
+            cursor: pointer;
+        }
+        .table th:nth-child(1), .table td:nth-child(1) { width: 5%; }
+        .table th:nth-child(2), .table td:nth-child(2) { width: 25%; }
+        .table th:nth-child(3), .table td:nth-child(3) { width: 30%; }
+        .table th:nth-child(4), .table td:nth-child(4) { width: 20%; }
+        .table th:nth-child(5), .table td:nth-child(5) { width: 10%; text-align: center; }
+        .table th:nth-child(6), .table td:nth-child(6) { width: 10%; text-align: center; }
+
+        .nav-tabs .nav-link {
+            color: #495057;
+        }
+        .nav-tabs .nav-link.active {
+            color: #0d6efd;
+            background-color: #fff;
+            border-color: #dee2e6 #dee2e6 #fff;
+            font-weight: 600;
+        }
+        .nav-pills .nav-link {
+            margin: 0 4px;
+            border: 1px solid #dee2e6;
+        }
+        .nav-pills .nav-link.active {
+            border-color: var(--bs-primary);
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">แดชบอร์ด</h1>
+    <a href="{{ url_for('main.form_page') }}" class="btn btn-success btn-lg"> {# CORRECTED LINE #}
+        <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('tools.dashboard', status_filter='all') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-primary h-100">
+                <div class="icon"><i class="fas fa-globe-asia"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">ทั้งหมด</h5>
+                    <p class="card-text mb-0">{{ summary.total or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('tools.dashboard', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-warning h-100">
+                <div class="icon"><i class="fas fa-hourglass-half"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">ยังไม่เสร็จ</h5>
+                    <p class="card-text mb-0">{{ summary.needsAction or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('tools.dashboard', status_filter='completed') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-success h-100">
+                <div class="icon"><i class="fas fa-check-double"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">เสร็จแล้ว</h5>
+                    <p class="card-text mb-0">{{ summary.completed or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('tools.dashboard', status_filter='today') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-info h-100">
+                <div class="icon"><i class="fas fa-calendar-day"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">งานวันนี้</h5>
+                    <p class="card-text mb-0">{{ summary.today or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm" id="task-list-section">
+    <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" id="dashboardTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="task-list-tab" data-bs-toggle="tab" data-bs-target="#task-list-pane" type="button" role="tab" aria-controls="task-list-pane" aria-selected="true">
+                    <i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart-pane" type="button" role="tab" aria-controls="chart-pane" aria-selected="false">
+                    <i class="fas fa-chart-bar me-2"></i>กราฟสรุปรายเดือน
+                </button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content" id="dashboardTabContent">
+            <div class="tab-pane fade show active" id="task-list-pane" role="tabpanel" aria-labelledby="task-list-tab" tabindex="0">
+                <form method="GET" action="{{ url_for('tools.dashboard') }}" class="mb-3">
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="search_query" placeholder="ค้นหาจากรายละเอียดงาน, ชื่อลูกค้า, หน่วยงาน หรือเบอร์โทร..." value="{{ search_query or '' }}">
+                        <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i> ค้นหา</button>
+                        <a href="{{ url_for('tools.summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
+                    </div>
+                </form>
+
+                <div class="d-flex justify-content-center flex-wrap mb-3">
+                    <ul class="nav nav-pills">
+                        {% for key, value in job_types.items() %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if job_type_filter == key or (job_type_filter == 'all' and key == 'all') %}active{% endif %}" 
+                               href="{{ url_for('tools.dashboard', job_type_filter=key) }}">{{ value }}</a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                <div id="table-loading-spinner" class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">กำลังโหลดข้อมูลงาน...</p>
+                </div>
+
+                <div class="table-responsive" id="task-table-container" style="display:none;">
+                    <table class="table table-hover table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>หน่วยงาน / ลูกค้า</th>
+                                <th>รายละเอียดงาน</th>
+                                <th>วันเวลานัดหมาย</th>
+                                <th class="text-center">สถานะ</th>
+                                <th class="text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in tasks %}
+                            <tr class="{{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}">
+                                <td class="clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">{{ loop.index }}</td>
+                                <td class="clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">
+                                    {% if task.customer.organization %}
+                                        <strong>{{ task.customer.organization }}</strong>
+                                        <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
+                                    {% else %}
+                                        <strong>{{ task.customer.name or '-' }}</strong>
+                                    {% endif %}
+                                </td>
+                                <td class="task-title-cell" title="{{ task.clean_title }}" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">
+                                    {% if task.job_type != 'เซอร์วิส' %}
+                                        <span class="badge bg-secondary mb-1">{{ task.job_type }}</span>
+                                    {% endif %}
+                                    <br>
+                                    {{ task.clean_title }}
+                                </td>
+                                <td class="clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
+                                <td class="text-center clickable-cell" onclick="window.location='{{ url_for('main.task_details', task_id=task.id) }}';">
+                                    {% if task.status == 'completed' %}
+                                        <span class="badge bg-success">เสร็จเรียบร้อย</span>
+                                    {% elif task.is_today %}
+                                        <span class="badge bg-info">งานวันนี้</span>
+                                    {% elif task.is_overdue %}
+                                        <span class="badge bg-danger">เลยกำหนด</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <a href="{{ url_for('main.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{{ url_for('main.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+                                        <i class="fas fa-file-alt"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center p-4">
+                                    <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
+                                    <p>ลอง<a href="{{ url_for('main.form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="chart-pane" role="tabpanel" aria-labelledby="chart-tab" tabindex="0">
+                <div style="height: 400px;">
+                    <canvas id="monthlyTasksChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const monthlyCtx = document.getElementById('monthlyTasksChart');
+        let myChart;
+
+        if (monthlyCtx) {
+            const chartData = {
+                labels: {{ chart_data['labels'] | tojson | safe }},
+                datasets: [{
+                    label: 'จำนวนงานที่เสร็จ',
+                    data: {{ chart_data['values'] | tojson | safe }},
+                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                    borderColor: 'rgba(25, 135, 84, 1)',
+                    borderWidth: 1
+                }]
+            };
+
+            const chartOptions = {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0
+                        }
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            };
+            
+            myChart = new Chart(monthlyCtx, {
+                type: 'bar',
+                data: chartData,
+                options: chartOptions
+            });
+            
+            const chartTab = document.getElementById('chart-tab');
+            if (chartTab) {
+                chartTab.addEventListener('shown.bs.tab', function() {
+                    if (myChart) {
+                        myChart.update();
+                    }
+                });
+            }
+        }
+
+        // Hide spinner and show table
+        const tableContainer = document.getElementById('task-table-container');
+        const spinner = document.getElementById('table-loading-spinner');
+        if (tableContainer && spinner) {
+            tableContainer.style.display = 'block';
+            spinner.style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}
