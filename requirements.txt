@@ -1,31 +1,12 @@
-# Flask and Web Server
-Flask>=3.0.0
-Flask-WTF
-gunicorn
-python-dotenv
-Werkzeug
-
-# Google API Services
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
-
-# LINE Bot SDK
-line-bot-sdk
-
-# Data and Utilities
-pandas
-openpyxl
-python-dateutil
-pytz
-Pillow
-qrcode
-geopy
-cachetools
-
-# Scheduler
-APScheduler
-
-# Caching (from your original file)
-redis
-Flask-Caching
+Flask==3.0.0
+gunicorn==21.2.0
+requests==2.31.0
+line-bot-sdk==3.5.0
+google-api-python-client==2.115.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+pandas==2.2.0
+APScheduler==3.10.4
+pytz==2024.1
+gspread==5.12.4
+oauth2client==4.1.3
