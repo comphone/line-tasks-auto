@@ -377,7 +377,7 @@
                             {% if report.type == 'reschedule' %}เลื่อนนัดหมาย{% else %}รายงานการปฏิบัติงาน{% endif %}
                         </span>
                         <div class="d-flex align-items-center flex-wrap">
-                            <small class="text-muted me-3 mb-2">{{ dateutil_parse(report.summary_date).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}
+                            <small class="text-muted me-3 mb-2">{{ report.summary_date_formatted }}</small>
                             {% if report.type == 'report' %}
                             <button class="btn btn-sm btn-outline-primary mb-2 me-1" onclick="openEditReportTextModal({{ loop.index0 }})" title="แก้ไขข้อความสรุป">
                                 <i class="fas fa-pen"></i>
@@ -569,7 +569,7 @@
 <script>
     const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
-    const techReportsHistory = {{ task.tech_reports_history | tojson | safe if task.tech_reports_history is defined else [] }};
+    const techReportsHistory = {{ (task.tech_reports_history or []) | tojson | safe }};
     let slideIndex;
     let technicianSelectionModal;
     let editReportModal;
@@ -667,7 +667,7 @@
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
         try {
-            const response = await fetch(`/api/task/{{ task.id }}/edit_report_text/${reportIndex}`, {
+            const response = await fetch(`{{ url_for('api.api_edit_report_text', task_id=task.id, report_index=reportIndex) }}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -806,7 +806,7 @@
         }).then(async (result) => {
             if (result.isConfirmed) {
                 try {
-                    const response = await fetch(`/api/task/{{ task.id }}/delete_report/${reportIndex}`, { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
+                    const response = await fetch(`{{ url_for('api.api_delete_report', task_id=task.id, report_index=reportIndex) }}`, { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
                     const data = await response.json();
                     if (response.ok && data.status === 'success') {
                         await Swal.fire('ลบแล้ว!', data.message, 'success');
@@ -895,7 +895,7 @@
             container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
         }
         const form = document.getElementById('editReportForm');
-        form.action = `/api/task/{{ task.id }}/edit_report/${reportIndex}`;
+        form.action = `/task/{{ task.id }}/edit_report/${reportIndex}`;
         editReportModal.show();
     }
     function flashMessage(message, category) {
@@ -926,7 +926,7 @@
                 fileFormData.append('task_id', '{{ task.id }}');
                 fileFormData.append('csrf_token', csrfToken);
                 try {
-                    const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
+                    const response = await fetch(`{{ url_for('api.api_upload_attachment') }}`, { method: 'POST', body: fileFormData });
                     const result = await response.json();
                     if (response.ok && result.status === 'success') { uploadedAttachments.push(result.file_info); } 
                     else { flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${result.message}`, 'danger'); }

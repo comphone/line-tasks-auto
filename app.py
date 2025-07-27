@@ -19,6 +19,7 @@ from settings_manager import get_app_settings, save_app_settings
 from tool_routes import tools_bp
 from customer_routes import customer_bp
 from main_routes import main_bp
+from api_routes import api_bp  # Import the new api blueprint
 from line_handler import handle_text_message, handle_postback
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from app import handler
@@ -32,20 +33,11 @@ csrf = CSRFProtect(app)
 app.cache = TTLCache(maxsize=100, ttl=60)
 app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 
-# Define constants for file uploads
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
-
-app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'} 
-app.config['MAX_FILE_SIZE_MB'] = 50
-app.config['MAX_FILE_SIZE_BYTES'] = app.config['MAX_FILE_SIZE_MB'] * 1024 * 1024
-
-
 # --- Register Blueprints ---
 app.register_blueprint(main_bp) 
 app.register_blueprint(tools_bp)
 app.register_blueprint(customer_bp)
+app.register_blueprint(api_bp) # Register the new api blueprint
 
 # --- Context Processors & Error Handlers ---
 @app.context_processor
