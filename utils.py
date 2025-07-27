@@ -9,10 +9,10 @@ from datetime import datetime
 from dateutil.parser import parse as date_parse
 import qrcode
 import base64
+from flask import current_app
 
 # --- Local Module Imports ---
-from settings_manager import get_app_settings
-import google_services as gs
+from settings_manager import get_app_settings, SETTINGS_FILE
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
@@ -31,7 +31,6 @@ TEXT_SNIPPETS = {
         {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
     ]
 }
-
 
 def sanitize_filename(name):
     """Removes illegal characters from a string to make it a valid filename."""
@@ -73,7 +72,10 @@ def parse_customer_feedback_from_notes(notes):
         try:
             feedback_data = json.loads(feedback_match.group(1))
         except json.JSONDecodeError:
-            print(f"Warning: Failed to decode customer feedback JSON.") # In Flask context, use current_app.logger
+            if hasattr(current_app, 'logger'):
+                current_app.logger.warning(f"Failed to decode customer feedback JSON.")
+            else:
+                print(f"Warning: Failed to decode customer feedback JSON.")
     return feedback_data
 
 def parse_google_task_dates(task_item):
@@ -83,9 +85,9 @@ def parse_google_task_dates(task_item):
         if parsed.get(key):
             try:
                 dt_utc = date_parse(parsed[key])
-                parsed[f'{key}_formatted'] = dt_utc.astimezone(utils.THAILAND_TZ).strftime("%d/%m/%y %H:%M")
+                parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
                 if key == 'due':
-                    parsed['due_for_input'] = dt_utc.astimezone(utils.THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
             except (ValueError, TypeError):
                 parsed[f'{key}_formatted'] = ''
                 if key == 'due': parsed['due_for_input'] = ''
@@ -109,7 +111,10 @@ def parse_tech_report_from_notes(notes):
                 report_data['type'] = 'report'
             history.append(report_data)
         except json.JSONDecodeError:
-            print(f"Warning: Failed to decode tech report JSON: {json_str[:100]}...") # In Flask context, use current_app.logger
+            if hasattr(current_app, 'logger'):
+                current_app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
+            else:
+                print(f"Warning: Failed to decode tech report JSON: {json_str[:100]}...")
     
     temp_notes = re.sub(r"--- (TECH_REPORT_START|CUSTOMER_FEEDBACK_START) ---.*?--- (TECH_REPORT_END|CUSTOMER_FEEDBACK_END) ---", "", notes, flags=re.DOTALL)
     original_notes_text = temp_notes.strip()
@@ -128,15 +133,24 @@ def generate_qr_code_base64(data, box_size=10, border=4, fill_color='#28a745', b
         img.save(buffered, format="PNG")
         return "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
     except Exception as e:
-        print(f"Error generating QR code: {e}") # In Flask context, use current_app.logger
+        if hasattr(current_app, 'logger'):
+            current_app.logger.error(f"Error generating QR code: {e}")
+        else:
+            print(f"Error generating QR code: {e}")
         return ""
 
 def create_backup_zip():
     """Creates a zip archive of important application data and code."""
     try:
+        # Import here to avoid circular dependency
+        import google_services as gs
+        
         all_tasks = gs.get_google_tasks_for_report(show_completed=True)
         if all_tasks is None:
-            print('Failed to get tasks for backup.') # In Flask context, use current_app.logger
+            if hasattr(current_app, 'logger'):
+                current_app.logger.error('Failed to get tasks for backup.')
+            else:
+                print('Failed to get tasks for backup.')
             return None, None
 
         memory_file = BytesIO()
@@ -149,26 +163,25 @@ def create_backup_zip():
                 if '.venv' in folder or '__pycache__' in folder:
                     continue
                 for file in files:
-                    # Access ALLOWED_EXTENSIONS from current_app if it's set there, otherwise use a local list if defined.
-                    # For now, assuming relevant extensions are common.
                     if file.endswith(('.py', '.html', '.css', '.js', '.json', 'Procfile', 'requirements.txt', '.yaml')) \
-                       and file not in ['token.json', '.env', SETTINGS_FILE]: # Exclude sensitive files
+                       and file not in ['token.json', '.env', SETTINGS_FILE]:
                         file_path = os.path.join(folder, file)
                         archive_name = os.path.relpath(file_path, project_root)
                         zf.write(file_path, arcname=f'code/{archive_name}')
         
         memory_file.seek(0)
-        backup_filename = f"full_system_backup_{datetime.datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.zip"
+        backup_filename = f"full_system_backup_{datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.zip"
         return memory_file, backup_filename
     except Exception as e:
-        print(f"Error creating full system backup zip: {e}") # In Flask context, use current_app.logger
+        if hasattr(current_app, 'logger'):
+            current_app.logger.error(f"Error creating full system backup zip: {e}")
+        else:
+            print(f"Error creating full system backup zip: {e}")
         return None, None
 
 def allowed_file(filename):
     """Checks if a file extension is allowed."""
-    # Assuming ALLOWED_EXTENSIONS is set on current_app.
-    # If not, this might need a fallback.
-    allowed = current_app.ALLOWED_EXTENSIONS if hasattr(current_app, 'ALLOWED_EXTENSIONS') else {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'}
+    allowed = getattr(current_app, 'ALLOWED_EXTENSIONS', {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'})
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed
 
 def _parse_equipment_string(text_input):
@@ -177,7 +190,7 @@ def _parse_equipment_string(text_input):
     if not text_input: return equipment_list
     for line in text_input.strip().split('\n'):
         if not line.strip(): continue
-        parts = line.split(',', 1) # Split only on first comma
+        parts = line.split(',', 1)
         item_name = parts[0].strip()
         if item_name:
             quantity_str = parts[1].strip() if len(parts) > 1 else '1'
@@ -185,13 +198,13 @@ def _parse_equipment_string(text_input):
                 quantity_num = float(quantity_str)
                 equipment_list.append({"item": item_name, "quantity": quantity_num})
             except ValueError:
-                equipment_list.append({"item": item_name, "quantity": quantity_str}) # Keep as string if not a valid number
+                equipment_list.append({"item": item_name, "quantity": quantity_str})
     return equipment_list
 
 def _format_equipment_list(equipment_data):
     """Formats equipment list for display in HTML."""
     if not equipment_data: return 'N/A'
-    if isinstance(equipment_data, str): return equipment_data # Already a string
+    if isinstance(equipment_data, str): return equipment_data
     lines = []
     if isinstance(equipment_data, list):
         for item in equipment_data:
@@ -199,7 +212,7 @@ def _format_equipment_list(equipment_data):
                 line = item['item']
                 if item.get("quantity") is not None:
                     if isinstance(item['quantity'], (int, float)):
-                        line += f" (x{item['quantity']:g})" # :g for generic float/int representation
+                        line += f" (x{item['quantity']:g})"
                     else:
                         line += f" ({item['quantity']})"
                 lines.append(line)

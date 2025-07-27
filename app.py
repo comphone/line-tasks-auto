@@ -23,10 +23,9 @@ from linebot.models import MessageEvent, TextMessage, PostbackEvent
 import google_services as gs
 import utils
 from settings_manager import get_app_settings, save_app_settings
-from tool_routes import tools_bp # Import tool_routes blueprint
-from customer_routes import customer_bp # Import customer_routes blueprint
-# Import main_bp from the new main_routes.py file, and specific handlers for webhook
-from main_routes import main_bp, handle_text_message, handle_postback # Import main_bp and LINE handlers
+from tool_routes import tools_bp
+from customer_routes import customer_bp
+from main_routes import main_bp, handle_text_message, handle_postback
 
 from app_scheduler import initialize_scheduler, cleanup_scheduler
 from line_notifications import send_update_notification, send_completion_notification, send_new_task_notification
@@ -42,7 +41,7 @@ app.line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET')) 
 app.LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 
-# Define constants for file uploads directly on app.config or app object
+# Define constants for file uploads
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -51,9 +50,7 @@ app.ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml', 'doc
 app.MAX_FILE_SIZE_MB = 50
 app.MAX_FILE_SIZE_BYTES = app.MAX_FILE_SIZE_MB * 1024 * 1024
 
-
 # --- Register Blueprints ---
-# Register blueprints AFTER all their routes have been defined in their respective files
 app.register_blueprint(main_bp) 
 app.register_blueprint(tools_bp)
 app.register_blueprint(customer_bp)
@@ -62,7 +59,14 @@ app.register_blueprint(customer_bp)
 @app.context_processor
 def inject_global_vars():
     """Injects variables into all templates."""
-    return {'now': datetime.datetime.now(utils.THAILAND_TZ), 'google_api_connected': gs.get_refreshed_credentials() is not None}
+    return {
+        'now': datetime.datetime.now(utils.THAILAND_TZ), 
+        'google_api_connected': gs.get_refreshed_credentials() is not None,
+        'technician_list': get_app_settings().get('technician_list', []),
+        'thaizone': utils.THAILAND_TZ,
+        'dateutil_parse': utils.date_parse,
+        'get_file_icon': utils.get_file_icon
+    }
 
 @app.errorhandler(404)
 def page_not_found(e):
@@ -73,20 +77,16 @@ def internal_server_error(e):
     app.logger.error(f"Server Error: {e}", exc_info=True)
     return render_template('500.html'), 500
 
-# --- LINE Webhook Handlers (attached to the global 'handler' object, not a blueprint) ---
-# These handlers are now explicitly attached to the global 'handler' instance,
-# which is then handled by the central '/callback' route in main_bp.
-# The handle_text_message and handle_postback functions are imported from main_routes.py
+# --- LINE Webhook Handlers ---
 @handler.add(MessageEvent, message=TextMessage)
 def handle_line_message_event(event):
     with app.app_context():
-        handle_text_message(event) # Call handler function imported from main_routes
+        handle_text_message(event)
 
 @handler.add(PostbackEvent)
 def handle_line_postback_event(event):
     with app.app_context():
-        handle_postback(event) # Call handler function imported from main_routes
-
+        handle_postback(event)
 
 # --- App Startup ---
 if __name__ == '__main__':
