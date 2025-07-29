@@ -213,19 +213,38 @@ def get_google_service(api_name, api_version):
         try:
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
         except Exception as e:
-            app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}. Please check format.")
+            app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}")
             creds = None
 
-    if creds and creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-            app.logger.info("="*80)
-            app.logger.info("Google access token refreshed successfully!")
-            app.logger.info("PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE ON RENDER.COM WITH THE FOLLOWING:")
-            app.logger.info(f"NEW GOOGLE_TOKEN_JSON: {creds.to_json()}")
-            app.logger.info("="*80)
-        except Exception as e:
-            app.logger.error(f"Error refreshing token: {e}")
+    # ปรับปรุงการ refresh token
+    if creds:
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                
+                # ☑️ อัพเดต environment variable อัตโนมัติ (ถ้าเป็นไปได้)
+                new_token_json = creds.to_json()
+                
+                # บันทึก token ใหม่ลงไฟล์สำรอง
+                try:
+                    with open('token_backup.json', 'w') as f:
+                        f.write(new_token_json)
+                    app.logger.info("✅ Token refreshed and saved to backup file")
+                except Exception as backup_error:
+                    app.logger.warning(f"Could not save token backup: {backup_error}")
+                
+                # แสดงข้อมูล token ใหม่
+                app.logger.info("="*80)
+                app.logger.info("🔄 Google access token refreshed successfully!")
+                app.logger.info("📝 PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE:")
+                app.logger.info(f"NEW TOKEN: {new_token_json}")
+                app.logger.info("="*80)
+                
+            except Exception as e:
+                app.logger.error(f"❌ Error refreshing token: {e}")
+                creds = None
+        elif creds.expired and not creds.refresh_token:
+            app.logger.error("❌ Token expired and no refresh token available")
             creds = None
 
     if creds and creds.valid:
@@ -233,16 +252,51 @@ def get_google_service(api_name, api_version):
             service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
             return service
         except Exception as e:
-            app.logger.error(f"Failed to build Google API service after retries: {e}")
+            app.logger.error(f"❌ Failed to build Google API service: {e}")
             return None
     else:
-        app.logger.error("No valid Google credentials available. API service cannot be built.")
-        app.logger.error("Please ensure GOOGLE_TOKEN_JSON environment variable is set and valid, or that authorization was successful.")
+        app.logger.error("❌ No valid Google credentials available")
         return None
-
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
+
+@app.route('/admin/token_status')
+def token_status():
+    """แสดงสถานะ Google Token สำหรับ debugging"""
+    google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
+    
+    if not google_token_json_str:
+        return jsonify({
+            'status': 'error',
+            'message': 'GOOGLE_TOKEN_JSON not found in environment variables'
+        })
+    
+    try:
+        creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
+        
+        status_info = {
+            'valid': creds.valid,
+            'expired': creds.expired,
+            'has_refresh_token': bool(creds.refresh_token),
+            'token_uri': creds.token_uri,
+            'scopes': list(creds.scopes) if creds.scopes else []
+        }
+        
+        if hasattr(creds, 'expiry') and creds.expiry:
+            status_info['expires_at'] = creds.expiry.isoformat()
+            status_info['expires_in_seconds'] = (creds.expiry - datetime.datetime.utcnow()).total_seconds()
+        
+        return jsonify({
+            'status': 'success',
+            'token_info': status_info
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Error parsing token: {e}'
+        })
 
 def sanitize_filename(name):
     if not name:
