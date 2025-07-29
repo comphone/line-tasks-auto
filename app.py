@@ -48,7 +48,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBaseUpload
-from google.oauth2 import service_account # Import service_account
+from google.oauth2 import service_account
 
 import pandas as pd
 from dateutil.parser import parse as date_parse
@@ -116,9 +116,13 @@ cache = TTLCache(maxsize=100, ttl=60)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+# **ย้ายการประกาศ scheduler มาไว้ที่นี่**
+scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
+
+
 #<editor-fold desc="Helper and Utility Functions">
 
-# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit - **ย้ายมาไว้ด้านบนสุด**
+# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit
 class LineMessageQueue:
     def __init__(self, max_per_minute=100):
         self.queue = Queue()
@@ -176,7 +180,7 @@ app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PE
 
 
 SETTINGS_FILE = 'settings.json'
-# _DEFAULT_APP_SETTINGS_STORE ย้ายมาไว้ที่นี่เพื่อให้ถูกประกาศก่อนใช้งาน
+# _DEFAULT_APP_SETTINGS_STORE **ย้ายมาไว้ที่นี่** เพื่อให้ถูกประกาศก่อนใช้งานใน get_app_settings()
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
