@@ -48,6 +48,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBaseUpload
+from google.oauth2 import service_account # Import service_account
 
 import pandas as pd
 from dateutil.parser import parse as date_parse
@@ -175,7 +176,7 @@ app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PE
 
 
 SETTINGS_FILE = 'settings.json'
-# _DEFAULT_APP_SETTINGS_STORE **ย้ายมาไว้ที่นี่** เพื่อให้ถูกประกาศก่อนใช้งานใน get_app_settings()
+# _DEFAULT_APP_SETTINGS_STORE ย้ายมาไว้ที่นี่เพื่อให้ถูกประกาศก่อนใช้งาน
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
@@ -269,6 +270,34 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
 
 def get_google_service(api_name, api_version):
     creds = None
+
+    # --- START SERVICE ACCOUNT FEATURE ---
+    SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON') # เก็บ JSON ทั้งก้อนใน env
+    
+    if SERVICE_ACCOUNT_FILE_CONTENT:
+        try:
+            info = json.loads(SERVICE_ACCOUNT_FILE_CONTENT)
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=SCOPES
+            )
+            app.logger.info("✅ Loaded credentials from Service Account.")
+            # ถ้าโหลด Service Account สำเร็จ ก็ใช้ตัวนี้เลย ไม่ต้องไปเช็ค User Credentials
+            # ส่วนการรีเฟรชโทเค็นอัตโนมัติจะไม่มีความจำเป็นสำหรับ Service Account
+            try:
+                service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
+                app.logger.info(f"✅ Successfully built {api_name} {api_version} service using Service Account")
+                return service
+            except Exception as e:
+                app.logger.error(f"❌ Failed to build Google API service with Service Account: {e}")
+                return None
+
+        except Exception as e:
+            app.logger.warning(f"Could not load Service Account from GOOGLE_SERVICE_ACCOUNT_JSON env var: {e}. Falling back to User Credentials.")
+            creds = None # ตั้งค่า creds เป็น None เพื่อให้ไปใช้ User Credentials
+    # --- END SERVICE ACCOUNT FEATURE ---
+
+
+    # --- FALLBACK TO USER CREDENTIALS (โค้ดเดิมของคุณ) ---
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
 
     if google_token_json_str:
@@ -327,7 +356,7 @@ def get_google_service(api_name, api_version):
                 app.logger.error("🔧 Please run get_token.py to generate a new token")
                 creds = None
 
-    # สร้าง Google API service
+    # สร้าง Google API service (ใช้ creds จาก User Credentials หากไม่มี Service Account)
     if creds and creds.valid:
         try:
             service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
@@ -337,11 +366,11 @@ def get_google_service(api_name, api_version):
             app.logger.error(f"❌ Failed to build Google API service: {e}")
             return None
     else:
-        app.logger.error("❌ No valid Google credentials available")
+        app.logger.error("❌ No valid Google credentials available (Service Account or User Credentials).")
         app.logger.error("🔧 Please ensure:")
-        app.logger.error("   1. GOOGLE_TOKEN_JSON environment variable is set")
-        app.logger.error("   2. OAuth consent screen is in Production mode") # ย้ำเรื่อง Production mode
-        app.logger.error("   3. Run get_token.py to generate a fresh token")
+        app.logger.error("   1. GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_TOKEN_JSON environment variable is set")
+        app.logger.error("   2. OAuth consent screen is in Production mode (for User Credentials)")
+        app.logger.error("   3. Run get_token.py to generate a fresh token (for User Credentials)")
         return None
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
@@ -350,12 +379,34 @@ def get_google_drive_service(): return get_google_service('drive', 'v3')
 @app.route('/admin/token_status')
 def token_status():
     """แสดงสถานะ Google Token สำหรับ debugging"""
+    # ตรวจสอบ Service Account ก่อน
+    SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
+    if SERVICE_ACCOUNT_FILE_CONTENT:
+        try:
+            info = json.loads(SERVICE_ACCOUNT_FILE_CONTENT)
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=SCOPES
+            )
+            return jsonify({
+                'status': 'success',
+                'message': 'Using Google Service Account',
+                'service_account_email': creds.service_account_email,
+                'scopes': list(creds.scopes) if creds.scopes else []
+            })
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'message': f'Error loading Service Account: {e}',
+                'detail': 'Service Account JSON might be invalid.'
+            })
+
+    # ถ้าไม่มี Service Account, ตรวจสอบ User Token
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
     
     if not google_token_json_str:
         return jsonify({
             'status': 'error',
-            'message': 'GOOGLE_TOKEN_JSON not found in environment variables'
+            'message': 'No Google credentials found (neither Service Account nor User Token).'
         })
     
     try:
@@ -375,13 +426,15 @@ def token_status():
         
         return jsonify({
             'status': 'success',
+            'message': 'Using User Credentials',
             'token_info': status_info
         })
         
     except Exception as e:
         return jsonify({
             'status': 'error',
-            'message': f'Error parsing token: {e}'
+            'message': f'Error parsing User Token: {e}',
+            'detail': 'User Token JSON might be invalid or corrupted.'
         })
 
 def sanitize_filename(name):
