@@ -1,113 +1,201 @@
-from __future__ import print_function
+#!/usr/bin/env python3
+"""
+Enhanced Google API Token Generator
+- สร้าง token ที่มีอายุยืนขึ้น (Production mode)
+- ตรวจสอบการตั้งค่า OAuth consent screen
+- สร้าง token ที่ปลอดภัยและไม่หลุดบ่อย
+"""
+
 import os
 import json
+import sys
+from datetime import datetime, timedelta
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import webbrowser
+from googleapiclient.discovery import build
 
-# 🔄 อัพเดต SCOPES ตามที่ใช้จริง
+# Scopes เดียวกับที่ใช้ใน app.py
 SCOPES = [
-    "https://www.googleapis.com/auth/tasks",
-    "https://www.googleapis.com/auth/drive", 
-    "https://www.googleapis.com/auth/calendar"
+    'https://www.googleapis.com/auth/tasks',
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/calendar.events'
 ]
 
-class TokenDisplayHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html; charset=utf-8")
-        self.end_headers()
-        
-        with open('token.json', 'r') as token_file:
-            token_content = token_file.read()
-        
-        html_content = f'''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Google API Token - Production Ready</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }}
-                .success {{ color: #28a745; font-weight: bold; }}
-                .warning {{ color: #ffc107; font-weight: bold; }}
-                .token-box {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }}
-                textarea {{ width: 100%; height: 200px; font-family: monospace; }}
-                button {{ background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="success">✅ Token สร้างเรียบร้อย - Production Mode</h1>
-            
-            <div class="warning">
-                <h3>⚠️ สำคัญ: ต้อง Publish App เป็น Production</h3>
-                <p>1. ไปที่ <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></p>
-                <p>2. เลือก Project → APIs & Services → OAuth consent screen</p>
-                <p>3. เปลี่ยน Publishing status จาก "Testing" เป็น <strong>"In production"</strong></p>
-                <p>4. คลิก "Publish App"</p>
-            </div>
-            
-            <div class="token-box">
-                <h3>📋 คัดลอก Token นี้ไปใส่ใน GOOGLE_TOKEN_JSON:</h3>
-                <textarea id="tokenJson" readonly>{token_content}</textarea>
-                <button onclick="copyToken()">📋 คัดลอก Token</button>
-                <p id="copyStatus" style="margin-top: 10px;"></p>
-            </div>
-            
-            <div class="success">
-                <h3>🎉 หลังจากนี้ Token จะไม่หมดอายุใน 7 วัน!</h3>
-                <p>Token จะใช้ได้นานขึ้นมากหลังจากเปลี่ยนเป็น Production mode</p>
-            </div>
-            
-            <script>
-                function copyToken() {{
-                    const textarea = document.getElementById('tokenJson');
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.getElementById('copyStatus').innerHTML = '<span style="color: green;">✅ คัดลอกแล้ว!</span>';
-                    setTimeout(() => {{ document.getElementById('copyStatus').innerHTML = ''; }}, 3000);
-                }}
-            </script>
-        </body>
-        </html>
-        '''
-        
-        self.wfile.write(html_content.encode('utf-8'))
+def check_oauth_setup():
+    """ตรวจสอบการตั้งค่า OAuth consent screen"""
+    print("🔍 ตรวจสอบการตั้งค่า OAuth consent screen...")
+    print("📋 ให้แน่ใจว่า:")
+    print("   ✅ OAuth consent screen เป็น 'In production' mode")
+    print("   ✅ Application type เป็น 'Desktop application'")
+    print("   ✅ เปิดใช้งาน APIs: Tasks, Drive, Calendar")
+    print("")
 
-def main():
-    if os.path.exists('token.json'):
-        print("⚠️  token.json มีอยู่แล้ว ลบออกถ้าต้องการสร้างใหม่")
-        with open('token.json', 'r') as token_file:
-            print("🔑 Token ปัจจุบัน:")
-            print(token_file.read())
-        return
-
-    if not os.path.exists('client_secrets.json'):
-        print("❌ ไม่พบ client_secrets.json - ดาวน์โหลดจาก Google Cloud Console")
-        return
-
-    print("🚀 กำลังสร้าง Token สำหรับ Production...")
+def create_credentials():
+    """สร้าง credentials ใหม่"""
+    creds = None
     
-    flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', SCOPES)
-    creds = flow.run_local_server(port=8080)
+    # ตรวจสอบไฟล์ client_secrets.json
+    if not os.path.exists('client_secrets.json'):
+        print("❌ ไม่พบไฟล์ client_secrets.json")
+        print("🔧 วิธีสร้าง:")
+        print("   1. ไปที่ Google Cloud Console")
+        print("   2. APIs & Services → Credentials")
+        print("   3. สร้าง OAuth 2.0 Client ID แบบ 'Desktop application'")
+        print("   4. ดาวน์โหลด JSON และตั้งชื่อว่า client_secrets.json")
+        return None
+    
+    # ตรวจสอบรูปแบบไฟล์
+    with open('client_secrets.json', 'r') as f:
+        client_config = json.load(f)
+    
+    if 'installed' not in client_config:
+        print("❌ client_secrets.json ผิดรูปแบบ!")
+        print("🔧 ต้องเป็นแบบ 'Desktop application' ไม่ใช่ 'Web application'")
+        return None
+    
+    print("✅ client_secrets.json ถูกต้อง")
+    
+    # ตรวจสอบ token เก่า
+    if os.path.exists('token.json'):
+        print("🔍 พบ token เก่า กำลังตรวจสอบ...")
+        try:
+            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            if creds and creds.valid:
+                print("✅ Token เก่ายังใช้ได้")
+                return creds
+            elif creds and creds.expired and creds.refresh_token:
+                print("🔄 Token หมดอายุ กำลัง refresh...")
+                try:
+                    creds.refresh(Request())
+                    print("✅ Refresh token สำเร็จ")
+                    return creds
+                except Exception as e:
+                    print(f"❌ Refresh ไม่สำเร็จ: {e}")
+                    print("🔧 จะสร้าง token ใหม่")
+        except Exception as e:
+            print(f"❌ Token เก่าใช้ไม่ได้: {e}")
+    
+    # สร้าง token ใหม่
+    print("🔐 เริ่มสร้าง token ใหม่...")
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            'client_secrets.json', 
+            SCOPES,
+            redirect_uri='http://localhost:8080'  # ระบุ redirect URI ชัดเจน
+        )
+        
+        print("🌐 กำลังเปิดเบราว์เซอร์เพื่อ authorize...")
+        print("📝 หมายเหตุ: ถ้าเบราว์เซอร์ไม่เปิด ให้คัดลอก URL ที่แสดงในคอนโซล")
+        
+        creds = flow.run_local_server(
+            port=8080,
+            prompt='select_account',
+            authorization_prompt_message='Please visit this URL to authorize the application: {url}',
+            success_message='Authorization successful! You can close this tab.',
+            open_browser=True
+        )
+        
+        print("✅ Authorization สำเร็จ!")
+        return creds
+        
+    except Exception as e:
+        print(f"❌ Error during authorization: {e}")
+        print("🔧 แนะนำ:")
+        print("   1. ตรวจสอบ internet connection")
+        print("   2. ปิด VPN (ถ้ามี)")
+        print("   3. ลองใช้ port อื่น (แก้ไขในโค้ด)")
+        return None
 
-    # บันทึก token
+def save_token(creds):
+    """บันทึก token"""
+    if not creds:
+        return False
+    
+    # บันทึกเป็นไฟล์
     with open('token.json', 'w') as token:
         token.write(creds.to_json())
+    print("💾 บันทึก token.json สำเร็จ")
     
-    print("✅ token.json สร้างเรียบร้อย")
-    print("🌐 เปิดเบราว์เซอร์เพื่อดู Token...")
+    # สร้าง environment variable format
+    token_json = creds.to_json()
+    print("\n" + "="*80)
+    print("🎯 GOOGLE_TOKEN_JSON Environment Variable:")
+    print("="*80)
+    print(token_json)
+    print("="*80)
     
-    # เริ่ม server เพื่อแสดง token
-    server_address = ('localhost', 8081)
-    httpd = HTTPServer(server_address, TokenDisplayHandler)
+    # แสดงข้อมูล token
+    token_data = json.loads(token_json)
+    print(f"\n📊 Token Information:")
+    print(f"   🔑 Client ID: {token_data.get('client_id', 'N/A')[:50]}...")
     
-    webbrowser.open(f'http://{server_address[0]}:{server_address[1]}')
+    if 'expiry' in token_data and token_data['expiry']:
+        expiry = datetime.fromisoformat(token_data['expiry'].replace('Z', '+00:00'))
+        print(f"   ⏰ Expires: {expiry}")
+        time_left = expiry - datetime.now().replace(tzinfo=expiry.tzinfo)
+        print(f"   ⏳ Time left: {time_left}")
+    else:
+        print("   ♾️  Token: No expiry (Production mode)")
+    
+    return True
+
+def test_token(creds):
+    """ทดสอบ token ที่สร้างแล้ว"""
+    print("\n🧪 ทดสอบ token...")
     
     try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    httpd.server_close()
+        # ทดสอบ Tasks API
+        service = build('tasks', 'v1', credentials=creds)
+        tasklists = service.tasklists().list().execute()
+        print("✅ Tasks API: OK")
+        
+        # ทดสอบ Drive API
+        service = build('drive', 'v3', credentials=creds)
+        results = service.files().list(pageSize=1).execute()
+        print("✅ Drive API: OK")
+        
+        # ทดสอบ Calendar API
+        service = build('calendar', 'v3', credentials=creds)
+        calendars = service.calendarList().list().execute()
+        print("✅ Calendar API: OK")
+        
+        print("🎉 ทุก API ทำงานปกติ!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error testing APIs: {e}")
+        return False
+
+def main():
+    print("🚀 Enhanced Google API Token Generator")
+    print("="*50)
+    
+    # ตรวจสอบการตั้งค่า
+    check_oauth_setup()
+    
+    # สร้าง credentials
+    creds = create_credentials()
+    if not creds:
+        print("❌ ไม่สามารถสร้าง token ได้")
+        sys.exit(1)
+    
+    # บันทึก token
+    if not save_token(creds):
+        print("❌ ไม่สามารถบันทึก token ได้")
+        sys.exit(1)
+    
+    # ทดสอบ token
+    if not test_token(creds):
+        print("⚠️  Token สร้างได้แต่อาจมีปัญหาใน API access")
+    
+    print("\n🎯 ขั้นตอนต่อไป:")
+    print("1. 📋 คัดลอก GOOGLE_TOKEN_JSON ข้างต้น")
+    print("2. 🔧 ไปอัพเดตใน Render.com Environment Variables")
+    print("3. 🚀 Deploy โค้ดใหม่")
+    print("4. 🔍 ตรวจสอบที่ /admin/token_status")
+    
+    print("\n✅ เสร็จสิ้น!")
 
 if __name__ == '__main__':
     main()

@@ -12,6 +12,8 @@ from datetime import timezone, date
 import time
 import tempfile
 import uuid
+from queue import Queue #
+import threading #
 
 from PIL import Image
 
@@ -31,7 +33,8 @@ from linebot import (
     LineBotApi, WebhookHandler
 )
 from linebot.exceptions import (
-    InvalidSignatureError
+    InvalidSignatureError,
+    LineBotApiError #
 )
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FlexSendMessage,
@@ -94,6 +97,9 @@ LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 
+# เพิ่มตัวแปรสภาพแวดล้อมสำหรับ Line Rate Limit
+LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 100))
+
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
 if not LIFF_ID_FORM:
@@ -108,6 +114,11 @@ cache = TTLCache(maxsize=100, ttl=60)
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+# สร้างและเริ่มต้น Line Message Queue
+message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
+threading.Thread(target=message_queue.process_queue, daemon=True).start()
+app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PER_MINUTE} messages/minute.")
 
 app.jinja_env.filters['dateutil_parse'] = date_parse
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
@@ -212,50 +223,74 @@ def get_google_service(api_name, api_version):
     if google_token_json_str:
         try:
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
+            app.logger.info(f"Loaded credentials from environment. Valid: {creds.valid}")
+            
+            # แสดงข้อมูล token เพื่อ debug
+            if hasattr(creds, 'expiry') and creds.expiry:
+                app.logger.info(f"Token expires at: {creds.expiry}")
+                time_left = creds.expiry - datetime.datetime.utcnow()
+                app.logger.info(f"Time left: {time_left}")
+                
         except Exception as e:
             app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}")
             creds = None
 
-    # ปรับปรุงการ refresh token
+    # ตรวจสอบและ refresh token หากจำเป็น
     if creds:
-        if creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                
-                # ☑️ อัพเดต environment variable อัตโนมัติ (ถ้าเป็นไปได้)
-                new_token_json = creds.to_json()
-                
-                # บันทึก token ใหม่ลงไฟล์สำรอง
+        if not creds.valid:
+            if creds.expired and creds.refresh_token:
                 try:
-                    with open('token_backup.json', 'w') as f:
-                        f.write(new_token_json)
-                    app.logger.info("✅ Token refreshed and saved to backup file")
-                except Exception as backup_error:
-                    app.logger.warning(f"Could not save token backup: {backup_error}")
-                
-                # แสดงข้อมูล token ใหม่
-                app.logger.info("="*80)
-                app.logger.info("🔄 Google access token refreshed successfully!")
-                app.logger.info("📝 PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE:")
-                app.logger.info(f"NEW TOKEN: {new_token_json}")
-                app.logger.info("="*80)
-                
-            except Exception as e:
-                app.logger.error(f"❌ Error refreshing token: {e}")
+                    app.logger.info("Token expired, attempting refresh...")
+                    creds.refresh(Request())
+                    
+                    # บันทึก token ใหม่เป็นไฟล์สำรอง (เฉพาะในเครื่อง)
+                    try:
+                        backup_token = {
+                            'token': creds.token,
+                            'refresh_token': creds.refresh_token,
+                            'token_uri': creds.token_uri,
+                            'client_id': creds.client_id,
+                            'client_secret': creds.client_secret,
+                            'scopes': creds.scopes,
+                            'expiry': creds.expiry.isoformat() if creds.expiry else None
+                        }
+                        
+                        with open('backup_token.json', 'w') as f:
+                            json.dump(backup_token, f, indent=2)
+                        app.logger.info("Token backup saved to backup_token.json")
+                    except Exception as backup_error:
+                        app.logger.warning(f"Could not save backup token: {backup_error}")
+                    
+                    app.logger.info("="*80)
+                    app.logger.info("🔄 Google access token refreshed successfully!")
+                    app.logger.info("📋 PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE:")
+                    app.logger.info(f"NEW TOKEN: {creds.to_json()}") # โทเค็นใหม่ที่ควรนำไปอัปเดตใน env var
+                    app.logger.info("="*80)
+                    
+                except Exception as e:
+                    app.logger.error(f"❌ Error refreshing token: {e}")
+                    app.logger.error("🔧 Please run get_token.py to generate a new token")
+                    creds = None
+            else:
+                app.logger.error("❌ Token invalid and cannot be refreshed (no refresh_token)")
+                app.logger.error("🔧 Please run get_token.py to generate a new token")
                 creds = None
-        elif creds.expired and not creds.refresh_token:
-            app.logger.error("❌ Token expired and no refresh token available")
-            creds = None
 
+    # สร้าง Google API service
     if creds and creds.valid:
         try:
             service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
+            app.logger.info(f"✅ Successfully built {api_name} {api_version} service")
             return service
         except Exception as e:
             app.logger.error(f"❌ Failed to build Google API service: {e}")
             return None
     else:
         app.logger.error("❌ No valid Google credentials available")
+        app.logger.error("🔧 Please ensure:")
+        app.logger.error("   1. GOOGLE_TOKEN_JSON environment variable is set")
+        app.logger.error("   2. OAuth consent screen is in Production mode") # ย้ำเรื่อง Production mode
+        app.logger.error("   3. Run get_token.py to generate a fresh token")
         return None
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
@@ -784,13 +819,64 @@ def inject_global_vars():
 
 #<editor-fold desc="Scheduled Jobs and Notifications">
 
+# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit
+class LineMessageQueue:
+    def __init__(self, max_per_minute=100):
+        self.queue = Queue()
+        self.max_per_minute = max_per_minute
+        self.sent_count = 0
+        self.last_reset = time.time()
+        self.processing_lock = threading.Lock() # เพื่อป้องกัน race conditions
+
+    def add_message(self, user_id, message_obj):
+        self.queue.put((user_id, message_obj, time.time()))
+        app.logger.info(f"Message added to queue for {user_id}. Queue size: {self.queue.qsize()}")
+
+    def process_queue(self):
+        while True:
+            with self.processing_lock:
+                if time.time() - self.last_reset >= 60:
+                    self.sent_count = 0
+                    self.last_reset = time.time()
+
+                if self.sent_count >= self.max_per_minute:
+                    sleep_time = 60 - (time.time() - self.last_reset)
+                    app.logger.info(f"LINE Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
+                    time.sleep(sleep_time)
+                    continue
+
+                if not self.queue.empty():
+                    user_id, message_obj, timestamp = self.queue.get()
+
+                    if time.time() - timestamp > 300: # 5 minutes expiry
+                        app.logger.warning(f"Discarding old message for {user_id} (queued {time.time() - timestamp:.2f}s ago).")
+                        continue
+
+                    try:
+                        line_bot_api.push_message(user_id, message_obj)
+                        self.sent_count += 1
+                        app.logger.info(f"Message sent to {user_id}. Sent count: {self.sent_count}/{self.max_per_minute}")
+                    except LineBotApiError as e:
+                        if e.status_code == 429:  # Rate limit
+                            app.logger.warning(f"LINE API Rate limit (429) hit while sending to {user_id}. Re-queuing message.")
+                            self.queue.put((user_id, message_obj, timestamp))  # Put back in queue
+                            time.sleep(5)
+                        else:
+                            app.logger.error(f"LINE API Error sending message to {user_id}: {e}")
+                    except Exception as e:
+                        app.logger.error(f"Unexpected error sending LINE message to {user_id}: {e}")
+                else:
+                    pass
+
+            time.sleep(1)
+
 def notify_admin_error(message):
     try:
         admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
         if admin_group_id:
-            line_bot_api.push_message(admin_group_id, TextSendMessage(text=f"‼️ เกิดข้อผิดพลาดร้ายแรงในระบบ ‼️\n\n{message[:900]}"))
+            message_queue.add_message(admin_group_id, TextSendMessage(text=f"‼️ เกิดข้อผิดพลาดร้ายแรงในระบบ ‼️\n\n{message[:900]}")) # ใช้คิว
     except Exception as e:
-        app.logger.error(f"Failed to send critical error notification: {e}")
+        app.logger.error(f"Failed to add critical error notification to queue: {e}")
 
 def send_new_task_notification(task):
     settings = get_app_settings()
@@ -815,11 +901,9 @@ def send_new_task_notification(task):
         f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
     )
     
-    try:
-        line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
-        app.logger.info(f"Sent new task notification for task {task['id']} to admin group.")
-    except Exception as e:
-        app.logger.error(f"Failed to send new task notification for task {task['id']}: {e}")
+    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+    app.logger.info(f"New task notification for task {task['id']} added to queue for admin group.")
+
 
 def send_completion_notification(task, technicians):
     settings = get_app_settings()
@@ -841,16 +925,15 @@ def send_completion_notification(task, technicians):
     )
     
     sent_to = set()
-    try:
-        if admin_group_id:
-            line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
-            sent_to.add(admin_group_id)
-        
-        if tech_group_id and tech_group_id not in sent_to:
-            line_bot_api.push_message(tech_group_id, TextSendMessage(text=message_text))
+    if admin_group_id:
+        message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+        sent_to.add(admin_group_id)
+    
+    if tech_group_id and tech_group_id not in sent_to:
+        message_queue.add_message(tech_group_id, TextSendMessage(text=message_text)) # ใช้คิว
 
-    except Exception as e:
-        app.logger.error(f"Failed to send completion notification for task {task['id']}: {e}")
+    app.logger.info(f"Completion notification for task {task['id']} added to queue.")
+
 
 def send_update_notification(task, new_due_date_str, reason, technicians, is_today):
     settings = get_app_settings()
@@ -877,11 +960,8 @@ def send_update_notification(task, new_due_date_str, reason, technicians, is_tod
         f"ช่าง: {technician_str}\n\n"
         f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
     )
-    try:
-        line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
-        app.logger.info(f"Sent update/reschedule notification for task {task['id']} to admin group.")
-    except Exception as e:
-        app.logger.error(f"Failed to send update/reschedule notification for task {task['id']}: {e}")
+    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+    app.logger.info(f"Update/reschedule notification for task {task['id']} added to queue for admin group.")
 
 
 def scheduled_backup_job():
@@ -965,13 +1045,13 @@ def scheduled_appointment_reminder_job():
             try:
                 sent_to = set()
                 if admin_group_id:
-                    line_bot_api.push_message(admin_group_id, TextSendMessage(text=message_text))
+                    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
                     sent_to.add(admin_group_id)
 
                 if technician_group_id and technician_group_id not in sent_to:
-                    line_bot_api.push_message(technician_group_id, TextSendMessage(text=message_text))
+                    message_queue.add_message(technician_group_id, TextSendMessage(text=message_text)) # ใช้คิว
             except Exception as e:
-                app.logger.error(f"Failed to send appointment reminder for task {task['id']}: {e}")
+                app.logger.error(f"Failed to add appointment reminder for task {task['id']} to queue: {e}")
 
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     problem_action = URIAction(
@@ -1040,8 +1120,8 @@ def scheduled_customer_follow_up_job():
                         flex_message = FlexSendMessage(alt_text="สอบถามความพึงพอใจหลังการซ่อม", contents=flex_content)
 
                         try:
-                            line_bot_api.push_message(customer_line_id, flex_message)
-                            app.logger.info(f"Sent follow-up message to customer {customer_line_id} for task {task['id']}.")
+                            message_queue.add_message(customer_line_id, flex_message) # ใช้คิว
+                            app.logger.info(f"Follow-up message for task {task['id']} added to queue for customer {customer_line_id}.")
                             
                             feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
                             history_reports, base_notes = parse_tech_report_from_notes(notes)
@@ -1055,9 +1135,10 @@ def scheduled_customer_follow_up_job():
                             cache.clear()
 
                         except Exception as e:
-                            app.logger.error(f"Failed to send direct follow-up to {customer_line_id}: {e}. Notifying admin.")
+                            app.logger.error(f"Failed to add direct follow-up to {customer_line_id} to queue: {e}. Notifying admin.")
                             if admin_group_id:
-                                line_bot_api.push_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} (Task ID: {task['id']}) ไม่สำเร็จ โปรดส่งข้อความนี้แทน:"), flex_message])
+                                message_queue.add_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} (Task ID: {task['id']}) ไม่สำเร็จ โปรดส่งข้อความนี้แทน:"), flex_message]) # ใช้คิว
+
 
                 except Exception as e:
                     app.logger.warning(f"Could not process task {task.get('id')} for follow-up: {e}", exc_info=True)
@@ -1709,7 +1790,6 @@ def api_edit_report_text(task_id, report_index):
     else:
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
 
-
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(task_id, report_index):
     task_raw = get_single_task(task_id)
@@ -2039,7 +2119,7 @@ def test_notification():
     recipient_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
     if recipient_id:
         try:
-            line_bot_api.push_message(recipient_id, TextSendMessage(text="[ทดสอบ] นี่คือข้อความทดสอบจากระบบ"))
+            message_queue.add_message(recipient_id, TextSendMessage(text="[ทดสอบ] นี่คือข้อความทดสอบจากระบบ")) # ใช้คิว
             flash(f'ส่งข้อความทดสอบไปที่ ID: {recipient_id} สำเร็จ!', 'success')
         except Exception as e:
             flash(f'เกิดข้อผิดพลาดในการส่ง: {e}', 'danger')
@@ -2401,8 +2481,7 @@ def submit_customer_problem():
     if admin_group:
         customer = parse_customer_info_from_notes(notes)
         notif = f"🚨 ลูกค้าแจ้งปัญหา!\nงาน: {task.get('title')}\nลูกค้า: {customer.get('name', 'N/A')}\nปัญหา: {problem_desc}\nดูรายละเอียด: {url_for('task_details', task_id=task_id, _external=True)}"
-        try: line_bot_api.push_message(admin_group, TextSendMessage(text=notif))
-        except Exception: pass
+        message_queue.add_message(admin_group, TextSendMessage(text=notif)) # ใช้คิว
     return jsonify({"status": "success"})
 
 @app.route('/save_customer_line_id', methods=['POST'])
@@ -2429,8 +2508,7 @@ def save_customer_line_id():
             shop = get_app_settings().get('shop_info', {})
             customer = parse_customer_info_from_notes(notes)
             welcome = f"เรียน คุณ{customer.get('name', 'ลูกค้า')},\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: {shop.get('contact_phone', '-')}\nLINE ID: {shop.get('line_id', '-')}"
-            try: line_bot_api.push_message(user_id, TextSendMessage(text=welcome))
-            except Exception: pass
+            message_queue.add_message(user_id, TextSendMessage(text=welcome)) # ใช้คิว
             return jsonify({"status": "success"})
         else: return jsonify({"status": "error"}), 500
     return jsonify({"status": "success", "message": "already saved"})
@@ -2451,7 +2529,7 @@ def callback():
         abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
-        #notify_admin_error(f"Webhook Handler Error: {e}")
+        #notify_admin_error(f"Webhook Handler Error: {e}") # สามารถเปิดใช้งานเพื่อแจ้งเตือน แต่ต้องระวัง Rate Limit
         abort(500)
     return 'OK'
 
@@ -2567,7 +2645,7 @@ def handle_postback(event):
         _execute_google_api_call_with_retry(update_google_task, task_id, notes=final_notes)
         cache.clear()
         try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏)"))
-        except Exception: pass
+        except Exception: pass # หากต้องการใช้คิวสำหรับ reply_message ด้วย ต้องปรับปรุงเพิ่มเติม
 
 @app.route("/admin/organize_files", methods=['GET', 'POST'])
 def organize_files():
