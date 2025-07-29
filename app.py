@@ -12,8 +12,8 @@ from datetime import timezone, date
 import time
 import tempfile
 import uuid
-from queue import Queue #
-import threading #
+from queue import Queue
+import threading
 
 from PIL import Image
 
@@ -34,7 +34,7 @@ from linebot import (
 )
 from linebot.exceptions import (
     InvalidSignatureError,
-    LineBotApiError #
+    LineBotApiError
 )
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FlexSendMessage,
@@ -115,33 +115,64 @@ cache = TTLCache(maxsize=100, ttl=60)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+#<editor-fold desc="Helper and Utility Functions">
+
+# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit - **ย้ายมาไว้ด้านบน**
+class LineMessageQueue:
+    def __init__(self, max_per_minute=100):
+        self.queue = Queue()
+        self.max_per_minute = max_per_minute
+        self.sent_count = 0
+        self.last_reset = time.time()
+        self.processing_lock = threading.Lock() # เพื่อป้องกัน race conditions
+
+    def add_message(self, user_id, message_obj):
+        self.queue.put((user_id, message_obj, time.time()))
+        app.logger.info(f"Message added to queue for {user_id}. Queue size: {self.queue.qsize()}")
+
+    def process_queue(self):
+        while True:
+            with self.processing_lock:
+                if time.time() - self.last_reset >= 60:
+                    self.sent_count = 0
+                    self.last_reset = time.time()
+
+                if self.sent_count >= self.max_per_minute:
+                    sleep_time = 60 - (time.time() - self.last_reset)
+                    app.logger.info(f"LINE Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
+                    time.sleep(sleep_time)
+                    continue
+
+                if not self.queue.empty():
+                    user_id, message_obj, timestamp = self.queue.get()
+
+                    if time.time() - timestamp > 300: # 5 minutes expiry
+                        app.logger.warning(f"Discarding old message for {user_id} (queued {time.time() - timestamp:.2f}s ago).")
+                        continue
+
+                    try:
+                        line_bot_api.push_message(user_id, message_obj)
+                        self.sent_count += 1
+                        app.logger.info(f"Message sent to {user_id}. Sent count: {self.sent_count}/{self.max_per_minute}")
+                    except LineBotApiError as e:
+                        if e.status_code == 429:  # Rate limit
+                            app.logger.warning(f"LINE API Rate limit (429) hit while sending to {user_id}. Re-queuing message.")
+                            self.queue.put((user_id, message_obj, timestamp))  # Put back in queue
+                            time.sleep(5)
+                        else:
+                            app.logger.error(f"LINE API Error sending message to {user_id}: {e}")
+                    except Exception as e:
+                        app.logger.error(f"Unexpected error sending LINE message to {user_id}: {e}")
+                else:
+                    pass
+
+            time.sleep(1)
+
 # สร้างและเริ่มต้น Line Message Queue
 message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
 threading.Thread(target=message_queue.process_queue, daemon=True).start()
 app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PER_MINUTE} messages/minute.")
 
-app.jinja_env.filters['dateutil_parse'] = date_parse
-scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
-SETTINGS_FILE = 'settings.json'
-_DEFAULT_APP_SETTINGS_STORE = {
-    'report_times': {
-        'appointment_reminder_hour_thai': 7,
-        'outstanding_report_hour_thai': 20,
-        'customer_followup_hour_thai': 9
-    },
-    'line_recipients': {
-        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
-        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
-        'manager_user_id': ''
-    },
-    'equipment_catalog': [],
-    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
-    'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
-    'technician_list': []
-}
-
-#<editor-fold desc="Helper and Utility Functions">
 
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
@@ -819,62 +850,11 @@ def inject_global_vars():
 
 #<editor-fold desc="Scheduled Jobs and Notifications">
 
-# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit
-class LineMessageQueue:
-    def __init__(self, max_per_minute=100):
-        self.queue = Queue()
-        self.max_per_minute = max_per_minute
-        self.sent_count = 0
-        self.last_reset = time.time()
-        self.processing_lock = threading.Lock() # เพื่อป้องกัน race conditions
-
-    def add_message(self, user_id, message_obj):
-        self.queue.put((user_id, message_obj, time.time()))
-        app.logger.info(f"Message added to queue for {user_id}. Queue size: {self.queue.qsize()}")
-
-    def process_queue(self):
-        while True:
-            with self.processing_lock:
-                if time.time() - self.last_reset >= 60:
-                    self.sent_count = 0
-                    self.last_reset = time.time()
-
-                if self.sent_count >= self.max_per_minute:
-                    sleep_time = 60 - (time.time() - self.last_reset)
-                    app.logger.info(f"LINE Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
-                    time.sleep(sleep_time)
-                    continue
-
-                if not self.queue.empty():
-                    user_id, message_obj, timestamp = self.queue.get()
-
-                    if time.time() - timestamp > 300: # 5 minutes expiry
-                        app.logger.warning(f"Discarding old message for {user_id} (queued {time.time() - timestamp:.2f}s ago).")
-                        continue
-
-                    try:
-                        line_bot_api.push_message(user_id, message_obj)
-                        self.sent_count += 1
-                        app.logger.info(f"Message sent to {user_id}. Sent count: {self.sent_count}/{self.max_per_minute}")
-                    except LineBotApiError as e:
-                        if e.status_code == 429:  # Rate limit
-                            app.logger.warning(f"LINE API Rate limit (429) hit while sending to {user_id}. Re-queuing message.")
-                            self.queue.put((user_id, message_obj, timestamp))  # Put back in queue
-                            time.sleep(5)
-                        else:
-                            app.logger.error(f"LINE API Error sending message to {user_id}: {e}")
-                    except Exception as e:
-                        app.logger.error(f"Unexpected error sending LINE message to {user_id}: {e}")
-                else:
-                    pass
-
-            time.sleep(1)
-
 def notify_admin_error(message):
     try:
         admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
         if admin_group_id:
-            message_queue.add_message(admin_group_id, TextSendMessage(text=f"‼️ เกิดข้อผิดพลาดร้ายแรงในระบบ ‼️\n\n{message[:900]}")) # ใช้คิว
+            message_queue.add_message(admin_group_id, TextSendMessage(text=f"‼️ เกิดข้อผิดพลาดร้ายแรงในระบบ ‼️\n\n{message[:900]}"))
     except Exception as e:
         app.logger.error(f"Failed to add critical error notification to queue: {e}")
 
@@ -901,7 +881,7 @@ def send_new_task_notification(task):
         f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
     )
     
-    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text))
     app.logger.info(f"New task notification for task {task['id']} added to queue for admin group.")
 
 
@@ -926,11 +906,11 @@ def send_completion_notification(task, technicians):
     
     sent_to = set()
     if admin_group_id:
-        message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+        message_queue.add_message(admin_group_id, TextSendMessage(text=message_text))
         sent_to.add(admin_group_id)
     
     if tech_group_id and tech_group_id not in sent_to:
-        message_queue.add_message(tech_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+        message_queue.add_message(tech_group_id, TextSendMessage(text=message_text))
 
     app.logger.info(f"Completion notification for task {task['id']} added to queue.")
 
@@ -960,7 +940,7 @@ def send_update_notification(task, new_due_date_str, reason, technicians, is_tod
         f"ช่าง: {technician_str}\n\n"
         f"ดูรายละเอียดในเว็บ:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"
     )
-    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text))
     app.logger.info(f"Update/reschedule notification for task {task['id']} added to queue for admin group.")
 
 
@@ -1045,11 +1025,11 @@ def scheduled_appointment_reminder_job():
             try:
                 sent_to = set()
                 if admin_group_id:
-                    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+                    message_queue.add_message(admin_group_id, TextSendMessage(text=message_text))
                     sent_to.add(admin_group_id)
 
                 if technician_group_id and technician_group_id not in sent_to:
-                    message_queue.add_message(technician_group_id, TextSendMessage(text=message_text)) # ใช้คิว
+                    message_queue.add_message(technician_group_id, TextSendMessage(text=message_text))
             except Exception as e:
                 app.logger.error(f"Failed to add appointment reminder for task {task['id']} to queue: {e}")
 
@@ -1120,7 +1100,7 @@ def scheduled_customer_follow_up_job():
                         flex_message = FlexSendMessage(alt_text="สอบถามความพึงพอใจหลังการซ่อม", contents=flex_content)
 
                         try:
-                            message_queue.add_message(customer_line_id, flex_message) # ใช้คิว
+                            message_queue.add_message(customer_line_id, flex_message)
                             app.logger.info(f"Follow-up message for task {task['id']} added to queue for customer {customer_line_id}.")
                             
                             feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
@@ -1137,7 +1117,7 @@ def scheduled_customer_follow_up_job():
                         except Exception as e:
                             app.logger.error(f"Failed to add direct follow-up to {customer_line_id} to queue: {e}. Notifying admin.")
                             if admin_group_id:
-                                message_queue.add_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} (Task ID: {task['id']}) ไม่สำเร็จ โปรดส่งข้อความนี้แทน:"), flex_message]) # ใช้คิว
+                                message_queue.add_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} (Task ID: {task['id']}) ไม่สำเร็จ โปรดส่งข้อความนี้แทน:"), flex_message])
 
 
                 except Exception as e:
@@ -1311,10 +1291,6 @@ def api_upload_attachment():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No selected file'}), 400
     
-    task_id = request.form.get('task_id')
-    if not task_id:
-        return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
-
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
     file.seek(0)
@@ -2119,7 +2095,7 @@ def test_notification():
     recipient_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
     if recipient_id:
         try:
-            message_queue.add_message(recipient_id, TextSendMessage(text="[ทดสอบ] นี่คือข้อความทดสอบจากระบบ")) # ใช้คิว
+            message_queue.add_message(recipient_id, TextSendMessage(text="[ทดสอบ] นี่คือข้อความทดสอบจากระบบ"))
             flash(f'ส่งข้อความทดสอบไปที่ ID: {recipient_id} สำเร็จ!', 'success')
         except Exception as e:
             flash(f'เกิดข้อผิดพลาดในการส่ง: {e}', 'danger')
@@ -2481,7 +2457,7 @@ def submit_customer_problem():
     if admin_group:
         customer = parse_customer_info_from_notes(notes)
         notif = f"🚨 ลูกค้าแจ้งปัญหา!\nงาน: {task.get('title')}\nลูกค้า: {customer.get('name', 'N/A')}\nปัญหา: {problem_desc}\nดูรายละเอียด: {url_for('task_details', task_id=task_id, _external=True)}"
-        message_queue.add_message(admin_group, TextSendMessage(text=notif)) # ใช้คิว
+        message_queue.add_message(admin_group, TextSendMessage(text=notif))
     return jsonify({"status": "success"})
 
 @app.route('/save_customer_line_id', methods=['POST'])
@@ -2498,7 +2474,7 @@ def save_customer_line_id():
         feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
         
         reports_history, base = parse_tech_report_from_notes(notes)
-        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
         final_notes = f"{base.strip()}"
         if reports_text: final_notes += reports_text
         final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
@@ -2508,7 +2484,7 @@ def save_customer_line_id():
             shop = get_app_settings().get('shop_info', {})
             customer = parse_customer_info_from_notes(notes)
             welcome = f"เรียน คุณ{customer.get('name', 'ลูกค้า')},\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: {shop.get('contact_phone', '-')}\nLINE ID: {shop.get('line_id', '-')}"
-            message_queue.add_message(user_id, TextSendMessage(text=welcome)) # ใช้คิว
+            message_queue.add_message(user_id, TextSendMessage(text=welcome))
             return jsonify({"status": "success"})
         else: return jsonify({"status": "error"}), 500
     return jsonify({"status": "success", "message": "already saved"})
