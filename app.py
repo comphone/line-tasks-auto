@@ -117,7 +117,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 #<editor-fold desc="Helper and Utility Functions">
 
-# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit - **ย้ายมาไว้ด้านบน**
+# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit - **ย้ายมาไว้ด้านบนสุด**
 class LineMessageQueue:
     def __init__(self, max_per_minute=100):
         self.queue = Queue()
@@ -172,6 +172,26 @@ class LineMessageQueue:
 message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
 threading.Thread(target=message_queue.process_queue, daemon=True).start()
 app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PER_MINUTE} messages/minute.")
+
+
+SETTINGS_FILE = 'settings.json'
+# _DEFAULT_APP_SETTINGS_STORE **ย้ายมาไว้ที่นี่** เพื่อให้ถูกประกาศก่อนใช้งานใน get_app_settings()
+_DEFAULT_APP_SETTINGS_STORE = {
+    'report_times': {
+        'appointment_reminder_hour_thai': 7,
+        'outstanding_report_hour_thai': 20,
+        'customer_followup_hour_thai': 9
+    },
+    'line_recipients': {
+        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
+        'manager_user_id': ''
+    },
+    'equipment_catalog': [],
+    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
+    'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
+    'technician_list': []
+}
 
 
 def load_settings_from_file():
