@@ -76,6 +76,9 @@ app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
+# **ย้าย Jinja2 filter มาไว้ตรงนี้** ทันทีหลังจากที่ `app` object ถูกสร้างแล้ว
+app.jinja_env.filters['dateutil_parse'] = date_parse
+
 csrf = CSRFProtect(app)
 
 UPLOAD_FOLDER = 'static/uploads'
@@ -1365,6 +1368,9 @@ def form_page():
 
 @app.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():
+    # task_id ถูกดึงมาจาก request.form.get('task_id') ที่นี่
+    task_id = request.form.get('task_id') # ตรวจสอบให้แน่ใจว่าได้ดึงค่ามาตั้งแต่ต้นฟังก์ชัน
+
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file part'}), 400
     file = request.files['file']
@@ -2447,7 +2453,7 @@ def generate_public_report_qr(task_id):
     url = url_for('public_task_report', task_id=task_id, _external=True)
     qr = generate_qr_code_base64(url)
     customer = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('public_report_qr.html', task=task, customer_info=customer, public_report_url=url, qr_code_base64_report=qr)
+    return render_template('public_report_qr.html', qr_code_base64=qr, task=task, customer_info=customer, public_report_url=url, qr_code_base64_report=qr)
 
 @app.route('/trigger_customer_follow_up_test', methods=['POST'])
 def trigger_customer_follow_up_test():
