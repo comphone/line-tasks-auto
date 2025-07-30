@@ -53,14 +53,12 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBa
 from google.oauth2 import service_account
 
 import pandas as pd
-from dateutil.parser import parse as date_parse # ถูกใช้โดย filter
-
+from dateutil.parser import parse as date_parse
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
-# TEXT_SNIPPETS for predefined message parts
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -80,7 +78,7 @@ app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
-# Set Jinja2 filter immediately after app creation
+# **ย้าย Jinja2 filter มาไว้ตรงนี้** ทันทีหลังจากที่ `app` object ถูกสร้างแล้ว
 app.jinja_env.filters['dateutil_parse'] = date_parse
 
 csrf = CSRFProtect(app)
@@ -101,12 +99,12 @@ if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
-# LIFF_ID_POPUP = os.environ.get('LIFF_POPUP_ID') # If you want a separate LIFF ID for popup
+# LIFF_ID_POPUP = os.environ.get('LIFF_POPUP_ID') # หากคุณต้องการแยก LIFF ID สำหรับ popup
 LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 
-# Environment variable for LINE rate limit
+# เพิ่มตัวแปรสภาพแวดล้อมสำหรับ Line Rate Limit
 LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 100))
 
 if not GOOGLE_DRIVE_FOLDER_ID:
@@ -124,20 +122,20 @@ cache = TTLCache(maxsize=100, ttl=60)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# APScheduler instance
+# **ย้ายการประกาศ scheduler มาไว้ที่นี่**
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
 
 #<editor-fold desc="Helper and Utility Functions">
 
-# LineMessageQueue class for rate limiting and queuing LINE messages
+# ฟังก์ชัน LineMessageQueue เพื่อจัดการ Rate Limit
 class LineMessageQueue:
     def __init__(self, max_per_minute=100):
         self.queue = Queue()
         self.max_per_minute = max_per_minute
         self.sent_count = 0
         self.last_reset = time.time()
-        self.processing_lock = threading.Lock() # To prevent race conditions
+        self.processing_lock = threading.Lock() # เพื่อป้องกัน race conditions
 
     def add_message(self, user_id, message_obj):
         self.queue.put((user_id, message_obj, time.time()))
@@ -181,14 +179,14 @@ class LineMessageQueue:
 
             time.sleep(1)
 
-# Initialize and start Line Message Queue
+# สร้างและเริ่มต้น Line Message Queue
 message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
 threading.Thread(target=message_queue.process_queue, daemon=True).start()
 app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PER_MINUTE} messages/minute.")
 
 
 SETTINGS_FILE = 'settings.json'
-# Default application settings structure
+# _DEFAULT_APP_SETTINGS_STORE ย้ายมาไว้ที่นี่เพื่อให้ถูกประกาศก่อนใช้งาน
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
@@ -198,23 +196,24 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'line_recipients': {
         'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
         'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
-        'manager_user_id': '' 
+        'manager_user_id': '' # อาจจะเพิ่ม line_user_id ของช่างแต่ละคนภายหลัง
     },
     'equipment_catalog': [],
     'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
     'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
-    'technician_list': [], # technician_list can include line_user_id, last_known_lat, last_known_lon
-    # Mobile Popup Notification settings
+    'technician_list': [], # technician_list อาจมี line_user_id สำหรับส่ง direct push
+    # *** เพิ่มส่วนนี้สำหรับ Mobile Popup Notification ***
     'popup_notifications': {
         'enabled_arrival': False,
         'message_arrival_template': 'ช่าง [technician_name] กำลังจะถึงบ้านคุณ [customer_name] แล้วครับ/ค่ะ',
         'enabled_completion_customer': True,
         'message_completion_customer_template': 'งาน [task_title] ที่บ้านคุณ [customer_name] เสร็จเรียบร้อยแล้วครับ/ค่ะ',
         'enabled_nearby_job': False,
-        'nearby_radius_km': 5, # Radius in km for nearby job alerts
+        'nearby_radius_km': 5, # รัศมีแจ้งเตือนงานใกล้เคียง
         'message_nearby_template': 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?',
-        'liff_popup_base_url': 'https://line-tasks-auto.onrender.com/liff_notification_popup' # Base URL of the LIFF App
+        'liff_popup_base_url': 'https://line-tasks-auto.onrender.com/liff_notification_popup' # URL ของ LIFF App ที่จะเปิด
     }
+    # *** สิ้นสุดส่วนที่เพิ่ม ***
 }
 
 
@@ -295,7 +294,7 @@ def get_google_service(api_name, api_version):
     creds = None
 
     # --- START SERVICE ACCOUNT FEATURE ---
-    SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON') # Stores the full JSON content in env
+    SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON') # เก็บ JSON ทั้งก้อนใน env
     
     if SERVICE_ACCOUNT_FILE_CONTENT:
         try:
@@ -304,7 +303,8 @@ def get_google_service(api_name, api_version):
                 info, scopes=SCOPES
             )
             app.logger.info("✅ Loaded credentials from Service Account.")
-            # If Service Account loads successfully, use it and skip User Credentials logic
+            # ถ้าโหลด Service Account สำเร็จ ก็ใช้ตัวนี้เลย ไม่ต้องไปเช็ค User Credentials
+            # ส่วนการรีเฟรชโทเค็นอัตโนมัติจะไม่มีความจำเป็นสำหรับ Service Account
             try:
                 service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
                 app.logger.info(f"✅ Successfully built {api_name} {api_version} service using Service Account")
@@ -315,11 +315,11 @@ def get_google_service(api_name, api_version):
 
         except Exception as e:
             app.logger.warning(f"Could not load Service Account from GOOGLE_SERVICE_ACCOUNT_JSON env var: {e}. Falling back to User Credentials.")
-            creds = None # Set creds to None to attempt loading User Credentials
+            creds = None # ตั้งค่า creds เป็น None เพื่อให้ไปใช้ User Credentials
     # --- END SERVICE ACCOUNT FEATURE ---
 
 
-    # --- FALLBACK TO USER CREDENTIALS (Your original code) ---
+    # --- FALLBACK TO USER CREDENTIALS (โค้ดเดิมของคุณ) ---
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
 
     if google_token_json_str:
@@ -327,7 +327,7 @@ def get_google_service(api_name, api_version):
             creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
             app.logger.info(f"Loaded credentials from environment. Valid: {creds.valid}")
             
-            # Display token info for debugging
+            # แสดงข้อมูล token เพื่อ debug
             if hasattr(creds, 'expiry') and creds.expiry:
                 app.logger.info(f"Token expires at: {creds.expiry}")
                 time_left = creds.expiry - datetime.datetime.utcnow()
@@ -337,7 +337,7 @@ def get_google_service(api_name, api_version):
             app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}")
             creds = None
 
-    # Check and refresh token if necessary
+    # ตรวจสอบและ refresh token หากจำเป็น
     if creds:
         if not creds.valid:
             if creds.expired and creds.refresh_token:
@@ -345,7 +345,7 @@ def get_google_service(api_name, api_version):
                     app.logger.info("Token expired, attempting refresh...")
                     creds.refresh(Request())
                     
-                    # Save new token as a local backup file
+                    # บันทึก token ใหม่เป็นไฟล์สำรอง (เฉพาะในเครื่อง)
                     try:
                         backup_token = {
                             'token': creds.token,
@@ -366,7 +366,7 @@ def get_google_service(api_name, api_version):
                     app.logger.info("="*80)
                     app.logger.info("🔄 Google access token refreshed successfully!")
                     app.logger.info("📋 PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE:")
-                    app.logger.info(f"NEW TOKEN: {creds.to_json()}") # The new token to be updated in env var
+                    app.logger.info(f"NEW TOKEN: {creds.to_json()}") # โทเค็นใหม่ที่ควรนำไปอัปเดตใน env var
                     app.logger.info("="*80)
                     
                 except Exception as e:
@@ -378,7 +378,7 @@ def get_google_service(api_name, api_version):
                 app.logger.error("🔧 Please run get_token.py to generate a new token")
                 creds = None
 
-    # Build Google API service (using creds from User Credentials if no Service Account)
+    # สร้าง Google API service (ใช้ creds จาก User Credentials หากไม่มี Service Account)
     if creds and creds.valid:
         try:
             service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
@@ -400,8 +400,8 @@ def get_google_drive_service(): return get_google_service('drive', 'v3')
 
 @app.route('/admin/token_status')
 def token_status():
-    """Displays Google Token status for debugging"""
-    # Check Service Account first
+    """แสดงสถานะ Google Token สำหรับ debugging"""
+    # ตรวจสอบ Service Account ก่อน
     SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
     if SERVICE_ACCOUNT_FILE_CONTENT:
         try:
@@ -422,7 +422,7 @@ def token_status():
                 'detail': 'Service Account JSON might be invalid.'
             })
 
-    # If no Service Account, check User Token
+    # ถ้าไม่มี Service Account, ตรวจสอบ User Token
     google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
     
     if not google_token_json_str:
@@ -751,8 +751,6 @@ def parse_customer_info_from_notes(notes):
     phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
     address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
     map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
-    # Adjusted regex to correctly capture only coordinates if it's not a full URL
-    coords_only_match = re.search(r"(\-?\d+\.\d+,\s*\-?\d+\.\d+)", notes)
 
     if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
     if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
@@ -761,14 +759,10 @@ def parse_customer_info_from_notes(notes):
     
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
-        if coords_or_url.startswith('http'):
-            info['map_url'] = coords_or_url
-        elif re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
+        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
             info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
         else:
-            info['map_url'] = coords_or_url # Fallback if it's some other string
-    elif coords_only_match: # If only coordinates are found without http/s prefix
-        info['map_url'] = f"https://maps.google.com/maps?q={coords_only_match.group(1).strip()}"
+            info['map_url'] = coords_or_url
     
     return info
 
@@ -959,12 +953,12 @@ def notify_admin_error(message):
     except Exception as e:
         app.logger.error(f"Failed to add critical error notification to queue: {e}")
 
-# Helper function to create Flex Message that opens a LIFF App
+# *** ฟังก์ชัน helper สำหรับสร้าง Flex Message ที่เปิด LIFF App ***
 def _create_liff_notification_flex_message(recipient_line_id, notification_type, task_id, message_text,
                                           customer_info, shop_info, logo_url, liff_base_url,
                                           technician_name=None, distance_km=None, public_report_url=None):
     
-    # Create LIFF parameters for the LIFF App notification
+    # สร้าง LIFF parameters สำหรับการแจ้งเตือน LIFF App
     liff_params = {
         'type': notification_type,
         'task_id': task_id,
@@ -980,34 +974,31 @@ def _create_liff_notification_flex_message(recipient_line_id, notification_type,
         'report_url': public_report_url
     }
     
-    # URL-encode parameters
+    # เข้ารหัส parameters สำหรับ URL
     query_string = '&'.join([f'{key}={quote_plus(str(value))}' for key, value in liff_params.items() if value is not None])
     full_liff_url = f"{liff_base_url}?{query_string}"
 
-    # Define button labels and alt_text based on notification type
+    # กำหนดปุ่มและข้อความ alt_text ตามประเภทการแจ้งเตือน
     alt_text_map = {
         'new_task': f"งานใหม่: {message_text[:30]}...",
         'arrival': f"ช่างจะถึง: {message_text[:30]}...",
         'completion': f"งานเสร็จ: {message_text[:30]}...",
         'nearby_job': f"งานใกล้: {message_text[:30]}...",
-        'update': f"อัปเดตงาน: {message_text[:30]}...",
-        'test': f"ทดสอบ: {message_text[:30]}..." # For test messages
+        'update': f"อัปเดตงาน: {message_text[:30]}..."
     }
     button_label_map = {
         'new_task': "เปิดดูรายละเอียดงาน",
         'arrival': "ดูแผนที่/โทรหาลูกค้า",
         'completion': "ดูรายงานสรุปงาน",
         'nearby_job': "ดูรายละเอียดงาน/ติดต่อลูกค้า",
-        'update': "เปิดดูรายละเอียดงาน",
-        'test': "เปิด LIFF ทดสอบ"
+        'update': "เปิดดูรายละเอียดงาน"
     }
     title_map = {
         'new_task': "✨ มีงานใหม่เข้า!",
         'arrival': "🔔 ช่างกำลังจะถึง!",
         'completion': "✅ งานเสร็จเรียบร้อย!",
         'nearby_job': "📍 มีงานใกล้เคียง!",
-        'update': "🗓️ อัปเดตงาน!",
-        'test': "แจ้งเตือนทดสอบ!"
+        'update': "🗓️ อัปเดตงาน!"
     }
 
     flex_message_content = BubbleContainer(
@@ -1030,20 +1021,20 @@ def _create_liff_notification_flex_message(recipient_line_id, notification_type,
 
 @app.route('/api/trigger_mobile_popup_notification', methods=['POST'])
 def api_trigger_mobile_popup_notification():
-    # Receive data from frontend or other backend logic
+    # รับข้อมูลจาก frontend หรือจาก backend logic อื่นๆ
     data = request.json
     recipient_line_id = data.get('recipient_line_id')
     notification_type = data.get('notification_type') # 'arrival', 'completion', 'nearby_job', etc.
     task_id = data.get('task_id')
-    custom_message = data.get('custom_message') # Direct message text, overrides template
+    custom_message = data.get('custom_message') # ข้อความที่ส่งมาโดยตรง ไม่ใช้ template
     
-    # Additional data that might be needed for templates or LIFF
+    # ดึงข้อมูลเพิ่มเติมที่อาจจำเป็นสำหรับ template หรือ LIFF
     technician_name = data.get('technician_name')
     distance_km = data.get('distance_km')
     public_report_url = data.get('public_report_url')
 
     if not recipient_line_id or not notification_type:
-        return jsonify({'status': 'error', 'message': 'Missing data (recipient_line_id or notification_type)'}), 400
+        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน (recipient_line_id หรือ notification_type)'}), 400
 
     settings = get_app_settings()
     popup_settings = settings.get('popup_notifications', {})
@@ -1051,16 +1042,16 @@ def api_trigger_mobile_popup_notification():
 
     if not liff_base_url:
         app.logger.error("LIFF popup URL not configured in settings. Skipping popup notification.")
-        return jsonify({'status': 'error', 'message': 'LIFF popup URL not set'}), 500
+        return jsonify({'status': 'error', 'message': 'ยังไม่ได้ตั้งค่า LIFF popup URL'}), 500
 
-    # Retrieve task and customer info
-    task = get_single_task(task_id) if task_id else {}
+    # ดึงข้อมูลงานและลูกค้า
+    task = get_single_task(task_id) if task_id else None
     customer_info = parse_customer_info_from_notes(task.get('notes', '')) if task else {}
     shop_info = settings.get('shop_info', {})
     logo_url = url_for('static', filename='logo.png', _external=True)
 
-    # Generate base message text from template or use custom_message
-    base_message_text = "Notification:"
+    # สร้างข้อความพื้นฐานจาก template หรือใช้ custom_message
+    base_message_text = "แจ้งเตือน:"
     if custom_message:
         base_message_text = custom_message
     else:
@@ -1077,7 +1068,7 @@ def api_trigger_mobile_popup_notification():
             base_message_text = base_message_text.replace('[task_title]', task.get('title', '-'))
             base_message_text = base_message_text.replace('[distance_km]', f"{distance_km:.1f}" if distance_km is not None else '-')
             base_message_text = base_message_text.replace('[customer_name]', customer_info.get('name', '-'))
-        elif notification_type == 'new_task': # For new task notifications (Admin/Tech)
+        elif notification_type == 'new_task': # สำหรับแจ้งเตือนงานใหม่ (Admin/Tech)
             base_message_text = (
                 f"✨ มีงานใหม่เข้า!\n\n"
                 f"ชื่องาน: {task.get('title', '-')}\n"
@@ -1086,16 +1077,14 @@ def api_trigger_mobile_popup_notification():
                 f"🗓️ นัดหมาย: {parse_google_task_dates(task).get('due_formatted', '-')}\n"
                 f"📍 พิกัด: {customer_info.get('map_url', '-')}\n\n"
             )
-        elif notification_type == 'update': # For task update notifications (Admin/Tech)
-             message_text_parts = data.get('message_text_parts', []) 
+        elif notification_type == 'update': # สำหรับแจ้งเตือนอัปเดตงาน (Admin/Tech)
+             message_text_parts = data.get('message_text_parts', []) # สมมติว่าส่งมาเป็น list ของส่วนข้อความ
              base_message_text = "".join(message_text_parts)
-        elif notification_type == 'test': # For test messages
-             base_message_text = custom_message
 
 
-    if not base_message_text or base_message_text.strip() == "แจ้งเตือน:": # If message is still default or empty
+    if not base_message_text or base_message_text.strip() == "แจ้งเตือน:": # ถ้าข้อความยังเป็น default หรือว่างเปล่า
         app.logger.warning(f"No valid message text generated for notification type: {notification_type}. Skipping.")
-        return jsonify({'status': 'error', 'message': 'Could not generate notification message'}), 500
+        return jsonify({'status': 'error', 'message': 'ไม่สามารถสร้างข้อความแจ้งเตือนได้'}), 500
 
 
     flex_message = _create_liff_notification_flex_message(
@@ -1115,12 +1104,488 @@ def api_trigger_mobile_popup_notification():
     try:
         message_queue.add_message(recipient_line_id, flex_message)
         app.logger.info(f"Popup notification '{notification_type}' added to queue for {recipient_line_id} (Task: {task_id}).")
-        return jsonify({'status': 'success', 'message': 'Popup notification sent'}), 200
+        return jsonify({'status': 'success', 'message': 'ส่งการแจ้งเตือนผ่านป๊อปอัปแล้ว'}), 200
     except Exception as e:
         app.logger.error(f"Failed to add popup notification to LINE queue: {e}")
-        return jsonify({'status': 'error', 'message': f'Failed to send popup notification: {e}'}), 500
+        return jsonify({'status': 'error', 'message': f'ไม่สามารถส่งการแจ้งเตือนป๊อปอัปได้: {e}'}), 500
 
-# Flask Routes start here
+# ... (ส่วนของ Flask Routes เดิม) ...
+
+# *** ปรับปรุงฟังก์ชันแจ้งเตือนเดิมให้ใช้ api_trigger_mobile_popup_notification ***
+
+def send_new_task_notification(task):
+    settings = get_app_settings()
+    recipients = settings.get('line_recipients', {})
+    admin_group_id = recipients.get('admin_group_id')
+    
+    if not admin_group_id: return
+
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    parsed_dates = parse_google_task_dates(task)
+    
+    message_text = (
+        f"✨ มีงานใหม่เข้า!\n\n"
+        f"ชื่องาน: {task.get('title', '-')}\n"
+        f"ลูกค้า: {customer_info.get('name', '-')}\n"
+        f"📞 โทร: {customer_info.get('phone', '-')}\n"
+        f"🗓️ นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n"
+        f"📍 พิกัด: {customer_info.get('map_url', '-')}\n\n"
+    )
+    
+    payload = {
+        'recipient_line_id': admin_group_id,
+        'notification_type': 'new_task',
+        'task_id': task['id'],
+        'custom_message': message_text # ส่งข้อความที่สร้างไว้ไปให้ LIFF แสดง
+    }
+    
+    try:
+        # เรียก API endpoint ภายในแอปตัวเอง
+        response = requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+        app.logger.info(f"New task notification triggered for admin group: {response.json()}")
+    except Exception as e:
+        app.logger.error(f"Failed to trigger new task notification for task {task['id']}: {e}")
+
+
+def send_completion_notification(task, technicians):
+    settings = get_app_settings()
+    recipients = settings.get('line_recipients', {})
+    admin_group_id = recipients.get('admin_group_id')
+    tech_group_id = recipients.get('technician_group_id')
+    customer_line_id_from_feedback = parse_customer_feedback_from_notes(task.get('notes', '')).get('customer_line_user_id')
+
+    if not admin_group_id and not tech_group_id and not customer_line_id_from_feedback: return
+
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
+    public_report_url = url_for('public_task_report', task_id=task.get('id'), _external=True)
+
+    # ข้อความสำหรับ Admin/Tech
+    message_text_admin_tech = (
+        f"✅ ปิดงานเรียบร้อย\n\n"
+        f"ชื่องาน: {task.get('title', '-')}\n"
+        f"ลูกค้า: {customer_info.get('name', '-')}\n"
+        f"ช่างผู้รับผิดชอบ: {technician_str}\n\n"
+    )
+    
+    # ส่งแจ้งเตือนให้ Admin และ Technician
+    sent_to = set()
+    for recipient_id in [admin_group_id, tech_group_id]:
+        if recipient_id and recipient_id not in sent_to:
+            payload = {
+                'recipient_line_id': recipient_id,
+                'notification_type': 'completion',
+                'task_id': task['id'],
+                'custom_message': message_text_admin_tech,
+                'public_report_url': public_report_url # ส่ง URL รายงานสรุปให้ LIFF
+            }
+            try:
+                requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+                app.logger.info(f"Completion notification triggered for Admin/Tech ({recipient_id}) for task {task['id']}.")
+            except Exception as e:
+                app.logger.error(f"Failed to trigger completion notification for {recipient_id}: {e}")
+            sent_to.add(recipient_id)
+    
+    # ส่งแจ้งเตือนให้ลูกค้า (ถ้าเปิดใช้งานใน settings)
+    if customer_line_id_from_feedback and settings.get('popup_notifications', {}).get('enabled_completion_customer'):
+        payload = {
+            'recipient_line_id': customer_line_id_from_feedback,
+            'notification_type': 'completion',
+            'task_id': task['id'],
+            # ใช้ template message_completion_customer_template จาก settings
+            'custom_message': settings.get('popup_notifications', {}).get('message_completion_customer_template', 'งาน [task_title] ที่บ้านคุณ [customer_name] เสร็จเรียบร้อยแล้วครับ/ค่ะ')\
+                .replace('[task_title]', task.get('title', '-'))\
+                .replace('[customer_name]', customer_info.get('name', '-')),
+            'public_report_url': public_report_url # ส่ง URL รายงานสรุปให้ LIFF
+        }
+        try:
+            requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+            app.logger.info(f"Completion popup notification triggered for customer {customer_line_id_from_feedback} for task {task['id']}.")
+        except Exception as e:
+            app.logger.error(f"Failed to trigger customer completion popup notification: {e}")
+
+
+def send_update_notification(task, new_due_date_str, reason, technicians, is_today):
+    settings = get_app_settings()
+    admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
+    if not admin_group_id: return
+
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
+    
+    if is_today:
+        title_prefix = "🗓️ อัปเดตงานวันนี้"
+    else:
+        title_prefix = "🗓️ เลื่อนนัดหมาย"
+
+    message_text = (
+        f"{title_prefix}\n\n"
+        f"ชื่องาน: {task.get('title', '-')}\n"
+        f"ลูกค้า: {customer_info.get('name', '-')}\n"
+        f"📞 โทร: {customer_info.get('phone', '-')}\n"
+        f"นัดหมายใหม่: {new_due_date_str}\n"
+        f"เหตุผล: {reason}\n"
+        f"ช่าง: {technician_str}\n\n"
+    )
+    
+    payload = {
+        'recipient_line_id': admin_group_id,
+        'notification_type': 'update',
+        'task_id': task['id'],
+        'custom_message': message_text
+    }
+    try:
+        requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+        app.logger.info(f"Update/reschedule notification triggered for admin group for task {task['id']}.")
+    except Exception as e:
+        app.logger.error(f"Failed to trigger update notification for task {task['id']}: {e}")
+
+
+def scheduled_backup_job():
+    with app.app_context():
+        app.logger.info(f"--- Starting Scheduled Backup Job ---")
+        overall_success = True
+
+        system_backup_folder_id = find_or_create_drive_folder("System_Backups", GOOGLE_DRIVE_FOLDER_ID)
+        if not system_backup_folder_id:
+            app.logger.error("Could not find or create System_Backups folder for backup.")
+            overall_success = False
+        else:
+            memory_file_zip, filename_zip = _create_backup_zip()
+            if memory_file_zip and filename_zip:
+                if upload_data_from_memory_to_drive(memory_file_zip, filename_zip, 'application/zip', system_backup_folder_id):
+                    app.logger.info("Automatic full system backup successful.")
+                else:
+                    app.logger.error("Automatic full system backup failed.")
+                    overall_success = False
+            else:
+                app.logger.error("Failed to create full system backup zip.")
+                overall_success = False
+
+        if not backup_settings_to_drive():
+            app.logger.error("Automatic settings-only backup failed.")
+            overall_success = False
+        else:
+            app.logger.info("Automatic settings-only backup successful.")
+        
+        app.logger.info(f"--- Finished Scheduled Backup Job ---")
+        return overall_success
+
+
+def scheduled_appointment_reminder_job():
+    with app.app_context():
+        app.logger.info("Running scheduled appointment reminder job...")
+        settings = get_app_settings()
+        recipients = settings.get('line_recipients', {})
+        admin_group_id = recipients.get('admin_group_id')
+        technician_group_id = recipients.get('technician_group_id')
+
+        if not admin_group_id and not technician_group_id:
+            app.logger.info("No LINE admin or technician group ID set for appointment reminders. Skipping.")
+            return
+
+        tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+        today_thai = datetime.date.today()
+        upcoming_appointments = []
+
+        for task in tasks_raw:
+            if task.get('status') == 'needsAction' and task.get('due'):
+                try:
+                    due_dt_utc = date_parse(task['due'])
+                    if due_dt_utc.astimezone(THAILAND_TZ).date() == today_thai:
+                        upcoming_appointments.append(task)
+                except (ValueError, TypeError):
+                    app.logger.warning(f"Could not parse due date for reminder task {task.get('id')}: {task.get('due')}")
+                    continue
+
+        if not upcoming_appointments:
+            app.logger.info("No upcoming appointments for today.")
+            return
+
+        upcoming_appointments.sort(key=lambda x: date_parse(x['due']) if x.get('due') else datetime.datetime.max.replace(tzinfo=pytz.utc))
+
+        for task in upcoming_appointments:
+            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+            parsed_dates = parse_google_task_dates(task)
+            
+            message_text = (
+                f"🔔 งานสำหรับวันนี้\n\n"
+                f"ชื่องาน: {task.get('title', '-')}\n"
+                f"👤 ลูกค้า: {customer_info.get('name', '-')}\n"
+                f"📞 โทร: {customer_info.get('phone', '-')}\n"
+                f"🗓️ นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n"
+                f"📍 พิกัด: {customer_info.get('map_url', '-')}\n\n"
+            )
+            
+            # ส่งแจ้งเตือนผ่าน LIFF popup (ถ้าเปิดใช้งาน) หรือ Text ปกติ
+            liff_base_url = settings.get('popup_notifications', {}).get('liff_popup_base_url')
+            
+            sent_to = set()
+            for recipient_id in [admin_group_id, technician_group_id]:
+                if recipient_id and recipient_id not in sent_to:
+                    if not liff_base_url:
+                        message_queue.add_message(recipient_id, TextSendMessage(text=message_text + f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"))
+                    else:
+                        payload = {
+                            'recipient_line_id': recipient_id,
+                            'notification_type': 'new_task', # ใช้ new_task type สำหรับ appointment reminder
+                            'task_id': task['id'],
+                            'custom_message': message_text
+                        }
+                        try:
+                            requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+                            app.logger.info(f"Appointment reminder triggered for {recipient_id} for task {task['id']}.")
+                        except Exception as e:
+                            app.logger.error(f"Failed to trigger appointment reminder notification for {recipient_id}: {e}")
+                    sent_to.add(recipient_id)
+
+
+def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
+    problem_action = URIAction(
+        label='🚨 ยังมีปัญหาอยู่',
+        uri=f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}"
+    )
+
+    return BubbleContainer(
+        body=BoxComponent(
+            layout='vertical', spacing='md',
+            contents=[
+                TextComponent(text="สอบถามหลังการซ่อม", weight='bold', size='lg', color='#1DB446', align='center'),
+                SeparatorComponent(margin='md'),
+                TextComponent(text=f"เรียนคุณ {customer_name},", size='sm', wrap=True),
+                TextComponent(text=f"เกี่ยวกับงาน: {task_title}", size='sm', wrap=True, color='#666666'),
+                SeparatorComponent(margin='lg'),
+                TextComponent(text="ไม่ทราบว่าหลังจากทีมงานของเราเข้าบริการแล้ว ทุกอย่างเรียบร้อยดีหรือไม่ครับ/คะ?", size='md', wrap=True, align='center'),
+                BoxComponent(layout='vertical', spacing='sm', margin='md', contents=[
+                    ButtonComponent(
+                        style='primary', height='sm', color='#28a745',
+                        action=PostbackAction(
+                            label='✅ งานเรียบร้อยดี', data=f'action=customer_feedback&task_id={task_id}&feedback=ok',
+                            display_text='ขอบคุณสำหรับคำยืนยันครับ/ค่ะ!'
+                        )
+                    ),
+                    ButtonComponent(
+                        style='secondary', height='sm', color='#dc3545',
+                        action=problem_action
+                    )
+                ]),
+            ]
+        )
+    )
+
+def scheduled_customer_follow_up_job():
+    with app.app_context():
+        app.logger.info("Running scheduled customer follow-up job...")
+        settings = get_app_settings()
+        admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
+
+        tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+        now_utc = datetime.datetime.now(pytz.utc)
+        two_days_ago_utc = now_utc - datetime.timedelta(days=2)
+        one_day_ago_utc = now_utc - datetime.timedelta(days=1)
+
+        for task in tasks_raw:
+            if task.get('status') == 'completed' and task.get('completed'):
+                try:
+                    completed_dt_utc = date_parse(task['completed'])
+
+                    if two_days_ago_utc <= completed_dt_utc < one_day_ago_utc:
+                        notes = task.get('notes', '')
+                        feedback_data = parse_customer_feedback_from_notes(notes)
+
+                        if 'follow_up_sent_date' in feedback_data:
+                            continue
+
+                        customer_info = parse_customer_info_from_notes(notes)
+                        customer_line_id = feedback_data.get('customer_line_user_id')
+                        
+                        if not customer_line_id:
+                            continue
+
+                        flex_content = _create_customer_follow_up_flex_message(
+                            task['id'], task['title'], customer_info.get('name', 'N/A'))
+                        flex_message = FlexSendMessage(alt_text="สอบถามความพึงพอใจหลังการซ่อม", contents=flex_content)
+
+                        try:
+                            message_queue.add_message(customer_line_id, flex_message)
+                            app.logger.info(f"Follow-up message for task {task['id']} added to queue for customer {customer_line_id}.")
+                            
+                            feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
+                            history_reports, base_notes = parse_tech_report_from_notes(notes)
+                            
+                            tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+                            
+                            new_notes = base_notes.strip()
+                            if tech_reports_text: new_notes += tech_reports_text
+                            new_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+                            _execute_google_api_call_with_retry(update_google_task, task['id'], notes=new_notes)
+                            cache.clear()
+
+                        except Exception as e:
+                            app.logger.error(f"Failed to add direct follow-up to {customer_line_id} to queue: {e}. Notifying admin.")
+                            if admin_group_id:
+                                message_queue.add_message(admin_group_id, [TextSendMessage(text=f"⚠️ ส่ง Follow-up ให้ลูกค้า {customer_info.get('name')} (Task ID: {task['id']}) ไม่สำเร็จ โปรดส่งข้อความนี้แทน:"), flex_message])
+
+
+                except Exception as e:
+                    app.logger.warning(f"Could not process task {task.get('id')} for follow-up: {e}", exc_info=True)
+
+# *** เพิ่ม Scheduled Job สำหรับแจ้งเตือนงานใกล้เคียง (Nearby Job Alerts) ***
+def scheduled_nearby_job_alert_job():
+    with app.app_context():
+        app.logger.info("Running scheduled nearby job alert job...")
+        settings = get_app_settings()
+        popup_settings = settings.get('popup_notifications', {})
+        if not popup_settings.get('enabled_nearby_job'):
+            app.logger.info("Nearby job alert is disabled. Skipping.")
+            return
+
+        nearby_radius_km = popup_settings.get('nearby_radius_km', 5)
+        
+        # ดึงข้อมูลช่างทั้งหมดที่มี LINE User ID และตำแหน่งล่าสุด
+        # สมมติว่า technician_list มี field 'line_user_id', 'last_known_lat', 'last_known_lon'
+        # คุณจะต้องมีกลไกให้ช่างอัปเดต 'last_known_lat' และ 'last_known_lon'
+        technician_list = settings.get('technician_list', [])
+        active_technicians = [
+            t for t in technician_list
+            if t.get('line_user_id') and t.get('last_known_lat') is not None and t.get('last_known_lon') is not None
+        ]
+
+        tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+        pending_tasks = [
+            t for t in tasks_raw
+            if t.get('status') == 'needsAction' and t.get('notes')
+        ]
+
+        for technician in active_technicians:
+            tech_coords = (technician['last_known_lat'], technician['last_known_lon'])
+            for task in pending_tasks:
+                customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+                customer_map_url = customer_info.get('map_url')
+                
+                # ตรวจสอบว่างานนี้เคยถูกแจ้ง nearby ให้ช่างคนนี้ไปแล้วหรือไม่
+                # นี่คือตัวอย่างง่ายๆ คุณอาจต้องมีระบบบันทึกที่ซับซ้อนกว่านี้
+                task_notes = task.get('notes', '')
+                if f"NEARBY_ALERT_SENT_TO_TECH_{technician['line_user_id']}" in task_notes:
+                    continue # เคยแจ้งไปแล้ว ข้ามไป
+
+                if customer_map_url and ('maps.google.com' in customer_map_url or re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", customer_map_url)):
+                    # แยก Lat/Lon จาก URL หรือจาก String ตรงๆ
+                    match = re.search(r"(\-?\d+\.\d+),(\-?\d+\.\d+)", customer_map_url)
+                    if match:
+                        task_lat, task_lon = float(match.group(1)), float(match.group(2))
+                        task_coords = (task_lat, task_lon)
+                        
+                        try:
+                            distance_km = geodesic(tech_coords, task_coords).km
+                            if distance_km <= nearby_radius_km:
+                                # สร้าง payload สำหรับ LIFF popup notification
+                                payload = {
+                                    'recipient_line_id': technician['line_user_id'],
+                                    'notification_type': 'nearby_job',
+                                    'task_id': task['id'],
+                                    'technician_name': technician['name'],
+                                    'distance_km': distance_km,
+                                    'customer_name': customer_info.get('name', ''),
+                                    'customer_phone': customer_info.get('phone', ''),
+                                    'customer_address': customer_info.get('address', ''),
+                                    'customer_map_url': customer_info.get('map_url', ''),
+                                    'shop_phone': settings.get('shop_info', {}).get('contact_phone', ''),
+                                    'logo_url': url_for('static', filename='logo.png', _external=True)
+                                }
+                                # เรียก API endpoint ภายในแอปตัวเอง
+                                try:
+                                    requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+                                    app.logger.info(f"Nearby job notification triggered for technician {technician['name']} (Task: {task['id']}). Distance: {distance_km:.1f} km.")
+                                    
+                                    # ทำเครื่องหมายว่าแจ้งเตือนไปแล้ว
+                                    # เพิ่ม flag ใน notes ของ task เพื่อไม่ให้แจ้งซ้ำ
+                                    current_notes = task.get('notes', '')
+                                    new_notes = f"{current_notes}\nNEARBY_ALERT_SENT_TO_TECH_{technician['line_user_id']}_{datetime.datetime.now(THAILAND_TZ).isoformat()}"
+                                    _execute_google_api_call_with_retry(update_google_task, task['id'], notes=new_notes)
+                                    cache.clear() # ล้าง cache เพื่อให้ข้อมูล task อัปเดต
+
+                                except Exception as e:
+                                    app.logger.error(f"Failed to trigger nearby job notification for {technician['name']} and task {task['id']}: {e}")
+                                    
+                        except Exception as e:
+                            app.logger.warning(f"Could not calculate distance for task {task['id']} / technician {technician['name']}: {e}")
+                        
+        app.logger.info("Finished scheduled nearby job alert job.")
+
+
+def run_scheduler():
+    """Initializes and runs the APScheduler jobs."""
+    global scheduler
+
+    settings = get_app_settings()
+
+    if scheduler.running:
+        app.logger.info("Scheduler already running, shutting down before reconfiguring...")
+        scheduler.shutdown(wait=False)
+    
+    scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
+
+    ab = settings.get('auto_backup', {})
+    if ab.get('enabled'):
+        scheduler.add_job(scheduled_backup_job, CronTrigger(hour=ab.get('hour_thai', 2), minute=ab.get('minute_thai', 0)), id='auto_system_backup', replace_existing=True)
+        app.logger.info(f"Scheduled auto backup for {ab.get('hour_thai', 2)}:{ab.get('minute_thai', 0)} Thai time.")
+    else:
+        if scheduler.get_job('auto_system_backup'):
+            scheduler.remove_job('auto_system_backup')
+            app.logger.info("Auto backup job disabled and removed.")
+
+    rt = settings.get('report_times', {})
+    scheduler.add_job(scheduled_appointment_reminder_job, CronTrigger(hour=rt.get('appointment_reminder_hour_thai', 7), minute=0), id='daily_appointment_reminder', replace_existing=True)
+    scheduler.add_job(scheduled_customer_follow_up_job, CronTrigger(hour=rt.get('customer_followup_hour_thai', 9), minute=5), id='daily_customer_followup', replace_existing=True)
+    
+    # *** เพิ่ม Scheduled Job สำหรับ Nearby Job Alerts ***
+    popup_settings = settings.get('popup_notifications', {})
+    if popup_settings.get('enabled_nearby_job'):
+        # ตัวอย่าง: รันทุก 15 นาที
+        scheduler.add_job(scheduled_nearby_job_alert_job, CronTrigger(minute='*/15'), id='nearby_job_alerts', replace_existing=True)
+        app.logger.info(f"Scheduled nearby job alerts every 15 minutes.")
+    else:
+        if scheduler.get_job('nearby_job_alerts'):
+            scheduler.remove_job('nearby_job_alerts')
+            app.logger.info("Nearby job alerts disabled and removed.")
+    # *** สิ้นสุดการเพิ่ม ***
+
+    app.logger.info(f"Scheduled appointment reminders for {rt.get('appointment_reminder_hour_thai', 7)}:00 and customer follow-up for {rt.get('customer_followup_hour_thai', 9)}:05 Thai time.")
+
+    scheduler.start()
+    app.logger.info("APScheduler started/reconfigured.")
+
+def cleanup_scheduler():
+    """A clean shutdown function to be called upon application exit."""
+    if scheduler is not None and scheduler.running:
+        app.logger.info("Scheduler is running, shutting it down.")
+        scheduler.shutdown(wait=False)
+    else:
+        app.logger.info("Scheduler not running or not initialized, skipping shutdown.")
+#</editor-fold>
+
+# --- Initial app setup calls ---
+with app.app_context():
+    # Jinja2 filter ถูกย้ายไปอยู่ด้านบนสุดของไฟล์แล้ว
+    
+    load_settings_from_drive_on_startup()
+    run_scheduler()
+
+atexit.register(cleanup_scheduler)
+
+# --- Error Handlers ---
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    app.logger.error(f"Server Error: {e}", exc_info=True)
+    return render_template('500.html'), 500
+
+
+# --- Flask Routes ---
 @app.route('/api/customers')
 def api_customers():
     customer_list = get_customer_database()
@@ -1226,9 +1691,8 @@ def form_page():
 
 @app.route('/api/upload_attachment', methods=['POST'])
 def api_upload_attachment():
-    task_id = request.form.get('task_id') # Get task_id from request.form
-    if not task_id:
-        return jsonify({'status': 'error', 'message': 'Task ID is missing'}), 400
+    # task_id ถูกดึงมาจาก request.form.get('task_id') ที่นี่
+    task_id = request.form.get('task_id') # ตรวจสอบให้แน่ใจว่าได้ดึงค่ามาตั้งแต่ต้นฟังก์ชัน
 
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file part'}), 400
@@ -1256,9 +1720,9 @@ def api_upload_attachment():
                 app.logger.info(f"Compressed image '{file.filename}' successfully.")
             except Exception as e:
                 app.logger.error(f"Could not compress image '{file.filename}': {e}")
-                return jsonify({'status': 'error', 'message': f'File too large and could not be compressed'}), 413
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
         else:
-            return jsonify({'status': 'error', 'message': f'File too large ({MAX_FILE_SIZE_MB}MB)'}), 413
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
     else:
         file_to_upload = file
         filename = secure_filename(file.filename)
@@ -1491,14 +1955,14 @@ def schedule_task_from_calendar():
     new_due_str = data.get('new_due_date')
     
     if not task_id or not new_due_str:
-        return jsonify({'status': 'error', 'message': 'Missing data (task_id or new_due_date)'}), 400
+        return jsonify({'status': 'error', 'message': 'ข้อมูลที่ส่งมาไม่ครบถ้วน (task_id หรือ new_due_date)'}), 400
         
     try:
         task = get_single_task(task_id)
         if not task:
-            return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+            return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ระบุ'}), 404
         if task.get('status') == 'completed':
-            return jsonify({'status': 'error', 'message': 'Cannot move completed tasks'}), 403
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถย้ายงานที่เสร็จสิ้นแล้วได้'}), 403
 
         dt_utc = date_parse(new_due_str)
         due_date_gmt = dt_utc.isoformat().replace('+00:00', 'Z')
@@ -1507,13 +1971,13 @@ def schedule_task_from_calendar():
         
         if updated_task:
             cache.clear()
-            return jsonify({'status': 'success', 'message': f'Appointment for task {task_id} updated successfully'})
+            return jsonify({'status': 'success', 'message': f'อัปเดตวันนัดหมายสำหรับงาน {task_id} เรียบร้อยแล้ว'})
         else:
-            return jsonify({'status': 'error', 'message': 'Could not update task in Google Tasks'}), 500
+            return jsonify({'status': 'error', 'message': 'ไม่สามารถอัปเดตงานใน Google Tasks ได้'}), 500
             
     except Exception as e:
         app.logger.error(f"Error scheduling task from calendar: {e}")
-        return jsonify({'status': 'error', 'message': f'System error: {e}'}), 500
+        return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
@@ -1521,8 +1985,8 @@ def task_details(task_id):
         task_raw = get_single_task(task_id)
         if not task_raw:
             if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'status': 'error', 'message': 'Task not found'}), 404
-            flash('Task not found', 'danger')
+                return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+            flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
             abort(404)
         
         action = request.form.get('action')
@@ -1548,9 +2012,9 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not (work_summary or new_attachments):
-                return jsonify({'status': 'error', 'message': 'Please enter work summary or attach files for the new report'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'}), 400
             if not selected_technicians:
-                return jsonify({'status': 'error', 'message': 'Please select responsible technicians for this report'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'}), 400
 
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1559,7 +2023,7 @@ def task_details(task_id):
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
-            flash_message = 'Progress report saved!'
+            flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
             flash_category = 'success'
         
         elif action == 'reschedule_task':
@@ -1569,7 +2033,7 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not reschedule_due_str:
-                return jsonify({'status': 'error', 'message': 'Please set a new appointment date'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
             
             try:
                 dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
@@ -1579,26 +2043,26 @@ def task_details(task_id):
                 is_today = dt_local.date() == datetime.datetime.now(THAILAND_TZ).date()
                 notification_to_send = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
             except ValueError:
-                return jsonify({'status': 'error', 'message': 'Invalid new appointment date format'}), 400
+                return jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
 
             history.append({
                 'type': 'reschedule', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'reason': reschedule_reason, 'new_due_date': new_due_date_formatted,
                 'technicians': selected_technicians
             })
-            flash_message = 'Reschedule and reason saved'
+            flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
             flash_category = 'success'
 
         elif action == 'complete_task':
             work_summary = str(request.form.get('work_summary', '')).strip()
             if not work_summary:
-                return jsonify({'status': 'error', 'message': 'Please enter work summary to complete task'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
                 
             selected_technicians = request.form.get('technicians_report', '').split(',')
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not selected_technicians:
-                return jsonify({'status': 'error', 'message': 'Please select responsible technicians for the completion report'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
             
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -1610,49 +2074,11 @@ def task_details(task_id):
             
             update_payload['status'] = 'completed'
             notification_to_send = ('completion', selected_technicians)
-            flash_message = 'Task completed and report saved!'
-            flash_category = 'success'
-        
-        # Action for updating location
-        elif action == 'update_location':
-            latitude = request.form.get('latitude')
-            longitude = request.form.get('longitude')
-            
-            if latitude is None or longitude is None:
-                return jsonify({'status': 'error', 'message': 'Missing latitude or longitude data'}), 400
-
-            try:
-                lat_float = float(latitude)
-                lon_float = float(longitude)
-            except ValueError:
-                return jsonify({'status': 'error', 'message': 'Invalid latitude or longitude format'}), 400
-
-            # Update map_url in notes
-            current_customer_info = parse_customer_info_from_notes(base_notes_text)
-            current_customer_info['map_url'] = f"{lat_float},{lon_float}" # Or store as a direct Google Maps URL
-            
-            # Reconstruct base_notes_text with updated map_url
-            updated_notes_lines = []
-            if current_customer_info.get('organization'): updated_notes_lines.append(f"หน่วยงาน: {current_customer_info['organization']}")
-            updated_notes_lines.append(f"ลูกค้า: {current_customer_info.get('name', '')}")
-            updated_notes_lines.append(f"เบอร์โทรศัพท์: {current_customer_info.get('phone', '')}")
-            updated_notes_lines.append(f"ที่อยู่: {current_customer_info.get('address', '')}")
-            updated_notes_lines.append(current_customer_info['map_url']) # Add new coordinates
-            
-            # Combine with existing report history and feedback data
-            updated_base_notes = "\n".join(filter(None, updated_notes_lines))
-            
-            all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
-            final_notes = updated_base_notes
-            if all_reports_text: final_notes += all_reports_text
-            if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-            update_payload['notes'] = final_notes
-            flash_message = 'Task location updated successfully!'
+            flash_message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
             flash_category = 'success'
         
         else:
-            return jsonify({'status': 'error', 'message': 'No action requested'}), 400
+            return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
             
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
@@ -1667,34 +2093,14 @@ def task_details(task_id):
 
         if updated_task:
             cache.clear()
-            # Check for sending notifications in case of location update
-            if action == 'update_location':
-                admin_group_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
-                if admin_group_id:
-                    customer_info_updated = parse_customer_info_from_notes(updated_task.get('notes',''))
-                    location_link = customer_info_updated.get('map_url')
-                    location_message = f"งาน {updated_task.get('title','-')} อัปเดตพิกัดใหม่เป็น: {location_link}" if location_link else "งาน [title] อัปเดตพิกัดใหม่"
-                    
-                    payload = {
-                        'recipient_line_id': admin_group_id,
-                        'notification_type': 'update', # Use update type
-                        'task_id': task_id,
-                        'custom_message': location_message,
-                        'customer_map_url': location_link # Send map_url to LIFF
-                    }
-                    try:
-                        requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-                        app.logger.info(f"Location update notification triggered for admin group for task {task_id}.")
-                    except Exception as e:
-                        app.logger.error(f"Failed to trigger location update notification: {e}")
-            elif notification_to_send:
+            if notification_to_send:
                 notif_type = notification_to_send[0]
                 if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
                 elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
             
             return jsonify({'status': 'success', 'message': flash_message})
         else:
-            flash_message = 'Error saving main data!'
+            flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
             return jsonify({'status': 'error', 'message': flash_message}), 500
 
     task_raw = get_single_task(task_id)
@@ -1744,17 +2150,17 @@ def api_edit_report_text(task_id, report_index):
     new_summary = data.get('summary', '').strip()
     
     if not new_summary:
-        return jsonify({'status': 'error', 'message': 'Please enter work summary'}), 400
+        return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน'}), 400
 
     task_raw = get_single_task(task_id)
     if not task_raw:
-        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
 
     history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
     feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
     
     if not (0 <= report_index < len(history)):
-        return jsonify({'status': 'error', 'message': 'Report not found'}), 404
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการแก้ไข'}), 404
 
     history[report_index]['work_summary'] = new_summary
     
@@ -1765,22 +2171,22 @@ def api_edit_report_text(task_id, report_index):
     
     if update_google_task(task_id, notes=final_notes):
         cache.clear()
-        return jsonify({'status': 'success', 'message': 'Report text updated successfully'})
+        return jsonify({'status': 'success', 'message': 'แก้ไขรายงานเรียบร้อยแล้ว'})
     else:
-        return jsonify({'status': 'error', 'message': 'Error saving changes'}), 500
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(task_id, report_index):
     task_raw = get_single_task(task_id)
     if not task_raw:
-        flash('Task not found', 'danger')
+        flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
         abort(404)
 
     history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
     feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
     
     if not (0 <= report_index < len(history)):
-        flash('Report not found', 'danger')
+        flash('ไม่พบรายงานที่ต้องการแก้ไข', 'danger')
         return redirect(url_for('task_details', task_id=task_id))
 
     report_to_edit = history[report_index]
@@ -1802,7 +2208,7 @@ def edit_report_attachments(task_id, report_index):
                     app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
     else:
         updated_attachments = original_attachments
-        flash('Could not connect to Google Drive to delete files', 'warning')
+        flash('ไม่สามารถเชื่อมต่อ Google Drive เพื่อลบไฟล์ได้', 'warning')
     
     new_files = request.files.getlist('new_files[]')
     if new_files:
@@ -1828,7 +2234,8 @@ def edit_report_attachments(task_id, report_index):
                     if file_length > MAX_FILE_SIZE_BYTES and file.mimetype and file.mimetype.startswith('image/'):
                         try:
                             img = Image.open(file)
-                            if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                            if img.mode in ("RGBA", "P"):
+                                img = img.convert("RGB")
                             output_buffer = BytesIO()
                             img.save(output_buffer, format='JPEG', quality=85, optimize=True)
                             output_buffer.seek(0)
@@ -1848,7 +2255,7 @@ def edit_report_attachments(task_id, report_index):
                     if drive_file:
                         updated_attachments.append({'id': drive_file.get('id'), 'url': drive_file.get('webViewLink'), 'name': filename})
         else:
-             flash('Could not create folder for new attachments in Google Drive', 'warning')
+             flash('ไม่สามารถสร้างโฟลเดอร์สำหรับแนบไฟล์ใหม่ใน Google Drive ได้', 'warning')
 
     report_to_edit['attachments'] = updated_attachments
     history[report_index] = report_to_edit
@@ -1860,9 +2267,9 @@ def edit_report_attachments(task_id, report_index):
     
     if update_google_task(task_id, notes=final_notes):
         cache.clear()
-        flash('Report images updated successfully!', 'success')
+        flash('แก้ไขรูปภาพในรายงานเรียบร้อยแล้ว!', 'success')
     else:
-        flash('Error saving image changes', 'danger')
+        flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงรูปภาพ', 'danger')
 
     return redirect(url_for('task_details', task_id=task_id))
 
@@ -1870,13 +2277,13 @@ def edit_report_attachments(task_id, report_index):
 def delete_task_report(task_id, report_index):
     task_raw = get_single_task(task_id)
     if not task_raw:
-        return jsonify({'status': 'error', 'message': 'Task not found'}), 404
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
 
     history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
     feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
     
     if not (0 <= report_index < len(history)):
-        return jsonify({'status': 'error', 'message': 'Report not found'}), 404
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการลบ'}), 404
 
     report_to_delete = history[report_index]
     if report_to_delete.get('attachments'):
@@ -1898,9 +2305,9 @@ def delete_task_report(task_id, report_index):
     
     if update_google_task(task_id, notes=final_notes):
         cache.clear()
-        return jsonify({'status': 'success', 'message': 'Report deleted successfully'})
+        return jsonify({'status': 'success', 'message': 'ลบรายงานเรียบร้อยแล้ว'})
     else:
-        return jsonify({'status': 'error', 'message': 'Error saving after report deletion'}), 500
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกหลังลบรายงาน'}), 500
 
 
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
@@ -1911,7 +2318,7 @@ def edit_task(task_id):
     if request.method == 'POST':
         new_title = str(request.form.get('task_title', '')).strip()
         if not new_title:
-            flash('Please enter task details', 'danger')
+            flash('กรุณากรอกรายละเอียดงาน', 'danger')
             return redirect(url_for('edit_task', task_id=task_id))
 
         notes_lines = []
@@ -1944,15 +2351,15 @@ def edit_task(task_id):
                 dt_local = THAILAND_TZ.localize(date_parse(appointment_str))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             except ValueError:
-                flash('Invalid appointment date format', 'warning')
+                flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
                 return redirect(url_for('edit_task', task_id=task_id))
 
         if update_google_task(task_id, title=new_title, notes=final_notes, due=due_date_gmt):
             cache.clear()
-            flash('Main task data saved successfully!', 'success')
+            flash('บันทึกข้อมูลหลักของงานเรียบร้อยแล้ว!', 'success')
             return redirect(url_for('summary'))
         else:
-            flash('Error saving main task data', 'danger')
+            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger')
             return redirect(url_for('edit_task', task_id=task_id))
 
     task = parse_google_task_dates(task_raw)
@@ -1963,10 +2370,10 @@ def edit_task(task_id):
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
     if delete_google_task(task_id):
-        flash('Task deleted successfully!', 'success')
+        flash('ลบงานเรียบร้อยแล้ว!', 'success')
         cache.clear()
     else:
-        flash('Error deleting task', 'danger')
+        flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
     return redirect(url_for('summary'))
 
 @app.route('/api/delete_task/<task_id>', methods=['POST'])
@@ -1997,7 +2404,7 @@ def settings_page():
         technician_list_json_str = request.form.get('technician_list_json', '[]')
         try:
             technician_list = json.loads(technician_list_json_str)
-            # Add handling for line_user_id, lat, lon for each technician
+            # *** เพิ่มการรับค่า line_user_id, lat, lon สำหรับช่างแต่ละคน ***
             for tech in technician_list:
                 tech['line_user_id'] = tech.get('line_user_id', '').strip()
                 try:
@@ -2006,8 +2413,9 @@ def settings_page():
                 except ValueError:
                     tech['last_known_lat'] = None
                     tech['last_known_lon'] = None
+            # *** สิ้นสุดการเพิ่ม ***
         except json.JSONDecodeError:
-            flash('Error reading technician data', 'danger')
+            flash('เกิดข้อผิดพลาดในการอ่านข้อมูลช่าง', 'danger')
             return redirect(url_for('settings_page'))
 
         appointment_reminder_hour = int(request.form.get('appointment_reminder_hour', 0))
@@ -2016,7 +2424,7 @@ def settings_page():
         auto_backup_hour = int(request.form.get('auto_backup_hour', 0))
         auto_backup_minute = int(request.form.get('auto_backup_minute', 0))
 
-        # Get popup_notifications settings
+        # *** รับค่าการตั้งค่า popup_notifications ***
         popup_notifications_settings = {
             'enabled_arrival': request.form.get('popup_notifications[enabled_arrival]') == 'on',
             'message_arrival_template': request.form.get('popup_notifications[message_arrival_template]', '').strip(),
@@ -2027,6 +2435,7 @@ def settings_page():
             'message_nearby_template': request.form.get('popup_notifications[message_nearby_template]', '').strip(),
             'liff_popup_base_url': request.form.get('popup_notifications[liff_popup_base_url]', '').strip()
         }
+        # *** สิ้นสุดการรับค่า ***
 
         settings_data = {
             'report_times': {
@@ -2049,18 +2458,18 @@ def settings_page():
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
             'technician_list': technician_list,
-            'popup_notifications': popup_notifications_settings # Add popup_notifications settings
+            'popup_notifications': popup_notifications_settings # *** เพิ่มการตั้งค่า popup_notifications ***
         }
 
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
             if backup_settings_to_drive():
-                flash('Settings saved and backed up to Google Drive successfully!', 'success')
+                flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
             else:
-                flash('Settings saved successfully, but backup to Google Drive failed!', 'warning')
+                flash('บันทึกการตั้งค่าสำเร็จ แต่สำรองไปที่ Google Drive ไม่สำเร็จ!', 'warning')
         else:
-            flash('Error saving settings!', 'danger')
+            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!', 'danger')
         return redirect(url_for('settings_page'))
 
     current_settings = get_app_settings()
@@ -2094,9 +2503,9 @@ def api_upload_avatar():
                 app.logger.info(f"Compressed avatar '{file.filename}' successfully.")
             except Exception as e:
                 app.logger.error(f"Could not compress avatar '{file.filename}': {e}")
-                return jsonify({'status': 'error', 'message': f'Image file too large and could not be compressed'}), 413
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
         else:
-            return jsonify({'status': 'error', 'message': f'File too large ({MAX_FILE_SIZE_MB}MB)'}), 413
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
     else:
         file_to_upload = file
         filename = secure_filename(file.filename)
@@ -2119,42 +2528,42 @@ def api_upload_avatar():
 def test_notification():
     recipient_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
     if recipient_id:
-        # Use api_trigger_mobile_popup_notification for testing
+        # ใช้ api_trigger_mobile_popup_notification สำหรับการทดสอบ
         payload = {
             'recipient_line_id': recipient_id,
             'notification_type': 'test',
             'task_id': 'test-task-id',
-            'custom_message': '[TEST] This is a test message from the Popup Notification system'
+            'custom_message': '[ทดสอบ] นี่คือข้อความทดสอบจากระบบ Popup Notification'
         }
         try:
             requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-            flash(f'Test message sent to ID: {recipient_id} successfully!', 'success')
+            flash(f'ส่งข้อความทดสอบไปที่ ID: {recipient_id} สำเร็จ!', 'success')
         except Exception as e:
-            flash(f'Error sending test message: {e}', 'danger')
+            flash(f'เกิดข้อผิดพลาดในการส่ง: {e}', 'danger')
     else:
-        flash('Please set "LINE Admin Group ID" first', 'danger')
+        flash('กรุณากำหนด "LINE Admin Group ID" ก่อน', 'danger')
     return redirect(url_for('settings_page'))
 
 @app.route('/backup_data')
 def backup_data():
     system_backup_folder_id = find_or_create_drive_folder("System_Backups", GOOGLE_DRIVE_FOLDER_ID)
     if not system_backup_folder_id:
-        flash('Could not find or create System_Backups folder in Google Drive', 'danger')
+        flash('ไม่สามารถหาหรือสร้างโฟลเดอร์ System_Backups ใน Google Drive ได้', 'danger')
         return redirect(url_for('settings_page'))
     
     memory_file, filename = _create_backup_zip()
     if memory_file and filename:
         return Response(memory_file.getvalue(), mimetype='application/zip', headers={'Content-Disposition': f'attachment;filename={filename}'})
     else:
-        flash('Error creating backup file', 'danger')
+        flash('เกิดข้อผิดพลาดในการสร้างไฟล์สำรองข้อมูล', 'danger')
         return redirect(url_for('settings_page'))
 
 @app.route('/trigger_auto_backup_now', methods=['POST'])
 def trigger_auto_backup_now():
     if scheduled_backup_job():
-        flash('Data backed up to Google Drive successfully!', 'success')
+        flash('สำรองข้อมูลไปที่ Google Drive สำเร็จ!', 'success')
     else:
-        flash('Error backing up data to Google Drive!', 'danger')
+        flash('เกิดข้อผิดพลาดในการสำรองข้อมูลไปที่ Google Drive!', 'danger')
     return redirect(url_for('settings_page'))
 
 @app.route('/export_equipment_catalog', methods=['GET'])
@@ -2162,20 +2571,20 @@ def export_equipment_catalog():
     try:
         df = pd.DataFrame(get_app_settings().get('equipment_catalog', []))
         if df.empty:
-            flash('No equipment data in catalog', 'warning')
+            flash('ไม่มีข้อมูลอุปกรณ์ในแคตตาล็อก', 'warning')
             return redirect(url_for('settings_page') )
         output = BytesIO()
         df.to_excel(output, index=False, sheet_name='Equipment_Catalog')
         output.seek(0)
         return Response(output.getvalue(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment;filename=equipment_catalog.xlsx"})
     except Exception as e:
-        flash(f'Error exporting: {e}', 'danger')
+        flash(f'เกิดข้อผิดพลาดในการส่งออก: {e}', 'danger')
         return redirect(url_for('settings_page'))
 
 @app.route('/import_equipment_catalog', methods=['POST'])
 def import_equipment_catalog():
     if 'excel_file' not in request.files or not request.files['excel_file'].filename:
-        flash('Please select an Excel file', 'danger')
+        flash('กรุณาเลือกไฟล์ Excel', 'danger')
         return redirect(url_for('settings_page'))
     file = request.files['excel_file']
     if file and file.filename.endswith(('.xls', '.xlsx')):
@@ -2183,7 +2592,7 @@ def import_equipment_catalog():
             df = pd.read_excel(file.stream)
             required_cols = ['item_name', 'unit', 'price']
             if not all(col in df.columns for col in required_cols):
-                flash(f'Excel file must contain columns: {", ".join(required_cols)}', 'danger')
+                flash(f'ไฟล์ Excel ต้องมีคอลัมน์: {", ".join(required_cols)}', 'danger')
             else:
                 imported_catalog = []
                 for _, row in df.iterrows():
@@ -2194,11 +2603,11 @@ def import_equipment_catalog():
                         except ValueError: item['price'] = 0.0
                     imported_catalog.append(item)
                 save_app_settings({'equipment_catalog': imported_catalog})
-                flash('Equipment catalog imported successfully!', 'success')
+                flash('นำเข้าแคตตาล็อกอุปกรณ์เรียบร้อยแล้ว!', 'success')
         except Exception as e:
-            flash(f"Error importing file: {e}", 'danger')
+            flash(f"เกิดข้อผิดพลาดในการนำเข้าไฟล์: {e}", 'danger')
     else:
-        flash('Only Excel files (.xls, .xlsx) are supported', 'danger')
+        flash('รองรับเฉพาะไฟล์ Excel (.xls, .xlsx) เท่านั้น', 'danger')
     return redirect(url_for('settings_page'))
 
 @app.route('/api/import_backup_file', methods=['POST'])
@@ -2230,15 +2639,15 @@ def api_import_backup_file():
                         created += 1
                 except Exception: skipped += 1
             cache.clear()
-            return jsonify({"status": "success", "message": f"Import successful! Created: {created}, Updated: {updated}, Skipped: {skipped}"})
+            return jsonify({"status": "success", "message": f"นำเข้าสำเร็จ! สร้างใหม่: {created}, อัปเดต: {updated}, ข้าม: {skipped}"})
         elif file_type == 'settings_json':
             if not isinstance(data, dict): return jsonify({"status": "error", "message": "JSON is not a dict."}), 400
             if save_app_settings(data):
                 run_scheduler(); cache.clear()
-                return jsonify({"status": "success", "message": "Settings imported successfully!"})
-            else: return jsonify({"status": "error", "message": "Error saving settings"}), 500
+                return jsonify({"status": "success", "message": "นำเข้าการตั้งค่าเรียบร้อยแล้ว!"})
+            else: return jsonify({"status": "error", "message": "เกิดข้อผิดพลาดในการบันทึกการตั้งค่า"}), 500
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Error: {e}"}), 500
+        return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
 
 @app.route('/api/preview_backup_file', methods=['POST'])
 def preview_backup_file():
@@ -2262,7 +2671,7 @@ def preview_backup_file():
             }
             return jsonify({"status": "success", "type": "settings", "preview_settings": preview})
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Error: {e}"}), 500
+        return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
 
 @app.route('/technician_report')
 def technician_report():
@@ -2329,14 +2738,14 @@ def manage_duplicates():
 def delete_duplicates_batch():
     ids = request.form.getlist('task_ids')
     if not ids:
-        flash('No items selected for deletion', 'warning')
+        flash('ไม่พบรายการที่เลือกเพื่อลบ', 'warning')
         return redirect(url_for('manage_duplicates'))
     deleted, failed = 0, 0
     for task_id in ids:
         if delete_google_task(task_id): deleted += 1
         else: failed += 1
     if deleted > 0: cache.clear()
-    flash(f'Successfully deleted {deleted} tasks, {failed} failed.', 'success' if failed == 0 else 'warning')
+    flash(f'ลบงานที่เลือกสำเร็จ: {deleted} รายการ. ล้มเหลว: {failed} รายการ.', 'success' if failed == 0 else 'warning')
     return redirect(url_for('manage_duplicates'))
 
 @app.route('/manage_equipment_duplicates', methods=['GET'])
@@ -2353,7 +2762,7 @@ def manage_equipment_duplicates():
 def delete_equipment_duplicates_batch():
     indices = sorted([int(idx) for idx in request.form.getlist('item_indices')], reverse=True)
     if not indices:
-        flash('No equipment items selected for deletion', 'warning')
+        flash('ไม่พบรายการอุปกรณ์ที่เลือกเพื่อลบ', 'warning')
         return redirect(url_for('manage_equipment_duplicates'))
     catalog = get_app_settings().get('equipment_catalog', [])
     deleted_count = 0
@@ -2362,16 +2771,16 @@ def delete_equipment_duplicates_batch():
             catalog.pop(idx)
             deleted_count += 1
     if save_app_settings({'equipment_catalog': catalog}):
-        flash(f'Successfully deleted {deleted_count} equipment items.', 'success')
+        flash(f'ลบรายการอุปกรณ์ที่เลือกสำเร็จ: {deleted_count} รายการ.', 'success')
     else:
-        flash('Error saving equipment catalog changes', 'danger')
+        flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงแคตตาล็อกอุปกรณ์', 'danger')
     return redirect(url_for('manage_equipment_duplicates'))
 
 @app.route('/customer_onboarding/<task_id>')
 def customer_onboarding_page(task_id):
     task = get_single_task(task_id)
     if not task: abort(404)
-    return render_template('customer_onboarding.html', task=task, LINE_LOGIN_CHANNEL_ID=LIFF_ID_FORM) # Changed to LIFF_ID_FORM
+    return render_template('customer_onboarding.html', task=task, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
 
 @app.route('/generate_customer_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
@@ -2390,7 +2799,7 @@ def customer_problem_form():
     if not task: abort(404)
     parsed = parse_google_task_dates(task)
     parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('customer_problem_form.html', task=parsed, LINE_LOGIN_CHANNEL_ID=LIFF_ID_FORM) # Changed to LIFF_ID_FORM
+    return render_template('customer_problem_form.html', task=parsed, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
 
 @app.route('/generate_public_report_qr/<task_id>')
 def generate_public_report_qr(task_id):
@@ -2406,7 +2815,7 @@ def trigger_customer_follow_up_test():
     with app.app_context():
         tasks = [t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed' and t.get('completed')]
         if not tasks:
-            flash('No completed tasks found for testing.', 'warning')
+            flash('ไม่พบงานที่เสร็จแล้วสำหรับใช้ทดสอบ.', 'warning')
             return redirect(url_for('settings_page'))
         latest = max(tasks, key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')))
         notes = latest.get('notes', '')
@@ -2426,7 +2835,7 @@ def trigger_customer_follow_up_test():
         
         cache.clear()
         scheduled_customer_follow_up_job()
-        flash(f"Testing follow-up for latest task: '{latest.get('title')}'", 'info')
+        flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
     return redirect(url_for('settings_page'))
 
 @app.route('/public_report/<task_id>')
@@ -2537,7 +2946,7 @@ def callback():
         abort(400)
     except Exception as e:
         app.logger.error(f"Error handling LINE webhook event: {e}", exc_info=True)
-        #notify_admin_error(f"Webhook Handler Error: {e}") # You can enable this to notify admin, but be careful with rate limits
+        #notify_admin_error(f"Webhook Handler Error: {e}") # สามารถเปิดใช้งานเพื่อแจ้งเตือน แต่ต้องระวัง Rate Limit
         abort(500)
     return 'OK'
 
@@ -2652,7 +3061,7 @@ def handle_postback(event):
         final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         _execute_google_api_call_with_retry(update_google_task, task_id, notes=final_notes)
         cache.clear()
-        try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="Thank you for your confirmation! 🙏)"))
+        try: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏)"))
         except Exception: pass
 
 @app.route("/admin/organize_files", methods=['GET', 'POST'])
@@ -2660,19 +3069,19 @@ def organize_files():
     if request.method == 'POST':
         service = get_google_drive_service()
         if not service:
-            flash('Could not connect to Google Drive API', 'danger')
+            flash('ไม่สามารถเชื่อมต่อ Google Drive API ได้', 'danger')
             return redirect(url_for('organize_files'))
 
         all_tasks = get_google_tasks_for_report(show_completed=True)
         if all_tasks is None:
-            flash('Could not retrieve all tasks', 'danger')
+            flash('ไม่สามารถดึงข้อมูลงานทั้งหมดได้', 'danger')
             return redirect(url_for('organize_files'))
             
         moved_count, skipped_count, error_count = 0, 0, 0
         
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
         if not attachments_base_folder_id:
-            flash('Could not create or find base "Task_Attachments" folder', 'danger')
+            flash('ไม่สามารถสร้างหรือค้นหาโฟลเดอร์หลัก "Task_Attachments" ได้', 'danger')
             return redirect(url_for('organize_files'))
 
         unorganized_files_query = (
@@ -2704,7 +3113,7 @@ def organize_files():
                     break
         except HttpError as e:
             app.logger.error(f"Error listing files for organization: {e}")
-            flash('Error retrieving file list from Google Drive', 'danger')
+            flash('เกิดข้อผิดพลาดในการดึงรายการไฟล์จาก Google Drive', 'danger')
             return redirect(url_for('organize_files'))
 
         file_parents_map = {f['id']: f.get('parents', []) for f in all_files_in_base_and_uncategorized}
@@ -2799,17 +3208,17 @@ def organize_files():
                 app.logger.error(f"Unexpected error when processing file {file_id} ('{file_name}'): {file_other_error}")
                 error_count += 1
 
-        flash(f'File organization complete! Moved: {moved_count} files, Skipped (already in place/no data/not found): {skipped_count} files, Errors: {error_count} files.', 'success')
+        flash(f'การจัดระเบียบไฟล์เสร็จสิ้น! ย้ายสำเร็จ: {moved_count} ไฟล์, ข้าม (อยู่แล้ว/ไม่มีข้อมูล/ไม่พบ): {skipped_count} ไฟล์, เกิดข้อผิดพลาด: {error_count} ไฟล์.', 'success')
         return redirect(url_for('organize_files'))
 
     return render_template('organize_files.html')
 
-# Route for LIFF App Popup
+# *** เพิ่ม Route สำหรับ LIFF App Popup ***
 @app.route('/liff_notification_popup')
 def liff_notification_popup():
-    # This page will be opened by URIAction in LINE message
-    # Parameters will be passed as URL query parameters
-    return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM)
+    # หน้านี้จะถูกเปิดโดย URIAction ใน LINE message
+    # ตัวแปรต่างๆ จะถูกส่งมาเป็น URL query parameters
+    return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM) # ส่ง LIFF ID ไปให้ JS ด้วย
 
 
 if __name__ == '__main__':
