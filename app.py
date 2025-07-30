@@ -1093,7 +1093,7 @@ def scheduled_appointment_reminder_job():
             message_text = (
                 f"🔔 งานสำหรับวันนี้\n\n"
                 f"ชื่องาน: {task.get('title', '-')}\n"
-                f"👤 ลูกค้า: {customer_info.get('name', '-')}\n"
+                f"ลูกค้า: {customer_info.get('name', '-')}\n"
                 f"📞 โทร: {customer_info.get('phone', '-')}\n"
                 f"🗓️ นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n"
                 f"📍 {location_info}\n\n"
@@ -1240,6 +1240,9 @@ def cleanup_scheduler():
 
 # --- Initial app setup calls ---
 with app.app_context():
+    # **ย้าย Jinja2 filter มาไว้ตรงนี้**
+    app.jinja_env.filters['dateutil_parse'] = date_parse
+    
     load_settings_from_drive_on_startup()
     run_scheduler()
 
