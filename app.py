@@ -180,7 +180,7 @@ app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PE
 
 
 SETTINGS_FILE = 'settings.json'
-# _DEFAULT_APP_SETTINGS_STORE **ย้ายมาไว้ที่นี่** เพื่อให้ถูกประกาศก่อนใช้งานใน get_app_settings()
+# _DEFAULT_APP_SETTINGS_STORE ย้ายมาไว้ที่นี่เพื่อให้ถูกประกาศก่อนใช้งาน
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
