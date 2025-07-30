@@ -2212,7 +2212,6 @@ def task_details(task_id):
                            all_attachments=all_attachments,
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
                            )
-# ... (Previous code up to the end of the `task_details` route) ...
 
 @app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
 def api_edit_report_text(task_id, report_index):
