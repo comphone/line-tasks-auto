@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แจ้งเตือน</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        /* CSS Styling ของคุณ */
+        body {
+            font-family: 'Sukhumvit Set', 'Kanit', sans-serif; /* เพิ่ม font fallback */
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .logo {
+            max-width: 80px;
+            height: auto; /* เพื่อรักษา aspect ratio */
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #1DB446;
+            font-size: 1.8em;
+            margin-bottom: 15px;
+        }
+        p {
+            font-size: 1em;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        .button-group {
+            margin-top: 20px;
+            display: flex; /* ใช้ flexbox จัดเรียงปุ่ม */
+            flex-wrap: wrap; /* ให้ปุ่มขึ้นบรรทัดใหม่ได้ถ้าไม่พอ */
+            justify-content: center; /* จัดปุ่มให้อยู่ตรงกลาง */
+            gap: 10px; /* ระยะห่างระหว่างปุ่ม */
+        }
+        .button-group button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            flex: 1 1 auto; /* ให้ปุ่มขยายและหดได้ */
+            max-width: calc(50% - 10px); /* จำกัดความกว้างไม่ให้เกินครึ่งจอ (เว้น gap) */
+            box-sizing: border-box;
+        }
+        .button-group button:hover {
+            opacity: 0.9;
+        }
+        .button-group .call-button {
+            background-color: #28a745;
+        }
+        .button-group .map-button {
+            background-color: #6c757d;
+        }
+        .button-group .report-button {
+            background-color: #ffc107; /* ปุ่มสำหรับดูรายงานสรุปงาน */
+        }
+        .info-box {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .info-box p {
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="" alt="Logo" class="logo" id="appLogo">
+        <h1 id="notificationTitle"></h1>
+        <p id="notificationContent"></p>
+        
+        <div class="info-box">
+            <p><strong>ลูกค้า:</strong> <span id="customerName"></span></p>
+            <p><strong>เบอร์โทรศัพท์:</strong> <span id="customerPhone"></span></p>
+            <p><strong>ที่อยู่:</strong> <span id="customerAddress"></span></p>
+        </div>
+
+        <div class="button-group" style="margin-top: 20px;">
+            <button class="call-button" id="callButton" style="display:none;">📞 โทรหาลูกค้า</button>
+            <button class="map-button" id="mapButton" style="display:none;">📍 เปิดแผนที่</button>
+            <button class="report-button" id="reportButton" style="display:none;">📄 ดูรายงานสรุป</button>
+            <button onclick="closeLiff()">ปิด</button>
+        </div>
+    </div>
+
+    <script>
+        // LIFF ID จะถูกส่งมาจาก Flask context
+        // ตรวจสอบว่า `LIFF_ID_FORM` ถูกส่งมาถูกต้องจาก Flask
+        let liffId = "{{ LIFF_ID_FORM }}"; 
+
+        async function initializeLiff() {
+            try {
+                await liff.init({ liffId: liffId });
+                console.log("LIFF initialized successfully.");
+                await liff.ready; // รอให้ LIFF พร้อมใช้งาน
+
+                const params = new URLSearchParams(window.location.search);
+                const notificationType = params.get('type');
+                const taskId = params.get('task_id');
+                // ใช้ decodeURIComponent เพื่อถอดรหัส URL parameters
+                const message = decodeURIComponent(params.get('message') || '');
+                const customerName = decodeURIComponent(params.get('customer_name') || '');
+                const customerPhone = decodeURIComponent(params.get('customer_phone') || '');
+                const customerAddress = decodeURIComponent(params.get('customer_address') || '');
+                const customerMapUrl = decodeURIComponent(params.get('customer_map_url') || '');
+                const shopPhone = decodeURIComponent(params.get('shop_phone') || '');
+                const logoUrl = decodeURIComponent(params.get('logo_url') || '');
+                const reportUrl = decodeURIComponent(params.get('report_url') || ''); // สำหรับรายงานสรุปงาน
+
+                document.getElementById('appLogo').src = logoUrl || '{{ url_for('static', filename='logo.png') }}'; // ใช้ logo.png เป็น fallback
+                document.getElementById('notificationTitle').innerText = getTitleForType(notificationType);
+                document.getElementById('notificationContent').innerText = message;
+                document.getElementById('customerName').innerText = customerName || '-';
+                document.getElementById('customerPhone').innerText = customerPhone || '-';
+                document.getElementById('customerAddress').innerText = customerAddress || '-';
+                
+                const callButton = document.getElementById('callButton');
+                const mapButton = document.getElementById('mapButton');
+                const reportButton = document.getElementById('reportButton');
+
+                if (customerPhone && customerPhone !== '-') {
+                    callButton.style.display = 'inline-block';
+                    callButton.onclick = () => window.location.href = `tel:${customerPhone}`;
+                }
+                if (customerMapUrl && customerMapUrl !== '-') {
+                    mapButton.style.display = 'inline-block';
+                    // ตรวจสอบว่าเป็น URL หรือแค่ Lat,Lon
+                    if (customerMapUrl.startsWith('http')) {
+                        mapButton.onclick = () => window.open(customerMapUrl, '_blank');
+                    } else {
+                        // ถ้าเป็นแค่ Lat,Lon ให้สร้าง Google Maps URL
+                        mapButton.onclick = () => window.open(`https://www.google.com/maps/search/?api=1&query=${customerMapUrl}`, '_blank');
+                    }
+                }
+                // แสดงปุ่มรายงานสรุปเฉพาะเมื่อเป็นแจ้งเตือนปิดงานและมี reportUrl
+                if (notificationType === 'completion' && reportUrl && reportUrl !== '-') {
+                    reportButton.style.display = 'inline-block';
+                    reportButton.onclick = () => window.open(reportUrl, '_blank'); // เปิดในหน้าต่างใหม่
+                }
+
+            } catch (error) {
+                console.error("LIFF initialization failed:", error);
+                document.getElementById('notificationTitle').innerText = "เกิดข้อผิดพลาดในการโหลด";
+                document.getElementById('notificationContent').innerText = "ไม่สามารถโหลดข้อมูลการแจ้งเตือนได้ กรุณาลองใหม่อีกครั้ง";
+            }
+        }
+
+        function getTitleForType(type) {
+            switch(type) {
+                case 'arrival': return 'ช่างกำลังจะถึง';
+                case 'completion': return 'งานเสร็จเรียบร้อย';
+                case 'nearby_job': return 'มีงานใกล้เคียง';
+                case 'new_task': return 'มีงานใหม่เข้า!';
+                case 'update': return 'อัปเดตงาน!';
+                case 'test': return 'แจ้งเตือนทดสอบ!';
+                default: return 'แจ้งเตือนสถานะ';
+            }
+        }
+
+        function closeLiff() {
+            liff.closeWindow();
+        }
+
+        initializeLiff();
+    </script>
+</body>
+</html>

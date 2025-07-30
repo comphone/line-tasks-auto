@@ -29,9 +29,6 @@
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
 </div>
 
-<!-- This area is now handled by base.html -->
-<!-- The duplicate flash message block has been removed -->
-
 <form method="POST" action="{{ url_for('settings_page') }}" id="settingsForm" class="needs-validation" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" id="technician_list_json" name="technician_list_json">
@@ -44,27 +41,80 @@
             <div class="row mb-3">
                 <label for="appointment_reminder_hour" class="col-md-4 col-form-label">แจ้งเตือนนัดหมาย (โมงไทย)</label>
                 <div class="col-md-8">
-                    <input type="number" class="form-control" id="appointment_reminder_hour" name="appointment_reminder_hour"
+                    <input type="number" class="form-control" id="appointment_reminder_hour" name="report_times[appointment_reminder_hour]"
                            value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23" required>
                 </div>
             </div>
             <div class="row mb-3">
                 <label for="outstanding_report_hour" class="col-md-4 col-form-label">รายงานค้างงาน (โมงไทย)</label>
                 <div class="col-md-8">
-                    <input type="number" class="form-control" id="outstanding_report_hour" name="outstanding_report_hour"
+                    <input type="number" class="form-control" id="outstanding_report_hour" name="report_times[outstanding_report_hour]"
                            value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23" required>
                 </div>
             </div>
             <div class="row mb-3">
                 <label for="customer_followup_hour" class="col-md-4 col-form-label">ติดตามลูกค้า (โมงไทย)</label>
                 <div class="col-md-8">
-                    <input type="number" class="form-control" id="customer_followup_hour" name="customer_followup_hour"
+                    <input type="number" class="form-control" id="customer_followup_hour" name="report_times[customer_followup_hour]"
                            value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23" required>
                 </div>
             </div>
         </div>
     </div>
 
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-dark">
+            <h5 class="mb-0"><i class="fas fa-mobile-alt me-2"></i>การตั้งค่าแจ้งเตือนบนมือถือ (LINE LIFF Popup)</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="mb-3">
+                <label for="liff_popup_base_url" class="form-label">LIFF App Base URL (สำหรับแจ้งเตือนป๊อปอัป):</label>
+                <input type="url" class="form-control" id="liff_popup_base_url" name="popup_notifications[liff_popup_base_url]"
+                       value="{{ settings.popup_notifications.liff_popup_base_url }}" placeholder="เช่น https://line-tasks-auto.onrender.com/liff_notification_popup">
+                <div class="form-text">URL ของ LIFF App ที่สร้างใน LINE Developers Console (ต้องตรงกับ Endpoint URL ที่ตั้งค่าไว้)</div>
+            </div>
+            <hr>
+            <h6>ประเภทการแจ้งเตือน (ส่งเป็น LINE Push Message เปิด LIFF)</h6>
+            
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enabled_arrival" name="popup_notifications[enabled_arrival]"
+                       {{ 'checked' if settings.popup_notifications.enabled_arrival else '' }}>
+                <label class="form-check-label" for="enabled_arrival">เปิดใช้งาน: แจ้งเตือนช่างกำลังจะถึงลูกค้า</label>
+            </div>
+            <div class="mb-3">
+                <label for="message_arrival_template" class="form-label">ข้อความแม่แบบ (ช่างจะถึงลูกค้า):</label>
+                <textarea class="form-control" id="message_arrival_template" name="popup_notifications[message_arrival_template]">{{ settings.popup_notifications.message_arrival_template }}</textarea>
+                <small class="form-text text-muted">ใช้ [technician_name], [customer_name] เป็นตัวแปร</small>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enabled_completion_customer" name="popup_notifications[enabled_completion_customer]"
+                       {{ 'checked' if settings.popup_notifications.enabled_completion_customer else '' }}>
+                <label class="form-check-label" for="enabled_completion_customer">เปิดใช้งาน: แจ้งเตือนปิดงานถึงลูกค้า</label>
+            </div>
+            <div class="mb-3">
+                <label for="message_completion_customer_template" class="form-label">ข้อความแม่แบบ (ปิดงานลูกค้า):</label>
+                <textarea class="form-control" id="message_completion_customer_template" name="popup_notifications[message_completion_customer_template]">{{ settings.popup_notifications.message_completion_customer_template }}</textarea>
+                <small class="form-text text-muted">ใช้ [task_title], [customer_name] เป็นตัวแปร</small>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enabled_nearby_job" name="popup_notifications[enabled_nearby_job]"
+                       {{ 'checked' if settings.popup_notifications.enabled_nearby_job else '' }}>
+                <label class="form-check-label" for="enabled_nearby_job">เปิดใช้งาน: แจ้งเตือนงานใกล้เคียง (สำหรับช่าง)</label>
+            </div>
+            <div class="mb-3">
+                <label for="nearby_radius_km" class="form-label">รัศมีแจ้งเตือนงานใกล้เคียง (กม.):</label>
+                <input type="number" step="0.1" class="form-control" id="nearby_radius_km" name="popup_notifications[nearby_radius_km]"
+                       value="{{ settings.popup_notifications.nearby_radius_km }}">
+            </div>
+            <div class="mb-3">
+                <label for="message_nearby_template" class="form-label">ข้อความแม่แบบ (งานใกล้เคียง):</label>
+                <textarea class="form-control" id="message_nearby_template" name="popup_notifications[message_nearby_template]">{{ settings.popup_notifications.message_nearby_template }}</textarea>
+                <small class="form-text text-muted">ใช้ [task_title], [distance_km], [customer_name] เป็นตัวแปร</small>
+            </div>
+        </div>
+    </div>
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fab fa-line me-2"></i>ข้อมูล LINE Bot</h5>
@@ -73,7 +123,7 @@
             <div class="row mb-3">
                 <label for="admin_group_id" class="col-md-4 col-form-label">LINE Admin Group ID</label>
                 <div class="col-md-8">
-                    <input type="text" class="form-control" id="admin_group_id" name="admin_group_id"
+                    <input type="text" class="form-control" id="admin_group_id" name="line_recipients[admin_group_id]"
                            value="{{ settings.line_recipients.admin_group_id }}">
                     <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนภายใน</div>
                 </div>
@@ -81,7 +131,7 @@
             <div class="row mb-3">
                 <label for="technician_group_id" class="col-md-4 col-form-label">LINE Technician Group ID</label>
                 <div class="col-md-8">
-                    <input type="text" class="form-control" id="technician_group_id" name="technician_group_id"
+                    <input type="text" class="form-control" id="technician_group_id" name="line_recipients[technician_group_id]"
                            value="{{ settings.line_recipients.technician_group_id }}">
                     <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนให้ช่าง (ถ้าแยกจาก Admin)</div>
                 </div>
@@ -89,7 +139,7 @@
              <div class="row mb-3">
                 <label for="manager_user_id" class="col-md-4 col-form-label">LINE Manager User ID</label>
                 <div class="col-md-8">
-                    <input type="text" class="form-control" id="manager_user_id" name="manager_user_id"
+                    <input type="text" class="form-control" id="manager_user_id" name="line_recipients[manager_user_id]"
                            value="{{ settings.line_recipients.manager_user_id }}">
                     <div class="form-text">LINE User ID ของผู้จัดการ (ถ้ามี)</div>
                 </div>
@@ -150,7 +200,7 @@
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-secondary text-white">
         <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือดูแลและจัดการข้อมูล</h5>
-    </div>
+        </div>
     <div class="card-body p-4">
         <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
         <a href="{{ url_for('organize_files') }}" class="btn btn-info mb-2"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
@@ -244,6 +294,19 @@
                     <input type="text" class="form-control" id="technician-name" placeholder="เช่น ช่างโต้">
                 </div>
                 <div class="mb-3">
+                    <label for="technician-line-id" class="form-label">LINE User ID</label>
+                    <input type="text" class="form-control" id="technician-line-id" placeholder="LINE User ID ของช่าง">
+                    <div class="form-text">ใช้สำหรับส่งแจ้งเตือนส่วนตัว</div>
+                </div>
+                <div class="mb-3">
+                    <label for="technician-lat" class="form-label">ละติจูด (Latitude)</label>
+                    <input type="number" step="any" class="form-control" id="technician-lat" placeholder="เช่น 13.xxxxxx">
+                </div>
+                <div class="mb-3">
+                    <label for="technician-lon" class="form-label">ลองจิจูด (Longitude)</label>
+                    <input type="number" step="any" class="form-control" id="technician-lon" placeholder="เช่น 100.xxxxxx">
+                </div>
+                <div class="mb-3">
                     <label for="technician-avatar-file" class="form-label">รูปภาพโปรไฟล์ (Avatar)</label>
                     <input type="file" class="form-control" id="technician-avatar-file" accept="image/*">
                     <div class="form-text">เลือกไฟล์รูปภาพใหม่เพื่ออัปโหลด (ถ้าไม่เลือกจะใช้รูปเดิม)</div>
@@ -299,10 +362,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const tech = technicians[index];
             document.getElementById('technician-name').value = tech.name;
             document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
+            document.getElementById('technician-line-id').value = tech.line_user_id || ''; // ดึง LINE User ID
+            document.getElementById('technician-lat').value = tech.last_known_lat || '';   // ดึง Lat
+            document.getElementById('technician-lon').value = tech.last_known_lon || '';   // ดึง Lon
             document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
         } else {
             document.getElementById('technician-name').value = '';
             document.getElementById('technician-avatar-id').value = '';
+            document.getElementById('technician-line-id').value = ''; // เคลียร์ LINE User ID
+            document.getElementById('technician-lat').value = '';   // เคลียร์ Lat
+            document.getElementById('technician-lon').value = '';   // เคลียร์ Lon
             document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
         }
         technicianEditModal.show();
@@ -317,6 +386,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const name = document.getElementById('technician-name').value.trim();
         const avatarFile = document.getElementById('technician-avatar-file').files[0];
         let avatarId = document.getElementById('technician-avatar-id').value;
+        const lineUserId = document.getElementById('technician-line-id').value.trim(); // รับ LINE User ID
+        const lat = document.getElementById('technician-lat').value; // รับ Lat
+        const lon = document.getElementById('technician-lon').value; // รับ Lon
 
         if (!name) {
             alert('กรุณาใส่ชื่อช่าง');
@@ -350,7 +422,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        const newTech = { name: name, avatar_id: avatarId };
+        // สร้าง Object ช่างใหม่พร้อมข้อมูลเพิ่มเติม
+        const newTech = { 
+            name: name, 
+            avatar_id: avatarId,
+            line_user_id: lineUserId, // บันทึก LINE User ID
+            last_known_lat: lat !== '' ? parseFloat(lat) : null, // แปลงเป็น float
+            last_known_lon: lon !== '' ? parseFloat(lon) : null  // แปลงเป็น float
+        };
 
         if (currentIndex > -1) {
             technicians[currentIndex] = newTech;
@@ -373,6 +452,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        // ก่อนส่งฟอร์ม ตรวจสอบ checkboxs
+        // เนื่องจากการส่งค่า checkbox ที่ไม่ได้ติ๊กจะไม่ถูกส่งมาใน form data
+        // เราต้องจัดการเองเพื่อให้ค่า false ถูกส่งไปด้วย
+        const form = e.target;
+        const hiddenInputs = [];
+
+        // สำหรับกลุ่ม popup_notifications
+        ['enabled_arrival', 'enabled_completion_customer', 'enabled_nearby_job'].forEach(id => {
+            const checkbox = document.getElementById(id);
+            if (!checkbox.checked) {
+                const hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = `popup_notifications[${id}]`;
+                hiddenInput.value = 'off'; // ส่งค่า 'off' เพื่อระบุว่าไม่ได้ติ๊ก
+                hiddenInputs.push(hiddenInput);
+            }
+        });
+
+        // เพิ่ม hidden inputs เข้าไปในฟอร์มก่อน submit
+        hiddenInputs.forEach(input => form.appendChild(input));
+
+
         document.getElementById('technician_list_json').value = JSON.stringify(technicians);
     });
 
