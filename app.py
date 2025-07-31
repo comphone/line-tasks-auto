@@ -2140,7 +2140,8 @@ def task_details(task_id):
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []),
                            all_attachments=all_attachments,
-                           progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', [])
+                           progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
+                           LIFF_ID_FORM=LIFF_ID_FORM
                            )
 
 @app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
