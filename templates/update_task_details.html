@@ -239,12 +239,9 @@
                 <button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
                     <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน (จากตำแหน่งช่าง)
                 </button>
-<<<<<<< HEAD
                 <form id="updateLocationForm" onsubmit="window.handleFormSubmission(event, this, 'location-status')" style="display:none;">
-=======
                 <div class="form-text mt-2" id="locationStatus" style="display:none;"></div>
                 <form id="updateLocationForm" onsubmit="window.handleLocationUpdate(event, this)" style="display:none;">
->>>>>>> 807d311 (...)
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="update_location">
                     <div class="row mt-3">
@@ -636,7 +633,7 @@
     let currentReportIndex = -1;
 
     // --- Helper Functions (attached to window for global access from onclick) ---
-<<<<<<< HEAD
+
 
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
@@ -771,7 +768,7 @@
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         
         // Geolocation Logic
-=======
+
 
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
@@ -911,38 +908,37 @@
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
 
->>>>>>> 807d311 (...)
+
         const updateLocationBtn = document.getElementById('updateLocationBtn');
         const updateLocationForm = document.getElementById('updateLocationForm');
         const locationStatus = document.getElementById('location-status');
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
 
-<<<<<<< HEAD
+
         // *** การแก้ไขส่วนที่ 1 ***
         // ฟังก์ชันนี้จะทำงานแค่ init LIFF เท่านั้น จะไม่สั่ง login อัตโนมัติ
-=======
->>>>>>> 807d311 (...)
+
         async function initializeLiffForGeo() {
             try {
                 if (!liffId) throw new Error("LIFF ID is missing.");
                 await liff.init({ liffId: liffId });
-<<<<<<< HEAD
+
                 console.log("LIFF initialized successfully for Geolocation.");
-=======
->>>>>>> 807d311 (...)
+
+
             } catch (error) {
                 console.error("LIFF initialization failed:", error);
                 if(updateLocationBtn) {
                     updateLocationBtn.disabled = true;
                     updateLocationBtn.title = "ไม่สามารถใช้งานฟังก์ชันนี้ได้: LIFF Error";
-<<<<<<< HEAD
+
                 }
                 if(locationStatus) {
                      locationStatus.style.display = 'block';
                      locationStatus.innerText = 'ไม่ได้ตั้งค่า LIFF ID หรือเกิดข้อผิดพลาด';
-=======
->>>>>>> 807d311 (...)
+
+
                 }
             }
         }
@@ -955,20 +951,20 @@
                 // ถ้ายังไม่ล็อกอิน ให้ล็อกอินก่อน แล้วจบการทำงานไป
                 if (!liff.isLoggedIn()) {
                     liff.login();
-<<<<<<< HEAD
+
                     return; 
                 }
 
                 // ถ้าล็อกอินแล้ว ให้เริ่มดึงพิกัด
                 locationStatus.style.display = 'block';
                 locationStatus.className = 'form-text text-info';
-=======
+
                     return;
                 }
 
                 locationStatus.style.display = 'block';
                 locationStatus.className = 'form-text text-info mt-2';
->>>>>>> 807d311 (...)
+
                 locationStatus.innerText = 'กำลังค้นหาตำแหน่ง...';
                 updateLocationBtn.disabled = true;
 
@@ -977,7 +973,7 @@
                     latitudeInput.value = location.latitude;
                     longitudeInput.value = location.longitude;
                     locationStatus.innerText = `ดึงพิกัดสำเร็จ!`;
-<<<<<<< HEAD
+
                     locationStatus.className = 'form-text text-success';
                     updateLocationForm.style.display = 'block';
                 } catch (error) {
@@ -992,7 +988,7 @@
                     }
                     locationStatus.innerText = errorMessage;
                     locationStatus.className = 'form-text text-danger';
-=======
+
                     locationStatus.className = 'form-text text-success mt-2';
                     updateLocationForm.style.display = 'block';
                 } catch (error) {
@@ -1000,16 +996,16 @@
                     if (error.code) { /* ... error handling ... */ }
                     locationStatus.innerText = errorMessage;
                     locationStatus.className = 'form-text text-danger mt-2';
->>>>>>> 807d311 (...)
+
                     updateLocationBtn.disabled = false;
                 }
             });
         }
-<<<<<<< HEAD
-        
-=======
 
->>>>>>> 807d311 (...)
+        
+
+
+
         window.cancelLocationUpdate = () => {
              if (updateLocationForm) updateLocationForm.style.display = 'none';
              if (locationStatus) locationStatus.style.display = 'none';
@@ -1018,7 +1014,7 @@
              if(updateLocationBtn) updateLocationBtn.disabled = false;
         };
 
-<<<<<<< HEAD
+
         // Initialize Tribute.js for text snippets
         if (progressReportSnippets && progressReportSnippets.length > 0) {
             const tributeOptions = {
@@ -1133,12 +1129,12 @@
         } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
     };
     
-=======
+
         // ... (โค้ดส่วนอื่นๆ ที่เหลือ) ...
     });
 
     // ... (ฟังก์ชัน Helper อื่นๆ ทั้งหมด) ...
 
->>>>>>> 807d311 (...)
+
 </script>
 {% endblock %}

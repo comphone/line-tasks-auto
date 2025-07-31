@@ -3198,10 +3198,10 @@ def organize_files():
 
 @app.route('/liff_notification_popup')
 def liff_notification_popup():
-<<<<<<< HEAD
+
     return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM)
 
-=======
+
     # หน้านี้จะถูกเปิดโดย URIAction ใน LINE message
     # ตัวแปรต่างๆ จะถูกส่งมาเป็น URL query parameters
     return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM) # ส่ง LIFF ID ไปให้ JS ด้วย
@@ -3215,7 +3215,7 @@ def technician_location_liff_page():
         abort(500, "LIFF ID for this feature is not configured on the server.")
     return render_template('technician_location_update.html', LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
 # ----------------------------------------------------
->>>>>>> 807d311 (...)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)      
