@@ -234,33 +234,31 @@
             </div>
 
             {% if task.status != 'completed' %}
-            <div id="updateLocationSection" class="info-card full-width-card">
-                <h6 class="info-label"><i class="fas fa-location-arrow"></i>อัปเดตพิกัดงาน</h6>
-                <button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
-                    <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน (จากตำแหน่งช่าง)
-                </button>
-                <form id="updateLocationForm" onsubmit="window.handleFormSubmission(event, this, 'location-status')" style="display:none;">
-                <div class="form-text mt-2" id="locationStatus" style="display:none;"></div>
-                <form id="updateLocationForm" onsubmit="window.handleLocationUpdate(event, this)" style="display:none;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <input type="hidden" name="action" value="update_location">
-                    <div class="row mt-3">
-                        <div class="col-md-6 mb-2">
-                            <label for="latitude" class="form-label">ละติจูด (Latitude)</label>
-                            <input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
-                        </div>
-                        <div class="col-md-6 mb-2">
-                            <label for="longitude" class="form-label">ลองจิจูด (Longitude)</label>
-                            <input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center mt-2">
-                        <button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
-                        <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
-                    </div>
-                </form>
-                 <div id="location-status" class="mt-2" style="display:none;"></div>
-            </div>
+			<div id="updateLocationSection" class="info-card full-width-card">
+				<h6 class="info-label"><i class="fas fa-location-arrow"></i>อัปเดตพิกัดงาน</h6>
+				<button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
+					<i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน
+				</button>
+				<form id="updateLocationForm" onsubmit="window.handleLocationUpdate(event, this)" style="display:none;">
+					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+					<input type="hidden" name="action" value="update_location">
+					<div class="row mt-3">
+						<div class="col-md-6 mb-2">
+						<label for="latitude" class="form-label">ละติจูด (Latitude)</label>
+						<input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
+					</div>
+					<div class="col-md-6 mb-2">
+						<label for="longitude" class="form-label">ลองจิจูด (Longitude)</label>
+						<input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
+					</div>
+				</div>
+				<div class="d-flex align-items-center mt-2">
+					<button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
+					<button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
+				</div>
+			</form>
+			 <div class="form-text mt-2" id="locationStatus" style="display:none;"></div>
+			</div>
             {% endif %}
         </div>
 
