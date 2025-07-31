@@ -211,11 +211,10 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'enabled_nearby_job': False,
         'nearby_radius_km': 5, # รัศมีแจ้งเตือนงานใกล้เคียง
         'message_nearby_template': 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?',
-        'liff_popup_base_url': 'https://line-tasks-auto.onrender.com/liff_notification_popup' # URL ของ LIFF App ที่จะเปิด
+        'liff_popup_base_url': 'https://liff.line.me/2007690244-zBNe26ZO' # ใช้ LIFF URL จริงจาก LINE Developers Console
     }
     # *** สิ้นสุดส่วนที่เพิ่ม ***
 }
-
 
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
