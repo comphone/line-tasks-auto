@@ -634,142 +634,6 @@
 
     // --- Helper Functions (attached to window for global access from onclick) ---
 
-
-    window.flashMessage = (message, category = 'info') => {
-        const container = document.getElementById('js-flash-message-container');
-        if (!container) return;
-        const alertId = `flash-${Date.now()}`;
-        const alertHtml = `
-            <div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        `;
-        container.insertAdjacentHTML('beforeend', alertHtml);
-        setTimeout(() => {
-            const alertElement = document.getElementById(alertId);
-            if (alertElement) {
-                const alertInstance = bootstrap.Alert.getInstance(alertElement);
-                if (alertInstance) alertInstance.close();
-                else alertElement.remove();
-            }
-        }, 5000);
-    };
-
-    window.showActionCard = (cardIdToShow) => {
-        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
-        document.getElementById('chooseActionCard').style.display = 'none';
-        
-        const cardToShow = document.getElementById(cardIdToShow);
-        if (cardToShow) cardToShow.style.display = 'block';
-        else document.getElementById('chooseActionCard').style.display = 'block';
-    };
-    
-    window.openTechnicianModal = (targetId) => {
-        currentTechnicianTargetId = targetId;
-        const container = document.getElementById('technician-list-container');
-        const hiddenInput = document.getElementById(targetId);
-        const selectedValues = hiddenInput ? hiddenInput.value.split(',').filter(Boolean) : [];
-
-        container.innerHTML = '';
-        technicianList.forEach(tech => {
-            const techName = typeof tech === 'object' ? tech.name : tech;
-            const isChecked = selectedValues.includes(techName);
-            container.innerHTML += `
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}>
-                    <label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}">${techName}</label>
-                </div>
-            `;
-        });
-        technicianSelectionModal.show();
-    };
-
-    window.confirmTechnicianSelection = () => {
-        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
-        const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
-        const hiddenInput = document.getElementById(currentTechnicianTargetId);
-
-        if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
-        if (hiddenInput) hiddenInput.value = selectedNames.join(',');
-        
-        technicianSelectionModal.hide();
-    };
-
-    window.handleFormSubmission = async (event, form, statusElementId) => {
-        event.preventDefault();
-        if (!form.checkValidity()) {
-            form.classList.add('was-validated');
-            window.flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning');
-            return;
-        }
-
-        const submitButton = form.querySelector('button[type="submit"]');
-        const originalButtonHtml = submitButton.innerHTML;
-        submitButton.disabled = true;
-        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
-
-        const statusBox = document.getElementById(statusElementId);
-        if (statusBox) {
-            statusBox.style.display = 'inline-block';
-            statusBox.innerHTML = '';
-        }
-
-        const formData = new FormData(form);
-        const filesInput = form.querySelector('input[type="file"][name="files[]"]');
-        const files = filesInput ? Array.from(filesInput.files) : [];
-        let uploadedAttachments = [];
-
-        if (files.length > 0) {
-            for (let i = 0; i < files.length; i++) {
-                if(statusBox) statusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
-                const fileFormData = new FormData();
-                fileFormData.append('file', files[i]);
-                fileFormData.append('task_id', taskId);
-                fileFormData.append('csrf_token', csrfToken);
-                try {
-                    const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
-                    const result = await response.json();
-                    if (response.ok && result.status === 'success') {
-                        uploadedAttachments.push(result.file_info);
-                    } else { throw new Error(result.message); }
-                } catch (error) { window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger'); }
-            }
-        }
-        
-        formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
-        if (filesInput) formData.delete('files[]');
-
-        if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
-
-        try {
-            const response = await fetch(form.action || window.location.href, {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            const result = await response.json();
-            if (response.ok && result.status === 'success') {
-                window.flashMessage(result.message, 'success');
-                setTimeout(() => window.location.reload(), 1500);
-            } else { throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก'); }
-        } catch (error) {
-            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHtml;
-            if(statusBox) statusBox.style.display = 'none';
-        }
-    };
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize Modals
-        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
-        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
-        
-        // Geolocation Logic
-
-
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -908,63 +772,35 @@
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
 
-
         const updateLocationBtn = document.getElementById('updateLocationBtn');
         const updateLocationForm = document.getElementById('updateLocationForm');
-        const locationStatus = document.getElementById('location-status');
+        const locationStatus = document.getElementById('locationStatus');
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
-
-
-        // *** การแก้ไขส่วนที่ 1 ***
-        // ฟังก์ชันนี้จะทำงานแค่ init LIFF เท่านั้น จะไม่สั่ง login อัตโนมัติ
 
         async function initializeLiffForGeo() {
             try {
                 if (!liffId) throw new Error("LIFF ID is missing.");
                 await liff.init({ liffId: liffId });
-
-                console.log("LIFF initialized successfully for Geolocation.");
-
-
             } catch (error) {
                 console.error("LIFF initialization failed:", error);
                 if(updateLocationBtn) {
                     updateLocationBtn.disabled = true;
                     updateLocationBtn.title = "ไม่สามารถใช้งานฟังก์ชันนี้ได้: LIFF Error";
-
-                }
-                if(locationStatus) {
-                     locationStatus.style.display = 'block';
-                     locationStatus.innerText = 'ไม่ได้ตั้งค่า LIFF ID หรือเกิดข้อผิดพลาด';
-
-
                 }
             }
         }
         initializeLiffForGeo();
 
         if (updateLocationBtn) {
-            // *** การแก้ไขส่วนที่ 2 ***
-            // ย้ายตรรกะการ login มาไว้ใน event click ของปุ่ม
             updateLocationBtn.addEventListener('click', async () => {
-                // ถ้ายังไม่ล็อกอิน ให้ล็อกอินก่อน แล้วจบการทำงานไป
                 if (!liff.isLoggedIn()) {
                     liff.login();
-
-                    return; 
-                }
-
-                // ถ้าล็อกอินแล้ว ให้เริ่มดึงพิกัด
-                locationStatus.style.display = 'block';
-                locationStatus.className = 'form-text text-info';
-
                     return;
                 }
 
                 locationStatus.style.display = 'block';
                 locationStatus.className = 'form-text text-info mt-2';
-
                 locationStatus.innerText = 'กำลังค้นหาตำแหน่ง...';
                 updateLocationBtn.disabled = true;
 
@@ -973,22 +809,6 @@
                     latitudeInput.value = location.latitude;
                     longitudeInput.value = location.longitude;
                     locationStatus.innerText = `ดึงพิกัดสำเร็จ!`;
-
-                    locationStatus.className = 'form-text text-success';
-                    updateLocationForm.style.display = 'block';
-                } catch (error) {
-                    let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
-                    if (error.code) {
-                        switch(error.code) {
-                            case 'PERMISSION_DENIED': errorMessage = 'คุณไม่ได้อนุญาตให้เข้าถึงตำแหน่ง'; break;
-                            case 'POSITION_UNAVAILABLE': errorMessage = 'สัญญาณ GPS อ่อน ไม่สามารถระบุตำแหน่งได้'; break;
-                            case 'TIMEOUT': errorMessage = 'ค้นหาตำแหน่งนานเกินไป'; break;
-                            default: errorMessage = `เกิดข้อผิดพลาด: ${error.code}`;
-                        }
-                    }
-                    locationStatus.innerText = errorMessage;
-                    locationStatus.className = 'form-text text-danger';
-
                     locationStatus.className = 'form-text text-success mt-2';
                     updateLocationForm.style.display = 'block';
                 } catch (error) {
@@ -996,15 +816,10 @@
                     if (error.code) { /* ... error handling ... */ }
                     locationStatus.innerText = errorMessage;
                     locationStatus.className = 'form-text text-danger mt-2';
-
                     updateLocationBtn.disabled = false;
                 }
             });
         }
-
-        
-
-
 
         window.cancelLocationUpdate = () => {
              if (updateLocationForm) updateLocationForm.style.display = 'none';
@@ -1014,127 +829,10 @@
              if(updateLocationBtn) updateLocationBtn.disabled = false;
         };
 
-
-        // Initialize Tribute.js for text snippets
-        if (progressReportSnippets && progressReportSnippets.length > 0) {
-            const tributeOptions = {
-                values: progressReportSnippets,
-                selectTemplate: (item) => (item ? item.original.value.trim() + ' ' : null),
-                menuItemTemplate: (item) => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`,
-                noMatchTemplate: () => '<li class="p-2 text-muted">ไม่พบข้อความที่ตรงกัน</li>',
-                allowSpaces: true, menuContainer: document.body
-            };
-            const textareasToAttach = ['work_summary_progress', 'work_summary_final', 'reschedule_reason', 'editTextarea'];
-            textareasToAttach.forEach(id => {
-                const element = document.getElementById(id);
-                if (element) new Tribute(tributeOptions).attach(element);
-            });
-        }
-        
-        // Form submission listener for text editing
-        const editReportTextForm = document.getElementById('editReportTextForm');
-        if (editReportTextForm) {
-            editReportTextForm.addEventListener('submit', (e) => saveReportText(e));
-        }
-
-        // Enable/Disable progress report save button based on input
-        const progressSummary = document.getElementById('work_summary_progress');
-        const progressFiles = document.getElementById('files_progress');
-        const saveProgressBtn = document.getElementById('saveProgressBtn');
-        function toggleSaveProgressBtn() {
-            if (saveProgressBtn) {
-                saveProgressBtn.disabled = !(progressSummary.value.trim() || progressFiles.files.length > 0);
-            }
-        }
-        if (progressSummary) progressSummary.addEventListener('input', toggleSaveProgressBtn);
-        if (progressFiles) progressFiles.addEventListener('change', toggleSaveProgressBtn);
-    });
-
-    // Edit Text Modal Logic
-    async function saveReportText(event) {
-        event.preventDefault();
-        const newSummary = document.getElementById('editTextarea').value.trim();
-        if (newSummary === "" || currentReportIndex < 0) return;
-        
-        const submitButton = event.target.querySelector('button[type="submit"]');
-        const originalButtonHtml = submitButton.innerHTML;
-        submitButton.disabled = true;
-        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
-
-        try {
-            const response = await fetch(`/api/task/${taskId}/edit_report_text/${currentReportIndex}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify({ summary: newSummary })
-            });
-            const result = await response.json();
-            if (response.ok && result.status === 'success') {
-                document.getElementById(`summary-text-${currentReportIndex}`).textContent = newSummary;
-                techReportsHistory[currentReportIndex].work_summary = newSummary;
-                editReportTextModal.hide();
-                window.flashMessage(result.message, 'success');
-            } else { throw new Error(result.message); }
-        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
-        finally {
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHtml;
-        }
-    }
-
-    window.openEditTextModal = (index) => {
-        currentReportIndex = index;
-        const report = techReportsHistory[index];
-        if (report) {
-            document.getElementById('editTextarea').value = report.work_summary || '';
-            editReportTextModal.show();
-        }
-    };
-
-    // Edit Attachments Modal Logic
-    window.openEditAttachmentsModal = (index) => {
-        currentReportIndex = index;
-        const report = techReportsHistory[index];
-        if (!report) return;
-
-        const container = document.getElementById('current-attachments-container');
-        container.innerHTML = (report.attachments && report.attachments.length > 0) ?
-            report.attachments.map(att => `
-                <div class="form-check d-inline-block p-1 text-center">
-                    <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" alt="${att.name}">
-                    <br><input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
-                    <label class="form-check-label" for="att-${att.id}"><small>${att.name || 'ไฟล์'}</small></label>
-                </div>
-            `).join('') :
-            '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
-        
-        document.getElementById('editReportForm').action = `/task/${taskId}/edit_report/${index}`;
-        document.querySelector('#editReportForm input[name="new_files[]"]').value = '';
-        editReportModal.show();
-    };
-
-    // Delete Report Logic
-    window.deleteReport = async (index) => {
-        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้และไฟล์แนบทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้')) return;
-        
-        try {
-            const response = await fetch(`/api/task/${taskId}/delete_report/${index}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
-            });
-            const result = await response.json();
-            if (response.ok && result.status === 'success') {
-                document.getElementById(`history-entry-${index}`).remove();
-                window.flashMessage(result.message, 'success');
-            } else { throw new Error(result.message); }
-        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
-    };
-    
-
         // ... (โค้ดส่วนอื่นๆ ที่เหลือ) ...
     });
 
     // ... (ฟังก์ชัน Helper อื่นๆ ทั้งหมด) ...
-
 
 </script>
 {% endblock %}

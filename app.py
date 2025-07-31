@@ -3202,7 +3202,16 @@ def organize_files():
 @app.route('/liff_notification_popup')
 def liff_notification_popup():
     return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM)
-
+    
+# --- วางโค้ดใหม่สำหรับหน้า LIFF ของช่างไว้ตรงนี้ ---
+@app.route('/liff/technician/update_location')
+@csrf.exempt
+def technician_location_liff_page():
+    if not LIFF_ID_TECHNICIAN_LOCATION:
+        app.logger.error("LIFF_ID_TECHNICIAN_LOCATION is not set. Cannot render technician LIFF page.")
+        abort(500, "LIFF ID for this feature is not configured on the server.")
+    return render_template('technician_location_update.html', LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
+# ----------------------------------------------------
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
