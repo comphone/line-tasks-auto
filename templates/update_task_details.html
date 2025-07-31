@@ -226,39 +226,39 @@
                         <p class="info-value">{{ task.customer.address or '-' }}</p>
                     </div>
                     {% if task.customer.map_url %}
-						<a id="customer-map-link" href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
-							<i class="fas fa-map-marked-alt text-danger"></i>
-						</a>
+                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
+                            <i class="fas fa-map-marked-alt text-danger"></i>
+                        </a>
                     {% endif %}
                 </div>
             </div>
 
             {% if task.status != 'completed' %}
-			<div id="updateLocationSection" class="info-card full-width-card">
-				<h6 class="info-label"><i class="fas fa-location-arrow"></i>อัปเดตพิกัดงาน</h6>
-				<button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
-					<i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน
-				</button>
-				<form id="updateLocationForm" onsubmit="window.handleLocationUpdate(event, this)" style="display:none;">
-					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-					<input type="hidden" name="action" value="update_location">
-					<div class="row mt-3">
-						<div class="col-md-6 mb-2">
-						<label for="latitude" class="form-label">ละติจูด (Latitude)</label>
-						<input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
-					</div>
-					<div class="col-md-6 mb-2">
-						<label for="longitude" class="form-label">ลองจิจูด (Longitude)</label>
-						<input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
-					</div>
-				</div>
-				<div class="d-flex align-items-center mt-2">
-					<button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
-					<button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
-				</div>
-			</form>
-			 <div class="form-text mt-2" id="locationStatus" style="display:none;"></div>
-			</div>
+            <div id="updateLocationSection" class="info-card full-width-card">
+                <h6 class="info-label"><i class="fas fa-location-arrow"></i>อัปเดตพิกัดงาน</h6>
+                <button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
+                    <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน (จากตำแหน่งช่าง)
+                </button>
+                <form id="updateLocationForm" onsubmit="window.handleFormSubmission(event, this, 'location-status')" style="display:none;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="update_location">
+                    <div class="row mt-3">
+                        <div class="col-md-6 mb-2">
+                            <label for="latitude" class="form-label">ละติจูด (Latitude)</label>
+                            <input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label for="longitude" class="form-label">ลองจิจูด (Longitude)</label>
+                            <input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center mt-2">
+                        <button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
+                        <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
+                    </div>
+                </form>
+                 <div id="location-status" class="mt-2" style="display:none;"></div>
+            </div>
             {% endif %}
         </div>
 
@@ -653,51 +653,44 @@
         }, 5000);
     };
 
-    window.handleLocationUpdate = async (event, form) => {
-        event.preventDefault();
-        const statusBox = document.getElementById('locationStatus');
-        const submitButton = form.querySelector('button[type="submit"]');
-        const originalButtonHtml = submitButton.innerHTML;
+    window.showActionCard = (cardIdToShow) => {
+        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
+        document.getElementById('chooseActionCard').style.display = 'none';
+        
+        const cardToShow = document.getElementById(cardIdToShow);
+        if (cardToShow) cardToShow.style.display = 'block';
+        else document.getElementById('chooseActionCard').style.display = 'block';
+    };
+    
+    window.openTechnicianModal = (targetId) => {
+        currentTechnicianTargetId = targetId;
+        const container = document.getElementById('technician-list-container');
+        const hiddenInput = document.getElementById(targetId);
+        const selectedValues = hiddenInput ? hiddenInput.value.split(',').filter(Boolean) : [];
 
-        submitButton.disabled = true;
-        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
-        if(statusBox) statusBox.innerHTML = 'กำลังบันทึก...';
+        container.innerHTML = '';
+        technicianList.forEach(tech => {
+            const techName = typeof tech === 'object' ? tech.name : tech;
+            const isChecked = selectedValues.includes(techName);
+            container.innerHTML += `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}>
+                    <label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}">${techName}</label>
+                </div>
+            `;
+        });
+        technicianSelectionModal.show();
+    };
 
-        try {
-            const formData = new FormData(form);
-            const response = await fetch(window.location.href, {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            const result = await response.json();
+    window.confirmTechnicianSelection = () => {
+        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
+        const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
+        const hiddenInput = document.getElementById(currentTechnicianTargetId);
 
-            if (response.ok && result.status === 'success') {
-                // การทำงานเมื่อสำเร็จ (ไม่รีโหลดหน้า)
-                window.flashMessage(result.message, 'success');
-
-                // อัปเดตลิงก์แผนที่ในหน้าเว็บทันที
-                const newLat = formData.get('latitude');
-                const newLon = formData.get('longitude');
-                const mapLink = document.getElementById('customer-map-link');
-                if(mapLink && newLat && newLon) {
-                    mapLink.href = `https://www.google.com/maps?q=$${newLat},${newLon}`;
-                }
-
-                // ซ่อนฟอร์มและรีเซ็ตสถานะ
-                form.style.display = 'none';
-                if(statusBox) statusBox.style.display = 'none';
-                window.cancelLocationUpdate(); // เรียกใช้ฟังก์ชันเดิมเพื่อรีเซ็ตค่าและปุ่ม
-
-            } else {
-                throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก');
-            }
-        } catch (error) {
-            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-        } finally {
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHtml;
-        }
+        if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
+        if (hiddenInput) hiddenInput.value = selectedNames.join(',');
+        
+        technicianSelectionModal.hide();
     };
 
     window.handleFormSubmission = async (event, form, statusElementId) => {
@@ -740,7 +733,7 @@
                 } catch (error) { window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger'); }
             }
         }
-
+        
         formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
         if (filesInput) formData.delete('files[]');
 
@@ -755,7 +748,7 @@
             const result = await response.json();
             if (response.ok && result.status === 'success') {
                 window.flashMessage(result.message, 'success');
-                setTimeout(() => window.location.reload(), 1500); // รีโหลดหน้าสำหรับ action อื่นๆ
+                setTimeout(() => window.location.reload(), 1500);
             } else { throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก'); }
         } catch (error) {
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
@@ -764,41 +757,54 @@
             if(statusBox) statusBox.style.display = 'none';
         }
     };
-
+    
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize Modals
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
-
+        
+        // Geolocation Logic
         const updateLocationBtn = document.getElementById('updateLocationBtn');
         const updateLocationForm = document.getElementById('updateLocationForm');
-        const locationStatus = document.getElementById('locationStatus');
+        const locationStatus = document.getElementById('location-status');
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
 
+        // *** การแก้ไขส่วนที่ 1 ***
+        // ฟังก์ชันนี้จะทำงานแค่ init LIFF เท่านั้น จะไม่สั่ง login อัตโนมัติ
         async function initializeLiffForGeo() {
             try {
                 if (!liffId) throw new Error("LIFF ID is missing.");
                 await liff.init({ liffId: liffId });
+                console.log("LIFF initialized successfully for Geolocation.");
             } catch (error) {
                 console.error("LIFF initialization failed:", error);
                 if(updateLocationBtn) {
                     updateLocationBtn.disabled = true;
                     updateLocationBtn.title = "ไม่สามารถใช้งานฟังก์ชันนี้ได้: LIFF Error";
                 }
+                if(locationStatus) {
+                     locationStatus.style.display = 'block';
+                     locationStatus.innerText = 'ไม่ได้ตั้งค่า LIFF ID หรือเกิดข้อผิดพลาด';
+                }
             }
         }
         initializeLiffForGeo();
 
         if (updateLocationBtn) {
+            // *** การแก้ไขส่วนที่ 2 ***
+            // ย้ายตรรกะการ login มาไว้ใน event click ของปุ่ม
             updateLocationBtn.addEventListener('click', async () => {
+                // ถ้ายังไม่ล็อกอิน ให้ล็อกอินก่อน แล้วจบการทำงานไป
                 if (!liff.isLoggedIn()) {
                     liff.login();
-                    return;
+                    return; 
                 }
 
+                // ถ้าล็อกอินแล้ว ให้เริ่มดึงพิกัด
                 locationStatus.style.display = 'block';
-                locationStatus.className = 'form-text text-info mt-2';
+                locationStatus.className = 'form-text text-info';
                 locationStatus.innerText = 'กำลังค้นหาตำแหน่ง...';
                 updateLocationBtn.disabled = true;
 
@@ -807,18 +813,25 @@
                     latitudeInput.value = location.latitude;
                     longitudeInput.value = location.longitude;
                     locationStatus.innerText = `ดึงพิกัดสำเร็จ!`;
-                    locationStatus.className = 'form-text text-success mt-2';
+                    locationStatus.className = 'form-text text-success';
                     updateLocationForm.style.display = 'block';
                 } catch (error) {
                     let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
-                    if (error.code) { /* ... error handling ... */ }
+                    if (error.code) {
+                        switch(error.code) {
+                            case 'PERMISSION_DENIED': errorMessage = 'คุณไม่ได้อนุญาตให้เข้าถึงตำแหน่ง'; break;
+                            case 'POSITION_UNAVAILABLE': errorMessage = 'สัญญาณ GPS อ่อน ไม่สามารถระบุตำแหน่งได้'; break;
+                            case 'TIMEOUT': errorMessage = 'ค้นหาตำแหน่งนานเกินไป'; break;
+                            default: errorMessage = `เกิดข้อผิดพลาด: ${error.code}`;
+                        }
+                    }
                     locationStatus.innerText = errorMessage;
-                    locationStatus.className = 'form-text text-danger mt-2';
+                    locationStatus.className = 'form-text text-danger';
                     updateLocationBtn.disabled = false;
                 }
             });
         }
-
+        
         window.cancelLocationUpdate = () => {
              if (updateLocationForm) updateLocationForm.style.display = 'none';
              if (locationStatus) locationStatus.style.display = 'none';
@@ -827,10 +840,119 @@
              if(updateLocationBtn) updateLocationBtn.disabled = false;
         };
 
-        // ... (โค้ดส่วนอื่นๆ ที่เหลือ) ...
+        // Initialize Tribute.js for text snippets
+        if (progressReportSnippets && progressReportSnippets.length > 0) {
+            const tributeOptions = {
+                values: progressReportSnippets,
+                selectTemplate: (item) => (item ? item.original.value.trim() + ' ' : null),
+                menuItemTemplate: (item) => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`,
+                noMatchTemplate: () => '<li class="p-2 text-muted">ไม่พบข้อความที่ตรงกัน</li>',
+                allowSpaces: true, menuContainer: document.body
+            };
+            const textareasToAttach = ['work_summary_progress', 'work_summary_final', 'reschedule_reason', 'editTextarea'];
+            textareasToAttach.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) new Tribute(tributeOptions).attach(element);
+            });
+        }
+        
+        // Form submission listener for text editing
+        const editReportTextForm = document.getElementById('editReportTextForm');
+        if (editReportTextForm) {
+            editReportTextForm.addEventListener('submit', (e) => saveReportText(e));
+        }
+
+        // Enable/Disable progress report save button based on input
+        const progressSummary = document.getElementById('work_summary_progress');
+        const progressFiles = document.getElementById('files_progress');
+        const saveProgressBtn = document.getElementById('saveProgressBtn');
+        function toggleSaveProgressBtn() {
+            if (saveProgressBtn) {
+                saveProgressBtn.disabled = !(progressSummary.value.trim() || progressFiles.files.length > 0);
+            }
+        }
+        if (progressSummary) progressSummary.addEventListener('input', toggleSaveProgressBtn);
+        if (progressFiles) progressFiles.addEventListener('change', toggleSaveProgressBtn);
     });
 
-    // ... (ฟังก์ชัน Helper อื่นๆ ทั้งหมด) ...
+    // Edit Text Modal Logic
+    async function saveReportText(event) {
+        event.preventDefault();
+        const newSummary = document.getElementById('editTextarea').value.trim();
+        if (newSummary === "" || currentReportIndex < 0) return;
+        
+        const submitButton = event.target.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
+        try {
+            const response = await fetch(`/api/task/${taskId}/edit_report_text/${currentReportIndex}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ summary: newSummary })
+            });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                document.getElementById(`summary-text-${currentReportIndex}`).textContent = newSummary;
+                techReportsHistory[currentReportIndex].work_summary = newSummary;
+                editReportTextModal.hide();
+                window.flashMessage(result.message, 'success');
+            } else { throw new Error(result.message); }
+        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
+        finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    }
+
+    window.openEditTextModal = (index) => {
+        currentReportIndex = index;
+        const report = techReportsHistory[index];
+        if (report) {
+            document.getElementById('editTextarea').value = report.work_summary || '';
+            editReportTextModal.show();
+        }
+    };
+
+    // Edit Attachments Modal Logic
+    window.openEditAttachmentsModal = (index) => {
+        currentReportIndex = index;
+        const report = techReportsHistory[index];
+        if (!report) return;
+
+        const container = document.getElementById('current-attachments-container');
+        container.innerHTML = (report.attachments && report.attachments.length > 0) ?
+            report.attachments.map(att => `
+                <div class="form-check d-inline-block p-1 text-center">
+                    <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" alt="${att.name}">
+                    <br><input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
+                    <label class="form-check-label" for="att-${att.id}"><small>${att.name || 'ไฟล์'}</small></label>
+                </div>
+            `).join('') :
+            '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
+        
+        document.getElementById('editReportForm').action = `/task/${taskId}/edit_report/${index}`;
+        document.querySelector('#editReportForm input[name="new_files[]"]').value = '';
+        editReportModal.show();
+    };
+
+    // Delete Report Logic
+    window.deleteReport = async (index) => {
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้และไฟล์แนบทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้')) return;
+        
+        try {
+            const response = await fetch(`/api/task/${taskId}/delete_report/${index}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+            });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                document.getElementById(`history-entry-${index}`).remove();
+                window.flashMessage(result.message, 'success');
+            } else { throw new Error(result.message); }
+        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
+    };
+    
 </script>
 {% endblock %}
