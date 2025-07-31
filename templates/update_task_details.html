@@ -416,7 +416,7 @@
                         <div class="d-flex align-items-center flex-wrap">
                             <small class="text-muted me-3 mb-2">{{ (report_entry.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}</small>
                             {% if report_entry.type == 'report' %}
-                            <button class="btn btn-sm btn-outline-primary mb-2 me-1" onclick="openEditTextModal('{{ report_entry.work_summary | escape }}', {{ loop.index0 }})" title="แก้ไขข้อความสรุป">
+                            <button class="btn btn-sm btn-outline-primary mb-2 me-1" onclick="openEditTextModal({{ loop.index0 }})" title="แก้ไขข้อความสรุป">
                                 <i class="fas fa-pen"></i>
                             </button>
                             <button class="btn btn-sm btn-outline-secondary mb-2 me-1" onclick="openEditAttachmentsModal({{ loop.index0 }})">
@@ -934,7 +934,7 @@
         
         if (editAttachmentsModalElement) {
             editReportModal = new bootstrap.Modal(editAttachmentsModalElement);
-            const manageAttachmentsForm = document.getElementById('manageAttachmentsForm');
+            const manageAttachmentsForm = document.getElementById('editReportForm');
             if (manageAttachmentsForm) {
                 manageAttachmentsForm.addEventListener('submit', async function(event) {
                     event.preventDefault(); // Prevent default form submission
@@ -984,7 +984,7 @@
                                 flashMessage(`อัปโหลดไฟล์ ${file.name} ล้มเหลว: ${error.message}`, 'danger');
                             } finally {
                                 if (newProgressBar) {
-                                    const progress = ((i + 1) / newFiles.length) * 100;
+                                    const progress = ((i + 1) / files.length) * 100;
                                     newProgressBar.style.width = progress + '%';
                                     newProgressBar.innerText = Math.round(progress) + '%';
                                     if (progress === 100) {
@@ -1064,7 +1064,7 @@
             }
 
             // Set the form action for the modal
-            const manageAttachmentsForm = document.getElementById('editReportForm'); // Changed to editReportForm
+            const manageAttachmentsForm = document.getElementById('editReportForm');
             manageAttachmentsForm.action = `/task/{{ task.id }}/edit_report/${currentEditAttachmentsReportIndex}`;
             
             // Clear new file input
@@ -1313,7 +1313,7 @@
                     uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> กำลังอัปโหลด ${i + 1}/${files.length}`;
                     const fileFormData = new FormData();
                     fileFormData.append('file', files[i]);
-                    fileFormData.append('task_id', '{{ task.id }}');
+                    fileFormData.append('task_id', taskId);
                     fileFormData.append('csrf_token', csrfToken);
                     try {
                         const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
