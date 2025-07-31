@@ -2024,6 +2024,25 @@ def task_details(task_id):
             })
             flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
             flash_category = 'success'
+            
+        elif action == 'update_location':
+            latitude = request.form.get('latitude')
+            longitude = request.form.get('longitude')
+            if not latitude or not longitude:
+                return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลพิกัด'}), 400
+
+            # สร้าง map url ใหม่และแทนที่อันเก่าใน base notes
+            new_map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+            # แทนที่ URL แผนที่เก่า หรือเพิ่มใหม่ถ้ายังไม่มี
+            if re.search(r"https?:\/\/[^\s]+", base_notes_text):
+                base_notes_text = re.sub(r"https?:\/\/[^\s]+", new_map_url, base_notes_text)
+            elif re.search(r"\-?\d+\.\d+,\s*\-?\d+\.\d+", base_notes_text):
+                 base_notes_text = re.sub(r"\-?\d+\.\d+,\s*\-?\d+\.\d+", f"{latitude},{longitude}", base_notes_text)
+            else:
+                base_notes_text += f"\n{new_map_url}"
+
+            flash_message = 'อัปเดตพิกัดเรียบร้อยแล้ว!'
+            flash_category = 'success'            
         
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()

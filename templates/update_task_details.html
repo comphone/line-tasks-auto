@@ -3,7 +3,6 @@
 {% block title %}จัดการงาน: {{ task.title }}{% endblock %}
 
 {% block head_extra %}
-<!-- LIFF SDK for geolocation -->
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
     /* --- START: CSS ที่ออกแบบใหม่ --- */
@@ -200,11 +199,15 @@
         </div>
 
         <div class="info-grid">
-            <div class="info-card">
-                <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
-                <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+            <div class="info-card task-title-card">
+                <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
+                <p class="info-value task-title">{{ task.title | replace('\n', '<br>') | safe }}</p>
             </div>
             <div class="info-card">
+                 <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
+                <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+            </div>
+             <div class="info-card">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
@@ -229,15 +232,14 @@
                     {% endif %}
                 </div>
             </div>
-            <!-- *** เพิ่มปุ่มอัปเดตพิกัด *** -->
+
             {% if task.status != 'completed' %}
             <div id="updateLocationSection" class="info-card full-width-card">
                 <h6 class="info-label"><i class="fas fa-location-arrow"></i>อัปเดตพิกัดงาน</h6>
                 <button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
-                    <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน
+                    <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน (จากตำแหน่งช่าง)
                 </button>
-                <div class="form-text mt-2" id="locationStatus" style="display:none;"></div>
-                <form id="updateLocationForm" method="POST" action="{{ url_for('task_details', task_id=task.id) }}" style="display:none;">
+                <form id="updateLocationForm" onsubmit="window.handleFormSubmission(event, this, 'location-status')" style="display:none;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="update_location">
                     <div class="row mt-3">
@@ -250,24 +252,24 @@
                             <input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
+                    <div class="d-flex align-items-center mt-2">
+                        <button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
+                        <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
+                    </div>
                 </form>
+                 <div id="location-status" class="mt-2" style="display:none;"></div>
             </div>
             {% endif %}
-            <!-- *** สิ้นสุดการเพิ่มปุ่มอัปเดตพิกัด *** -->
         </div>
+
         <hr>
+        {% if task.status == 'completed' %}
         <p>
-            <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#customerOnboardingModal">
-                <i class="fab fa-line me-1"></i> ส่ง QR Code ลูกค้าเชื่อมต่อ LINE
-            </button>
-            {% if task.status == 'completed' %}
-            <button type="button" class="btn btn-outline-info btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#publicReportQRModal">
-                <i class="fas fa-file-alt me-1"></i> QR Code รายงานสรุปสาธารณะ
-            </button>
-            {% endif %}
+            <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn btn-outline-info btn-sm">
+                 <i class="fas fa-file-alt me-1"></i> ดู QR Code รายงานสรุปสาธารณะ
+            </a>
         </p>
+        {% endif %}
     </div>
 
     <div class="card shadow-sm mb-4" id="chooseActionCard">
@@ -554,6 +556,7 @@
         </div>
     </div>
 </div>
+
 <div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
@@ -623,7 +626,6 @@
     // --- State Variables ---
     let slideIndex;
     let currentTechnicianTargetId;
-    let touchStartX = 0;
     let isSelectionMode = false;
     let selectedAttachments = new Set();
     let currentReportIndex = -1;
@@ -645,28 +647,19 @@
             const alertElement = document.getElementById(alertId);
             if (alertElement) {
                 const alertInstance = bootstrap.Alert.getInstance(alertElement);
-                if (alertInstance) {
-                    alertInstance.close();
-                } else {
-                    alertElement.remove();
-                }
+                if (alertInstance) alertInstance.close();
+                else alertElement.remove();
             }
         }, 5000);
     };
 
     window.showActionCard = (cardIdToShow) => {
-        document.querySelectorAll('.action-card').forEach(card => {
-            card.style.display = 'none';
-        });
+        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
         document.getElementById('chooseActionCard').style.display = 'none';
         
         const cardToShow = document.getElementById(cardIdToShow);
-        if (cardToShow) {
-            cardToShow.style.display = 'block';
-        } else {
-            // Fallback to the main choice card if the target doesn't exist
-            document.getElementById('chooseActionCard').style.display = 'block';
-        }
+        if (cardToShow) cardToShow.style.display = 'block';
+        else document.getElementById('chooseActionCard').style.display = 'block';
     };
     
     window.openTechnicianModal = (targetId) => {
@@ -677,7 +670,7 @@
 
         container.innerHTML = '';
         technicianList.forEach(tech => {
-            const techName = typeof tech === 'object' ? tech.name : tech; // Handle both string array and object array
+            const techName = typeof tech === 'object' ? tech.name : tech;
             const isChecked = selectedValues.includes(techName);
             container.innerHTML += `
                 <div class="form-check">
@@ -690,9 +683,7 @@
     };
 
     window.confirmTechnicianSelection = () => {
-        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked'))
-            .map(cb => cb.value);
-            
+        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
         const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
         const hiddenInput = document.getElementById(currentTechnicianTargetId);
 
@@ -704,8 +695,6 @@
 
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
-
-        // Basic validation for required fields
         if (!form.checkValidity()) {
             form.classList.add('was-validated');
             window.flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning');
@@ -740,17 +729,13 @@
                     const result = await response.json();
                     if (response.ok && result.status === 'success') {
                         uploadedAttachments.push(result.file_info);
-                    } else {
-                        window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${result.message}`, 'danger');
-                    }
-                } catch (error) {
-                    window.flashMessage(`เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์ "${files[i].name}"`, 'danger');
-                }
+                    } else { throw new Error(result.message); }
+                } catch (error) { window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger'); }
             }
         }
         
         formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
-        formData.delete('files[]');
+        if (filesInput) formData.delete('files[]');
 
         if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
 
@@ -758,18 +743,13 @@
             const response = await fetch(form.action || window.location.href, {
                 method: 'POST',
                 body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             const result = await response.json();
-
             if (response.ok && result.status === 'success') {
                 window.flashMessage(result.message, 'success');
                 setTimeout(() => window.location.reload(), 1500);
-            } else {
-                throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก');
-            }
+            } else { throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก'); }
         } catch (error) {
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
             submitButton.disabled = false;
@@ -778,49 +758,30 @@
         }
     };
     
-    // --- Document Ready Initializations ---
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize Modals
-        if(document.getElementById('technicianSelectionModal')) {
-            technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        }
-        if(document.getElementById('editReportModal')) {
-            editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
-        }
-        if(document.getElementById('editReportTextModal')) {
-            editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
-        }
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         
-        // --- LIFF Initialization for Geolocation ---
+        // Geolocation Logic
         const updateLocationBtn = document.getElementById('updateLocationBtn');
         const updateLocationForm = document.getElementById('updateLocationForm');
-        const locationStatus = document.getElementById('locationStatus');
+        const locationStatus = document.getElementById('location-status');
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
 
         async function initializeLiffForGeo() {
             try {
-                // Ensure liffId is not empty before initializing
-                if (!liffId) {
-                    console.error("LIFF ID is missing. Geolocation feature will be disabled.");
-                    if(updateLocationBtn) updateLocationBtn.disabled = true;
-                    if(locationStatus) {
-                         locationStatus.style.display = 'block';
-                         locationStatus.className = 'form-text text-danger mt-2';
-                         locationStatus.innerText = 'ไม่ได้ตั้งค่า LIFF ID ในระบบ';
-                    }
-                    return;
-                }
+                if (!liffId) throw new Error("LIFF ID is missing.");
                 await liff.init({ liffId: liffId });
-                console.log("LIFF initialized for geolocation successfully.");
-                await liff.ready;
+                if (!liff.isLoggedIn()) liff.login();
             } catch (error) {
-                console.error("LIFF initialization for geolocation failed:", error);
+                console.error("LIFF initialization failed:", error);
                 if(updateLocationBtn) updateLocationBtn.disabled = true;
-                if (locationStatus) {
-                    locationStatus.style.display = 'block';
-                    locationStatus.className = 'form-text text-danger mt-2';
-                    locationStatus.innerText = 'ไม่สามารถโหลด LIFF เพื่อดึงพิกัดได้';
+                if(locationStatus) {
+                     locationStatus.style.display = 'block';
+                     locationStatus.innerText = 'ไม่ได้ตั้งค่า LIFF ID หรือเกิดข้อผิดพลาด';
                 }
             }
         }
@@ -828,7 +789,32 @@
 
         if (updateLocationBtn) {
             updateLocationBtn.addEventListener('click', async () => {
-                // The rest of your updateLocationBtn click logic...
+                locationStatus.style.display = 'block';
+                locationStatus.className = 'form-text text-info';
+                locationStatus.innerText = 'กำลังค้นหาตำแหน่ง...';
+                updateLocationBtn.disabled = true;
+
+                try {
+                    const location = await liff.getGeolocation();
+                    latitudeInput.value = location.latitude;
+                    longitudeInput.value = location.longitude;
+                    locationStatus.innerText = `ดึงพิกัดสำเร็จ!`;
+                    locationStatus.className = 'form-text text-success';
+                    updateLocationForm.style.display = 'block';
+                } catch (error) {
+                    let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                    if (error.code) {
+                        switch(error.code) {
+                            case 'PERMISSION_DENIED': errorMessage = 'คุณไม่ได้อนุญาตให้เข้าถึงตำแหน่ง'; break;
+                            case 'POSITION_UNAVAILABLE': errorMessage = 'สัญญาณ GPS อ่อน ไม่สามารถระบุตำแหน่งได้'; break;
+                            case 'TIMEOUT': errorMessage = 'ค้นหาตำแหน่งนานเกินไป'; break;
+                            default: errorMessage = `เกิดข้อผิดพลาด: ${error.code}`;
+                        }
+                    }
+                    locationStatus.innerText = errorMessage;
+                    locationStatus.className = 'form-text text-danger';
+                    updateLocationBtn.disabled = false;
+                }
             });
         }
         
@@ -837,6 +823,7 @@
              if (locationStatus) locationStatus.style.display = 'none';
              if (latitudeInput) latitudeInput.value = '';
              if (longitudeInput) longitudeInput.value = '';
+             if(updateLocationBtn) updateLocationBtn.disabled = false;
         };
 
         // Initialize Tribute.js for text snippets
@@ -846,22 +833,112 @@
                 selectTemplate: (item) => (item ? item.original.value.trim() + ' ' : null),
                 menuItemTemplate: (item) => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`,
                 noMatchTemplate: () => '<li class="p-2 text-muted">ไม่พบข้อความที่ตรงกัน</li>',
-                allowSpaces: true,
-                menuContainer: document.body
+                allowSpaces: true, menuContainer: document.body
             };
-            new Tribute(tributeOptions).attach(document.getElementById('work_summary_progress'));
-            new Tribute(tributeOptions).attach(document.getElementById('work_summary_final'));
-            new Tribute(tributeOptions).attach(document.getElementById('reschedule_reason'));
+            const textareasToAttach = ['work_summary_progress', 'work_summary_final', 'reschedule_reason', 'editTextarea'];
+            textareasToAttach.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) new Tribute(tributeOptions).attach(element);
+            });
         }
         
-        // Add form submission listener for text editing
-         const editReportTextForm = document.getElementById('editReportTextForm');
-         if (editReportTextForm) {
-            editReportTextForm.addEventListener('submit', (e) => saveReportText(e, currentReportIndex));
-         }
+        // Form submission listener for text editing
+        const editReportTextForm = document.getElementById('editReportTextForm');
+        if (editReportTextForm) {
+            editReportTextForm.addEventListener('submit', (e) => saveReportText(e));
+        }
+
+        // Enable/Disable progress report save button based on input
+        const progressSummary = document.getElementById('work_summary_progress');
+        const progressFiles = document.getElementById('files_progress');
+        const saveProgressBtn = document.getElementById('saveProgressBtn');
+        function toggleSaveProgressBtn() {
+            if (saveProgressBtn) {
+                saveProgressBtn.disabled = !(progressSummary.value.trim() || progressFiles.files.length > 0);
+            }
+        }
+        if (progressSummary) progressSummary.addEventListener('input', toggleSaveProgressBtn);
+        if (progressFiles) progressFiles.addEventListener('change', toggleSaveProgressBtn);
     });
 
-    // Other global functions for modals, lightbox, etc. can be defined here...
+    // Edit Text Modal Logic
+    async function saveReportText(event) {
+        event.preventDefault();
+        const newSummary = document.getElementById('editTextarea').value.trim();
+        if (newSummary === "" || currentReportIndex < 0) return;
+        
+        const submitButton = event.target.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
+        try {
+            const response = await fetch(`/api/task/${taskId}/edit_report_text/${currentReportIndex}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ summary: newSummary })
+            });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                document.getElementById(`summary-text-${currentReportIndex}`).textContent = newSummary;
+                techReportsHistory[currentReportIndex].work_summary = newSummary;
+                editReportTextModal.hide();
+                window.flashMessage(result.message, 'success');
+            } else { throw new Error(result.message); }
+        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
+        finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    }
+
+    window.openEditTextModal = (index) => {
+        currentReportIndex = index;
+        const report = techReportsHistory[index];
+        if (report) {
+            document.getElementById('editTextarea').value = report.work_summary || '';
+            editReportTextModal.show();
+        }
+    };
+
+    // Edit Attachments Modal Logic
+    window.openEditAttachmentsModal = (index) => {
+        currentReportIndex = index;
+        const report = techReportsHistory[index];
+        if (!report) return;
+
+        const container = document.getElementById('current-attachments-container');
+        container.innerHTML = (report.attachments && report.attachments.length > 0) ?
+            report.attachments.map(att => `
+                <div class="form-check d-inline-block p-1 text-center">
+                    <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" alt="${att.name}">
+                    <br><input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
+                    <label class="form-check-label" for="att-${att.id}"><small>${att.name || 'ไฟล์'}</small></label>
+                </div>
+            `).join('') :
+            '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
+        
+        document.getElementById('editReportForm').action = `/task/${taskId}/edit_report/${index}`;
+        document.querySelector('#editReportForm input[name="new_files[]"]').value = '';
+        editReportModal.show();
+    };
+
+    // Delete Report Logic
+    window.deleteReport = async (index) => {
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้และไฟล์แนบทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้')) return;
+        
+        try {
+            const response = await fetch(`/api/task/${taskId}/delete_report/${index}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+            });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                document.getElementById(`history-entry-${index}`).remove();
+                window.flashMessage(result.message, 'success');
+            } else { throw new Error(result.message); }
+        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
+    };
+    
 </script>
 {% endblock %}
