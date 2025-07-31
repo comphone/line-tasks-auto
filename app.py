@@ -1531,16 +1531,14 @@ def technician_location_liff_page():
 # --------------------------------------------------------------------
 
 # --- NEW: API Endpoint to receive location updates from technicians ---
+# --- NEW: API Endpoint to receive location updates from technicians ---
 @app.route('/api/technician-location/update', methods=['POST'])
 def api_update_technician_location():
     data = request.json
     line_user_id = data.get('line_user_id')
     lat = data.get('latitude')
     lon = data.get('longitude')
-    
-@app.route("/form", methods=['GET', 'POST'])
-def form_page():
-    if request.method == 'POST':
+
     if not all([line_user_id, lat, lon]):
         return jsonify({'status': 'error', 'message': 'Missing required data.'}), 400
 
@@ -1572,6 +1570,8 @@ def form_page():
         app.logger.error(f"Error updating technician location: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'An internal server error occurred.'}), 500
 # --------------------------------------------------------------------
+
+@app.route("/form", methods=['GET', 'POST'])
 def form_page():
     if request.method == 'POST':
         task_title = str(request.form.get('task_title', '')).strip()
