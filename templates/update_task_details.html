@@ -226,9 +226,9 @@
                         <p class="info-value">{{ task.customer.address or '-' }}</p>
                     </div>
                     {% if task.customer.map_url %}
-                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
-                            <i class="fas fa-map-marked-alt text-danger"></i>
-                        </a>
+						<a id="customer-map-link" href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
+							<i class="fas fa-map-marked-alt text-danger"></i>
+						</a>
                     {% endif %}
                 </div>
             </div>
@@ -239,7 +239,12 @@
                 <button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
                     <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน (จากตำแหน่งช่าง)
                 </button>
+<<<<<<< HEAD
                 <form id="updateLocationForm" onsubmit="window.handleFormSubmission(event, this, 'location-status')" style="display:none;">
+=======
+                <div class="form-text mt-2" id="locationStatus" style="display:none;"></div>
+                <form id="updateLocationForm" onsubmit="window.handleLocationUpdate(event, this)" style="display:none;">
+>>>>>>> 807d311 (...)
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="update_location">
                     <div class="row mt-3">
@@ -631,6 +636,7 @@
     let currentReportIndex = -1;
 
     // --- Helper Functions (attached to window for global access from onclick) ---
+<<<<<<< HEAD
 
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
@@ -765,28 +771,178 @@
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         
         // Geolocation Logic
+=======
+
+    window.flashMessage = (message, category = 'info') => {
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `
+            <div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', alertHtml);
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement) {
+                const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                if (alertInstance) alertInstance.close();
+                else alertElement.remove();
+            }
+        }, 5000);
+    };
+
+    window.handleLocationUpdate = async (event, form) => {
+        event.preventDefault();
+        const statusBox = document.getElementById('locationStatus');
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+        if(statusBox) statusBox.innerHTML = 'กำลังบันทึก...';
+
+        try {
+            const formData = new FormData(form);
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const result = await response.json();
+
+            if (response.ok && result.status === 'success') {
+                // การทำงานเมื่อสำเร็จ (ไม่รีโหลดหน้า)
+                window.flashMessage(result.message, 'success');
+
+                // อัปเดตลิงก์แผนที่ในหน้าเว็บทันที
+                const newLat = formData.get('latitude');
+                const newLon = formData.get('longitude');
+                const mapLink = document.getElementById('customer-map-link');
+                if(mapLink && newLat && newLon) {
+                    mapLink.href = `https://www.google.com/maps?q=$${newLat},${newLon}`;
+                }
+
+                // ซ่อนฟอร์มและรีเซ็ตสถานะ
+                form.style.display = 'none';
+                if(statusBox) statusBox.style.display = 'none';
+                window.cancelLocationUpdate(); // เรียกใช้ฟังก์ชันเดิมเพื่อรีเซ็ตค่าและปุ่ม
+
+            } else {
+                throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก');
+            }
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    };
+
+    window.handleFormSubmission = async (event, form, statusElementId) => {
+        event.preventDefault();
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            window.flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning');
+            return;
+        }
+
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+        const statusBox = document.getElementById(statusElementId);
+        if (statusBox) {
+            statusBox.style.display = 'inline-block';
+            statusBox.innerHTML = '';
+        }
+
+        const formData = new FormData(form);
+        const filesInput = form.querySelector('input[type="file"][name="files[]"]');
+        const files = filesInput ? Array.from(filesInput.files) : [];
+        let uploadedAttachments = [];
+
+        if (files.length > 0) {
+            for (let i = 0; i < files.length; i++) {
+                if(statusBox) statusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
+                const fileFormData = new FormData();
+                fileFormData.append('file', files[i]);
+                fileFormData.append('task_id', taskId);
+                fileFormData.append('csrf_token', csrfToken);
+                try {
+                    const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
+                    const result = await response.json();
+                    if (response.ok && result.status === 'success') {
+                        uploadedAttachments.push(result.file_info);
+                    } else { throw new Error(result.message); }
+                } catch (error) { window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger'); }
+            }
+        }
+
+        formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+        if (filesInput) formData.delete('files[]');
+
+        if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
+
+        try {
+            const response = await fetch(form.action || window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                window.flashMessage(result.message, 'success');
+                setTimeout(() => window.location.reload(), 1500); // รีโหลดหน้าสำหรับ action อื่นๆ
+            } else { throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก'); }
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+            if(statusBox) statusBox.style.display = 'none';
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
+
+>>>>>>> 807d311 (...)
         const updateLocationBtn = document.getElementById('updateLocationBtn');
         const updateLocationForm = document.getElementById('updateLocationForm');
         const locationStatus = document.getElementById('location-status');
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
 
+<<<<<<< HEAD
         // *** การแก้ไขส่วนที่ 1 ***
         // ฟังก์ชันนี้จะทำงานแค่ init LIFF เท่านั้น จะไม่สั่ง login อัตโนมัติ
+=======
+>>>>>>> 807d311 (...)
         async function initializeLiffForGeo() {
             try {
                 if (!liffId) throw new Error("LIFF ID is missing.");
                 await liff.init({ liffId: liffId });
+<<<<<<< HEAD
                 console.log("LIFF initialized successfully for Geolocation.");
+=======
+>>>>>>> 807d311 (...)
             } catch (error) {
                 console.error("LIFF initialization failed:", error);
                 if(updateLocationBtn) {
                     updateLocationBtn.disabled = true;
                     updateLocationBtn.title = "ไม่สามารถใช้งานฟังก์ชันนี้ได้: LIFF Error";
+<<<<<<< HEAD
                 }
                 if(locationStatus) {
                      locationStatus.style.display = 'block';
                      locationStatus.innerText = 'ไม่ได้ตั้งค่า LIFF ID หรือเกิดข้อผิดพลาด';
+=======
+>>>>>>> 807d311 (...)
                 }
             }
         }
@@ -799,12 +955,20 @@
                 // ถ้ายังไม่ล็อกอิน ให้ล็อกอินก่อน แล้วจบการทำงานไป
                 if (!liff.isLoggedIn()) {
                     liff.login();
+<<<<<<< HEAD
                     return; 
                 }
 
                 // ถ้าล็อกอินแล้ว ให้เริ่มดึงพิกัด
                 locationStatus.style.display = 'block';
                 locationStatus.className = 'form-text text-info';
+=======
+                    return;
+                }
+
+                locationStatus.style.display = 'block';
+                locationStatus.className = 'form-text text-info mt-2';
+>>>>>>> 807d311 (...)
                 locationStatus.innerText = 'กำลังค้นหาตำแหน่ง...';
                 updateLocationBtn.disabled = true;
 
@@ -813,6 +977,7 @@
                     latitudeInput.value = location.latitude;
                     longitudeInput.value = location.longitude;
                     locationStatus.innerText = `ดึงพิกัดสำเร็จ!`;
+<<<<<<< HEAD
                     locationStatus.className = 'form-text text-success';
                     updateLocationForm.style.display = 'block';
                 } catch (error) {
@@ -827,11 +992,24 @@
                     }
                     locationStatus.innerText = errorMessage;
                     locationStatus.className = 'form-text text-danger';
+=======
+                    locationStatus.className = 'form-text text-success mt-2';
+                    updateLocationForm.style.display = 'block';
+                } catch (error) {
+                    let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                    if (error.code) { /* ... error handling ... */ }
+                    locationStatus.innerText = errorMessage;
+                    locationStatus.className = 'form-text text-danger mt-2';
+>>>>>>> 807d311 (...)
                     updateLocationBtn.disabled = false;
                 }
             });
         }
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> 807d311 (...)
         window.cancelLocationUpdate = () => {
              if (updateLocationForm) updateLocationForm.style.display = 'none';
              if (locationStatus) locationStatus.style.display = 'none';
@@ -840,6 +1018,7 @@
              if(updateLocationBtn) updateLocationBtn.disabled = false;
         };
 
+<<<<<<< HEAD
         // Initialize Tribute.js for text snippets
         if (progressReportSnippets && progressReportSnippets.length > 0) {
             const tributeOptions = {
@@ -954,5 +1133,12 @@
         } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
     };
     
+=======
+        // ... (โค้ดส่วนอื่นๆ ที่เหลือ) ...
+    });
+
+    // ... (ฟังก์ชัน Helper อื่นๆ ทั้งหมด) ...
+
+>>>>>>> 807d311 (...)
 </script>
 {% endblock %}
