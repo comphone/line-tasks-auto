@@ -771,14 +771,19 @@
         const latitudeInput = document.getElementById('latitude');
         const longitudeInput = document.getElementById('longitude');
 
+        // *** การแก้ไขส่วนที่ 1 ***
+        // ฟังก์ชันนี้จะทำงานแค่ init LIFF เท่านั้น จะไม่สั่ง login อัตโนมัติ
         async function initializeLiffForGeo() {
             try {
                 if (!liffId) throw new Error("LIFF ID is missing.");
                 await liff.init({ liffId: liffId });
-                if (!liff.isLoggedIn()) liff.login();
+                console.log("LIFF initialized successfully for Geolocation.");
             } catch (error) {
                 console.error("LIFF initialization failed:", error);
-                if(updateLocationBtn) updateLocationBtn.disabled = true;
+                if(updateLocationBtn) {
+                    updateLocationBtn.disabled = true;
+                    updateLocationBtn.title = "ไม่สามารถใช้งานฟังก์ชันนี้ได้: LIFF Error";
+                }
                 if(locationStatus) {
                      locationStatus.style.display = 'block';
                      locationStatus.innerText = 'ไม่ได้ตั้งค่า LIFF ID หรือเกิดข้อผิดพลาด';
@@ -788,7 +793,16 @@
         initializeLiffForGeo();
 
         if (updateLocationBtn) {
+            // *** การแก้ไขส่วนที่ 2 ***
+            // ย้ายตรรกะการ login มาไว้ใน event click ของปุ่ม
             updateLocationBtn.addEventListener('click', async () => {
+                // ถ้ายังไม่ล็อกอิน ให้ล็อกอินก่อน แล้วจบการทำงานไป
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                    return; 
+                }
+
+                // ถ้าล็อกอินแล้ว ให้เริ่มดึงพิกัด
                 locationStatus.style.display = 'block';
                 locationStatus.className = 'form-text text-info';
                 locationStatus.innerText = 'กำลังค้นหาตำแหน่ง...';
