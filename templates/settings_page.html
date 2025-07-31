@@ -70,7 +70,7 @@
             <div class="mb-3">
                 <label for="liff_popup_base_url" class="form-label">LIFF App Base URL (สำหรับแจ้งเตือนป๊อปอัป):</label>
                 <input type="url" class="form-control" id="liff_popup_base_url" name="popup_notifications[liff_popup_base_url]"
-                       value="{{ settings.popup_notifications.liff_popup_base_url }}" placeholder="เช่น https://line-tasks-auto.onrender.com/liff_notification_popup">
+                       value="{{ settings.popup_notifications.liff_popup_base_url }}" placeholder="เช่น https://liff.line.me/xxxx-yyyy">
                 <div class="form-text">URL ของ LIFF App ที่สร้างใน LINE Developers Console (ต้องตรงกับ Endpoint URL ที่ตั้งค่าไว้)</div>
             </div>
             <hr>
@@ -162,14 +162,14 @@
             <div class="row mb-3">
                 <label for="shop_contact_phone" class="col-md-4 col-form-label">เบอร์โทรศัพท์ติดต่อ</label>
                 <div class="col-md-8">
-                    <input type="text" class="form-control" id="shop_contact_phone" name="shop_contact_phone"
+                    <input type="text" class="form-control" id="shop_contact_phone" name="shop_info[contact_phone]"
                            value="{{ settings.shop_info.contact_phone }}">
                 </div>
             </div>
             <div class="row mb-3">
                 <label for="shop_line_id" class="col-md-4 col-form-label">LINE ID ร้าน</label>
                 <div class="col-md-8">
-                    <input type="text" class="form-control" id="shop_line_id" name="shop_line_id"
+                    <input type="text" class="form-control" id="shop_line_id" name="shop_info[line_id]"
                            value="{{ settings.shop_info.line_id }}">
                 </div>
             </div>
@@ -200,14 +200,50 @@
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-secondary text-white">
         <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือดูแลและจัดการข้อมูล</h5>
-        </div>
+    </div>
     <div class="card-body p-4">
         <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
-        <a href="{{ url_for('organize_files') }}" class="btn btn-info mb-2"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
-        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
-        <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning mb-2 ms-md-2"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('organize_files') }}" class="btn btn-info"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
+            <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
+            <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
+             <form class="d-inline" method="POST" action="{{ url_for('trigger_customer_follow_up_test') }}" onsubmit="return confirm('คุณต้องการทดสอบส่งข้อความ Follow-up ไปยังลูกค้ารายล่าสุดที่ปิดงานหรือไม่?')">
+                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                 <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-comment-dots me-1"></i> ทดสอบส่ง Follow-up
+                </button>
+            </form>
+        </div>
     </div>
 </div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>จัดการข้อมูลอุปกรณ์ (Equipment Data)</h5>
+    </div>
+    <div class="card-body p-4">
+        <p>นำเข้าและส่งออกแคตตาล็อกอุปกรณ์ทั้งหมดผ่านไฟล์ Excel (.xlsx)</p>
+        <div class="row">
+            <div class="col-md-6 mb-3 mb-md-0">
+                <h6><i class="fas fa-file-excel me-1 text-success"></i> นำเข้าข้อมูล</h6>
+                <form action="{{ url_for('import_equipment_catalog') }}" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="input-group">
+                        <input type="file" class="form-control" name="excel_file" accept=".xlsx, .xls" required>
+                        <button class="btn btn-primary" type="submit">นำเข้า</button>
+                    </div>
+                    <div class="form-text">ระบบจะนำข้อมูลในไฟล์ Excel มาแทนที่ข้อมูลเดิมทั้งหมด</div>
+                </form>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="fas fa-file-export me-1 text-info"></i> ส่งออกข้อมูล</h6>
+                <p>ส่งออกข้อมูลอุปกรณ์ปัจจุบันทั้งหมดเพื่อสำรองหรือแก้ไข</p>
+                <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-info w-100">ส่งออกเป็น Excel</a>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-info text-dark">
@@ -296,11 +332,12 @@
                 <div class="mb-3">
                     <label for="technician-line-id" class="form-label">LINE User ID</label>
                     <input type="text" class="form-control" id="technician-line-id" placeholder="LINE User ID ของช่าง">
-                    <div class="form-text">ใช้สำหรับส่งแจ้งเตือนส่วนตัว</div>
+                    <div class="form-text">ใช้สำหรับส่งแจ้งเตือนส่วนตัว (เช่น งานใกล้เคียง)</div>
                 </div>
                 <div class="mb-3">
                     <label for="technician-lat" class="form-label">ละติจูด (Latitude)</label>
                     <input type="number" step="any" class="form-control" id="technician-lat" placeholder="เช่น 13.xxxxxx">
+                    <div class="form-text">ตำแหน่งล่าสุดของช่าง (สำหรับฟีเจอร์งานใกล้เคียง)</div>
                 </div>
                 <div class="mb-3">
                     <label for="technician-lon" class="form-label">ลองจิจูด (Longitude)</label>
@@ -362,16 +399,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const tech = technicians[index];
             document.getElementById('technician-name').value = tech.name;
             document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
-            document.getElementById('technician-line-id').value = tech.line_user_id || ''; // ดึง LINE User ID
-            document.getElementById('technician-lat').value = tech.last_known_lat || '';   // ดึง Lat
-            document.getElementById('technician-lon').value = tech.last_known_lon || '';   // ดึง Lon
+            document.getElementById('technician-line-id').value = tech.line_user_id || '';
+            document.getElementById('technician-lat').value = tech.last_known_lat || '';
+            document.getElementById('technician-lon').value = tech.last_known_lon || '';
             document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
         } else {
             document.getElementById('technician-name').value = '';
             document.getElementById('technician-avatar-id').value = '';
-            document.getElementById('technician-line-id').value = ''; // เคลียร์ LINE User ID
-            document.getElementById('technician-lat').value = '';   // เคลียร์ Lat
-            document.getElementById('technician-lon').value = '';   // เคลียร์ Lon
+            document.getElementById('technician-line-id').value = '';
+            document.getElementById('technician-lat').value = '';
+            document.getElementById('technician-lon').value = '';
             document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
         }
         technicianEditModal.show();
@@ -386,9 +423,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const name = document.getElementById('technician-name').value.trim();
         const avatarFile = document.getElementById('technician-avatar-file').files[0];
         let avatarId = document.getElementById('technician-avatar-id').value;
-        const lineUserId = document.getElementById('technician-line-id').value.trim(); // รับ LINE User ID
-        const lat = document.getElementById('technician-lat').value; // รับ Lat
-        const lon = document.getElementById('technician-lon').value; // รับ Lon
+        const lineUserId = document.getElementById('technician-line-id').value.trim();
+        const lat = document.getElementById('technician-lat').value;
+        const lon = document.getElementById('technician-lon').value;
 
         if (!name) {
             alert('กรุณาใส่ชื่อช่าง');
@@ -409,39 +446,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 const result = await response.json();
                 if (result.status === 'success') {
                     avatarId = result.file_id;
-                    // Using the main flash message area from base.html
                     flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
-                } else {
-                    throw new Error(result.message);
-                }
+                } else { throw new Error(result.message); }
             } catch (error) {
                 alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + error.message);
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalBtnText;
-                return;
+                saveBtn.disabled = false; saveBtn.innerHTML = originalBtnText; return;
             }
         }
 
-        // สร้าง Object ช่างใหม่พร้อมข้อมูลเพิ่มเติม
         const newTech = { 
-            name: name, 
-            avatar_id: avatarId,
-            line_user_id: lineUserId, // บันทึก LINE User ID
-            last_known_lat: lat !== '' ? parseFloat(lat) : null, // แปลงเป็น float
-            last_known_lon: lon !== '' ? parseFloat(lon) : null  // แปลงเป็น float
+            name: name, avatar_id: avatarId, line_user_id: lineUserId,
+            last_known_lat: lat !== '' ? parseFloat(lat) : null,
+            last_known_lon: lon !== '' ? parseFloat(lon) : null
         };
 
-        if (currentIndex > -1) {
-            technicians[currentIndex] = newTech;
-        } else {
-            technicians.push(newTech);
-        }
+        if (currentIndex > -1) technicians[currentIndex] = newTech;
+        else technicians.push(newTech);
         
         renderTechnicianList();
         technicianEditModal.hide();
-
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = originalBtnText;
+        saveBtn.disabled = false; saveBtn.innerHTML = originalBtnText;
     }
 
     window.deleteTechnician = (index) => {
@@ -452,35 +476,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('settingsForm').addEventListener('submit', function(e) {
-        // ก่อนส่งฟอร์ม ตรวจสอบ checkboxs
-        // เนื่องจากการส่งค่า checkbox ที่ไม่ได้ติ๊กจะไม่ถูกส่งมาใน form data
-        // เราต้องจัดการเองเพื่อให้ค่า false ถูกส่งไปด้วย
-        const form = e.target;
-        const hiddenInputs = [];
-
-        // สำหรับกลุ่ม popup_notifications
-        ['enabled_arrival', 'enabled_completion_customer', 'enabled_nearby_job'].forEach(id => {
-            const checkbox = document.getElementById(id);
-            if (!checkbox.checked) {
-                const hiddenInput = document.createElement('input');
-                hiddenInput.type = 'hidden';
-                hiddenInput.name = `popup_notifications[${id}]`;
-                hiddenInput.value = 'off'; // ส่งค่า 'off' เพื่อระบุว่าไม่ได้ติ๊ก
-                hiddenInputs.push(hiddenInput);
-            }
-        });
-
-        // เพิ่ม hidden inputs เข้าไปในฟอร์มก่อน submit
-        hiddenInputs.forEach(input => form.appendChild(input));
-
-
         document.getElementById('technician_list_json').value = JSON.stringify(technicians);
     });
 
     renderTechnicianList();
 });
 
-// This function now targets the main flash area in base.html
 function flashMessage(message, category) {
     const mainContainer = document.getElementById('flash-messages-area');
     if (!mainContainer) return;
@@ -488,17 +489,11 @@ function flashMessage(message, category) {
     newMessage.className = `alert alert-${category} alert-dismissible fade show`;
     newMessage.setAttribute('role', 'alert');
     newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
-    
     mainContainer.prepend(newMessage);
-
     setTimeout(() => {
         const alertInstance = bootstrap.Alert.getInstance(newMessage);
-        if (alertInstance) {
-            alertInstance.close();
-        } else {
-            // Fallback for cases where the instance might not be found
-            newMessage.remove();
-        }
+        if (alertInstance) alertInstance.close();
+        else newMessage.remove();
     }, 5000); 
 }
 </script>
