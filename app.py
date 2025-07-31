@@ -1537,7 +1537,10 @@ def api_update_technician_location():
     line_user_id = data.get('line_user_id')
     lat = data.get('latitude')
     lon = data.get('longitude')
-
+    
+@app.route("/form", methods=['GET', 'POST'])
+def form_page():
+    if request.method == 'POST':
     if not all([line_user_id, lat, lon]):
         return jsonify({'status': 'error', 'message': 'Missing required data.'}), 400
 
