@@ -1219,6 +1219,7 @@ def scheduled_backup_job():
         
         app.logger.info(f"--- Finished Scheduled Backup Job ---")
         return overall_success
+
 def scheduled_appointment_reminder_job():
     with app.app_context():
         app.logger.info("Running scheduled appointment reminder job...")
@@ -1568,7 +1569,9 @@ def api_update_technician_location():
         app.logger.error(f"Error updating technician location: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'An internal server error occurred.'}), 500
 # --------------------------------------------------------------------
+
 @app.route("/form", methods=['GET', 'POST'])
+
 def form_page():
     if request.method == 'POST':
         task_title = str(request.form.get('task_title', '')).strip()
@@ -3198,24 +3201,9 @@ def organize_files():
 
 @app.route('/liff_notification_popup')
 def liff_notification_popup():
-
     return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM)
 
 
-    # หน้านี้จะถูกเปิดโดย URIAction ใน LINE message
-    # ตัวแปรต่างๆ จะถูกส่งมาเป็น URL query parameters
-    return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM) # ส่ง LIFF ID ไปให้ JS ด้วย
-    
-# --- วางโค้ดใหม่สำหรับหน้า LIFF ของช่างไว้ตรงนี้ ---
-@app.route('/liff/technician/update_location')
-@csrf.exempt
-def technician_location_liff_page():
-    if not LIFF_ID_TECHNICIAN_LOCATION:
-        app.logger.error("LIFF_ID_TECHNICIAN_LOCATION is not set. Cannot render technician LIFF page.")
-        abort(500, "LIFF ID for this feature is not configured on the server.")
-    return render_template('technician_location_update.html', LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
-# ----------------------------------------------------
-
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)      
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
+        
