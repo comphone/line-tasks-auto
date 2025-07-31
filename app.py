@@ -1569,8 +1569,8 @@ def api_update_technician_location():
         return jsonify({'status': 'error', 'message': 'An internal server error occurred.'}), 500
 # --------------------------------------------------------------------
 @app.route("/form", methods=['GET', 'POST'])
-  def form_page():
-    if request.method == 'POST':
+def form_page():
+        if request.method == 'POST':
         task_title = str(request.form.get('task_title', '')).strip()
         customer_name = str(request.form.get('customer', '')).strip()
         organization_name = str(request.form.get('organization_name', '')).strip()
