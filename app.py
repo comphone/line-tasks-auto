@@ -207,6 +207,13 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'nearby_radius_km': 5,
         'message_nearby_template': 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?',
         'liff_popup_base_url': 'https://liff.line.me/2007690244-zBNe26ZO'
+    },
+    # --- เพิ่มส่วนนี้เข้าไปทั้งหมด ---
+    'message_templates': {
+        'welcome_customer': "เรียน คุณ[customer_name],\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: [shop_phone]\nLINE ID: [shop_line_id]",
+        'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\nดูรายละเอียด: [task_url]",
+        'daily_reminder_header': "🔔 งานสำหรับวันนี้ ([task_count] งาน)",
+        'daily_reminder_task_line': "ชื่องาน: [task_title]\n👤 ลูกค้า: [customer_name]\n📞 โทร: [customer_phone]\n🗓️ นัดหมาย: [due_date]\n📍 พิกัด: [map_url]\n🔗 ดูรายละเอียด/แก้ไข:\n[task_url]"
     }
 }
 
@@ -2525,21 +2532,55 @@ def api_upload_avatar():
 
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
-    recipient_id = get_app_settings().get('line_recipients', {}).get('admin_group_id')
-    if recipient_id:
-        payload = {
-            'recipient_line_id': recipient_id,
-            'notification_type': 'test',
-            'task_id': 'test-task-id',
-            'custom_message': '[ทดสอบ] นี่คือข้อความทดสอบจากระบบ Popup Notification'
-        }
-        try:
-            requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-            flash(f'ส่งข้อความทดสอบไปที่ ID: {recipient_id} สำเร็จ!', 'success')
-        except Exception as e:
-            flash(f'เกิดข้อผิดพลาดในการส่ง: {e}', 'danger')
-    else:
-        flash('กรุณากำหนด "LINE Admin Group ID" ก่อน', 'danger')
+    recipient_id = request.form.get('test_recipient')
+    test_type = request.form.get('test_type')
+    
+    if not recipient_id:
+        flash('กรุณาระบุ ID ผู้รับ', 'danger')
+        return redirect(url_for('settings_page'))
+
+    try:
+        if test_type == 'simple_text':
+            message = request.form.get('test_message', '[ทดสอบ] ข้อความว่าง')
+            message_queue.add_message(recipient_id, TextSendMessage(text=message))
+        else:
+            # สำหรับการทดสอบประเภทอื่น ๆ เราจะดึงงานล่าสุดมาเป็นตัวอย่าง
+            tasks = get_google_tasks_for_report(show_completed=True) or []
+            if not tasks:
+                flash('ไม่พบข้อมูลงานสำหรับใช้ทดสอบ', 'warning')
+                return redirect(url_for('settings_page'))
+
+            task_to_test = None
+            if test_type in ['customer_completion', 'customer_follow_up']:
+                # หางานที่เสร็จแล้วล่าสุด
+                completed_tasks = [t for t in tasks if t.get('status') == 'completed']
+                if completed_tasks:
+                    task_to_test = max(completed_tasks, key=lambda x: date_parse(x.get('completed', '')))
+            
+            if not task_to_test:
+                 task_to_test = tasks[0] # ถ้าไม่เจอ ให้ใช้ง่านล่าสุด
+
+            if test_type == 'customer_completion':
+                # จำลองการส่ง Popup ปิดงาน
+                payload = {
+                    'recipient_line_id': recipient_id, 'notification_type': 'completion',
+                    'task_id': task_to_test['id'], 'public_report_url': url_for('public_task_report', task_id=task_to_test['id'], _external=True)
+                }
+                requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+
+            elif test_type == 'customer_follow_up':
+                customer_info = parse_customer_info_from_notes(task_to_test.get('notes', ''))
+                flex_content = _create_customer_follow_up_flex_message(task_to_test['id'], task_to_test['title'], customer_info.get('name', 'N/A'))
+                message_queue.add_message(recipient_id, FlexSendMessage(alt_text="[ทดสอบ] สอบถามความพึงพอใจ", contents=flex_content))
+
+            elif test_type == 'admin_new_task':
+                # ใช้ฟังก์ชันเดิมเพื่อส่งหา ID ที่ตั้งค่าไว้
+                send_new_task_notification(task_to_test) 
+
+        flash(f'ส่งข้อความทดสอบประเภท "{test_type}" ไปยัง ID: {recipient_id} สำเร็จ!', 'success')
+    except Exception as e:
+        flash(f'เกิดข้อผิดพลาดในการส่ง: {e}', 'danger')
+        
     return redirect(url_for('settings_page'))
 
 @app.route('/backup_data')

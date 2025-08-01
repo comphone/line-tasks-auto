@@ -75,7 +75,8 @@
                      <div class="d-grid gap-2 d-sm-flex justify-content-sm-center flex-wrap">
                         <button type="button" id="updateLocationBtn" class="btn btn-info"><i class="fas fa-map-marker-alt me-2"></i>อัปเดตพิกัด</button>
                         <button type="button" onclick="window.showActionCard('progressReportCard')" class="btn btn-primary"><i class="fas fa-edit me-2"></i>เพิ่มรายงาน</button>
-                        <button type="button" onclick="window.showActionCard('finalReportCard')" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
+                        <button type="button" onclick="window.initiateCloseJob()" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
+                        <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info"><i class="fas fa-id-card me-2"></i>สร้าง QR Onboarding</a>
                         <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัด</button>
                     </div>
                 </div>
@@ -83,7 +84,7 @@
         </div>
 
         {% include 'update_task_action_cards.html' %}
-        
+
         <div class="card shadow-sm mb-4 action-card" id="progressReportCard" style="display:none;">
             <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มรายงานความคืบหน้า</h5></div>
             <div class="card-body">
@@ -157,10 +158,29 @@
         document.getElementById('chooseActionCard').style.display = 'none';
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
         const cardToShow = document.getElementById(cardIdToShow);
-        if (cardToShow) { cardToShow.style.display = 'block'; } 
+        if (cardToShow) { cardToShow.style.display = 'block'; }
         else { document.getElementById('chooseActionCard').style.display = 'block'; }
     };
     
+    // NEW: Function to check for customer LINE ID before closing a job
+    window.initiateCloseJob = () => {
+        const hasLineId = '{{ task.customer_feedback.customer_line_user_id or "" }}';
+        
+        if (hasLineId) {
+            // If LINE ID exists, proceed to the close-job form directly.
+            window.showActionCard('finalReportCard');
+        } else {
+            // If LINE ID is missing, show a warning.
+            if (confirm("⚠️ ยังไม่ได้บันทึก LINE ของลูกค้า!\n\nต้องการสร้าง QR Code Onboarding ก่อนปิดงานหรือไม่?\n\n- กด 'OK' เพื่อเปิดหน้า QR Code ในแท็บใหม่\n- กด 'Cancel' เพื่อปิดงานต่อโดยไม่เก็บข้อมูล LINE")) {
+                // If user clicks OK, open the QR code page in a new tab.
+                window.open(`{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}`, '_blank');
+            } else {
+                // If user clicks Cancel, proceed to the close-job form anyway.
+                window.showActionCard('finalReportCard');
+            }
+        }
+    };
+
     window.openTechnicianModal = (targetId) => {
         currentTechnicianTargetId = targetId;
         const container = document.getElementById('technician-list-container');
@@ -231,11 +251,8 @@
 
             if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
 
-            // ***** START: CORRECTED LINE *****
-            // The fetch URL now explicitly uses window.location.href to avoid the form.action conflict.
             const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            // ***** END: CORRECTED LINE *****
-
+            
             const result = await response.json();
             if (response.ok && result.status === 'success') {
                 if (result.redirect_url) { window.location.href = result.redirect_url; } 

@@ -63,6 +63,36 @@
     </div>
 
     <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-comment-alt me-2"></i>จัดการแม่แบบข้อความ (Message Templates)</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="mb-3">
+                <label for="template_welcome_customer" class="form-label">ข้อความต้อนรับลูกค้า (เมื่อเชื่อมต่อ LINE ครั้งแรก):</label>
+                <textarea class="form-control" id="template_welcome_customer" name="message_templates[welcome_customer]" rows="4">{{ settings.message_templates.welcome_customer }}</textarea>
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [customer_name], [shop_phone], [shop_line_id]</small>
+            </div>
+            <hr>
+            <div class="mb-3">
+                <label for="template_problem_report_admin" class="form-label">ข้อความแจ้งเตือนแอดมิน (เมื่อลูกค้าแจ้งปัญหา):</label>
+                <textarea class="form-control" id="template_problem_report_admin" name="message_templates[problem_report_admin]" rows="4">{{ settings.message_templates.problem_report_admin }}</textarea>
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [task_title], [customer_name], [problem_desc], [task_url]</small>
+            </div>
+            <hr>
+            <div class="mb-3">
+                <label for="template_daily_reminder_header" class="form-label">หัวข้อแจ้งเตือนรายวัน (ส่งสรุปงานทุกเช้า):</label>
+                <input type="text" class="form-control" id="template_daily_reminder_header" name="message_templates[daily_reminder_header]" value="{{ settings.message_templates.daily_reminder_header }}">
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [task_count]</small>
+            </div>
+            <div class="mb-3">
+                <label for="template_daily_reminder_task_line" class="form-label">รูปแบบข้อความแจ้งเตือนรายวัน (สำหรับแต่ละงาน):</label>
+                <textarea class="form-control" id="template_daily_reminder_task_line" name="message_templates[daily_reminder_task_line]" rows="5">{{ settings.message_templates.daily_reminder_task_line }}</textarea>
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [task_title], [customer_name], [customer_phone], [due_date], [map_url], [task_url]</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
         <div class="card-header bg-info text-dark">
             <h5 class="mb-0"><i class="fas fa-mobile-alt me-2"></i>การตั้งค่าแจ้งเตือนบนมือถือ (LINE LIFF Popup)</h5>
         </div>
@@ -193,108 +223,6 @@
     </div>
 </form>
 
-<hr class="my-5">
-
-<h2 class="mb-4">เครื่องมือและการจัดการข้อมูล</h2>
-
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-secondary text-white">
-        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>เครื่องมือดูแลและจัดการข้อมูล</h5>
-    </div>
-    <div class="card-body p-4">
-        <p>เครื่องมือสำหรับจัดการข้อมูลเบื้องหลังของระบบ ควรใช้งานด้วยความระมัดระวัง</p>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{{ url_for('organize_files') }}" class="btn btn-info"><i class="fas fa-folder-tree me-1"></i> จัดระเบียบไฟล์ใน Drive</a>
-            <a href="{{ url_for('manage_duplicates') }}" class="btn btn-warning"><i class="fas fa-copy me-1"></i> จัดการข้อมูลงานซ้ำ</a>
-            <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-warning"><i class="fas fa-tools me-1"></i> จัดการข้อมูลอุปกรณ์ซ้ำ</a>
-             <form class="d-inline" method="POST" action="{{ url_for('trigger_customer_follow_up_test') }}" onsubmit="return confirm('คุณต้องการทดสอบส่งข้อความ Follow-up ไปยังลูกค้ารายล่าสุดที่ปิดงานหรือไม่?')">
-                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                 <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-comment-dots me-1"></i> ทดสอบส่ง Follow-up
-                </button>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-secondary text-white">
-        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>จัดการข้อมูลอุปกรณ์ (Equipment Data)</h5>
-    </div>
-    <div class="card-body p-4">
-        <p>นำเข้าและส่งออกแคตตาล็อกอุปกรณ์ทั้งหมดผ่านไฟล์ Excel (.xlsx)</p>
-        <div class="row">
-            <div class="col-md-6 mb-3 mb-md-0">
-                <h6><i class="fas fa-file-excel me-1 text-success"></i> นำเข้าข้อมูล</h6>
-                <form action="{{ url_for('import_equipment_catalog') }}" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <div class="input-group">
-                        <input type="file" class="form-control" name="excel_file" accept=".xlsx, .xls" required>
-                        <button class="btn btn-primary" type="submit">นำเข้า</button>
-                    </div>
-                    <div class="form-text">ระบบจะนำข้อมูลในไฟล์ Excel มาแทนที่ข้อมูลเดิมทั้งหมด</div>
-                </form>
-            </div>
-            <div class="col-md-6">
-                <h6><i class="fas fa-file-export me-1 text-info"></i> ส่งออกข้อมูล</h6>
-                <p>ส่งออกข้อมูลอุปกรณ์ปัจจุบันทั้งหมดเพื่อสำรองหรือแก้ไข</p>
-                <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-info w-100">ส่งออกเป็น Excel</a>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-info text-dark">
-        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>นำเข้าข้อมูลสำรอง (.json)</h5>
-    </div>
-    <div class="card-body p-4">
-        <form id="importBackupForm" enctype="multipart/form-data">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <div class="mb-3">
-                <label for="backupFileType" class="form-label">ประเภทไฟล์:</label>
-                <select class="form-select" id="backupFileType" name="file_type" required>
-                    <option value="">-- เลือกประเภท --</option>
-                    <option value="tasks_json">งานเก่า (tasks_backup.json)</option>
-                    <option value="settings_json">ตั้งค่าระบบ (settings_backup.json)</option>
-                </select>
-            </div>
-            <div class="mb-3">
-                <label for="backupFile" class="form-label">เลือกไฟล์ .json</label>
-                <input class="form-control" type="file" id="backupFile" name="backup_file" accept=".json" required>
-            </div>
-            <button type="button" class="btn btn-primary" id="previewBackupBtn">ดูตัวอย่าง</button>
-            <button type="submit" class="btn btn-success" id="confirmImportBackupBtn" style="display:none;">ยืนยันการนำเข้า</button>
-        </form>
-        <div id="importBackupPreview" class="mt-3"></div>
-    </div>
-</div>
-
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-danger text-white">
-        <h5 class="mb-0"><i class="fas fa-download me-2"></i>ส่งออกและสำรองข้อมูลขึ้น Drive</h5>
-    </div>
-    <div class="card-body p-4">
-        <h6>ส่งออกข้อมูลทั้งหมด</h6>
-        <p>ดาวน์โหลดไฟล์ .zip ที่ประกอบด้วยข้อมูลงาน, การตั้งค่า, และซอร์สโค้ดปัจจุบันทั้งหมด</p>
-        <a href="{{ url_for('backup_data') }}" class="btn btn-danger mb-4"><i class="fas fa-file-archive me-1"></i> ดาวน์โหลด Full Backup (.zip)</a>
-        <hr>
-        <h6 class="mt-4">สำรองข้อมูลขึ้น Google Drive</h6>
-        <p>สำรองข้อมูลทั้งหมดและ Settings ไปยัง Google Drive ทันที</p>
-        <div class="row align-items-center">
-            <div class="col-md-6">
-                <form class="d-inline" method="POST" action="{{ url_for('trigger_auto_backup_now') }}" onsubmit="return confirm('คุณต้องการสำรองข้อมูลไปยัง Google Drive ทันทีหรือไม่?')">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                     <button type="submit" class="btn btn-info">
-                        <i class="fas fa-cloud-upload-alt me-1"></i> Backup to Drive Now
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -302,16 +230,33 @@
         <h5 class="modal-title" id="testNotificationModalLabel">ทดสอบส่งข้อความ LINE</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
-        ข้อความทดสอบจะถูกส่งไปยัง LINE Admin Group ID ที่คุณได้ตั้งค่าไว้
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-        <form action="{{ url_for('test_notification') }}" method="POST" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
-        </form>
-      </div>
+      <form action="{{ url_for('test_notification') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="modal-body">
+            <div class="mb-3">
+              <label for="test_recipient" class="form-label">ID ผู้รับ (User ID / Group ID):</label>
+              <input type="text" class="form-control" id="test_recipient" name="test_recipient" value="{{ settings.line_recipients.admin_group_id }}" required>
+            </div>
+            <div class="mb-3">
+              <label for="test_type" class="form-label">ประเภทการแจ้งเตือน:</label>
+              <select class="form-select" id="test_type" name="test_type">
+                  <option value="simple_text">ข้อความธรรมดา</option>
+                  <option value="customer_completion">แจ้งปิดงาน (ลูกค้า)</option>
+                  <option value="customer_follow_up">ติดตามผล (ลูกค้า)</option>
+                  <option value="admin_new_task">แจ้งงานใหม่ (แอดมิน)</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="test_message" class="form-label">ข้อความ (สำหรับประเภท 'ข้อความธรรมดา'):</label>
+              <textarea class="form-control" name="test_message" id="test_message" rows="3">[ทดสอบ] นี่คือข้อความทดสอบจากระบบ</textarea>
+            </div>
+            <small class="form-text text-muted">การทดสอบประเภทอื่นที่ไม่ใช่ "ข้อความธรรมดา" จะดึงข้อมูลงานล่าสุดมาใช้เป็นตัวอย่าง</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+          <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
