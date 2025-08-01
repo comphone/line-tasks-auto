@@ -45,7 +45,7 @@
     </div>
 
     <div class="summary-container">
-         <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
             <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit me-1"></i> แก้ไข</a>
         </div>
@@ -196,11 +196,35 @@
     window.handleFormSubmission = async (event, form) => {
         event.preventDefault();
         if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+
         const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+        
         try {
             const formData = new FormData(form);
+            const filesInput = form.querySelector('input[type="file"][name="files[]"]');
+            const files = filesInput ? Array.from(filesInput.files) : [];
+            let uploadedAttachments = [];
+
+            if (files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    const fileFormData = new FormData();
+                    fileFormData.append('file', files[i]);
+                    fileFormData.append('task_id', taskId);
+                    fileFormData.append('csrf_token', csrfToken);
+                    try {
+                        const response = await fetch('/api/upload_attachment', { method: 'POST', body: fileFormData });
+                        const result = await response.json();
+                        if (response.ok && result.status === 'success') {
+                            uploadedAttachments.push(result.file_info);
+                        } else { throw new Error(result.message); }
+                    } catch (error) { window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger'); }
+                }
+            }
+            formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+
             const response = await fetch(form.action || window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
@@ -213,7 +237,9 @@
             } else { throw new Error(result.message || 'Error'); }
         } catch (error) {
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-            submitButton.disabled = false;
+        } finally {
+             submitButton.disabled = false;
+             submitButton.innerHTML = originalButtonHtml;
         }
     };
     
@@ -221,16 +247,13 @@
         const report = techReportsHistory[reportIndex];
         const technicians = report.technicians;
         if (!technicians || technicians.length === 0) {
-            alert('ไม่พบรายชื่อช่างในรายงานนี้');
-            return;
+            alert('ไม่พบรายชื่อช่างในรายงานนี้'); return;
         }
         if (!confirm(`คุณต้องการส่งแจ้งเตือน "กำลังเดินทาง" ในนามของ "${technicians.join(', ')}" ใช่หรือไม่?`)) return;
-        
         window.flashMessage('กำลังส่งการแจ้งเตือน...', 'info');
         try {
             const response = await fetch("{{ url_for('api_trigger_mobile_popup_notification') }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({
                     notification_type: 'arrival',
                     task_id: taskId,
@@ -244,7 +267,7 @@
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
         }
     };
-
+    
     window.closeLightbox = () => { document.getElementById('lightboxModal').style.display = "none"; };
     window.openLightboxById = (attachmentId) => {
          const index = allAttachments.findIndex(att => att.id === attachmentId);
@@ -273,13 +296,11 @@
         if (updateLocationBtn) {
             updateLocationBtn.addEventListener('click', () => {
                 if (!navigator.geolocation) {
-                    alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
-                    return;
+                    alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง'); return;
                 }
                 const originalBtnHtml = updateLocationBtn.innerHTML;
                 updateLocationBtn.disabled = true;
                 updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
-
                 navigator.geolocation.getCurrentPosition(
                     async (position) => {
                         const formData = new FormData();
@@ -321,11 +342,19 @@
                     report.attachments.map(att => `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="attachment"></div>`).join('') +
                     `</div>`;
                 }
+                let reportActionsHtml = '';
+                if(report.type === 'report') {
+                    reportActionsHtml = `<button class="btn btn-sm btn-primary mb-2 me-1" onclick="window.notifyCustomerArrival(${index})"><i class="fas fa-car"></i> แจ้งลูกค้า</button>`;
+                }
+                
                 return `
                 <div class="history-entry ${report.type === 'reschedule' ? 'border-warning' : 'border-primary'}">
                     <div class="history-entry-header">
                         <span class="history-entry-title">${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานการปฏิบัติงาน'}</span>
-                        <small class="text-muted">${new Date(report.summary_date).toLocaleString('th-TH')}</small>
+                        <div class="d-flex align-items-center">
+                            <small class="text-muted me-3">${new Date(report.summary_date).toLocaleString('th-TH')}</small>
+                            ${reportActionsHtml}
+                        </div>
                     </div>
                     <div class="history-entry-body">
                         ${report.type === 'reschedule' ? `<p><strong>เหตุผล:</strong> ${report.reason || '-'}</p><p><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</p>` : `<p>${report.work_summary || '-'}</p>`}
