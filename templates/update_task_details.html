@@ -28,9 +28,6 @@
     .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
     .prev { left: 15px; }
     .next { right: 15px; }
-    .multi-select-controls { position: fixed; bottom: 0; left: 0; width: 100%; background-color: #212529; color: white; padding: 1rem; z-index: 1050; transform: translateY(100%); transition: transform 0.3s ease-in-out; }
-    .multi-select-controls.active { transform: translateY(0); }
-    .thumbnail.selected { box-shadow: 0 0 0 3px var(--bs-primary); }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
 </style>
@@ -45,7 +42,7 @@
     </div>
 
     <div class="summary-container">
-         <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
             <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit me-1"></i> แก้ไข</a>
         </div>
@@ -307,6 +304,7 @@
                 const originalBtnHtml = updateLocationBtn.innerHTML;
                 updateLocationBtn.disabled = true;
                 updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
+
                 navigator.geolocation.getCurrentPosition(
                     async (position) => {
                         const formData = new FormData();
