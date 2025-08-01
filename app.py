@@ -2084,9 +2084,22 @@ def task_details(task_id):
             cache.clear()
             if notification_to_send:
                 notif_type = notification_to_send[0]
-                if notif_type == 'update': send_update_notification(updated_task, *notification_to_send[1:])
-                elif notif_type == 'completion': send_completion_notification(updated_task, *notification_to_send[1:])
+                if notif_type == 'update': 
+                    send_update_notification(updated_task, *notification_to_send[1:])
+                    # ถ้าเป็นการอัปเดตธรรมดา ให้ส่งข้อความกลับไปเฉยๆ
+                    return jsonify({'status': 'success', 'message': flash_message})
+
+                elif notif_type == 'completion': 
+                    send_completion_notification(updated_task, *notification_to_send[1:])
+                    # ถ้าเป็นการปิดงาน ให้สร้าง URL ไปยังหน้า QR Code
+                    redirect_url_for_qr = url_for('generate_public_report_qr', task_id=task_id)
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'ปิดงานสำเร็จ! กำลังไปที่หน้า QR Code...',
+                        'redirect_url': redirect_url_for_qr
+                    })
             
+            # กรณีอื่นๆ ที่ไม่มีการแจ้งเตือน (เช่น บันทึกรายงานเฉยๆ)
             return jsonify({'status': 'success', 'message': flash_message})
         else:
             flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
