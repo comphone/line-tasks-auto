@@ -1,4 +1,3 @@
-<!-- Hidden Action Card: Complete Task -->
 <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
     <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
     <div class="card-body">
@@ -11,7 +10,7 @@
              <div class="mb-3">
                 <label for="technicians_final" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
                 <select class="form-select" id="technicians_final" name="technicians_report" multiple required size="3">
-                    {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
+                    {% for tech in technician_list %}<option value="{{ tech.name }}">{{ tech.name }}</option>{% endfor %}
                 </select>
             </div>
             <div class="mb-3">
@@ -25,7 +24,6 @@
     </div>
 </div>
 
-<!-- Hidden Action Card: Reschedule Task -->
 <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
     <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
     <div class="card-body">
@@ -42,7 +40,7 @@
             <div class="mb-3">
                 <label for="technicians_reschedule" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
                  <select class="form-select" id="technicians_reschedule" name="technicians_reschedule" multiple required size="3">
-                    {% for tech in technician_list %}<option value="{{ tech }}">{{ tech }}</option>{% endfor %}
+                    {% for tech in technician_list %}<option value="{{ tech.name }}">{{ tech.name }}</option>{% endfor %}
                 </select>
             </div>
             <hr>
@@ -52,7 +50,6 @@
     </div>
 </div>
 
-<!-- Hidden Action Card: Generate QR Code -->
 <div class="card shadow-sm mt-4" id="qrCodeCard" style="display:none;">
     <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
     <div class="card-body text-center">
