@@ -231,7 +231,11 @@
 
             if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
 
-            const response = await fetch(form.action || window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            // ***** START: CORRECTED LINE *****
+            // The fetch URL now explicitly uses window.location.href to avoid the form.action conflict.
+            const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            // ***** END: CORRECTED LINE *****
+
             const result = await response.json();
             if (response.ok && result.status === 'success') {
                 if (result.redirect_url) { window.location.href = result.redirect_url; } 
