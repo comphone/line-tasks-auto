@@ -45,7 +45,7 @@
     </div>
 
     <div class="summary-container">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
             <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit me-1"></i> แก้ไข</a>
         </div>
@@ -90,7 +90,7 @@
         <div class="card shadow-sm mb-4 action-card" id="progressReportCard" style="display:none;">
             <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มรายงานความคืบหน้า</h5></div>
             <div class="card-body">
-                <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this)">
+                <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="save_report">
                     <div class="mb-3"><label class="form-label">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
                     <div class="mb-3">
@@ -105,6 +105,7 @@
                     <div class="d-flex align-items-center">
                         <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึก</button>
                         <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">กลับ</button>
+                        <div id="report-upload-status" class="ms-3" style="display:none;"></div>
                     </div>
                 </form>
             </div>
@@ -193,7 +194,7 @@
         technicianSelectionModal.hide();
     };
 
-    window.handleFormSubmission = async (event, form) => {
+    window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
         if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
 
@@ -202,14 +203,20 @@
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
         
+        const statusBox = document.getElementById(statusElementId);
+        if (statusBox) { statusBox.style.display = 'inline-block'; statusBox.innerHTML = ''; }
+        
         try {
-            const formData = new FormData(form);
+            const formData = new FormData();
+            new FormData(form).forEach((value, key) => { if (key !== 'files[]') formData.append(key, value); });
+
             const filesInput = form.querySelector('input[type="file"][name="files[]"]');
             const files = filesInput ? Array.from(filesInput.files) : [];
             let uploadedAttachments = [];
 
             if (files.length > 0) {
                 for (let i = 0; i < files.length; i++) {
+                    if (statusBox) statusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
                     const fileFormData = new FormData();
                     fileFormData.append('file', files[i]);
                     fileFormData.append('task_id', taskId);
@@ -225,21 +232,20 @@
             }
             formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
 
+            if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
+
             const response = await fetch(form.action || window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                if (result.redirect_url) {
-                    window.location.href = result.redirect_url;
-                } else {
-                    window.flashMessage(result.message, 'success');
-                    setTimeout(() => window.location.reload(), 1500);
-                }
+                if (result.redirect_url) { window.location.href = result.redirect_url; } 
+                else { window.flashMessage(result.message, 'success'); setTimeout(() => window.location.reload(), 1500); }
             } else { throw new Error(result.message || 'Error'); }
         } catch (error) {
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
         } finally {
-             submitButton.disabled = false;
-             submitButton.innerHTML = originalButtonHtml;
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+            if (statusBox) statusBox.style.display = 'none';
         }
     };
     
@@ -267,7 +273,7 @@
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
         }
     };
-    
+
     window.closeLightbox = () => { document.getElementById('lightboxModal').style.display = "none"; };
     window.openLightboxById = (attachmentId) => {
          const index = allAttachments.findIndex(att => att.id === attachmentId);
@@ -301,6 +307,7 @@
                 const originalBtnHtml = updateLocationBtn.innerHTML;
                 updateLocationBtn.disabled = true;
                 updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
+
                 navigator.geolocation.getCurrentPosition(
                     async (position) => {
                         const formData = new FormData();
@@ -344,7 +351,7 @@
                 }
                 let reportActionsHtml = '';
                 if(report.type === 'report') {
-                    reportActionsHtml = `<button class="btn btn-sm btn-primary mb-2 me-1" onclick="window.notifyCustomerArrival(${index})"><i class="fas fa-car"></i> แจ้งลูกค้า</button>`;
+                    reportActionsHtml = `<button class="btn btn-sm btn-primary" onclick="window.notifyCustomerArrival(${index})"><i class="fas fa-car"></i> แจ้งลูกค้า</button>`;
                 }
                 
                 return `
