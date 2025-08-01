@@ -987,92 +987,70 @@ def _create_liff_notification_flex_message(recipient_line_id, notification_type,
     )
     return FlexSendMessage(alt_text=alt_text_map.get(notification_type, "แจ้งเตือนจากระบบ"), contents=flex_message_content)
 
+def _send_popup_notification(payload):
+    """Internal helper function to build and queue a LIFF popup notification."""
+    recipient_line_id = payload.get('recipient_line_id')
+    notification_type = payload.get('notification_type')
+    task_id = payload.get('task_id')
+    
+    if not recipient_line_id or not notification_type:
+        app.logger.error(f"Popup notification missing recipient or type in payload: {payload}")
+        return False
+
+    try:
+        settings = get_app_settings()
+        popup_settings = settings.get('popup_notifications', {})
+        liff_base_url = popup_settings.get('liff_popup_base_url')
+
+        if not liff_base_url:
+            app.logger.error("LIFF popup URL not configured in settings. Skipping popup notification.")
+            return False
+
+        task = get_single_task(task_id) if task_id and task_id != 'test-task-id' else None
+        customer_info = parse_customer_info_from_notes(task.get('notes', '')) if task else {}
+        shop_info = settings.get('shop_info', {})
+        logo_url = url_for('static', filename='logo.png', _external=True)
+
+        # Get message text from payload or generate it
+        message_text = payload.get('custom_message', '')
+        if not message_text:
+            template_str = popup_settings.get(f'message_{notification_type}_template', '')
+            if notification_type == 'arrival':
+                message_text = template_str.replace('[technician_name]', payload.get('technician_name', '-')) \
+                                           .replace('[customer_name]', customer_info.get('name', '-'))
+            elif notification_type == 'completion':
+                message_text = template_str.replace('[task_title]', task.get('title', '-')) \
+                                           .replace('[customer_name]', customer_info.get('name', '-'))
+            elif notification_type == 'nearby_job':
+                 message_text = template_str.replace('[task_title]', task.get('title', '-')) \
+                                           .replace('[distance_km]', f"{payload.get('distance_km', 0):.1f}") \
+                                           .replace('[customer_name]', customer_info.get('name', '-'))
+
+        if not message_text:
+            app.logger.warning(f"Could not generate message for notification type {notification_type}")
+            return False
+
+        flex_message = _create_liff_notification_flex_message(
+            recipient_line_id, notification_type, task_id, message_text,
+            customer_info, shop_info, logo_url, liff_base_url,
+            technician_name=payload.get('technician_name'),
+            distance_km=payload.get('distance_km'),
+            public_report_url=payload.get('public_report_url')
+        )
+
+        message_queue.add_message(recipient_line_id, flex_message)
+        app.logger.info(f"Internal popup notification '{notification_type}' queued for {recipient_line_id}.")
+        return True
+    except Exception as e:
+        app.logger.error(f"Error in _send_popup_notification: {e}", exc_info=True)
+        return False
 
 @app.route('/api/trigger_mobile_popup_notification', methods=['POST'])
 def api_trigger_mobile_popup_notification():
-    data = request.json
-    recipient_line_id = data.get('recipient_line_id')
-    notification_type = data.get('notification_type')
-    task_id = data.get('task_id')
-    custom_message = data.get('custom_message')
-    
-    technician_name = data.get('technician_name')
-    distance_km = data.get('distance_km')
-    public_report_url = data.get('public_report_url')
-
-    if not recipient_line_id or not notification_type:
-        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ครบถ้วน (recipient_line_id หรือ notification_type)'}), 400
-
-    settings = get_app_settings()
-    popup_settings = settings.get('popup_notifications', {})
-    liff_base_url = popup_settings.get('liff_popup_base_url')
-
-    if not liff_base_url:
-        app.logger.error("LIFF popup URL not configured in settings. Skipping popup notification.")
-        return jsonify({'status': 'error', 'message': 'ยังไม่ได้ตั้งค่า LIFF popup URL'}), 500
-
-    task = get_single_task(task_id) if task_id else None
-    customer_info = parse_customer_info_from_notes(task.get('notes', '')) if task else {}
-    shop_info = settings.get('shop_info', {})
-    logo_url = url_for('static', filename='logo.png', _external=True)
-
-    base_message_text = "แจ้งเตือน:"
-    if custom_message:
-        base_message_text = custom_message
+    if _send_popup_notification(request.json):
+        return jsonify({'status': 'success', 'message': 'ส่งการแจ้งเตือนแล้ว'}), 200
     else:
-        if notification_type == 'arrival' and popup_settings.get('enabled_arrival'):
-            base_message_text = popup_settings.get('message_arrival_template', 'ช่าง [technician_name] กำลังจะถึงบ้านคุณ [customer_name] แล้วครับ/ค่ะ')
-            base_message_text = base_message_text.replace('[technician_name]', technician_name or '-')
-            base_message_text = base_message_text.replace('[customer_name]', customer_info.get('name', '-'))
-        elif notification_type == 'completion' and popup_settings.get('enabled_completion_customer'):
-            base_message_text = popup_settings.get('message_completion_customer_template', 'งาน [task_title] ที่บ้านคุณ [customer_name] เสร็จเรียบร้อยแล้วครับ/ค่ะ')
-            base_message_text = base_message_text.replace('[task_title]', task.get('title', '-'))
-            base_message_text = base_message_text.replace('[customer_name]', customer_info.get('name', '-'))
-        elif notification_type == 'nearby_job' and popup_settings.get('enabled_nearby_job'):
-            base_message_text = popup_settings.get('message_nearby_template', 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?')
-            base_message_text = base_message_text.replace('[task_title]', task.get('title', '-'))
-            base_message_text = base_message_text.replace('[distance_km]', f"{distance_km:.1f}" if distance_km is not None else '-')
-            base_message_text = base_message_text.replace('[customer_name]', customer_info.get('name', '-'))
-        elif notification_type == 'new_task':
-            base_message_text = (
-                f"✨ มีงานใหม่เข้า!\n\n"
-                f"ชื่องาน: {task.get('title', '-')}\n"
-                f"ลูกค้า: {customer_info.get('name', '-')}\n"
-                f"📞 โทร: {customer_info.get('phone', '-')}\n"
-                f"🗓️ นัดหมาย: {parse_google_task_dates(task).get('due_formatted', '-')}\n"
-                f"📍 พิกัด: {customer_info.get('map_url', '-')}\n\n"
-            )
-        elif notification_type == 'update':
-             message_text_parts = data.get('message_text_parts', [])
-             base_message_text = "".join(message_text_parts)
-
-
-    if not base_message_text or base_message_text.strip() == "แจ้งเตือน:":
-        app.logger.warning(f"No valid message text generated for notification type: {notification_type}. Skipping.")
-        return jsonify({'status': 'error', 'message': 'ไม่สามารถสร้างข้อความแจ้งเตือนได้'}), 500
-
-
-    flex_message = _create_liff_notification_flex_message(
-        recipient_line_id=recipient_line_id,
-        notification_type=notification_type,
-        task_id=task_id,
-        message_text=base_message_text,
-        customer_info=customer_info,
-        shop_info=shop_info,
-        logo_url=logo_url,
-        liff_base_url=liff_base_url,
-        technician_name=technician_name,
-        distance_km=distance_km,
-        public_report_url=public_report_url
-    )
-
-    try:
-        message_queue.add_message(recipient_line_id, flex_message)
-        app.logger.info(f"Popup notification '{notification_type}' added to queue for {recipient_line_id} (Task: {task_id}).")
-        return jsonify({'status': 'success', 'message': 'ส่งการแจ้งเตือนผ่านป๊อปอัปแล้ว'}), 200
-    except Exception as e:
-        app.logger.error(f"Failed to add popup notification to LINE queue: {e}")
-        return jsonify({'status': 'error', 'message': f'ไม่สามารถส่งการแจ้งเตือนป๊อปอัปได้: {e}'}), 500
+        return jsonify({'status': 'error', 'message': 'ไม่สามารถส่งการแจ้งเตือนได้'}), 500
 
 def send_new_task_notification(task):
     settings = get_app_settings()
@@ -1100,12 +1078,7 @@ def send_new_task_notification(task):
         'custom_message': message_text
     }
     
-    try:
-        response = requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-        app.logger.info(f"New task notification triggered for admin group: {response.json()}")
-    except Exception as e:
-        app.logger.error(f"Failed to trigger new task notification for task {task['id']}: {e}")
-
+    _send_popup_notification(payload)
 
 def send_completion_notification(task, technicians):
     settings = get_app_settings()
@@ -1137,12 +1110,8 @@ def send_completion_notification(task, technicians):
                 'custom_message': message_text_admin_tech,
                 'public_report_url': public_report_url
             }
-            try:
-                requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-                app.logger.info(f"Completion notification triggered for Admin/Tech ({recipient_id}) for task {task['id']}.")
-            except Exception as e:
-                app.logger.error(f"Failed to trigger completion notification for {recipient_id}: {e}")
-            sent_to.add(recipient_id)
+            
+            _send_popup_notification(payload)
     
     if customer_line_id_from_feedback and settings.get('popup_notifications', {}).get('enabled_completion_customer'):
         payload = {
@@ -1154,12 +1123,7 @@ def send_completion_notification(task, technicians):
                 .replace('[customer_name]', customer_info.get('name', '-')),
             'public_report_url': public_report_url
         }
-        try:
-            requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-            app.logger.info(f"Completion popup notification triggered for customer {customer_line_id_from_feedback} for task {task['id']}.")
-        except Exception as e:
-            app.logger.error(f"Failed to trigger customer completion popup notification: {e}")
-
+        _send_popup_notification(payload)
 
 def send_update_notification(task, new_due_date_str, reason, technicians, is_today):
     settings = get_app_settings()
@@ -1190,12 +1154,8 @@ def send_update_notification(task, new_due_date_str, reason, technicians, is_tod
         'task_id': task['id'],
         'custom_message': message_text
     }
-    try:
-        requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-        app.logger.info(f"Update/reschedule notification triggered for admin group for task {task['id']}.")
-    except Exception as e:
-        app.logger.error(f"Failed to trigger update notification for task {task['id']}: {e}")
-
+    
+    _send_popup_notification(payload)
 
 def scheduled_backup_job():
     with app.app_context():
@@ -1262,14 +1222,17 @@ def scheduled_appointment_reminder_job():
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             parsed_dates = parse_google_task_dates(task)
             
-            message_text = (
-                f"🔔 งานสำหรับวันนี้\n\n"
-                f"ชื่องาน: {task.get('title', '-')}\n"
-                f"👤 ลูกค้า: {customer_info.get('name', '-')}\n"
-                f"📞 โทร: {customer_info.get('phone', '-')}\n"
-                f"🗓️ นัดหมาย: {parsed_dates.get('due_formatted', '-')}\n"
-                f"📍 พิกัด: {customer_info.get('map_url', '-')}\n\n"
-            )
+            settings = get_app_settings()
+            header_template = settings.get('message_templates', {}).get('daily_reminder_header', '')
+            task_line_template = settings.get('message_templates', {}).get('daily_reminder_task_line', '')
+
+            # เราจะใช้ task_line_template สำหรับส่วนของ Popup Message
+            message_text = task_line_template.replace('[task_title]', task.get('title', '-')) \
+                                             .replace('[customer_name]', customer_info.get('name', '-')) \
+                                             .replace('[customer_phone]', customer_info.get('phone', '-')) \
+                                             .replace('[due_date]', parsed_dates.get('due_formatted', '-')) \
+                                             .replace('[map_url]', customer_info.get('map_url', '-')) \
+                                             .replace('[task_url]', url_for('task_details', task_id=task.get('id'), _external=True))
             
             liff_base_url = settings.get('popup_notifications', {}).get('liff_popup_base_url')
             
@@ -1285,13 +1248,8 @@ def scheduled_appointment_reminder_job():
                             'task_id': task['id'],
                             'custom_message': message_text
                         }
-                        try:
-                            requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
-                            app.logger.info(f"Appointment reminder triggered for {recipient_id} for task {task['id']}.")
-                        except Exception as e:
-                            app.logger.error(f"Failed to trigger appointment reminder notification for {recipient_id}: {e}")
-                    sent_to.add(recipient_id)
-
+                        
+                        _send_popup_notification(payload)
 
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
     problem_action = URIAction(
@@ -1438,23 +1396,21 @@ def scheduled_nearby_job_alert_job():
                                     'shop_phone': settings.get('shop_info', {}).get('contact_phone', ''),
                                     'logo_url': url_for('static', filename='logo.png', _external=True)
                                 }
-                                try:
-                                    requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+                                if _send_popup_notification(payload):
                                     app.logger.info(f"Nearby job notification triggered for technician {technician['name']} (Task: {task['id']}). Distance: {distance_km:.1f} km.")
                                     
+                                    # อัปเดต notes ใน task เพื่อไม่ให้แจ้งเตือนซ้ำ
                                     current_notes = task.get('notes', '')
                                     new_notes = f"{current_notes}\nNEARBY_ALERT_SENT_TO_TECH_{technician['line_user_id']}_{datetime.datetime.now(THAILAND_TZ).isoformat()}"
                                     _execute_google_api_call_with_retry(update_google_task, task['id'], notes=new_notes)
                                     cache.clear()
-
-                                except Exception as e:
-                                    app.logger.error(f"Failed to trigger nearby job notification for {technician['name']} and task {task['id']}: {e}")
+                                else:
+                                    app.logger.error(f"Failed to trigger nearby job notification for {technician['name']} and task {task['id']}")
                                     
                         except Exception as e:
                             app.logger.warning(f"Could not calculate distance for task {task['id']} / technician {technician['name']}: {e}")
                         
         app.logger.info("Finished scheduled nearby job alert job.")
-
 
 def run_scheduler():
     global scheduler
@@ -2461,7 +2417,7 @@ def settings_page():
             },
             'shop_info': {
                 'contact_phone': request.form.get('shop_info[contact_phone]', '').strip(),
-                'line_id': request.form.get('shop_line_id', '').strip()
+                'line_id': request.form.get('shop_info[line_id]', '').strip()
             },
             'technician_list': technician_list,
             'popup_notifications': popup_notifications_settings,
@@ -2574,7 +2530,7 @@ def test_notification():
                     'recipient_line_id': recipient_id, 'notification_type': 'completion',
                     'task_id': task_to_test['id'], 'public_report_url': url_for('public_task_report', task_id=task_to_test['id'], _external=True)
                 }
-                requests.post(url_for('api_trigger_mobile_popup_notification', _external=True), json=payload)
+                _send_popup_notification(payload)
 
             elif test_type == 'customer_follow_up':
                 customer_info = parse_customer_info_from_notes(task_to_test.get('notes', ''))
@@ -3000,7 +2956,14 @@ def submit_customer_problem():
     admin_group = get_app_settings().get('line_recipients', {}).get('admin_group_id')
     if admin_group:
         customer = parse_customer_info_from_notes(notes)
-        notif = f"🚨 ลูกค้าแจ้งปัญหา!\nงาน: {task.get('title')}\nลูกค้า: {customer.get('name', 'N/A')}\nปัญหา: {problem_desc}\nดูรายละเอียด: {url_for('task_details', task_id=task_id, _external=True)}"
+        settings = get_app_settings()
+        template = settings.get('message_templates', {}).get('problem_report_admin', '')
+        
+        notif = template.replace('[task_title]', task.get('title', 'N/A')) \
+                        .replace('[customer_name]', customer.get('name', 'N/A')) \
+                        .replace('[problem_desc]', problem_desc) \
+                        .replace('[task_url]', url_for('task_details', task_id=task_id, _external=True))
+                        
         message_queue.add_message(admin_group, TextSendMessage(text=notif))
     return jsonify({"status": "success"})
 
@@ -3018,7 +2981,7 @@ def save_customer_line_id():
         feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
         
         reports_history, base = parse_tech_report_from_notes(notes)
-        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
+        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
         final_notes = f"{base.strip()}"
         if reports_text: final_notes += reports_text
         final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"

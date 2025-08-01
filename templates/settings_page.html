@@ -213,6 +213,64 @@
         </div>
     </div>
 
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เครื่องมือผู้ดูแลระบบ (Admin Tools)</h5>
+        </div>
+        <div class="card-body p-4">
+            <h6 class="mb-3">การสำรองและกู้คืนข้อมูล</h6>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <a href="{{ url_for('backup_data') }}" class="btn btn-primary"><i class="fas fa-download me-2"></i>ดาวน์โหลด Backup ทั้งหมด</a>
+                <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-info" onclick="return confirm('คุณต้องการบังคับให้ระบบสำรองข้อมูลการตั้งค่าทั้งหมดไปที่ Google Drive ทันทีใช่หรือไม่?')"><i class="fab fa-google-drive me-2"></i>บังคับ Backup ไปที่ Drive</button>
+                </form>
+            </div>
+
+            <div class="card mt-3">
+                 <div class="card-body bg-light">
+                    <h6 class="card-title">กู้คืนข้อมูลสำรอง (Restore)</h6>
+                     <div class="alert alert-danger small p-2">
+                         <strong>คำเตือน:</strong> การกู้คืนข้อมูลจะเขียนทับข้อมูลปัจจุบัน โปรดใช้ด้วยความระมัดระวัง
+                     </div>
+                     <div class="mb-2">
+                         <label for="backup_file_input" class="form-label small">เลือกไฟล์สำรอง (.json):</label>
+                         <input class="form-control form-control-sm" type="file" id="backup_file_input" accept=".json">
+                     </div>
+                     <div class="mb-2">
+                         <label for="backup_type_select" class="form-label small">ประเภทข้อมูล:</label>
+                         <select class="form-select form-select-sm" id="backup_type_select">
+                             <option value="tasks_json">ข้อมูลงาน (Tasks)</option>
+                             <option value="settings_json">ข้อมูลการตั้งค่า (Settings)</option>
+                         </select>
+                     </div>
+                     <button type="button" class="btn btn-sm btn-primary" id="preview_backup_btn"><i class="fas fa-eye me-1"></i>ดูตัวอย่าง</button>
+                     <div id="backup_preview_area" class="mt-3" style="display:none;">
+                         <div id="preview_content" class="p-2 bg-white border rounded small"></div>
+                         <button type="button" class="btn btn-sm btn-danger mt-2" id="import_backup_btn"><i class="fas fa-exclamation-triangle me-1"></i>ยืนยันการกู้คืน</button>
+                     </div>
+                     <div id="import_status" class="mt-2 small"></div>
+                 </div>
+            </div>
+            <hr>
+
+            <h6 class="mb-3 mt-4">การจัดการข้อมูล</h6>
+             <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
+                <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-clone me-2"></i>จัดการอุปกรณ์ที่ซ้ำซ้อน</a>
+                <a href="{{ url_for('organize_files') }}" class="btn btn-outline-info"><i class="fas fa-folder-open me-2"></i>จัดระเบียบไฟล์ใน Drive</a>
+            </div>
+            <hr>
+
+            <h6 class="mb-3 mt-4">แคตตาล็อกอุปกรณ์</h6>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-success"><i class="fas fa-file-excel me-2"></i>ส่งออกเป็น Excel</a>
+                 <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#importEquipmentModal"><i class="fas fa-file-import me-2"></i>นำเข้าจาก Excel</button>
+            </div>
+        </div>
+    </div>
+
+
     <div class="text-center mb-5">
         <button type="submit" class="btn btn-success btn-lg">
             <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าทั้งหมด
@@ -222,6 +280,29 @@
         </p>
     </div>
 </form>
+
+<div class="modal fade" id="importEquipmentModal" tabindex="-1" aria-labelledby="importEquipmentModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="importEquipmentModalLabel">นำเข้าแคตตาล็อกอุปกรณ์จาก Excel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form action="{{ url_for('import_equipment_catalog') }}" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="modal-body">
+          <p>เลือกไฟล์ Excel (.xlsx) ที่มีคอลัมน์ `item_name`, `unit`, และ `price` เพื่อนำเข้าข้อมูล</p>
+          <input class="form-control" type="file" name="excel_file" required accept=".xlsx, .xls">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">นำเข้าข้อมูล</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -425,6 +506,72 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     renderTechnicianList();
+
+    const backupFileInput = document.getElementById('backup_file_input');
+    const backupTypeSelect = document.getElementById('backup_type_select');
+    const previewBtn = document.getElementById('preview_backup_btn');
+    const importBtn = document.getElementById('import_backup_btn');
+    const previewArea = document.getElementById('backup_preview_area');
+    const previewContent = document.getElementById('preview_content');
+    const importStatus = document.getElementById('import_status');
+    
+    if (previewBtn) {
+        previewBtn.addEventListener('click', async () => {
+            const file = backupFileInput.files[0];
+            if (!file) { alert('กรุณาเลือกไฟล์สำรองข้อมูล'); return; }
+            const formData = new FormData();
+            formData.append('backup_file', file);
+            formData.append('file_type', backupTypeSelect.value);
+            formData.append('csrf_token', csrfToken);
+            importStatus.innerHTML = '<span class="text-primary">กำลังตรวจสอบไฟล์...</span>';
+            previewArea.style.display = 'none';
+            try {
+                const response = await fetch("{{ url_for('preview_backup_file') }}", { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                    let previewHtml = '';
+                    if(result.type === 'tasks') {
+                        previewHtml = `<p><strong>ประเภท:</strong> ข้อมูลงาน</p><p><strong>จำนวน:</strong> ${result.task_count} รายการ</p><h6>ตัวอย่าง 5 รายการแรก:</h6><ul>`;
+                        result.example_tasks.forEach(t => { previewHtml += `<li>${t.title} (ลูกค้า: ${t.customer_name})</li>`; });
+                        previewHtml += '</ul>';
+                    } else if (result.type === 'settings') {
+                         previewHtml = `<p><strong>ประเภท:</strong> ข้อมูลการตั้งค่า</p>
+                                        <p><strong>Admin Group ID:</strong> ${result.preview_settings.admin_group_id}</p>
+                                        <p><strong>จำนวนช่าง:</strong> ${result.preview_settings.technician_list_count} คน</p>`;
+                    }
+                    previewContent.innerHTML = previewHtml;
+                    previewArea.style.display = 'block';
+                    importStatus.innerHTML = '';
+                } else { throw new Error(result.message); }
+            } catch (error) { importStatus.innerHTML = `<span class="text-danger">เกิดข้อผิดพลาด: ${error.message}</span>`; }
+        });
+    }
+
+    if (importBtn) {
+        importBtn.addEventListener('click', async () => {
+            if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการกู้คืนข้อมูลนี้? ข้อมูลปัจจุบันจะถูกเขียนทับ!')) { return; }
+            const file = backupFileInput.files[0];
+            if (!file) { alert('กรุณาเลือกไฟล์สำรองข้อมูล'); return; }
+            const formData = new FormData();
+            formData.append('backup_file', file);
+            formData.append('file_type', backupTypeSelect.value);
+            formData.append('csrf_token', csrfToken);
+            importStatus.innerHTML = '<span class="text-primary">กำลังนำเข้าข้อมูล... กรุณารอสักครู่</span>';
+            importBtn.disabled = true;
+            try {
+                const response = await fetch("{{ url_for('api_import_backup_file') }}", { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                    importStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                    alert('กู้คืนข้อมูลสำเร็จ! หน้าเว็บจะรีโหลด');
+                    window.location.reload();
+                } else { throw new Error(result.message); }
+            } catch (error) {
+                importStatus.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาด: ${error.message}</div>`;
+                importBtn.disabled = false;
+            }
+        });
+    }
 });
 
 function flashMessage(message, category) {
