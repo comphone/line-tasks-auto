@@ -307,7 +307,6 @@
                 const originalBtnHtml = updateLocationBtn.innerHTML;
                 updateLocationBtn.disabled = true;
                 updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
-
                 navigator.geolocation.getCurrentPosition(
                     async (position) => {
                         const formData = new FormData();
