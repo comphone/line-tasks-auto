@@ -30,6 +30,32 @@
     .next { right: 15px; }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
+
+    /* --- NEW CSS for Action Buttons --- */
+    .action-button-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+    .action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+        font-weight: 500;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        transition: all 0.2s ease-in-out;
+        text-decoration: none;
+    }
+    .action-btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+    }
+    .action-btn i {
+        margin-right: 0.5rem;
+    }
 </style>
 {% endblock %}
 
@@ -57,27 +83,19 @@
             </div>
             <div class="info-card full-width-card"><h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6><p class="info-value">{{ task.title | replace('\n', '<br>') | safe }}</p></div>
         </div>
-        <hr>
-        {% if task.status == 'completed' %}
-        <p>
-            <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn btn-outline-info w-100">
-                 <i class="fas fa-qrcode me-2"></i> ดู QR Code สำหรับรายงานสรุป
-            </a>
-        </p>
-        {% endif %}
     </div>
 
     <div id="main-action-container">
         <div id="chooseActionCard">
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5></div>
-                <div class="card-body text-center p-3">
-                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center flex-wrap">
-                        <button type="button" id="updateLocationBtn" class="btn btn-info"><i class="fas fa-map-marker-alt me-2"></i>อัปเดตพิกัด</button>
-                        <button type="button" onclick="window.showActionCard('progressReportCard')" class="btn btn-primary"><i class="fas fa-edit me-2"></i>เพิ่มรายงาน</button>
-                        <button type="button" onclick="window.initiateCloseJob()" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
-                        <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info"><i class="fas fa-id-card me-2"></i>สร้าง QR Onboarding</a>
-                        <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัด</button>
+                <div class="card-body p-3">
+                     <div class="action-button-grid">
+                        <button type="button" id="updateLocationBtn" class="btn btn-outline-info action-btn"><i class="fas fa-map-marker-alt"></i>อัปเดตพิกัด</button>
+                        <button type="button" onclick="window.showActionCard('progressReportCard')" class="btn btn-outline-primary action-btn"><i class="fas fa-edit"></i>เพิ่มรายงาน</button>
+                        <button type="button" onclick="window.initiateCloseJob()" class="btn btn-success action-btn"><i class="fas fa-check-circle"></i>ปิดงาน</button>
+                        <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-outline-warning action-btn"><i class="fas fa-calendar-alt"></i>เลื่อนนัด</button>
+                        <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-outline-secondary action-btn" style="grid-column: 1 / -1;"><i class="fas fa-id-card"></i>สร้าง QR Onboarding</a>
                     </div>
                 </div>
             </div>
@@ -161,21 +179,16 @@
         if (cardToShow) { cardToShow.style.display = 'block'; }
         else { document.getElementById('chooseActionCard').style.display = 'block'; }
     };
-    
-    // NEW: Function to check for customer LINE ID before closing a job
+
     window.initiateCloseJob = () => {
         const hasLineId = '{{ task.customer_feedback.customer_line_user_id or "" }}';
-        
+
         if (hasLineId) {
-            // If LINE ID exists, proceed to the close-job form directly.
             window.showActionCard('finalReportCard');
         } else {
-            // If LINE ID is missing, show a warning.
             if (confirm("⚠️ ยังไม่ได้บันทึก LINE ของลูกค้า!\n\nต้องการสร้าง QR Code Onboarding ก่อนปิดงานหรือไม่?\n\n- กด 'OK' เพื่อเปิดหน้า QR Code ในแท็บใหม่\n- กด 'Cancel' เพื่อปิดงานต่อโดยไม่เก็บข้อมูล LINE")) {
-                // If user clicks OK, open the QR code page in a new tab.
                 window.open(`{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}`, '_blank');
             } else {
-                // If user clicks Cancel, proceed to the close-job form anyway.
                 window.showActionCard('finalReportCard');
             }
         }
@@ -319,39 +332,41 @@
 
         if (updateLocationBtn) {
             updateLocationBtn.addEventListener('click', () => {
-                if (!navigator.geolocation) {
-                    alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง'); return;
-                }
-                const originalBtnHtml = updateLocationBtn.innerHTML;
-                updateLocationBtn.disabled = true;
-                updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
+                if (confirm("ต้องการปรับปรุงพิกัดบ้านลูกค้า ใช่ไหม?")) {
+                    if (!navigator.geolocation) {
+                        alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง'); return;
+                    }
+                    const originalBtnHtml = updateLocationBtn.innerHTML;
+                    updateLocationBtn.disabled = true;
+                    updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
 
-                navigator.geolocation.getCurrentPosition(
-                    async (position) => {
-                        const formData = new FormData();
-                        formData.append('csrf_token', csrfToken);
-                        formData.append('action', 'update_location');
-                        formData.append('latitude', position.coords.latitude);
-                        formData.append('longitude', position.coords.longitude);
-                        try {
-                            const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-                            const result = await response.json();
-                            if (!response.ok) throw new Error(result.message);
-                            window.flashMessage('อัปเดตพิกัดสำเร็จแล้ว!', 'success');
-                            window.showActionCard('chooseActionCard');
-                        } catch (error) {
-                            window.flashMessage(`บันทึกพิกัดไม่สำเร็จ: ${error.message}`, 'danger');
-                        } finally {
+                    navigator.geolocation.getCurrentPosition(
+                        async (position) => {
+                            const formData = new FormData();
+                            formData.append('csrf_token', csrfToken);
+                            formData.append('action', 'update_location');
+                            formData.append('latitude', position.coords.latitude);
+                            formData.append('longitude', position.coords.longitude);
+                            try {
+                                const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                                const result = await response.json();
+                                if (!response.ok) throw new Error(result.message);
+                                window.flashMessage('อัปเดตพิกัดสำเร็จแล้ว!', 'success');
+                                window.showActionCard('chooseActionCard');
+                            } catch (error) {
+                                window.flashMessage(`บันทึกพิกัดไม่สำเร็จ: ${error.message}`, 'danger');
+                            } finally {
+                                updateLocationBtn.disabled = false;
+                                updateLocationBtn.innerHTML = originalBtnHtml;
+                            }
+                        },
+                        (error) => {
+                            window.flashMessage(`ไม่สามารถดึงตำแหน่งได้: ${error.message}`, 'warning');
                             updateLocationBtn.disabled = false;
                             updateLocationBtn.innerHTML = originalBtnHtml;
                         }
-                    },
-                    (error) => {
-                        window.flashMessage(`ไม่สามารถดึงตำแหน่งได้: ${error.message}`, 'warning');
-                        updateLocationBtn.disabled = false;
-                        updateLocationBtn.innerHTML = originalBtnHtml;
-                    }
-                );
+                    );
+                }
             });
         }
         
