@@ -3,6 +3,7 @@
 {% block title %}จัดการงาน: {{ task.title }}{% endblock %}
 
 {% block head_extra %}
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
 <style>
     .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 2rem; background-color: #f8f9fa; }
@@ -20,13 +21,35 @@
     .image-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
     .thumbnail { cursor: pointer; border-radius: .375rem; overflow: hidden; aspect-ratio: 1 / 1; background-color: #e9ecef; position: relative; }
     .thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+    
+    /* --- CSS สำหรับ Lightbox ที่ปรับปรุงใหม่ --- */
     .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
     .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; }
     .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; }
-    .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); cursor: pointer; color: white; font-size: 3rem; background-color: rgba(30, 30, 30, 0.5); border-radius: 50%; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s ease; }
+    .lightbox-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: white;
+        font-size: 3rem;
+        background-color: rgba(30, 30, 30, 0.5);
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background-color 0.2s ease;
+    }
     .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
     .prev { left: 15px; }
     .next { right: 15px; }
+    /* --- สิ้นสุด CSS Lightbox --- */
+
+    .multi-select-controls { position: fixed; bottom: 0; left: 0; width: 100%; background-color: #212529; color: white; padding: 1rem; z-index: 1050; transform: translateY(100%); transition: transform 0.3s ease-in-out; }
+    .multi-select-controls.active { transform: translateY(0); }
+    .thumbnail.selected { box-shadow: 0 0 0 3px var(--bs-primary); }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
 </style>
@@ -58,14 +81,6 @@
             </div>
             <div class="info-card full-width-card"><h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6><p class="info-value">{{ task.title | replace('\n', '<br>') | safe }}</p></div>
         </div>
-        <hr>
-        {% if task.status == 'completed' %}
-        <p>
-            <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn btn-outline-info w-100">
-                 <i class="fas fa-qrcode me-2"></i> ดู QR Code สำหรับรายงานสรุป
-            </a>
-        </p>
-        {% endif %}
     </div>
 
     <div id="main-action-container">
@@ -74,11 +89,10 @@
                 <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5></div>
                 <div class="card-body text-center p-3">
                      <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                        <button type="button" onclick="window.showActionCard('updateLocationCard')" class="btn btn-info"><i class="fas fa-map-marker-alt me-2"></i>อัปเดตพิกัด</button>
                         <button type="button" onclick="window.showActionCard('progressReportCard')" class="btn btn-primary"><i class="fas fa-edit me-2"></i>เพิ่มรายงาน</button>
                         <button type="button" onclick="window.showActionCard('finalReportCard')" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
                         <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัด</button>
-                        <button type="button" onclick="window.showActionCard('qrCodeCard')" class="btn btn-secondary"><i class="fas fa-qrcode me-2"></i>QR Code อื่นๆ</button>
+                        <button type="button" onclick="window.showActionCard('qrCodeCard')" class="btn btn-info"><i class="fas fa-qrcode me-2"></i>QR Code</button>
                     </div>
                 </div>
             </div>
@@ -108,33 +122,12 @@
                 </form>
             </div>
         </div>
-
-        <div class="card shadow-sm mb-4 action-card" id="updateLocationCard" style="display:none;">
-            <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-location-arrow me-2"></i>อัปเดตพิกัดงาน</h5></div>
-            <div class="card-body">
-                <p>กดปุ่มด้านล่างเพื่อใช้ตำแหน่งปัจจุบันของคุณอัปเดตพิกัดสำหรับงานนี้</p>
-                <button type="button" class="btn btn-info w-100" id="updateLocationBtn"><i class="fas fa-map-marker-alt me-1"></i> ดึงตำแหน่งปัจจุบัน</button>
-                <form id="updateLocationForm" onsubmit="window.handleLocationUpdate(event, this)" style="display:none;" class="mt-3">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="update_location">
-                    <div class="row">
-                        <div class="col-md-6 mb-2"><input type="number" step="any" class="form-control" id="latitude" name="latitude" required placeholder="ละติจูด"></div>
-                        <div class="col-md-6 mb-2"><input type="number" step="any" class="form-control" id="longitude" name="longitude" required placeholder="ลองจิจูด"></div>
-                    </div>
-                    <div class="d-flex align-items-center mt-2">
-                        <button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัด</button>
-                        <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
-                    </div>
-                </form>
-                 <div class="form-text mt-2" id="locationStatus"></div>
-                 <hr>
-                 <button type="button" class="btn btn-secondary mt-3" onclick="window.showActionCard('chooseActionCard')">กลับ</button>
-            </div>
-        </div>
     </div>
 
     <div class="card shadow-sm mb-4">
         <div class="card-header"><h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5></div>
-        <div class="card-body" id="history-section-body"></div>
+        <div class="card-body" id="history-section-body">
+            </div>
     </div>
 </div>
 
@@ -165,6 +158,7 @@
     const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
+    const liffId = "{{ LIFF_ID_FORM }}";
     let technicianSelectionModal;
     let currentTechnicianTargetId;
     let slideIndex;
@@ -180,8 +174,11 @@
         document.getElementById('chooseActionCard').style.display = 'none';
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
         const cardToShow = document.getElementById(cardIdToShow);
-        if (cardToShow) { cardToShow.style.display = 'block'; } 
-        else { document.getElementById('chooseActionCard').style.display = 'block'; }
+        if (cardToShow) {
+            cardToShow.style.display = 'block';
+        } else {
+            document.getElementById('chooseActionCard').style.display = 'block';
+        }
     };
     
     window.openTechnicianModal = (targetId) => {
@@ -190,6 +187,7 @@
         const hiddenInput = document.getElementById(targetId);
         const selectedValues = hiddenInput ? hiddenInput.value.split(',').filter(Boolean) : [];
         container.innerHTML = '';
+
         if (technicianList.length === 0) {
             container.innerHTML = `<div class="alert alert-warning">ไม่พบรายชื่อช่าง กรุณาเพิ่มในหน้าตั้งค่า</div>`;
         } else {
@@ -197,86 +195,81 @@
                 const techName = tech.name;
                 const isChecked = selectedValues.includes(techName);
                 const initial = techName ? techName.charAt(0).toUpperCase() : '?';
-                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
-                container.innerHTML += `<div class="form-check mb-2 d-flex align-items-center"><input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s/g, '')}" ${isChecked ? 'checked' : ''} style="width: 1.5em; height: 1.5em;"><label class="form-check-label d-flex align-items-center ms-2" for="tech-${techName.replace(/\s/g, '')}" style="cursor: pointer;"><img src="${avatarUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;"><span class="flex-grow-1">${techName}</span></label></div>`;
+                const avatarUrl = tech.avatar_id
+                    ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c`
+                    : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
+                container.innerHTML += `
+                    <div class="form-check mb-2 d-flex align-items-center">
+                        <input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s/g, '')}" ${isChecked ? 'checked' : ''} style="width: 1.5em; height: 1.5em;">
+                        <label class="form-check-label d-flex align-items-center ms-2" for="tech-${techName.replace(/\s/g, '')}" style="cursor: pointer;">
+                            <img src="${avatarUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;">
+                            <span class="flex-grow-1">${techName}</span>
+                        </label>
+                    </div>
+                `;
             });
         }
         technicianSelectionModal.show();
     };
 
-    window.confirmTechnicianSelection = () => { /* ... Same as before ... */ };
+    window.confirmTechnicianSelection = () => {
+        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
+        const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
+        const hiddenInput = document.getElementById(currentTechnicianTargetId);
+        if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
+        if (hiddenInput) hiddenInput.value = selectedNames.join(',');
+        technicianSelectionModal.hide();
+    };
 
-    window.handleLocationUpdate = async (event, form) => {
+    window.handleFormSubmission = async (event, form) => {
         event.preventDefault();
+        if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+
         const submitButton = form.querySelector('button[type="submit"]');
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+        
         try {
             const formData = new FormData(form);
-            const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const response = await fetch(form.action || window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
                 window.flashMessage(result.message, 'success');
-                const newLat = formData.get('latitude');
-                const newLon = formData.get('longitude');
-                const mapLink = document.getElementById('customer-map-link');
-                if(mapLink && newLat && newLon) { mapLink.href = `http://googleusercontent.com/maps.google.com/?q=${newLat},${newLon}`; }
-                window.cancelLocationUpdate();
-                window.showActionCard('finalReportCard'); // Go to next step
+                setTimeout(() => window.location.reload(), 1500);
             } else { throw new Error(result.message || 'Error'); }
-        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-        } finally { submitButton.disabled = false; submitButton.innerHTML = "บันทึกพิกัด"; }
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            submitButton.disabled = false;
+        }
     };
 
-    window.handleFormSubmission = async (event, form) => { /* ... Same as before ... */ };
-    window.closeLightbox = () => { /* ... Same as before ... */ };
-    window.openLightboxById = (attachmentId) => { /* ... Same as before ... */ };
-    window.changeSlide = (n) => { /* ... Same as before ... */ };
-    function showSlide(index) { /* ... Same as before ... */ }
+    window.closeLightbox = () => { document.getElementById('lightboxModal').style.display = "none"; };
+
+    window.openLightboxById = (attachmentId) => {
+         const index = allAttachments.findIndex(att => att.id === attachmentId);
+         if (index !== -1) {
+            slideIndex = index;
+            document.getElementById('lightboxModal').style.display = "block";
+            showSlide(slideIndex);
+         }
+    };
+    
+    window.changeSlide = (n) => {
+        slideIndex += n;
+        if (slideIndex >= allAttachments.length) { slideIndex = 0; }
+        if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
+        showSlide(slideIndex);
+    };
+
+    function showSlide(index) {
+        if(index < 0 || index >= allAttachments.length) { window.closeLightbox(); return; }
+        const attachment = allAttachments[index];
+        document.getElementById('lightboxImg').src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`;
+    }
 
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        const updateLocationBtn = document.getElementById('updateLocationBtn');
-        const updateLocationForm = document.getElementById('updateLocationForm');
-        const locationStatus = document.getElementById('locationStatus');
-        const latitudeInput = document.getElementById('latitude');
-        const longitudeInput = document.getElementById('longitude');
-
-        if (updateLocationBtn) {
-            updateLocationBtn.addEventListener('click', () => {
-                if (!navigator.geolocation) {
-                    alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
-                    return;
-                }
-                locationStatus.style.display = 'block';
-                locationStatus.className = 'form-text text-info';
-                locationStatus.innerText = 'กำลังค้นหาตำแหน่ง...';
-                updateLocationBtn.disabled = true;
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        latitudeInput.value = position.coords.latitude;
-                        longitudeInput.value = position.coords.longitude;
-                        locationStatus.className = 'form-text text-success';
-                        locationStatus.innerText = 'ดึงพิกัดสำเร็จ! กรุณากดบันทึก';
-                        updateLocationForm.style.display = 'block';
-                    },
-                    (error) => {
-                        locationStatus.className = 'form-text text-danger';
-                        locationStatus.innerText = 'ไม่สามารถดึงตำแหน่งได้: ' + error.message;
-                        updateLocationBtn.disabled = false;
-                    }
-                );
-            });
-        }
         
-        window.cancelLocationUpdate = () => {
-             if(updateLocationForm) updateLocationForm.style.display = 'none';
-             if(locationStatus) { locationStatus.style.display = 'none'; locationStatus.innerText = ''; }
-             if(latitudeInput) latitudeInput.value = '';
-             if(longitudeInput) longitudeInput.value = '';
-             if(updateLocationBtn) updateLocationBtn.disabled = false;
-        };
-
         const tribute = new Tribute({ values: progressReportSnippets });
         document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
 
@@ -289,6 +282,7 @@
                     report.attachments.map(att => `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="attachment"></div>`).join('') +
                     `</div>`;
                 }
+                
                 return `
                 <div class="history-entry ${report.type === 'reschedule' ? 'border-warning' : 'border-primary'}">
                     <div class="history-entry-header">
