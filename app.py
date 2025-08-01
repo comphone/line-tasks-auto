@@ -2464,7 +2464,15 @@ def settings_page():
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
             'technician_list': technician_list,
-            'popup_notifications': popup_notifications_settings
+            'popup_notifications': popup_notifications_settings,
+            
+            # --- เพิ่มส่วนนี้เข้าไปทั้งหมด ---
+            'message_templates': {
+                'welcome_customer': request.form.get('message_templates[welcome_customer]', ''),
+                'problem_report_admin': request.form.get('message_templates[problem_report_admin]', ''),
+                'daily_reminder_header': request.form.get('message_templates[daily_reminder_header]', ''),
+                'daily_reminder_task_line': request.form.get('message_templates[daily_reminder_task_line]', '')
+            }
         }
 
         if save_app_settings(settings_data):
