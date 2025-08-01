@@ -28,6 +28,9 @@
     .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
     .prev { left: 15px; }
     .next { right: 15px; }
+    .multi-select-controls { position: fixed; bottom: 0; left: 0; width: 100%; background-color: #212529; color: white; padding: 1rem; z-index: 1050; transform: translateY(100%); transition: transform 0.3s ease-in-out; }
+    .multi-select-controls.active { transform: translateY(0); }
+    .thumbnail.selected { box-shadow: 0 0 0 3px var(--bs-primary); }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
 </style>
