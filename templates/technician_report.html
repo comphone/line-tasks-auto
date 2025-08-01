@@ -61,7 +61,7 @@
         <div class="card-body">
             <form method="GET" action="{{ url_for('technician_report') }}">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="month_select" class="form-label">เดือน</label>
                         <select class="form-select" id="month_select" name="month">
                             {% for m in months %}
@@ -69,7 +69,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="year_select" class="form-label">ปี</label>
                         <select class="form-select" id="year_select" name="year">
                             {% for y in years %}
@@ -77,8 +77,13 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <button type="submit" class="btn btn-primary w-100"><i class="fas fa-filter me-2"></i>กรอง</button>
+                    </div>
+                    <div class="col-md-3">
+                        <a href="{{ url_for('technician_report_print', year=selected_year, month=selected_month) }}" target="_blank" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-print me-2"></i>พิมพ์รายงาน
+                        </a>
                     </div>
                 </div>
             </form>

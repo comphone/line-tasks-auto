@@ -2760,6 +2760,61 @@ def technician_report():
                            years=list(range(now.year - 5, now.year + 2)), months=months,
                            technician_list=technician_list)
 
+# --- เริ่มคัดลอกโค้ดตั้งแต่ตรงนี้ ---
+@app.route('/technician_report/print')
+def technician_report_print():
+    now = datetime.datetime.now(THAILAND_TZ)
+    try:
+        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
+    except (ValueError, TypeError):
+        year, month = now.year, now.month
+
+    app_settings = get_app_settings()
+    technician_list = app_settings.get('technician_list', [])
+
+    tasks = get_google_tasks_for_report(show_completed=True) or []
+    report = defaultdict(lambda: {'count': 0, 'tasks': []})
+
+    for task in tasks:
+        if task.get('status') == 'completed' and task.get('completed'):
+            try:
+                completed_dt = date_parse(task['completed']).astimezone(THAILAND_TZ)
+                if completed_dt.year == year and completed_dt.month == month:
+                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                    task_techs = set()
+                    for r in history:
+                        for t_name in r.get('technicians', []):
+                            if isinstance(t_name, str):
+                                task_techs.add(t_name.strip())
+
+                    for tech_name in sorted(list(task_techs)):
+                        report[tech_name]['count'] += 1
+                        customer_name = parse_customer_info_from_notes(task.get('notes', '')).get('name', 'N/A')
+                        report[tech_name]['tasks'].append({
+                            'id': task.get('id'), 
+                            'title': task.get('title'), 
+                            'customer_name': customer_name,
+                            'completed_formatted': completed_dt.strftime("%d/%m/%Y")
+                        })
+            except Exception as e:
+                app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
+                continue
+
+    # เรียงลำดับงานในรายงานของช่างแต่ละคนตามวันที่
+    for tech_name in report:
+        report[tech_name]['tasks'].sort(key=lambda x: x['completed_formatted'])
+    
+    # จัดเรียงช่างตามชื่อ
+    sorted_report = dict(sorted(report.items()))
+
+    return render_template('technician_report_print.html',
+                           report_data=sorted_report,
+                           selected_year=year,
+                           selected_month=month,
+                           now=datetime.datetime.now(THAILAND_TZ),
+                           technician_list=technician_list)
+# --- สิ้นสุดการคัดลอกโค้ดตรงนี้ ---
+
 @app.route('/manage_duplicates', methods=['GET'])
 def manage_duplicates():
     tasks = get_google_tasks_for_report(show_completed=True) or []
