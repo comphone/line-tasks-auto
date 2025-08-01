@@ -80,7 +80,7 @@
                     {% if task.customer.map_url %}<a id="customer-map-link" href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" title="เปิดแผนที่"><i class="fas fa-map-marked-alt text-danger"></i></a>{% endif %}
                 </div>
             </div>
-            <div class="info-card full-width-card"><h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6><p class="info-value">{{ task.title | replace('\n', '<br>') | safe }}</p></div>
+            <div class="info-card full-width-card"><h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6><p class="info-value customer-name">{{ task.title | replace('\n', '<br>') | safe }}</p></div>
         </div>
     </div>
 
@@ -92,7 +92,7 @@
                      <div class="action-button-grid">
                         <button type="button" id="updateLocationBtn" class="btn btn-info action-btn"><i class="fas fa-map-marker-alt"></i>อัปเดตพิกัด</button>
                         <button type="button" onclick="window.showActionCard('progressReportCard')" class="btn btn-primary action-btn"><i class="fas fa-edit"></i>เพิ่มรายงาน</button>
-                        <button type="button" onclick="window.initiateCloseJob()" class="btn btn-success action-btn"><i class="fas fa-check-circle"></i>ปิดงาน</button>
+                        <button type="button" onclick="window.showActionCard('finalReportCard')" class="btn btn-success action-btn"><i class="fas fa-check-circle"></i>ปิดงาน</button>
                         <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning action-btn"><i class="fas fa-calendar-alt"></i>เลื่อนนัด</button>
                         <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-secondary action-btn" style="grid-column: 1 / -1;"><i class="fas fa-id-card"></i>สร้าง QR Onboarding</a>
                     </div>
@@ -179,20 +179,6 @@
         else { document.getElementById('chooseActionCard').style.display = 'block'; }
     };
 
-    window.initiateCloseJob = () => {
-        const hasLineId = '{{ task.customer_feedback.customer_line_user_id or "" }}';
-
-        if (hasLineId) {
-            window.showActionCard('finalReportCard');
-        } else {
-            if (confirm("⚠️ ยังไม่ได้บันทึก LINE ของลูกค้า!\n\nต้องการสร้าง QR Code Onboarding ก่อนปิดงานหรือไม่?\n\n- กด 'OK' เพื่อเปิดหน้า QR Code ในแท็บใหม่\n- กด 'Cancel' เพื่อปิดงานต่อโดยไม่เก็บข้อมูล LINE")) {
-                window.open(`{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}`, '_blank');
-            } else {
-                window.showActionCard('finalReportCard');
-            }
-        }
-    };
-
     window.openTechnicianModal = (targetId) => {
         currentTechnicianTargetId = targetId;
         const container = document.getElementById('technician-list-container');
@@ -225,6 +211,21 @@
 
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
+
+        // --- MODIFIED: Onboarding check moved here ---
+        const actionInput = form.querySelector('input[name="action"]');
+        if (actionInput && actionInput.value === 'complete_task') {
+            const hasLineId = '{{ task.customer_feedback.customer_line_user_id or "" }}';
+            if (!hasLineId) {
+                if (confirm("⚠️ ยังไม่ได้บันทึก LINE ของลูกค้า!\n\nต้องการสร้าง QR Code Onboarding ก่อนหรือไม่?\n\n- กด 'OK' เพื่อเปิดหน้า QR Code\n- กด 'Cancel' เพื่อปิดงานต่อโดยไม่เก็บข้อมูล LINE")) {
+                    // User wants to create the QR code, so we open the page and stop the submission.
+                    window.open(`{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}`, '_blank');
+                    return; // IMPORTANT: Stop the function here
+                }
+            }
+        }
+        // --- End of modification ---
+
         if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
 
         const submitButton = form.querySelector('button[type="submit"]');
@@ -263,7 +264,7 @@
 
             if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
 
-            const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-with': 'XMLHttpRequest' } });
             
             const result = await response.json();
             if (response.ok && result.status === 'success') {
