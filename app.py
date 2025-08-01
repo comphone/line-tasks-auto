@@ -2460,7 +2460,7 @@ def settings_page():
                 'minute_thai': auto_backup_minute
             },
             'shop_info': {
-                'contact_phone': request.form.get('shop_contact_phone', '').strip(),
+                'contact_phone': request.form.get('shop_info[contact_phone]', '').strip(),
                 'line_id': request.form.get('shop_line_id', '').strip()
             },
             'technician_list': technician_list,
@@ -2829,8 +2829,8 @@ def generate_customer_onboarding_qr(task_id):
     liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
     qr_code = generate_qr_code_base64(liff_url)
     customer = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code, task=task, customer_info=customer, public_report_url=url_for('public_task_report', task_id=task_id, _external=True), qr_code_base64_report=generate_qr_code_base64(url_for('public_task_report', task_id=task_id, _external=True)))
-
+    return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code, task=task, customer_info=customer, public_report_url=url_for('public_task_report', task_id=task_id, _external=True), qr_code_base64_report=generate_qr_code_base64(url_for('public_task_report', task_id=task_id, _external=True)),
+    LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
 @app.route('/customer_problem_form')
 def customer_problem_form():
     task_id = request.args.get('task_id')
@@ -2847,7 +2847,8 @@ def generate_public_report_qr(task_id):
     url = url_for('public_task_report', task_id=task_id, _external=True)
     qr = generate_qr_code_base64(url)
     customer = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('public_report_qr.html', task=task, customer_info=customer, public_report_url=url, qr_code_base64_report=qr)
+    return render_template('public_report_qr.html', task=task, customer_info=customer, public_report_url=url, qr_code_base64_report=qr,
+    LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
 
 @app.route('/trigger_customer_follow_up_test', methods=['POST'])
 def trigger_customer_follow_up_test():
