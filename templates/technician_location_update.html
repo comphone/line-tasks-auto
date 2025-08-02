@@ -4,9 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>อัปเดตตำแหน่ง</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
             display: flex;
@@ -14,158 +13,133 @@
             justify-content: center;
             min-height: 100vh;
             background-color: #f0f2f5;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
         .card {
             width: 90%;
             max-width: 400px;
-            border: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        .card-body {
-            padding: 2rem;
-        }
-        .status-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-        }
-        .status-text {
-            font-size: 1.1rem;
-            font-weight: 500;
-            margin-bottom: 1.5rem;
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
         }
     </style>
 </head>
 <body>
-
-    <div class="card text-center">
-        <div class="card-body">
+    <div class="card text-center shadow">
+        <div class="card-body p-4">
             <div id="loading-state">
-                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
-                <p class="mt-3 text-muted">กำลังเตรียมระบบ...</p>
+                <p class="mt-3 text-muted">กำลังเริ่มต้น LIFF App...</p>
             </div>
 
             <div id="main-content" style="display: none;">
-                <i class="fas fa-map-marker-alt text-primary status-icon"></i>
-                <p class="status-text" id="status-text">กดปุ่มเพื่ออัปเดตตำแหน่งปัจจุบันของคุณ</p>
-                <div class="d-grid">
-                    <button class="btn btn-primary btn-lg" id="update-location-btn">
-                        <i class="fas fa-location-arrow me-2"></i>อัปเดตตำแหน่งของฉัน
-                    </button>
-                </div>
+                <img id="user-avatar" src="" class="rounded-circle mb-3" width="80" height="80" alt="User Avatar">
+                <h5 class="card-title">สวัสดี, <span id="user-name"></span>!</h5>
+                <p class="card-text text-muted">กดปุ่มด้านล่างเพื่ออัปเดตตำแหน่งปัจจุบันของคุณสำหรับใช้ในระบบแจ้งเตือนงานใกล้เคียง</p>
+                <button id="update-location-btn" class="btn btn-primary btn-lg w-100">
+                    <i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน
+                </button>
             </div>
             
-            <div id="success-state" style="display: none;">
-                 <i class="fas fa-check-circle text-success status-icon"></i>
-                 <p class="status-text">อัปเดตตำแหน่งเรียบร้อย!</p>
-                 <p class="text-muted small">คุณสามารถปิดหน้านี้ได้</p>
-            </div>
-
-            <div id="error-state" style="display: none;">
-                <i class="fas fa-times-circle text-danger status-icon"></i>
-                <p class="status-text" id="error-text">เกิดข้อผิดพลาด</p>
-                <p class="text-muted small">กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแล</p>
-            </div>
+            <div id="status-message" class="mt-3"></div>
         </div>
     </div>
-
+    
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <script>
-        // ค่าเหล่านี้จะถูกส่งมาจาก app.py
-        const liffId = "{{ LIFF_ID_TECHNICIAN_LOCATION }}";
-        const csrfToken = "{{ csrf_token() }}";
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loadingState = document.getElementById('loading-state');
+            const mainContent = document.getElementById('main-content');
+            const statusMessage = document.getElementById('status-message');
+            const updateBtn = document.getElementById('update-location-btn');
 
-        const loadingState = document.getElementById('loading-state');
-        const mainContent = document.getElementById('main-content');
-        const successState = document.getElementById('success-state');
-        const errorState = document.getElementById('error-state');
-        const statusText = document.getElementById('status-text');
-        const errorText = document.getElementById('error-text');
-        const updateBtn = document.getElementById('update-location-btn');
-
-        function showState(state) {
-            loadingState.style.display = 'none';
-            mainContent.style.display = 'none';
-            successState.style.display = 'none';
-            errorState.style.display = 'none';
-            state.style.display = 'block';
-        }
-
-        async function initializeLiff() {
-            try {
-                if (!liffId) throw new Error("LIFF ID is not configured.");
-                await liff.init({ liffId: liffId });
-                if (!liff.isLoggedIn()) {
-                    liff.login({ redirectUri: window.location.href });
-                    return; // หยุดการทำงานหลังจากสั่ง login
+            function showStatus(message, isError = false) {
+                statusMessage.textContent = message;
+                statusMessage.className = isError ? 'alert alert-danger mt-3' : 'alert alert-info mt-3';
+                if(isError){
+                    loadingState.style.display = 'none';
+                    mainContent.style.display = 'none';
                 }
-                showState(mainContent);
-            } catch (error) {
-                console.error("LIFF Initialization failed:", error);
-                errorText.textContent = "ไม่สามารถโหลด LIFF ได้ กรุณาตรวจสอบการตั้งค่า";
-                showState(errorState);
             }
-        }
-
-        updateBtn.addEventListener('click', async () => {
-            statusText.textContent = "กำลังดึงพิกัด...";
-            updateBtn.disabled = true;
-            updateBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
 
             try {
+                // 1. Initialize LIFF
+                await liff.init({ liffId: "{{ LIFF_ID_TECHNICIAN_LOCATION }}" });
+
+                if (!liff.isLoggedIn()) {
+                    showStatus("กรุณาเข้าสู่ระบบก่อนใช้งาน", true);
+                    liff.login();
+                    return;
+                }
+
+                // 2. Get user profile
                 const profile = await liff.getProfile();
-                const location = await liff.getGeolocation();
+                document.getElementById('user-avatar').src = profile.pictureUrl;
+                document.getElementById('user-name').textContent = profile.displayName;
+                
+                loadingState.style.display = 'none';
+                mainContent.style.display = 'block';
 
-                const payload = {
-                    line_user_id: profile.userId,
-                    latitude: location.latitude,
-                    longitude: location.longitude
-                };
+                // 3. Add event listener to the button
+                updateBtn.addEventListener('click', () => {
+                    showStatus("กำลังค้นหาตำแหน่งของคุณ...", false);
+                    updateBtn.disabled = true;
+                    updateBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังค้นหา...`;
 
-                statusText.textContent = "กำลังส่งข้อมูลไปยังเซิร์ฟเวอร์...";
+                    // 4. Use navigator.geolocation to get location
+                    if (!navigator.geolocation) {
+                        showStatus("เบราว์เซอร์ของคุณไม่รองรับ Geolocation", true);
+                        updateBtn.disabled = false;
+                        updateBtn.innerHTML = '<i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน';
+                        return;
+                    }
 
-                const response = await fetch("{{ url_for('api_update_technician_location') }}", {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify(payload)
+                    navigator.geolocation.getCurrentPosition(
+                        async (position) => {
+                            const { latitude, longitude } = position.coords;
+                            showStatus("พบตำแหน่งแล้ว! กำลังส่งข้อมูล...", false);
+
+                            // 5. Send data to your backend API
+                            try {
+                                const response = await fetch('/api/technician-location/update', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        line_user_id: profile.userId,
+                                        latitude: latitude,
+                                        longitude: longitude
+                                    })
+                                });
+                                const result = await response.json();
+                                if (!response.ok) throw new Error(result.message);
+
+                                showStatus("อัปเดตตำแหน่งสำเร็จ! แอปจะปิดใน 3 วินาที", false);
+                                setTimeout(() => liff.closeWindow(), 3000);
+
+                            } catch (apiError) {
+                                showStatus(`เกิดข้อผิดพลาด: ${apiError.message}`, true);
+                                updateBtn.disabled = false;
+                                updateBtn.innerHTML = '<i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน';
+                            }
+                        },
+                        (geoError) => {
+                            let errorMessage = `ไม่สามารถดึงตำแหน่งได้: ${geoError.message}`;
+                            if (geoError.code === 1) { // PERMISSION_DENIED
+                                errorMessage = "คุณต้องอนุญาตให้เข้าถึงตำแหน่งเพื่อใช้งานฟีเจอร์นี้";
+                            }
+                            showStatus(errorMessage, true);
+                            updateBtn.disabled = false;
+                            updateBtn.innerHTML = '<i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน';
+                        }
+                    );
                 });
 
-                const result = await response.json();
-                if (response.ok && result.status === 'success') {
-                    showState(successState);
-                    setTimeout(() => liff.closeWindow(), 2000); // ปิดหน้าต่างอัตโนมัติ
-                } else {
-                    throw new Error(result.message || "Server returned an error.");
-                }
-
-            } catch (error) {
-                console.error("Update location failed:", error);
-                let errorMessage = "ไม่สามารถอัปเดตตำแหน่งได้";
-                if (error.code) { // LIFF Geolocation errors
-                     switch(error.code) {
-                        case 'PERMISSION_DENIED': errorMessage = 'คุณไม่ได้อนุญาตให้เข้าถึงตำแหน่ง'; break;
-                        case 'POSITION_UNAVAILABLE': errorMessage = 'สัญญาณ GPS อ่อน ไม่สามารถระบุตำแหน่งได้'; break;
-                        case 'TIMEOUT': errorMessage = 'ค้นหาตำแหน่งนานเกินไป'; break;
-                        default: errorMessage = `เกิดข้อผิดพลาด: ${error.code}`;
-                    }
-                } else {
-                    errorMessage = error.message;
-                }
-                errorText.textContent = errorMessage;
-                showState(errorState);
-            } finally {
-                updateBtn.disabled = false;
-                updateBtn.innerHTML = `<i class="fas fa-location-arrow me-2"></i>อัปเดตตำแหน่งของฉัน`;
+            } catch (err) {
+                showStatus(`LIFF Init Error: ${err.message}`, true);
             }
         });
-
-        // Start the process
-        initializeLiff();
     </script>
-
 </body>
 </html>
