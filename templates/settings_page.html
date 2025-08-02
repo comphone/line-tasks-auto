@@ -501,8 +501,50 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+    document.getElementById('settingsForm').addEventListener('submit', async function(e) {
+        e.preventDefault(); 
+        
+        const form = this;
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalBtnText = submitButton.innerHTML;
+        
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...';
+        
         document.getElementById('technician_list_json').value = JSON.stringify(technicians);
+
+        const formData = new FormData(form);
+
+        try {
+            const response = await fetch(form.action, {
+                method: form.method,
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest', // เพิ่ม header เพื่อระบุว่าเป็น AJAX request
+                }
+            });
+
+            const result = await response.json();
+            
+            if (response.ok && result.status === 'success') {
+                // แสดงข้อความแจ้งเตือนเมื่อสำเร็จ
+                flashMessage(result.message, 'success');
+                // อัปเดต technicians list ถ้ามีการเปลี่ยนแปลง
+                if (result.technician_list) {
+                    technicians = result.technician_list;
+                    renderTechnicianList();
+                }
+            } else {
+                // แสดงข้อความแจ้งเตือนเมื่อเกิดข้อผิดพลาด
+                flashMessage(result.message, 'danger');
+            }
+
+        } catch (error) {
+            flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + error.message, 'danger');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalBtnText;
+        }
     });
 
     renderTechnicianList();
@@ -588,5 +630,3 @@ function flashMessage(message, category) {
         else newMessage.remove();
     }, 5000); 
 }
-</script>
-{% endblock %}
