@@ -1504,6 +1504,7 @@ def technician_location_liff_page():
 
 # --- NEW: API Endpoint to receive location updates from technicians ---
 @app.route('/api/technician-location/update', methods=['POST'])
+@csrf.exempt
 def api_update_technician_location():
     data = request.json
     line_user_id = data.get('line_user_id')
