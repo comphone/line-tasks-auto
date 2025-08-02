@@ -1640,32 +1640,8 @@ def form_page():
                            task_detail_snippets=TEXT_SNIPPETS.get('task_details', [])
                            )
 
+# แก้ไขโค้ดในฟังก์ชัน api_upload_attachment
 @app.route('/api/upload_attachment', methods=['POST'])
-# เพิ่มโค้ดนี้ในส่วน 'Helper and Utility Functions'
-def compress_image_to_fit(file_stream, max_size_bytes):
-    try:
-        img = Image.open(file_stream)
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-        
-        output_buffer = BytesIO()
-        quality = 90
-        while quality >= 20:
-            output_buffer.seek(0)
-            img.save(output_buffer, format='JPEG', quality=quality, optimize=True)
-            if output_buffer.getbuffer().nbytes <= max_size_bytes:
-                break
-            quality -= 10
-        
-        if output_buffer.getbuffer().nbytes > max_size_bytes:
-             return None, None, None # ถ้าบีบอัดแล้วยังใหญ่เกินไป ให้ส่งค่าว่างกลับไป
-        
-        output_buffer.seek(0)
-        return output_buffer, 'image/jpeg', f"compressed_{uuid.uuid4()}.jpg"
-
-    except Exception as e:
-        app.logger.error(f"Failed to compress image: {e}")
-        return None, None, None
 def api_upload_attachment():
     task_id = request.form.get('task_id')
 
@@ -1681,25 +1657,12 @@ def api_upload_attachment():
     
     if file_length > MAX_FILE_SIZE_BYTES:
         if file.mimetype and file.mimetype.startswith('image/'):
-            # เรียกใช้ฟังก์ชันบีบอัดใหม่
             compressed_file, mime_type, filename = compress_image_to_fit(file, MAX_FILE_SIZE_BYTES)
             if compressed_file:
                 file_to_upload = compressed_file
                 app.logger.info(f"Compressed image '{file.filename}' successfully.")
             else:
-                # ถ้าบีบอัดแล้วยังใหญ่เกินไป
                 return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดให้มีขนาดต่ำกว่า {MAX_FILE_SIZE_MB}MB ได้'}), 413
-        else:
-            # กรณีไม่ใช่ไฟล์ภาพ
-            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
-else:
-    file_to_upload = file
-    filename = secure_filename(file.filename)
-    mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
-                app.logger.info(f"Compressed image '{file.filename}' successfully.")
-            except Exception as e:
-                app.logger.error(f"Could not compress image '{file.filename}': {e}")
-                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดได้'}), 413
         else:
             return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
     else:
