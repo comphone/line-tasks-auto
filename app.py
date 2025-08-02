@@ -770,44 +770,54 @@ def parse_google_task_dates(task_item):
     return parsed
 
 def parse_tech_report_from_notes(notes):
-    if not notes: return [], ""
-    report_blocks = re.findall(r"--- TECH_REPORT_START ---\s*\n(.*?)\n--- TECH_REPORT_END ---", notes, re.DOTALL)
-    history = []
-    for json_str in report_blocks:
-        try:
-            report_data = json.loads(json_str)
-            
-            if 'attachments' in report_data:
-                pass
-            elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
-                report_data['attachments'] = []
-                for url in report_data['attachment_urls']:
-                    if isinstance(url, str):
-                        match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
-                        file_id = match.group(1) if match else None
-                        report_data['attachments'].append({'id': file_id, 'url': url})
-                report_data.pop('attachment_urls', None)
-            
-            if isinstance(report_data.get('equipment_used'), str):
-                report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
-            else:
-                report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
-            
-            if 'type' not in report_data:
-                report_data['type'] = 'report'
+    if not notes:
+        return [], ""
 
-            history.append(report_data)
-        except json.JSONDecodeError:
-            app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
-    
-    temp_notes = notes
-    temp_notes = re.sub(r"--- TECH_REPORT_START ---.*?--- TECH_REPORT_END ---", "", temp_notes, flags=re.DOTALL)
-    temp_notes = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", temp_notes, flags=re.DOTALL)
-    original_notes_text = temp_notes.strip()
+    # ใช้ re.split เพื่อแยกส่วนข้อมูลลูกค้าและส่วนรายงานออกจากกันอย่างชัดเจน
+    parts = re.split(r'\n\s*--- TECH_REPORT_START ---', notes)
+    base_notes_with_feedback = parts[0]
+    history = []
+
+    # วนลูปเฉพาะส่วนที่เป็นรายงานเท่านั้น
+    for part in parts[1:]:
+        # หา JSON และส่วนท้ายของบล็อก
+        end_match = re.search(r'(.*?)\n\s*--- TECH_REPORT_END ---', part, re.DOTALL)
+        if end_match:
+            json_str = end_match.group(1).strip()
+            try:
+                report_data = json.loads(json_str)
+                
+                # --- โค้ดประมวลผล report_data (เหมือนเดิม) ---
+                if 'attachments' in report_data:
+                    pass
+                elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
+                    report_data['attachments'] = []
+                    for url in report_data['attachment_urls']:
+                        if isinstance(url, str):
+                            match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+                            file_id = match.group(1) if match else None
+                            report_data['attachments'].append({'id': file_id, 'url': url})
+                    report_data.pop('attachment_urls', None)
+                
+                if isinstance(report_data.get('equipment_used'), str):
+                    report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
+                else:
+                    report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
+                
+                if 'type' not in report_data:
+                    report_data['type'] = 'report'
+
+                history.append(report_data)
+                # --- สิ้นสุดโค้ดประมวลผล ---
+
+            except json.JSONDecodeError:
+                app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
+
+    # ทำความสะอาด base notes เพื่อให้เหลือแค่ข้อมูลลูกค้าจริงๆ
+    base_notes_text = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", base_notes_with_feedback, flags=re.DOTALL).strip()
 
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
-    return history, original_notes_text
-
+    return history, base_notes_text
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
