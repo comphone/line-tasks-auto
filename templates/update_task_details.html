@@ -30,6 +30,18 @@
     .next { right: 15px; }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
+    .thumbnail-actions {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        padding: 5px;
+        background-color: rgba(0, 0, 0, 0.5);
+        border-top-left-radius: 5px;
+        display: none;
+    }
+    .thumbnail:hover .thumbnail-actions {
+        display: block;
+    }
 
     .action-button-grid {
         display: grid;
@@ -359,7 +371,7 @@
         const attachment = allAttachments[index];
         document.getElementById('lightboxImg').src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`;
     }
-
+    
     window.openEditReportModal = (index) => {
         const report = techReportsHistory[index];
         const editReportForm = document.getElementById('editReportForm');
