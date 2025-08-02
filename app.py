@@ -76,7 +76,7 @@ TEXT_SNIPPETS = {
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
 app.jinja_env.filters['dateutil_parse'] = date_parse
 
@@ -85,7 +85,7 @@ csrf = CSRFProtect(app)
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
-MAX_FILE_SIZE_MB = 50
+MAX_FILE_SIZE_MB = 100
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
@@ -1477,6 +1477,10 @@ atexit.register(cleanup_scheduler)
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
+    
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({'status': 'error', 'message': f'ไฟล์มีขนาดใหญ่เกินกว่า {MAX_FILE_SIZE_MB}MB'}), 413
 
 @app.errorhandler(500)
 def internal_server_error(e):
@@ -1637,6 +1641,31 @@ def form_page():
                            )
 
 @app.route('/api/upload_attachment', methods=['POST'])
+# เพิ่มโค้ดนี้ในส่วน 'Helper and Utility Functions'
+def compress_image_to_fit(file_stream, max_size_bytes):
+    try:
+        img = Image.open(file_stream)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        output_buffer = BytesIO()
+        quality = 90
+        while quality >= 20:
+            output_buffer.seek(0)
+            img.save(output_buffer, format='JPEG', quality=quality, optimize=True)
+            if output_buffer.getbuffer().nbytes <= max_size_bytes:
+                break
+            quality -= 10
+        
+        if output_buffer.getbuffer().nbytes > max_size_bytes:
+             return None, None, None # ถ้าบีบอัดแล้วยังใหญ่เกินไป ให้ส่งค่าว่างกลับไป
+        
+        output_buffer.seek(0)
+        return output_buffer, 'image/jpeg', f"compressed_{uuid.uuid4()}.jpg"
+
+    except Exception as e:
+        app.logger.error(f"Failed to compress image: {e}")
+        return None, None, None
 def api_upload_attachment():
     task_id = request.form.get('task_id')
 
@@ -1652,17 +1681,21 @@ def api_upload_attachment():
     
     if file_length > MAX_FILE_SIZE_BYTES:
         if file.mimetype and file.mimetype.startswith('image/'):
-            try:
-                img = Image.open(file)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                
-                output_buffer = BytesIO()
-                img.save(output_buffer, format='JPEG', quality=85, optimize=True)
-                output_buffer.seek(0)
-                file_to_upload = output_buffer
-                filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
-                mime_type = 'image/jpeg'
+            # เรียกใช้ฟังก์ชันบีบอัดใหม่
+            compressed_file, mime_type, filename = compress_image_to_fit(file, MAX_FILE_SIZE_BYTES)
+            if compressed_file:
+                file_to_upload = compressed_file
+                app.logger.info(f"Compressed image '{file.filename}' successfully.")
+            else:
+                # ถ้าบีบอัดแล้วยังใหญ่เกินไป
+                return jsonify({'status': 'error', 'message': f'ไฟล์รูปภาพใหญ่เกินไปและไม่สามารถบีบอัดให้มีขนาดต่ำกว่า {MAX_FILE_SIZE_MB}MB ได้'}), 413
+        else:
+            # กรณีไม่ใช่ไฟล์ภาพ
+            return jsonify({'status': 'error', 'message': f'ไฟล์ใหญ่เกินขนาดที่กำหนด ({MAX_FILE_SIZE_MB}MB)'}), 413
+else:
+    file_to_upload = file
+    filename = secure_filename(file.filename)
+    mime_type = file.mimetype or mimetypes.guess_type(filename)[0]
                 app.logger.info(f"Compressed image '{file.filename}' successfully.")
             except Exception as e:
                 app.logger.error(f"Could not compress image '{file.filename}': {e}")
