@@ -76,7 +76,7 @@ TEXT_SNIPPETS = {
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-app.config['MAX_CONTENT_LENGTH'] = 300 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
 app.jinja_env.filters['dateutil_parse'] = date_parse
 
@@ -85,7 +85,7 @@ csrf = CSRFProtect(app)
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
-MAX_FILE_SIZE_MB = 300
+MAX_FILE_SIZE_MB = 500
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
@@ -105,7 +105,7 @@ LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
 GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 
-LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 300))
+LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 100))
 
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
