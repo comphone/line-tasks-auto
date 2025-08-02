@@ -2389,7 +2389,6 @@ def edit_task(task_id):
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     return render_template('edit_task.html', task=task)
 
-
 @app.route('/delete_task/<task_id>', methods=['POST'])
 def delete_task(task_id):
     if delete_google_task(task_id):
@@ -2424,12 +2423,18 @@ def api_delete_tasks_batch():
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
-        technician_list_json_str = request.form.get('technician_list_json', '[]')
+        # ใช้ request.json เพื่อดึงข้อมูล JSON ทั้งหมดที่ส่งมาจากฟอร์ม
+        data = request.json
+        
+        # ดึงข้อมูล technicians list
+        # data.get('technician_list_json') is a string, so we need to parse it
+        technician_list_json_str = data.get('technician_list_json', '[]')
         try:
             technician_list = json.loads(technician_list_json_str)
             for tech in technician_list:
                 tech['line_user_id'] = tech.get('line_user_id', '').strip()
                 try:
+                    # Check if 'last_known_lat' exists before trying to convert
                     tech['last_known_lat'] = float(tech['last_known_lat']) if tech.get('last_known_lat') else None
                     tech['last_known_lon'] = float(tech['last_known_lon']) if tech.get('last_known_lon') else None
                 except (ValueError, TypeError):
@@ -2439,52 +2444,51 @@ def settings_page():
             flash('เกิดข้อผิดพลาดในการอ่านข้อมูลช่าง', 'danger')
             return redirect(url_for('settings_page'))
 
-        appointment_reminder_hour = int(request.form.get('appointment_reminder_hour', 0))
-        outstanding_report_hour = int(request.form.get('outstanding_report_hour', 0))
-        customer_followup_hour = int(request.form.get('customer_followup_hour', 0))
-        auto_backup_hour = int(request.form.get('auto_backup_hour', 0))
-        auto_backup_minute = int(request.form.get('auto_backup_minute', 0))
+        # ดึงข้อมูลจาก JSON โดยตรง (จาก data object)
+        # ตรวจสอบค่าก่อนที่จะเข้าถึงเพื่อป้องกัน KeyError
+        report_times = data.get('report_times', {})
+        popup_notifications = data.get('popup_notifications', {})
+        line_recipients = data.get('line_recipients', {})
+        shop_info = data.get('shop_info', {})
+        message_templates = data.get('message_templates', {})
 
-        popup_notifications_settings = {
-            'enabled_arrival': request.form.get('popup_notifications[enabled_arrival]') == 'on',
-            'message_arrival_template': request.form.get('popup_notifications[message_arrival_template]', '').strip(),
-            'enabled_completion_customer': request.form.get('popup_notifications[enabled_completion_customer]') == 'on',
-            'message_completion_customer_template': request.form.get('popup_notifications[message_completion_customer_template]', '').strip(),
-            'enabled_nearby_job': request.form.get('popup_notifications[enabled_nearby_job]') == 'on',
-            'nearby_radius_km': float(request.form.get('popup_notifications[nearby_radius_km]', 5)),
-            'message_nearby_template': request.form.get('popup_notifications[message_nearby_template]', '').strip(),
-            'liff_popup_base_url': request.form.get('popup_notifications[liff_popup_base_url]', '').strip()
-        }
-
+        # แปลงค่าจาก string เป็น type ที่ถูกต้อง
         settings_data = {
             'report_times': {
-                'appointment_reminder_hour_thai': appointment_reminder_hour,
-                'outstanding_report_hour_thai': outstanding_report_hour,
-                'customer_followup_hour_thai': customer_followup_hour
+                'appointment_reminder_hour_thai': int(report_times.get('appointment_reminder_hour', 0)),
+                'outstanding_report_hour_thai': int(report_times.get('outstanding_report_hour', 0)),
+                'customer_followup_hour_thai': int(report_times.get('customer_followup_hour', 0))
             },
             'line_recipients': {
-                'admin_group_id': request.form.get('admin_group_id', '').strip(),
-                'technician_group_id': request.form.get('technician_group_id', '').strip(),
-                'manager_user_id': request.form.get('manager_user_id', '').strip()
+                'admin_group_id': line_recipients.get('admin_group_id', '').strip(),
+                'technician_group_id': line_recipients.get('technician_group_id', '').strip(),
+                'manager_user_id': line_recipients.get('manager_user_id', '').strip()
             },
             'auto_backup': {
-                'enabled': request.form.get('auto_backup_enabled') == 'on',
-                'hour_thai': auto_backup_hour,
-                'minute_thai': auto_backup_minute
+                'enabled': data.get('auto_backup_enabled') == 'on',
+                'hour_thai': int(data.get('auto_backup_hour', 0)),
+                'minute_thai': int(data.get('auto_backup_minute', 0))
             },
             'shop_info': {
-                'contact_phone': request.form.get('shop_info[contact_phone]', '').strip(),
-                'line_id': request.form.get('shop_info[line_id]', '').strip()
+                'contact_phone': shop_info.get('contact_phone', '').strip(),
+                'line_id': shop_info.get('line_id', '').strip()
             },
             'technician_list': technician_list,
-            'popup_notifications': popup_notifications_settings,
-            
-            # --- เพิ่มส่วนนี้เข้าไปทั้งหมด ---
+            'popup_notifications': {
+                'enabled_arrival': popup_notifications.get('enabled_arrival') == 'on',
+                'message_arrival_template': popup_notifications.get('message_arrival_template', '').strip(),
+                'enabled_completion_customer': popup_notifications.get('enabled_completion_customer') == 'on',
+                'message_completion_customer_template': popup_notifications.get('message_completion_customer_template', '').strip(),
+                'enabled_nearby_job': popup_notifications.get('enabled_nearby_job') == 'on',
+                'nearby_radius_km': float(popup_notifications.get('nearby_radius_km', 5)),
+                'message_nearby_template': popup_notifications.get('message_nearby_template', '').strip(),
+                'liff_popup_base_url': popup_notifications.get('liff_popup_base_url', '').strip()
+            },
             'message_templates': {
-                'welcome_customer': request.form.get('message_templates[welcome_customer]', ''),
-                'problem_report_admin': request.form.get('message_templates[problem_report_admin]', ''),
-                'daily_reminder_header': request.form.get('message_templates[daily_reminder_header]', ''),
-                'daily_reminder_task_line': request.form.get('message_templates[daily_reminder_task_line]', '')
+                'welcome_customer': message_templates.get('welcome_customer', ''),
+                'problem_report_admin': message_templates.get('problem_report_admin', ''),
+                'daily_reminder_header': message_templates.get('daily_reminder_header', ''),
+                'daily_reminder_task_line': message_templates.get('daily_reminder_task_line', '')
             }
         }
 
@@ -2494,18 +2498,14 @@ def settings_page():
             backup_success = backup_settings_to_drive()
             if backup_success:
                 message = 'บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!'
-                # เพิ่มการส่ง JSON response
                 return jsonify({'status': 'success', 'message': message})
             else:
                 message = 'บันทึกการตั้งค่าสำเร็จ แต่สำรองไปที่ Google Drive ไม่สำเร็จ!'
-                # เพิ่มการส่ง JSON response
                 return jsonify({'status': 'success', 'message': message})
         else:
             message = 'เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!'
-            # เพิ่มการส่ง JSON response
             return jsonify({'status': 'error', 'message': message})
 
-    # --- เพิ่มโค้ดส่วนนี้เข้าไปเพื่อจัดการ GET request ---
     settings = get_app_settings()
     return render_template('settings_page.html', settings=settings)
 

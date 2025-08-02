@@ -519,22 +519,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: form.method,
                 body: formData,
                 headers: {
-                    'X-Requested-With': 'XMLHttpRequest', // เพิ่ม header เพื่อระบุว่าเป็น AJAX request
+                    'X-Requested-With': 'XMLHttpRequest',
                 }
             });
 
             const result = await response.json();
             
             if (response.ok && result.status === 'success') {
-                // แสดงข้อความแจ้งเตือนเมื่อสำเร็จ
                 flashMessage(result.message, 'success');
-                // อัปเดต technicians list ถ้ามีการเปลี่ยนแปลง
-                if (result.technician_list) {
-                    technicians = result.technician_list;
-                    renderTechnicianList();
-                }
             } else {
-                // แสดงข้อความแจ้งเตือนเมื่อเกิดข้อผิดพลาด
                 flashMessage(result.message, 'danger');
             }
 
