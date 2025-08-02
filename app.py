@@ -2072,46 +2072,55 @@ def task_details(task_id):
         
         update_payload['notes'] = final_notes
     
-        updated_task = update_google_task(task_id, **update_payload)
+        try:
+            updated_task = update_google_task(task_id, **update_payload)
 
-        if updated_task:
-            cache.clear()
-            if notification_to_send:
-                notif_type = notification_to_send[0]
-                if notif_type == 'update': 
-                    send_update_notification(updated_task, *notification_to_send[1:])
-                    # ถ้าเป็นการอัปเดตธรรมดา ให้ส่งข้อความกลับไปเฉยๆ
-                    return jsonify({'status': 'success', 'message': flash_message})
+            if updated_task:
+                cache.clear()
+                if notification_to_send:
+                    notif_type = notification_to_send[0]
+                    if notif_type == 'update':
+                        send_update_notification(updated_task, *notification_to_send[1:])
+                        # ถ้าเป็นการอัปเดตธรรมดา ให้ส่งข้อความกลับไปเฉยๆ
+                        return jsonify({'status': 'success', 'message': flash_message})
 
-                elif notif_type == 'completion': 
-                    send_completion_notification(updated_task, *notification_to_send[1:])
-                    
-                    # --- ส่วนที่แก้ไขให้ถูกต้อง ---
-                    # ตรวจสอบว่ามี Line ID ของลูกค้าหรือไม่หลังจากอัปเดตงานแล้ว
-                    customer_feedback = parse_customer_feedback_from_notes(updated_task.get('notes', ''))
-                    has_line_id = customer_feedback.get('customer_line_user_id')
+                    elif notif_type == 'completion':
+                        send_completion_notification(updated_task, *notification_to_send[1:])
 
-                    if has_line_id:
-                        # ถ้ามี ID แล้ว ไปที่หน้ารายงานสรุปปกติ
-                        redirect_url = url_for('generate_public_report_qr', task_id=task_id)
-                    else:
-                        # ถ้ายังไม่มี ไปที่หน้า Onboarding หลังปิดงานที่เราสร้างขึ้นใหม่
-                        redirect_url = url_for('post_completion_onboarding', task_id=task_id)
-                    
-                    return jsonify({
-                        'status': 'success',
-                        'message': 'ปิดงานสำเร็จ!',
-                        'redirect_url': redirect_url
-                    })
-                                
+                        # --- ส่วนที่แก้ไขให้ถูกต้อง ---
+                        # ตรวจสอบว่ามี Line ID ของลูกค้าหรือไม่หลังจากอัปเดตงานแล้ว
+                        customer_feedback = parse_customer_feedback_from_notes(updated_task.get('notes', ''))
+                        has_line_id = customer_feedback.get('customer_line_user_id')
+
+                        if has_line_id:
+                            # ถ้ามี ID แล้ว ไปที่หน้ารายงานสรุปปกติ
+                            redirect_url = url_for('generate_public_report_qr', task_id=task_id)
+                        else:
+                            # ถ้ายังไม่มี ไปที่หน้า Onboarding หลังปิดงานที่เราสร้างขึ้นใหม่
+                            redirect_url = url_for('post_completion_onboarding', task_id=task_id)
+
+                        return jsonify({
+                            'status': 'success',
+                            'message': 'ปิดงานสำเร็จ!',
+                            'redirect_url': redirect_url
+                        })
+
             # กรณีอื่นๆ ที่ไม่มีการแจ้งเตือน (เช่น บันทึกรายงานเฉยๆ)
             return jsonify({'status': 'success', 'message': flash_message})
-        else:
-            flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
-            return jsonify({'status': 'error', 'message': flash_message}), 500
 
-    task_raw = get_single_task(task_id)
-    if not task_raw: abort(404)
+except HttpError as e:
+    # ดักจับข้อผิดพลาดจาก Google API
+    flash_message = f'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก: {e.content.decode()}'
+    return jsonify({'status': 'error', 'message': flash_message}), e.resp.status
+
+except Exception as e:
+    # ดักจับข้อผิดพลาดอื่นๆ ที่ไม่คาดคิด
+    flash_message = f'เกิดข้อผิดพลาดที่ไม่คาดคิด: {str(e)}'
+    app.logger.error(f'Unexpected error in task_details: {e}', exc_info=True)
+    return jsonify({'status': 'error', 'message': flash_message}), 500
+
+task_raw = get_single_task(task_id)
+if not task_raw: abort(404)
     
     task = parse_google_task_dates(task_raw)
     notes = task.get('notes', '')
@@ -2215,10 +2224,16 @@ def edit_report_attachments(task_id, report_index):
                 updated_attachments.append(att)
             else:
                 try:
-                    drive_service.files().delete(fileId=att['id']).execute()
+                    # จุดที่แก้ไข: ดักจับ HttpError ที่เฉพาะเจาะจง
+                    _execute_google_api_call_with_retry(drive_service.files().delete, fileId=att['id'])
                     app.logger.info(f"Deleted attachment {att['id']} from Drive.")
                 except HttpError as e:
-                    app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
+                    if e.resp.status == 404:
+                        # กรณีไฟล์ไม่พบ (ถูกลบไปแล้ว) ให้บันทึกเป็น warning
+                        app.logger.warning(f"Attachment {att['id']} not found on Drive, skipping deletion.")
+                    else:
+                        # กรณีข้อผิดพลาดอื่น
+                        app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
     else:
         updated_attachments = original_attachments
         flash('ไม่สามารถเชื่อมต่อ Google Drive เพื่อลบไฟล์ได้', 'warning')
