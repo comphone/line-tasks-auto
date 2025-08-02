@@ -2998,13 +2998,17 @@ def save_customer_line_id():
         
         if _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes):
             cache.clear()
-            shop = get_app_settings().get('shop_info', {})
+            settings = get_app_settings()
+            shop = settings.get('shop_info', {})
             customer = parse_customer_info_from_notes(notes)
-            welcome = f"เรียน คุณ{customer.get('name', 'ลูกค้า')},\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: {shop.get('contact_phone', '-')}\nLINE ID: {shop.get('line_id', '-')}"
-            message_queue.add_message(user_id, TextSendMessage(text=welcome))
-            return jsonify({"status": "success"})
-        else: return jsonify({"status": "error"}), 500
-    return jsonify({"status": "success", "message": "already saved"})
+            
+            welcome_template = settings.get('message_templates', {}).get('welcome_customer', '')
+            welcome_message = welcome_template.replace('[customer_name]', customer.get('name', 'ลูกค้า')) \
+                                              .replace('[shop_phone]', shop.get('contact_phone', '-')) \
+                                              .replace('[shop_line_id]', shop.get('line_id', '-'))
+            
+            message_queue.add_message(user_id, TextSendMessage(text=welcome_message))
+    return jsonify({"status": "success"})
 
 
 @app.route("/callback", methods=['POST'])
