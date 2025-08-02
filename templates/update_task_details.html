@@ -30,6 +30,18 @@
     .next { right: 15px; }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
+    .thumbnail-actions {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        padding: 5px;
+        background-color: rgba(0, 0, 0, 0.5);
+        border-top-left-radius: 5px;
+        display: none;
+    }
+    .thumbnail:hover .thumbnail-actions {
+        display: block;
+    }
 
     .action-button-grid {
         display: grid;
@@ -149,6 +161,37 @@
     <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
     <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
 </div>
+
+<div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="editReportForm" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" id="edit-report-index" name="report_index">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editReportModalLabel">แก้ไขรายงานการปฏิบัติงาน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="edit-work-summary" class="form-label">สรุปความคืบหน้า</label>
+                        <textarea class="form-control" id="edit-work-summary" name="work_summary" rows="5"></textarea>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label">รูปภาพและไฟล์แนบ</label>
+                        <div id="edit-attachments-container" class="mb-3"></div>
+                        <input class="form-control" type="file" name="new_files[]" multiple accept="image/*, .pdf">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary" id="edit-report-save-btn">บันทึกการแก้ไข</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block body_extra %}
@@ -170,6 +213,7 @@
     let technicianSelectionModal;
     let currentTechnicianTargetId;
     let slideIndex;
+    let editReportModal;
 
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
@@ -218,9 +262,6 @@
 
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
-
-        // REMOVED: Confusing onboarding check was removed from here to streamline the workflow.
-        // The backend now handles the redirect logic.
 
         if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
 
@@ -329,11 +370,70 @@
     function showSlide(index) {
         if(index < 0 || index >= allAttachments.length) { window.closeLightbox(); return; }
         const attachment = allAttachments[index];
-        document.getElementById('lightboxImg').src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`;
+        const isImage = attachment.name.match(/\.(jpeg|jpg|gif|png)$/i);
+        if (isImage) {
+            document.getElementById('lightboxImg').src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`;
+        } else {
+            document.getElementById('lightboxImg').src = `https://via.placeholder.com/1280/6c757d/ffffff?text=FILE`;
+        }
     }
+    
+    window.openEditReportModal = (index) => {
+        const report = techReportsHistory[index];
+        const editReportForm = document.getElementById('editReportForm');
+        editReportForm.action = `/task/${taskId}/edit_report/${index}`;
+        document.getElementById('edit-report-index').value = index;
+        document.getElementById('edit-work-summary').value = report.work_summary || '';
+        
+        const attachmentsContainer = document.getElementById('edit-attachments-container');
+        attachmentsContainer.innerHTML = '';
+        
+        if (report.attachments && report.attachments.length > 0) {
+            report.attachments.forEach(att => {
+                const isImage = att.name.match(/\.(jpeg|jpg|gif|png)$/i);
+                const thumbnailUrl = isImage ? `https://drive.google.com/thumbnail?id=${att.id}&sz=w100` : 'https://via.placeholder.com/100/6c757d/ffffff?text=FILE';
+                
+                attachmentsContainer.innerHTML += `
+                    <div class="form-check form-check-inline me-3 mb-2">
+                        <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
+                        <label class="form-check-label d-flex flex-column align-items-center" for="att-${att.id}" style="cursor: pointer;">
+                            <img src="${thumbnailUrl}" class="img-thumbnail mb-1" style="width: 50px; height: 50px; object-fit: cover;">
+                            <small class="text-muted text-truncate" style="max-width: 50px;">${att.name}</small>
+                        </label>
+                    </div>
+                `;
+            });
+        } else {
+            attachmentsContainer.innerHTML = `<p class="text-muted small">ยังไม่มีไฟล์แนบในรายงานนี้</p>`;
+        }
+        
+        editReportModal.show();
+    };
+
+    window.deleteReport = async (index) => {
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/task/${taskId}/delete_report/${index}`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken }
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            
+            flashMessage(result.message, 'success');
+            window.location.reload();
+            
+        } catch (error) {
+            flashMessage(`เกิดข้อผิดพลาดในการลบรายงาน: ${error.message}`, 'danger');
+        }
+    };
+
 
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         const updateLocationBtn = document.getElementById('updateLocationBtn');
 
         if (updateLocationBtn) {
@@ -379,18 +479,39 @@
         const tribute = new Tribute({ values: progressReportSnippets });
         document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
 
-        const historyContainer = document.getElementById('history-section-body');
-        if (techReportsHistory && techReportsHistory.length > 0) {
-            historyContainer.innerHTML = techReportsHistory.map((report, index) => {
-                let attachmentsHtml = '';
-                if(report.attachments && report.attachments.length > 0){
-                    attachmentsHtml = `<div class="image-gallery-grid mt-3">` +
-                    report.attachments.map(att => `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="attachment"></div>`).join('') +
-                    `</div>`;
-                }
-                let reportActionsHtml = '';
-                if(report.type === 'report') {
-                    reportActionsHtml = `<button class="btn btn-sm btn-primary" onclick="window.notifyCustomerArrival(${index})"><i class="fas fa-car"></i> แจ้งลูกค้า</button>`;
+		const historyContainer = document.getElementById('history-section-body');
+		if (techReportsHistory && techReportsHistory.length > 0) {
+			historyContainer.innerHTML = techReportsHistory.map((report, index) => {
+				let attachmentsHtml = '';
+				let reportActionsHtml = '';
+				let actionButtonsHtml = '';
+
+				if (report.attachments && report.attachments.length > 0) {
+					attachmentsHtml = `<div class="image-gallery-grid mt-3">` +
+						report.attachments.map(att => {
+							const isImage = att.name.match(/\.(jpeg|jpg|gif|png)$/i);
+							const thumbnailUrl = isImage ? `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200` : `https://via.placeholder.com/200/6c757d/ffffff?text=FILE`;
+							const fileLink = `https://drive.google.com/file/d/${att.id}/view`;
+							
+							return `
+							<div class="thumbnail" onclick="window.openLightboxById('${att.id}')">
+								<img src="${thumbnailUrl}" alt="attachment">
+								<div class="thumbnail-actions">
+									<a href="${fileLink}" target="_blank" class="btn btn-sm btn-outline-light me-1" title="เปิดไฟล์"><i class="fas fa-external-link-alt"></i></a>
+									<a href="${att.url}" target="_blank" class="btn btn-sm btn-outline-light" title="ดาวน์โหลด/แชร์"><i class="fas fa-share-alt"></i></a>
+								</div>
+							</div>`;
+						}).join('') +
+						`</div>`;
+				}
+
+                if (report.type === 'report') {
+                    reportActionsHtml = `<button class="btn btn-sm btn-primary me-2" onclick="window.notifyCustomerArrival(${index})"><i class="fas fa-car"></i> แจ้งลูกค้า</button>`;
+                    actionButtonsHtml = `
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-sm btn-outline-primary me-2" onclick="window.openEditReportModal(${index})"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="window.deleteReport(${index})"><i class="fas fa-trash"></i></button>
+                        </div>`;
                 }
                 
                 return `
@@ -400,6 +521,7 @@
                         <div class="d-flex align-items-center">
                             <small class="text-muted me-3">${new Date(report.summary_date).toLocaleString('th-TH')}</small>
                             ${reportActionsHtml}
+                            ${actionButtonsHtml}
                         </div>
                     </div>
                     <div class="history-entry-body">
