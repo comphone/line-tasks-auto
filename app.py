@@ -2255,19 +2255,14 @@ def edit_report_attachments(task_id, report_index):
                     file.seek(0, os.SEEK_END)
                     file_length = file.tell()
                     file.seek(0)
+
                     if file_length > MAX_FILE_SIZE_BYTES and file.mimetype and file.mimetype.startswith('image/'):
-                        try:
-                            img = Image.open(file)
-                            if img.mode in ("RGBA", "P"):
-                                img = img.convert("RGB")
-                            output_buffer = BytesIO()
-                            img.save(output_buffer, format='JPEG', quality=85, optimize=True)
-                            output_buffer.seek(0)
-                            file_to_upload = output_buffer
-                            filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
-                            mime_type = 'image/jpeg'
-                        except Exception as e:
-                            app.logger.error(f"Could not compress image in edit_report: {e}")
+                        compressed_file, mime_type, filename = compress_image_to_fit(file, MAX_FILE_SIZE_BYTES)
+                        if compressed_file:
+                            file_to_upload = compressed_file
+                        else:
+                            app.logger.error(f"Could not compress image in edit_report: '{file.filename}'")
+                            flash(f"ไฟล์ '{file.filename}' ใหญ่เกินไปและไม่สามารถบีบอัดได้", 'danger')
                             continue
                     else:
                         file_to_upload = file
