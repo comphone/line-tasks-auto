@@ -1488,11 +1488,6 @@ with app.app_context():
 
 atexit.register(cleanup_scheduler)
 
-@app.route('/debug-sentry')
-def trigger_error():
-    division_by_zero = 1 / 0
-    return "<p>This will not be reached.</p>"
-
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
