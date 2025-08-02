@@ -1924,6 +1924,25 @@ def schedule_task_from_calendar():
         app.logger.error(f"Error scheduling task from calendar: {e}")
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
+@app.route('/task/<task_id>/post_completion')
+def post_completion_onboarding(task_id):
+    task = get_single_task(task_id)
+    if not task:
+        abort(404)
+    
+    # สร้างข้อมูลสำหรับหน้า Onboarding QR
+    onboarding_url = url_for('customer_onboarding_page', task_id=task_id, _external=True)
+    liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
+    qr_code = generate_qr_code_base64(liff_url)
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
+    
+    return render_template('post_completion_onboarding.html', 
+                           task=task, 
+                           customer_info=customer,
+                           qr_code_base64=qr_code,
+                           public_report_url=url_for('public_task_report', task_id=task_id, _external=True),
+                           now=datetime.datetime.now(THAILAND_TZ))
+
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
@@ -2064,14 +2083,25 @@ def task_details(task_id):
 
                 elif notif_type == 'completion': 
                     send_completion_notification(updated_task, *notification_to_send[1:])
-                    # ถ้าเป็นการปิดงาน ให้สร้าง URL ไปยังหน้า QR Code
-                    redirect_url_for_qr = url_for('generate_public_report_qr', task_id=task_id)
+                    
+                    # --- ส่วนที่แก้ไขให้ถูกต้อง ---
+                    # ตรวจสอบว่ามี Line ID ของลูกค้าหรือไม่หลังจากอัปเดตงานแล้ว
+                    customer_feedback = parse_customer_feedback_from_notes(updated_task.get('notes', ''))
+                    has_line_id = customer_feedback.get('customer_line_user_id')
+
+                    if has_line_id:
+                        # ถ้ามี ID แล้ว ไปที่หน้ารายงานสรุปปกติ
+                        redirect_url = url_for('generate_public_report_qr', task_id=task_id)
+                    else:
+                        # ถ้ายังไม่มี ไปที่หน้า Onboarding หลังปิดงานที่เราสร้างขึ้นใหม่
+                        redirect_url = url_for('post_completion_onboarding', task_id=task_id)
+                    
                     return jsonify({
                         'status': 'success',
-                        'message': 'ปิดงานสำเร็จ! กำลังไปที่หน้า QR Code...',
-                        'redirect_url': redirect_url_for_qr
+                        'message': 'ปิดงานสำเร็จ!',
+                        'redirect_url': redirect_url
                     })
-            
+                                
             # กรณีอื่นๆ ที่ไม่มีการแจ้งเตือน (เช่น บันทึกรายงานเฉยๆ)
             return jsonify({'status': 'success', 'message': flash_message})
         else:

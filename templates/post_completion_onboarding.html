@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}ปิดงานสำเร็จ{% endblock %}
+{% block content %}
+<div class="container mt-4 text-center">
+    <div class="card shadow-sm mx-auto" style="max-width: 500px;">
+        <div class="card-header bg-success text-white">
+            <h4 class="mb-0"><i class="fas fa-check-circle me-2"></i>ปิดงานสำเร็จ!</h4>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <h5 class="alert-heading">⚠️ ขั้นตอนต่อไป: เชื่อมต่อ LINE กับลูกค้า</h5>
+                <p>เพื่อให้ลูกค้าได้รับรายงานสรุปและแบบสอบถาม โปรดให้ลูกค้าสแกน QR Code ด้านล่างนี้</p>
+            </div>
+            
+            {% if qr_code_base64 %}
+                <img src="{{ qr_code_base64 }}" alt="QR Code for Customer Onboarding" class="img-fluid border border-dark rounded mb-3" style="max-width: 300px; height: auto;">
+            {% else %}
+                <div class="alert alert-danger">ไม่สามารถสร้าง QR Code ได้</div>
+            {% endif %}
+            
+            <hr>
+            <p class="text-muted">หรือหากไม่ต้องการเชื่อมต่อ LINE สามารถไปที่หน้ารายงานสรุปได้เลย</p>
+            <a href="{{ public_report_url }}" class="btn btn-secondary">
+                <i class="fas fa-qrcode me-2"></i>ไปที่หน้ารายงานสรุป (สำหรับลูกค้า)
+            </a>
+        </div>
+        <div class="card-footer">
+             <a href="{{ url_for('summary') }}" class="btn btn-primary"><i class="fas fa-home me-2"></i>กลับหน้าแดชบอร์ด</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

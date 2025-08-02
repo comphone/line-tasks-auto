@@ -92,6 +92,7 @@
                      <div class="action-button-grid">
                         <button type="button" id="updateLocationBtn" class="btn btn-info action-btn"><i class="fas fa-map-marker-alt"></i>อัปเดตพิกัด</button>
                         <button type="button" onclick="window.showActionCard('progressReportCard')" class="btn btn-primary action-btn"><i class="fas fa-edit"></i>เพิ่มรายงาน</button>
+                        <!-- MODIFIED: Changed onclick to show the form directly -->
                         <button type="button" onclick="window.showActionCard('finalReportCard')" class="btn btn-success action-btn"><i class="fas fa-check-circle"></i>ปิดงาน</button>
                         <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning action-btn"><i class="fas fa-calendar-alt"></i>เลื่อนนัด</button>
                         <a href="{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-secondary action-btn" style="grid-column: 1 / -1;"><i class="fas fa-id-card"></i>สร้าง QR Onboarding</a>
@@ -219,11 +220,12 @@
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
 
+        // MODIFIED: Onboarding check is now here
         const actionInput = form.querySelector('input[name="action"]');
         if (actionInput && actionInput.value === 'complete_task') {
             const hasLineId = '{{ task.customer_feedback.customer_line_user_id or "" }}';
             if (!hasLineId) {
-                if (confirm("⚠️ ยังไม่ได้บันทึก LINE ของลูกค้า!\n\nต้องการสร้าง QR Code Onboarding ก่อนหรือไม่?\n\n- กด 'OK' เพื่อเปิดหน้า QR Code\n- กด 'Cancel' เพื่อปิดงานต่อโดยไม่เก็บข้อมูล LINE")) {
+                if (confirm("⚠️ ยังไม่ได้บันทึก LINE ของลูกค้า!\n\nต้องการสร้าง QR Code Onboarding ก่อนหรือไม่?\n\n- กด 'OK' เพื่อเปิดหน้า QR Code (และหยุดการปิดงานชั่วคราว)\n- กด 'Cancel' เพื่อปิดงานต่อโดยไม่เก็บข้อมูล LINE")) {
                     window.open(`{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}`, '_blank');
                     return; 
                 }
