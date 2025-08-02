@@ -4,6 +4,7 @@ Flask-WTF
 gunicorn==22.0.0
 Werkzeug==3.0.3
 python-dotenv
+sentry-sdk[flask]
 
 # Google API Services
 google-api-python-client==2.130.0
