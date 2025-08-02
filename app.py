@@ -1,4 +1,6 @@
 import os
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
 import sys
 import datetime
 import re
@@ -73,6 +75,18 @@ TEXT_SNIPPETS = {
         {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
     ]
 }
+
+# --- โค้ด Sentry ควรวางไว้ที่นี่ ---
+SENTRY_DSN = os.environ.get('SENTRY_DSN')
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            FlaskIntegration(),
+        ],
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0
+    )
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
@@ -1473,6 +1487,11 @@ with app.app_context():
     run_scheduler()
 
 atexit.register(cleanup_scheduler)
+
+@app.route('/debug-sentry')
+def trigger_error():
+    division_by_zero = 1 / 0
+    return "<p>This will not be reached.</p>"
 
 @app.errorhandler(404)
 def page_not_found(e):
