@@ -21,7 +21,7 @@ from PIL import Image
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, render_template, redirect, url_for, abort, flash, jsonify, Response, session
+from flask import Flask, request, render_template, redirect, url_for, abort, flash, jsonify, Response, session, make_response
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 from cachetools import cached, TTLCache
@@ -2050,7 +2050,7 @@ def task_details(task_id):
         if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         
         update_payload['notes'] = final_notes
-        
+    
         updated_task = update_google_task(task_id, **update_payload)
 
         if updated_task:
@@ -2111,14 +2111,19 @@ def task_details(task_id):
                 all_attachments.append(att_copy)
 
 
-    return render_template('update_task_details.html',
+    response = make_response(render_template('update_task_details.html',
                            task=task,
                            common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []),
                            all_attachments=all_attachments,
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
                            LIFF_ID_FORM=LIFF_ID_FORM
-                           )
+                           ))
+    # เพิ่ม Headers เพื่อป้องกันการ Caching ทุกรูปแบบ
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
 def api_edit_report_text(task_id, report_index):
