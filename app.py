@@ -2220,15 +2220,12 @@ def edit_report_attachments(task_id, report_index):
                 updated_attachments.append(att)
             else:
                 try:
-                    # จุดที่แก้ไข: ดักจับ HttpError ที่เฉพาะเจาะจง
                     _execute_google_api_call_with_retry(drive_service.files().delete, fileId=att['id'])
                     app.logger.info(f"Deleted attachment {att['id']} from Drive.")
                 except HttpError as e:
                     if e.resp.status == 404:
-                        # กรณีไฟล์ไม่พบ (ถูกลบไปแล้ว) ให้บันทึกเป็น warning
                         app.logger.warning(f"Attachment {att['id']} not found on Drive, skipping deletion.")
                     else:
-                        # กรณีข้อผิดพลาดอื่น
                         app.logger.error(f"Failed to delete attachment {att['id']} from Drive: {e}")
     else:
         updated_attachments = original_attachments
@@ -2282,7 +2279,7 @@ def edit_report_attachments(task_id, report_index):
     all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
     final_notes = base_notes_text
     if all_reports_text: final_notes += all_reports_text
-    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
     
     if update_google_task(task_id, notes=final_notes):
         cache.clear()
