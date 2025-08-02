@@ -53,7 +53,7 @@
             </div>
             </div>
         <div class="card-footer">
-            <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
+            <a href="{{ url_for('task_details', task_id=task.id, _v=now.timestamp()|int) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
         </div>
     </div>
 </div>
@@ -63,7 +63,16 @@
         const copyUrlBtn = document.getElementById('copyUrlBtn');
         if (copyUrlBtn) {
             copyUrlBtn.addEventListener('click', function() {
-                // ... (JavaScript code for copying URL remains the same)
+                const urlInput = document.getElementById('publicReportUrl');
+                urlInput.select();
+                urlInput.setSelectionRange(0, 99999);
+                document.execCommand('copy');
+
+                const copySuccess = document.getElementById('copy-success');
+                copySuccess.style.display = 'block';
+                setTimeout(() => {
+                    copySuccess.style.display = 'none';
+                }, 2000);
             });
         }
     });

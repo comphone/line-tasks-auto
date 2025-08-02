@@ -3010,7 +3010,6 @@ def save_customer_line_id():
             message_queue.add_message(user_id, TextSendMessage(text=welcome_message))
     return jsonify({"status": "success"})
 
-
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
