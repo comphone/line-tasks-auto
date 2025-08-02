@@ -2505,6 +2505,10 @@ def settings_page():
             # เพิ่มการส่ง JSON response
             return jsonify({'status': 'error', 'message': message})
 
+    # --- เพิ่มโค้ดส่วนนี้เข้าไปเพื่อจัดการ GET request ---
+    settings = get_app_settings()
+    return render_template('settings_page.html', settings=settings)
+
 @app.route('/api/upload_avatar', methods=['POST'])
 def api_upload_avatar():
     if 'file' not in request.files:
