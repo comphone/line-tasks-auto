@@ -1949,7 +1949,7 @@ def task_details(task_id):
                 return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
             flash('ไม่พบงานที่ต้องการอัปเดต', 'danger')
             abort(404)
-
+        
         action = request.form.get('action')
         update_payload = {}
         notification_to_send = None
@@ -1958,7 +1958,7 @@ def task_details(task_id):
 
         history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
-
+        
         new_attachments_from_ajax_json = request.form.get('uploaded_attachments_json')
         new_attachments = []
         if new_attachments_from_ajax_json:
@@ -1986,7 +1986,7 @@ def task_details(task_id):
             })
             flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
             flash_category = 'success'
-
+            
         elif action == 'update_location':
             latitude = request.form.get('latitude')
             longitude = request.form.get('longitude')
@@ -2003,7 +2003,7 @@ def task_details(task_id):
 
             flash_message = 'อัปเดตพิกัดเรียบร้อยแล้ว!'
             flash_category = 'success'            
-
+        
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
             reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
@@ -2012,7 +2012,7 @@ def task_details(task_id):
 
             if not reschedule_due_str:
                 return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
-
+            
             try:
                 dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
                 update_payload['due'] = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
@@ -2035,13 +2035,13 @@ def task_details(task_id):
             work_summary = str(request.form.get('work_summary', '')).strip()
             if not work_summary:
                 return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
-
+                
             selected_technicians = request.form.get('technicians_report', '').split(',')
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not selected_technicians:
                 return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
-
+            
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'work_summary': work_summary,
@@ -2049,24 +2049,24 @@ def task_details(task_id):
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
-
+            
             update_payload['status'] = 'completed'
             notification_to_send = ('completion', selected_technicians)
             flash_message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
             flash_category = 'success'
-
+        
         else:
             return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
-
+            
         history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
-
+        
         final_notes = base_notes_text
         if all_reports_text: final_notes += all_reports_text
         if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
+        
         update_payload['notes'] = final_notes
-
+    
         try:
             updated_task = update_google_task(task_id, **update_payload)
 
@@ -2108,10 +2108,10 @@ def task_details(task_id):
             flash_message = f'เกิดข้อผิดพลาดที่ไม่คาดคิด: {str(e)}'
             app.logger.error(f'Unexpected error in task_details: {e}', exc_info=True)
             return jsonify({'status': 'error', 'message': flash_message}), 500
-
+            
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
-
+    
     task = parse_google_task_dates(task_raw)
     notes = task.get('notes', '')
     task['customer'] = parse_customer_info_from_notes(notes)
@@ -2129,9 +2129,9 @@ def task_details(task_id):
             elif due_dt_local.date() == today_thai:
                 task['is_today'] = True
         except (ValueError, TypeError): pass
-
+    
     app_settings = get_app_settings()
-
+    
     all_attachments = []
     for report in task['tech_reports_history']:
         if report.get('attachments'):
@@ -2273,7 +2273,7 @@ def edit_report_attachments(task_id, report_index):
     final_notes = base_notes_text
     if all_reports_text: final_notes += all_reports_text
     if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
+    
     if update_google_task(task_id, notes=final_notes):
         cache.clear()
         flash('แก้ไขรูปภาพในรายงานเรียบร้อยแล้ว!', 'success')
@@ -2759,7 +2759,6 @@ def technician_report():
                            years=list(range(now.year - 5, now.year + 2)), months=months,
                            technician_list=technician_list)
 
-# --- เริ่มคัดลอกโค้ดตั้งแต่ตรงนี้ ---
 @app.route('/technician_report/print')
 def technician_report_print():
     now = datetime.datetime.now(THAILAND_TZ)
@@ -2799,11 +2798,9 @@ def technician_report_print():
                 app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
                 continue
 
-    # เรียงลำดับงานในรายงานของช่างแต่ละคนตามวันที่
     for tech_name in report:
         report[tech_name]['tasks'].sort(key=lambda x: x['completed_formatted'])
     
-    # จัดเรียงช่างตามชื่อ
     sorted_report = dict(sorted(report.items()))
 
     return render_template('technician_report_print.html',
@@ -2812,7 +2809,6 @@ def technician_report_print():
                            selected_month=month,
                            now=datetime.datetime.now(THAILAND_TZ),
                            technician_list=technician_list)
-# --- สิ้นสุดการคัดลอกโค้ดตรงนี้ ---
 
 @app.route('/manage_duplicates', methods=['GET'])
 def manage_duplicates():
@@ -3329,4 +3325,4 @@ def liff_notification_popup():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)      
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
