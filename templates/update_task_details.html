@@ -154,13 +154,13 @@
 {% block body_extra %}
 <script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
 <script>
-    // --- เพิ่มโค้ดส่วนนี้เข้าไป ---
-    // บังคับให้หน้าเว็บโหลดใหม่เสมอเมื่อมีการกด Back กลับมา
+    // Force page to reload when navigating back to it to avoid stale data from browser's back-forward cache
     window.addEventListener('pageshow', function(event) {
         if (event.persisted) {
             window.location.reload();
         }
     });
+
     const allAttachments = {{ all_attachments | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     const technicianList = {{ technician_list | tojson | safe }};
@@ -219,19 +219,16 @@
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
 
-        // --- MODIFIED: Onboarding check moved here ---
         const actionInput = form.querySelector('input[name="action"]');
         if (actionInput && actionInput.value === 'complete_task') {
             const hasLineId = '{{ task.customer_feedback.customer_line_user_id or "" }}';
             if (!hasLineId) {
                 if (confirm("⚠️ ยังไม่ได้บันทึก LINE ของลูกค้า!\n\nต้องการสร้าง QR Code Onboarding ก่อนหรือไม่?\n\n- กด 'OK' เพื่อเปิดหน้า QR Code\n- กด 'Cancel' เพื่อปิดงานต่อโดยไม่เก็บข้อมูล LINE")) {
-                    // User wants to create the QR code, so we open the page and stop the submission.
                     window.open(`{{ url_for('generate_customer_onboarding_qr', task_id=task.id) }}`, '_blank');
-                    return; // IMPORTANT: Stop the function here
+                    return; 
                 }
             }
         }
-        // --- End of modification ---
 
         if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
 
@@ -275,9 +272,19 @@
             
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                if (result.redirect_url) { window.location.href = result.redirect_url; } 
-                else { window.flashMessage(result.message, 'success'); setTimeout(() => window.location.reload(), 1500); }
-            } else { throw new Error(result.message || 'Error'); }
+                if (result.redirect_url) {
+                    window.flashMessage(result.message, 'success');
+                    setTimeout(() => {
+                        window.location.href = result.redirect_url;
+                    }, 2000); 
+                } 
+                else { 
+                    window.flashMessage(result.message, 'success'); 
+                    setTimeout(() => window.location.reload(), 1500); 
+                }
+            } else { 
+                throw new Error(result.message || 'Error'); 
+            }
         } catch (error) {
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
         } finally {
