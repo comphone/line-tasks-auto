@@ -2477,16 +2477,19 @@ def settings_page():
         if save_app_settings(settings_data):
             run_scheduler()
             cache.clear()
-            if backup_settings_to_drive():
-                flash('บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!', 'success')
+            backup_success = backup_settings_to_drive()
+            if backup_success:
+                message = 'บันทึกและสำรองการตั้งค่าไปที่ Google Drive เรียบร้อยแล้ว!'
+                # เพิ่มการส่ง JSON response
+                return jsonify({'status': 'success', 'message': message})
             else:
-                flash('บันทึกการตั้งค่าสำเร็จ แต่สำรองไปที่ Google Drive ไม่สำเร็จ!', 'warning')
+                message = 'บันทึกการตั้งค่าสำเร็จ แต่สำรองไปที่ Google Drive ไม่สำเร็จ!'
+                # เพิ่มการส่ง JSON response
+                return jsonify({'status': 'success', 'message': message})
         else:
-            flash('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!', 'danger')
-        return redirect(url_for('settings_page'))
-
-    current_settings = get_app_settings()
-    return render_template('settings_page.html', settings=current_settings)
+            message = 'เกิดข้อผิดพลาดในการบันทึกการตั้งค่า!'
+            # เพิ่มการส่ง JSON response
+            return jsonify({'status': 'error', 'message': message})
 
 @app.route('/api/upload_avatar', methods=['POST'])
 def api_upload_avatar():
