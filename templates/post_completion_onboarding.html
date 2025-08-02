@@ -18,10 +18,22 @@
                 <div class="alert alert-danger">ไม่สามารถสร้าง QR Code ได้</div>
             {% endif %}
             
-            <hr>
-            <p class="text-muted">หรือหากไม่ต้องการเชื่อมต่อ LINE สามารถไปที่หน้ารายงานสรุปได้เลย</p>
-            <a href="{{ public_report_url }}" class="btn btn-secondary">
-                <i class="fas fa-qrcode me-2"></i>ไปที่หน้ารายงานสรุป (สำหรับลูกค้า)
+            <hr class="my-4">
+            
+            <div class="text-center mb-4">
+                <h5 class="text-muted mb-3">สำหรับช่าง</h5>
+                {% if LIFF_ID_TECHNICIAN_LOCATION %}
+                <a href="https://liff.line.me/{{ LIFF_ID_TECHNICIAN_LOCATION }}" target="_blank" class="btn btn-primary">
+                    <i class="fas fa-map-marker-alt me-2"></i> อัปเดตตำแหน่งของฉัน
+                </a>
+                <p class="form-text mt-2">กดเพื่ออัปเดตตำแหน่งล่าสุดของคุณ</p>
+                {% else %}
+                <p class="text-danger">LIFF ID สำหรับอัปเดตตำแหน่งช่างยังไม่ได้ตั้งค่า</p>
+                {% endif %}
+            </div>
+            <p class="text-muted small">หรือหากไม่ต้องการเชื่อมต่อ LINE สามารถไปที่หน้ารายงานสรุปได้เลย</p>
+            <a href="{{ public_report_url }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-qrcode me-2"></i>ไปที่หน้ารายงานสรุป
             </a>
         </div>
         <div class="card-footer">

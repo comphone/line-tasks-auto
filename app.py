@@ -1941,7 +1941,8 @@ def post_completion_onboarding(task_id):
                            customer_info=customer,
                            qr_code_base64=qr_code,
                            public_report_url=url_for('public_task_report', task_id=task_id, _external=True),
-                           now=datetime.datetime.now(THAILAND_TZ))
+                           now=datetime.datetime.now(THAILAND_TZ),
+                           LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
