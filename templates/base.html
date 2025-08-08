@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}ระบบจัดการงาน{% endblock %}</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
+    <!-- ✅ ฟีเจอร์เดิม: SweetAlert2 CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     
     <link rel="stylesheet" href="{{ url_for('static', filename='custom.css') }}">
@@ -61,6 +63,7 @@
                         <a class="nav-link {% if request.endpoint == 'settings_page' %}active{% endif %}" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>
                     </li>
                     
+                    <!-- ✅ ฟีเจอร์เดิม: สถานะ Google API ใน Navbar -->
                     <li class="nav-item dropdown">
                          <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             {% if google_api_connected %}
@@ -111,7 +114,92 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- ✅ ฟีเจอร์เดิม: SweetAlert2 JS -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- ==================== เริ่มต้นโค้ดสำหรับ LINE LIFF Session Check ==================== -->
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script>
+        const liffId = "{{ LIFF_ID_TASK_PAGE }}"; // ตรวจสอบว่า LIFF_ID_TASK_PAGE ถูกส่งมายัง Template นี้
+
+        console.log('CLIENT DEBUG: Script loaded. LIFF ID:', liffId); // เพิ่ม Log
+
+        if (liffId && liffId !== 'None' && liffId !== '') { // เพิ่มการตรวจสอบ 'None' และสตริงว่าง
+            liff.init({ liffId: liffId })
+                .then(() => {
+                    console.log('CLIENT DEBUG: LIFF init success.');
+                    if (liff.isLoggedIn()) {
+                        console.log('CLIENT DEBUG: User is logged in via LIFF. Checking Flask session...');
+                        liff.getAccessToken() // ดึง Access Token จาก LIFF
+                            .then(accessToken => {
+                                console.log('CLIENT DEBUG: LIFF Access Token obtained:', accessToken ? 'YES' : 'NO');
+                                if (accessToken) {
+                                    // ตรวจสอบ Session ก่อนว่ายังมีอยู่หรือไม่
+                                    fetch('/admin/session_status', {
+                                        method: 'GET',
+                                        credentials: 'include' // สำคัญ: ส่ง cookies ไปด้วย
+                                    })
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.is_logged_in) {
+                                            console.log('CLIENT DEBUG: Flask session is still valid.');
+                                        } else {
+                                            console.log('CLIENT DEBUG: Flask session expired. Re-establishing...');
+                                            // สร้าง session ใหม่ด้วย LIFF token
+                                            fetch('/liff_verify_session', {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                    'Authorization': `Bearer ${accessToken}` // ส่ง Token ไปใน Header
+                                                },
+                                                credentials: 'include' // สำคัญ: ส่ง cookies ไปด้วย
+                                            })
+                                            .then(response => response.json())
+                                            .then(data => {
+                                                if (data.status === 'success') {
+                                                    console.log('CLIENT DEBUG: Flask session re-established via LIFF token.');
+                                                    // รีเฟรชหน้าเพื่อให้ใช้ session ใหม่
+                                                    window.location.reload();
+                                                } else {
+                                                    console.warn('CLIENT DEBUG: Could not re-establish session. Redirecting to LIFF login.');
+                                                    liff.login();
+                                                }
+                                            })
+                                            .catch(error => {
+                                                console.error('CLIENT DEBUG: Error re-establishing session:', error);
+                                                liff.login();
+                                            });
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('CLIENT DEBUG: Error checking session status:', error);
+                                        liff.login();
+                                    });
+                                } else {
+                                    console.warn('CLIENT DEBUG: LIFF Access Token not available. Redirecting to LIFF login.');
+                                    liff.login();
+                                }
+                            })
+                            .catch(error => {
+                                console.error('CLIENT DEBUG: Error getting LIFF Access Token:', error);
+                                liff.login();
+                            });
+                    } else {
+                        console.log('CLIENT DEBUG: User is not logged in via LIFF. Redirecting to LIFF login.');
+                        liff.login();
+                    }
+                })
+                .catch((err) => {
+                    console.error('CLIENT DEBUG: LIFF init failed', err);
+                    console.warn('CLIENT DEBUG: Falling back to Flask default login flow due to LIFF init error.');
+                });
+        } else {
+            console.warn('CLIENT DEBUG: LIFF ID is not set or is invalid. Skipping LIFF SDK initialization.');
+            // หาก LIFF ID ไม่ได้ตั้งค่าหรือผิดพลาด LIFF SDK จะไม่ทำงาน
+            // Flask จะจัดการ redirect ไป /login เองตามปกติถ้า session ไม่มี
+        }
+    </script>
+    <!-- ===================== สิ้นสุดโค้ดสำหรับ LINE LIFF Session Check ===================== -->
     {% block body_extra %}{% endblock %}
 </body>
 </html>

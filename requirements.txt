@@ -2,10 +2,13 @@
 Flask==3.0.3
 Flask-WTF
 Flask-Cors
+Flask-Session
 gunicorn==22.0.0
 Werkzeug==3.0.3
 python-dotenv
 sentry-sdk[flask]
+
+redis
 
 # Google API Services
 google-api-python-client==2.130.0

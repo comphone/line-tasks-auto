@@ -4,6 +4,11 @@
 
 {% block head_extra %}
     <style>
+        .search-highlight {
+            background-color: #ffc107;
+            padding: 0.1em;
+            border-radius: 3px;
+        }
         .summary-card-link { text-decoration: none; }
         .summary-card {
             color: white;
@@ -31,13 +36,11 @@
             -webkit-overflow-scrolling: touch;
         }
         .table { min-width: 700px; }
-        .task-title-cell { max-width: 220px; white-space: normal; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-        .clickable-cell { cursor: pointer; }
+        .task-title-cell { max-width: 220px; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
 
         .nav-tabs .nav-link { color: #495057; }
         .nav-tabs .nav-link.active { color: #0d6efd; background-color: #fff; border-color: #dee2e6 #dee2e6 #fff; font-weight: 600; }
 
-        /* --- CSS ใหม่สำหรับ Batch Actions --- */
         .batch-actions-bar {
             position: fixed;
             bottom: 0;
@@ -64,7 +67,6 @@
             text-align: center;
             vertical-align: middle;
         }
-        /* --- สิ้นสุด CSS ใหม่ --- */
     </style>
 {% endblock %}
 
@@ -146,9 +148,8 @@
                 <form class="mb-3" onsubmit="return false;">
                     <div class="input-group">
                         <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="พิมพ์เพื่อค้นหาทันที..." value="{{ search_query or '' }}">
-                        <!-- แก้ไขตรงนี้: เพิ่มลิงก์สำหรับปุ่ม "..." -->
                         <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-secondary" title="จัดการงานซ้ำซ้อน">
-                            <i class="fas fa-ellipsis-h"></i> <!-- ใช้ไอคอนจุดสามจุด -->
+                            <i class="fas fa-ellipsis-h"></i>
                         </a>
                         <a href="{{ url_for('summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
                     </div>
@@ -175,13 +176,13 @@
                                 <th class="text-center">จัดการ</th>
                             </tr>
                         </thead>
-                        <tbody>
+						<tbody>
                             {% for task in tasks %}
-                            <tr class="task-row {{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}">
-                                <td class="checkbox-col">
+                            <tr class="task-row clickable-row {{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}"
+                                data-href="{{ task.web_url }}"> <td class="checkbox-col">
                                     <input class="form-check-input task-checkbox" type="checkbox" data-task-id="{{ task.id }}">
                                 </td>
-                                <td class="clickable-cell" onclick="window.location='https://liff.line.me/{{ LIFF_ID_TASK_PAGE }}{{ url_for('task_details', task_id=task.id) }}';">
+                                <td>
                                     {% if task.customer.organization %}
                                         <strong>{{ task.customer.organization }}</strong>
                                         <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
@@ -189,11 +190,11 @@
                                         <strong>{{ task.customer.name or '-' }}</strong>
                                     {% endif %}
                                 </td>
-                                <td class="task-title-cell" title="{{ task.title }}" onclick="window.location='https://liff.line.me/{{ LIFF_ID_TASK_PAGE }}{{ url_for('task_details', task_id=task.id) }}';">
+                                <td class="task-title-cell" title="{{ task.title }}">
                                     {{ task.title | replace('\n', '<br>') | safe }}
                                 </td>
-                                <td class="clickable-cell" onclick="window.location='https://liff.line.me/{{ LIFF_ID_TASK_PAGE }}{{ url_for('task_details', task_id=task.id) }}';">{{ task.due_formatted or '-' }}</td>
-                                <td class="text-center clickable-cell" onclick="window.location='https://liff.line.me/{{ LIFF_ID_TASK_PAGE }}{{ url_for('task_details', task_id=task.id) }}';">
+                                <td>{{ task.due_formatted or '-' }}</td>
+                                <td class="text-center">
                                     {% if task.status == 'completed' %}
                                         <span class="badge bg-success">เสร็จเรียบร้อย</span>
                                     {% elif task.is_today %}
@@ -208,7 +209,7 @@
                                     <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+                                    <a href="{{ task.web_url }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
                                         <i class="fas fa-file-alt"></i>
                                     </a>
                                 </td>
@@ -248,6 +249,28 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // ✅ START: โค้ดใหม่สำหรับทำให้ทั้งแถวคลิกได้
+        document.querySelectorAll('.clickable-row').forEach(row => {
+            row.addEventListener('click', function(event) {
+                // ตรวจสอบว่าไม่ได้คลิกที่ checkbox, ปุ่ม, หรือลิงก์ภายในแถว
+                const ignoredElements = 'input, button, a, i';
+                if (event.target.matches(ignoredElements) || event.target.closest(ignoredElements)) {
+                    return;
+                }
+                
+                const href = this.dataset.href;
+                if (href) {
+                    window.location.href = href;
+                }
+            });
+        });
+
+        // เปลี่ยน CSS cursor สำหรับแถวที่คลิกได้
+        const style = document.createElement('style');
+        style.innerHTML = `.clickable-row { cursor: pointer; }`;
+        document.head.appendChild(style);
+        // ✅ END: สิ้นสุดโค้ดใหม่
+
         // --- ส่วนของ Chart (เหมือนเดิม) ---
         const monthlyCtx = document.getElementById('monthlyTasksChart');
         let myChart;
@@ -277,26 +300,49 @@
         document.getElementById('task-table-container').style.display = 'block';
         document.getElementById('table-loading-spinner').style.display = 'none';
 		
-        // ▼▼▼ วางโค้ด Live Search ที่นี่ ▼▼▼
+        // --- โค้ด Live Search ที่ปรับปรุงใหม่ (เหมือนเดิม) ---
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
+            function clearHighlights(container) {
+                const highlighted = container.querySelectorAll('.search-highlight');
+                highlighted.forEach(el => {
+                    el.outerHTML = el.innerHTML;
+                });
+            }
+            function applyHighlights(container, filter) {
+                if (!filter) return;
+                const regex = new RegExp(filter.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+                const walker = document.createTreeWalker(container, Node.TEXT_NODE, null, false);
+                let node;
+                const nodesToReplace = [];
+                while (node = walker.nextNode()) {
+                    if (node.textContent.match(regex)) {
+                        nodesToReplace.push(node);
+                    }
+                }
+                nodesToReplace.forEach(node => {
+                    const newNode = document.createElement('span');
+                    newNode.innerHTML = node.textContent.replace(regex, match => `<mark class="search-highlight">${match}</mark>`);
+                    node.parentNode.replaceChild(newNode, node);
+                });
+            }
             searchInput.addEventListener('keyup', function() {
                 const filter = searchInput.value.toLowerCase();
                 const rows = document.querySelectorAll('.task-row');
-                
                 rows.forEach(row => {
+                    clearHighlights(row);
                     const text = row.textContent || row.innerText;
                     if (text.toLowerCase().indexOf(filter) > -1) {
                         row.style.display = "";
+                        applyHighlights(row, filter);
                     } else {
                         row.style.display = "none";
                     }
                 });
             });
         }
-        // ▲▲▲ สิ้นสุดโค้ด Live Search ▲▲▲
 
-        // --- ส่วนใหม่: จัดการ Batch Actions ---
+        // --- ส่วนใหม่: จัดการ Batch Actions (เหมือนเดิม) ---
         const selectAllCheckbox = document.getElementById('select-all-tasks');
         const taskCheckboxes = document.querySelectorAll('.task-checkbox:not(#select-all-tasks)');
         const batchActionBar = document.getElementById('batch-actions-bar');
@@ -306,14 +352,12 @@
 
         function updateSelectionState() {
             const selectedCount = document.querySelectorAll('.task-checkbox:not(#select-all-tasks):checked').length;
-            
             if (selectedCount > 0) {
                 batchActionBar.classList.add('active');
                 selectionCounter.textContent = `เลือก ${selectedCount} รายการ`;
             } else {
                 batchActionBar.classList.remove('active');
             }
-
             selectAllCheckbox.checked = selectedCount > 0 && selectedCount === taskCheckboxes.length;
             selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < taskCheckboxes.length;
         }
@@ -335,12 +379,10 @@
             deleteSelectedBtn.addEventListener('click', async function() {
                 const selectedCheckboxes = document.querySelectorAll('.task-checkbox:not(#select-all-tasks):checked');
                 const taskIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.taskId);
-
                 if (taskIds.length === 0) {
                     alert('กรุณาเลือกงานที่ต้องการลบ');
                     return;
                 }
-
                 if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ ${taskIds.length} งานที่เลือกอย่างถาวร?`)) {
                     try {
                         const response = await fetch("{{ url_for('api_delete_tasks_batch') }}", {
