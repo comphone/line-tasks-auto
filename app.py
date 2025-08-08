@@ -100,9 +100,6 @@ if SENTRY_DSN:
         profiles_sample_rate=1.0
     )
 
-app = Flask(__name__, static_folder='static')
-CORS(app)
-
 csrf = CSRFProtect(app)
 
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
