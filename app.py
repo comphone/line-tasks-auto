@@ -1,4 +1,3 @@
-from flask_session import Session
 import os
 from functools import wraps
 import sentry_sdk
@@ -25,9 +24,6 @@ from PIL import Image
 
 from dotenv import load_dotenv
 load_dotenv()
-
-initial_redis_url_check = os.environ.get('REDIS_URL')
-print(f"INITIAL DEBUG: REDIS_URL after load_dotenv: '{initial_redis_url_check}'")
 
 from flask import Flask, request, render_template, redirect, url_for, abort, flash, jsonify, Response, session, make_response
 from werkzeug.utils import secure_filename
@@ -77,8 +73,6 @@ import atexit
 
 from flask_cors import CORS
 
-from redis import Redis
-
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -109,70 +103,6 @@ if SENTRY_DSN:
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-
-app.config["SESSION_TYPE"] = "redis"
-
-redis_url = os.environ.get('REDIS_URL')
-
-print(f"DEBUG: REDIS_URL from environment (print): '{redis_url}'") # ใช้ print() เพื่อให้แน่ใจว่าเห็น Log นี้
-
-if redis_url:
-    app.config["SESSION_REDIS"] = Redis.from_url(redis_url)
-    print("DEBUG: Flask Session configured to use Redis from REDIS_URL (print).")
-else:
-    app.config["SESSION_REDIS"] = Redis(host='localhost', port=6379, db=0)
-    print("DEBUG: REDIS_URL not found. Flask Session attempting to use local Redis (print).")
-
-# --- ย้าย try-except ping มาไว้ตรงนี้ และใช้ print() ---
-try:
-    app.config["SESSION_REDIS"].ping()
-    print("✅ Successfully connected to Redis server (print).")
-except Exception as e:
-    print(f"❌ Failed to connect to Redis server (print): {e}")
-# ----------------------------------------------------
-
-# ตั้งค่า Session ให้คงทนถาวร (จะหมดอายุตาม PERMANENT_SESSION_LIFETIME)
-app.config["SESSION_PERMANENT"] = True
-# ตั้งค่าให้ Session Cookie มีการเซ็นชื่อเพื่อความปลอดภัย
-app.config["SESSION_USE_SIGNER"] = True
-
-# ==================== แก้ไขการตั้งค่า SESSION_COOKIE ====================
-# แก้ปัญหา Session ไม่คงอยู่ใน LIFF/LINE environment
-if os.environ.get('FLASK_ENV') == 'development':
-    # สำหรับ Local Development
-    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["SESSION_COOKIE_SECURE"] = False
-else:
-    # สำหรับ Production (Render.com + LINE LIFF)
-    app.config["SESSION_COOKIE_SAMESITE"] = "None"
-    app.config["SESSION_COOKIE_SECURE"] = True
-    
-# เพิ่มการตั้งค่าเพื่อให้ Session Cookie ทำงานได้ดีขึ้น
-app.config["SESSION_COOKIE_DOMAIN"] = None  # ใช้ domain ปัจจุบัน
-app.config["SESSION_COOKIE_PATH"] = "/"     # ใช้ได้ทุก path
-# =========================================================================
-
-# ตั้งค่า Session Cookie ให้ส่งผ่าน HTTPS เท่านั้น (สำคัญสำหรับ Production)
-app.config["SESSION_COOKIE_SECURE"] = True
-# กำหนดอายุของ Session ที่คงทนถาวร (ในที่นี้คือ 30 วัน)
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
-# เพิ่มการตั้งค่า HTTPOnly สำหรับ Session Cookie (ป้องกันการเข้าถึงจาก JavaScript)
-app.config['SESSION_COOKIE_HTTPONLY'] = True 
-
-sess = Session(app)
-
-# --- เพิ่ม Log เพื่อตรวจสอบ Redis host/port ที่กำลังใช้ (ใช้ app.logger.info) ---
-if hasattr(app.config["SESSION_REDIS"], 'connection_pool') and hasattr(app.config["SESSION_REDIS"].connection_pool, 'connection_kwargs'):
-    conn_kwargs = app.config["SESSION_REDIS"].connection_pool.connection_kwargs
-    app.logger.info(f"DEBUG: Attempting to connect Redis at host='{conn_kwargs.get('host')}', port={conn_kwargs.get('port')}, db={conn_kwargs.get('db')}")
-elif hasattr(app.config["SESSION_REDIS"], 'connection_pool') and hasattr(app.config["SESSION_REDIS"].connection_pool, 'connection_class'):
-    conn_class = app.config["SESSION_REDIS"].connection_pool.connection_class
-    app.logger.info(f"DEBUG: Redis connection class: {conn_class.__name__}")
-else:
-    app.logger.info("DEBUG: Cannot determine specific Redis connection details from app.config['SESSION_REDIS'].")
-# --------------------------------------------------------------------------------
-
 csrf = CSRFProtect(app)
 
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
@@ -187,64 +117,6 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
-
-@app.route('/liff_verify_session', methods=['POST'])
-@csrf.exempt # ต้องยกเว้น CSRF สำหรับ AJAX call
-def liff_verify_session():
-    """
-    Endpoint นี้จะถูกเรียกจาก LIFF SDK (JavaScript) เพื่อยืนยันตัวตนผู้ใช้
-    และสร้าง Flask session ขึ้นมาใหม่ หาก session หายไป
-    """
-    app.logger.info("Received request to /liff_verify_session.")
-    
-    # ตรวจสอบว่ามี session ใน Flask อยู่แล้วหรือไม่
-    if 'line_user_id' in session:
-        app.logger.info(f"Flask session already exists for user {session.get('line_user_id')}. No need to re-verify.")
-        return jsonify({'status': 'success', 'message': 'Flask session already active.'}), 200
-
-    # ดึง LIFF Access Token จาก Header ที่ LIFF SDK ส่งมา (ถ้ามี)
-    # LIFF SDK จะส่ง token มาใน Authorization header หากเรียก liff.getAccessToken()
-    liff_access_token = request.headers.get('Authorization')
-    if liff_access_token and liff_access_token.startswith('Bearer '):
-        liff_access_token = liff_access_token.split(' ')[1]
-        app.logger.info("LIFF Access Token found in Authorization header.")
-    else:
-        app.logger.warning("LIFF Access Token not found in Authorization header. Attempting to get from LIFF SDK directly.")
-        # หากไม่พบใน header อาจจะต้องให้ client ส่งมาใน body หรือ query param
-        # แต่โดยทั่วไป LIFF SDK จะจัดการให้ถ้าเรียก liff.getAccessToken() ก่อน fetch
-
-    if not liff_access_token:
-        app.logger.error("No LIFF Access Token provided for verification.")
-        return jsonify({'status': 'error', 'message': 'LIFF Access Token missing.'}), 400
-
-    # ใช้ LIFF Access Token เพื่อดึงข้อมูลโปรไฟล์ผู้ใช้จาก LINE
-    profile_url = 'https://api.line.me/v2/profile'
-    profile_headers = {'Authorization': f'Bearer {liff_access_token}'}
-
-    try:
-        profile_response = requests.get(profile_url, headers=profile_headers)
-        profile_response.raise_for_status() # ตรวจสอบ HTTP Error
-        profile_info = profile_response.json()
-
-        # สร้าง Flask session ใหม่ - ปรับปรุง
-        session.permanent = True  # ตั้งเป็น permanent ก่อน
-        session['line_user_id'] = profile_info['userId']
-        session['display_name'] = profile_info['displayName']
-        session['login_time'] = datetime.datetime.now().isoformat()
-        session['re_established'] = True  # flag ว่าเป็น session ที่สร้างใหม่
-        
-        # บังคับให้ Flask บันทึก session ทันที
-        session.modified = True
-
-        app.logger.info(f"Flask session re-established for user {profile_info['userId']} via LIFF token.")
-        return jsonify({'status': 'success', 'message': 'Flask session re-established.'}), 200
-
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"LINE Profile API Error during LIFF session verification: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': f'Failed to verify LIFF token with LINE API: {e}'}), 500
-    except Exception as e:
-        app.logger.error(f"Unexpected error during LIFF session verification: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': 'An unexpected server error occurred during verification.'}), 500
 
 @app.route('/admin/cookie_headers')
 def cookie_headers_checker():
@@ -332,130 +204,6 @@ def check_line_bot_configuration():
         issues.append(f"LINE_CHANNEL_SECRET ไม่ถูกต้อง (ความยาว: {len(LINE_CHANNEL_SECRET)}, ควรเป็น 32)")
         
     return issues     
-
-@app.route('/admin/line_config_status')
-def line_config_status():
-    """
-    API endpoint เพื่อตรวจสอบสถานะการตั้งค่า Environment Variables ที่เกี่ยวข้องกับ LINE
-    จะคืนค่าเป็น JSON ที่บอกว่าตัวแปรแต่ละตัวถูกตั้งค่าหรือไม่ และมีความยาวถูกต้องหรือไม่
-    """
-    status_details = {}
-    overall_ok = True
-
-    # 1. ตรวจสอบ LINE_CHANNEL_ACCESS_TOKEN
-    # ✅ แก้ไข: ใช้ตัวแปร Global LINE_CHANNEL_ACCESS_TOKEN โดยตรง
-    access_token = LINE_CHANNEL_ACCESS_TOKEN # ลบ os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '')
-    status_details['LINE_CHANNEL_ACCESS_TOKEN'] = {
-        'set': bool(access_token),
-        'length': len(access_token),
-        'valid_length': len(access_token) > 50 # Access Token มักจะยาวมาก
-    }
-    if not status_details['LINE_CHANNEL_ACCESS_TOKEN']['set'] or not status_details['LINE_CHANNEL_ACCESS_TOKEN']['valid_length']:
-        overall_ok = False
-
-    # 2. ตรวจสอบ LINE_CHANNEL_SECRET
-    # ✅ แก้ไข: ใช้ตัวแปร Global LINE_CHANNEL_SECRET โดยตรง
-    channel_secret = LINE_CHANNEL_SECRET # ลบ os.environ.get('LINE_CHANNEL_SECRET', '')
-    status_details['LINE_CHANNEL_SECRET'] = {
-        'set': bool(channel_secret),
-        'length': len(channel_secret),
-        'valid_length': len(channel_secret) == 32 # Channel Secret ต้องยาว 32 ตัวอักษร
-    }
-    if not status_details['LINE_CHANNEL_SECRET']['set'] or not status_details['LINE_CHANNEL_SECRET']['valid_length']:
-        overall_ok = False
-
-    # 3. ตรวจสอบ LINE_LOGIN_CHANNEL_ID
-    # ✅ แก้ไข: ใช้ตัวแปร Global LINE_LOGIN_CHANNEL_ID โดยตรง
-    login_channel_id = LINE_LOGIN_CHANNEL_ID # ลบ os.environ.get('LINE_LOGIN_CHANNEL_ID', '')
-    status_details['LINE_LOGIN_CHANNEL_ID'] = {
-        'set': bool(login_channel_id),
-        'length': len(login_channel_id),
-        'is_numeric': login_channel_id.isdigit() if login_channel_id else False # ID มักจะเป็นตัวเลข
-    }
-    if not status_details['LINE_LOGIN_CHANNEL_ID']['set'] or not status_details['LINE_LOGIN_CHANNEL_ID']['is_numeric']:
-        overall_ok = False
-
-    # 4. ตรวจสอบ LINE_LOGIN_CHANNEL_SECRET
-    # ✅ แก้ไข: ใช้ตัวแปร Global LINE_LOGIN_CHANNEL_SECRET โดยตรง
-    login_channel_secret = LINE_LOGIN_CHANNEL_SECRET # ลบ os.environ.get('LINE_LOGIN_CHANNEL_SECRET', '')
-    status_details['LINE_LOGIN_CHANNEL_SECRET'] = {
-        'set': bool(login_channel_secret),
-        'length': len(login_channel_secret),
-        'valid_length': len(login_channel_secret) == 32 # Secret ต้องยาว 32 ตัวอักษร
-    }
-    if not status_details['LINE_LOGIN_CHANNEL_SECRET']['set'] or not status_details['LINE_LOGIN_CHANNEL_SECRET']['valid_length']:
-        overall_ok = False
-
-    # 5. ตรวจสอบ LIFF_ID_FORM
-    # ✅ แก้ไข: ใช้ตัวแปร Global LIFF_ID_FORM โดยตรง
-    liff_id_form = LIFF_ID_FORM # ลบ os.environ.get('LIFF_ID_FORM', '')
-    status_details['LIFF_ID_FORM'] = {
-        'set': bool(liff_id_form),
-        'length': len(liff_id_form),
-        'format_ok': '-' in liff_id_form and liff_id_form.count('-') == 1 if liff_id_form else False # LIFF ID มี - 1 ตัว
-    }
-    if not status_details['LIFF_ID_FORM']['set'] or not status_details['LIFF_ID_FORM']['format_ok']:
-        overall_ok = False
-
-    # 6. ตรวจสอบ LIFF_ID_TASK_PAGE (หากคุณใช้)
-    # ✅ แก้ไข: ใช้ตัวแปร Global LIFF_ID_TASK_PAGE โดยตรง
-    liff_id_task_page = os.environ.get('LIFF_ID_TASK_PAGE', '') # อันนี้ยังต้องใช้ os.environ.get เพราะไม่ได้ประกาศเป็น Global
-    status_details['LIFF_ID_TASK_PAGE'] = {
-        'set': bool(liff_id_task_page),
-        'length': len(liff_id_task_page),
-        'format_ok': '-' in liff_id_task_page and liff_id_task_page.count('-') == 1 if liff_id_task_page else False
-    }
-    if status_details['LIFF_ID_TASK_PAGE']['set'] and not status_details['LIFF_ID_TASK_PAGE']['format_ok']:
-        overall_ok = False
-
-    # 7. ตรวจสอบ LIFF_ID_TECHNICIAN_LOCATION (หากคุณใช้)
-    # ✅ แก้ไข: ใช้ตัวแปร Global LIFF_ID_TECHNICIAN_LOCATION โดยตรง
-    liff_id_tech_loc = LIFF_ID_TECHNICIAN_LOCATION # ลบ os.environ.get('LIFF_ID_TECHNICIAN_LOCATION', '')
-    status_details['LIFF_ID_TECHNICIAN_LOCATION'] = {
-        'set': bool(liff_id_tech_loc),
-        'length': len(liff_id_tech_loc),
-        'format_ok': '-' in liff_id_tech_loc and liff_id_tech_loc.count('-') == 1 if liff_id_tech_loc else False
-    }
-    if status_details['LIFF_ID_TECHNICIAN_LOCATION']['set'] and not status_details['LIFF_ID_TECHNICIAN_LOCATION']['format_ok']:
-        overall_ok = False
-
-    # 8. ตรวจสอบ LINE_OA_ID (ถ้ามี)
-    # ✅ แก้ไข: ใช้ตัวแปร Global LINE_OA_ID โดยตรง
-    line_oa_id = os.environ.get('LINE_OA_ID', '') # อันนี้ยังต้องใช้ os.environ.get เพราะไม่ได้ประกาศเป็น Global
-    status_details['LINE_OA_ID'] = {
-        'set': bool(line_oa_id),
-        'starts_with_at': line_oa_id.startswith('@') if line_oa_id else False
-    }
-    if status_details['LINE_OA_ID']['set'] and not status_details['LINE_OA_ID']['starts_with_at']:
-        overall_ok = False
-
-    return jsonify({
-        'overall_status': 'OK' if overall_ok else 'ERROR',
-        'message': 'LINE configuration looks good!' if overall_ok else 'Some LINE configurations are incorrect or missing.',
-        'details': status_details
-    })
-
-line_issues = check_line_bot_configuration()
-if line_issues:
-    app.logger.error("LINE Bot Configuration Issues:")
-    for issue in line_issues:
-        app.logger.error(f"  - {issue}")
-else:
-    app.logger.info("LINE Bot configuration looks good!")
-    
-app.logger.info(f"==========================================")
-
-LINE_LOGIN_CHANNEL_SECRET = os.environ.get('LINE_LOGIN_CHANNEL_SECRET')
-
-LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
-# --- NEW: เพิ่ม LIFF ID สำหรับหน้าอัปเดตตำแหน่งช่าง ---
-LIFF_ID_TECHNICIAN_LOCATION = os.environ.get('LIFF_ID_TECHNICIAN_LOCATION')
-# ----------------------------------------------------
-LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
-GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
-
-LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 100))
 
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
@@ -1930,28 +1678,6 @@ with app.app_context():
 
 atexit.register(cleanup_scheduler)
 
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # ตรวจสอบ Session ID และข้อมูล User
-        app.logger.info(f"login_required: Checking session for path {request.path}")
-        app.logger.info(f"Session ID: {session.get('_id', 'No Session ID')}")
-        app.logger.info(f"Line User ID in session: {session.get('line_user_id', 'Not Found')}")
-        
-        if 'line_user_id' not in session:
-            app.logger.warning(f"No line_user_id in session for path {request.path}")
-            
-            # เก็บ URL ปัจจุบันเพื่อ redirect กลับมาหลัง login
-            if request.path != '/login':
-                session['next_url'] = request.path
-                
-            flash('กรุณาเข้าสู่ระบบเพื่อใช้งานหน้านี้', 'warning')
-            return redirect(url_for('login_page'))
-            
-        app.logger.info(f"Session valid for user {session['line_user_id']}")
-        return f(*args, **kwargs)
-    return decorated_function
-
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
@@ -1996,29 +1722,6 @@ def api_task_summary(task_id):
         'task_details_url': url_for('task_details', task_id=task_id, _external=True)
     }
     return jsonify(summary_data)
-
-@app.route('/login')
-def login_page():
-    """
-    หน้านี้จะใช้ LIFF SDK เพื่อจัดการการล็อกอินโดยตรง
-    Flask-generated URL จะเป็น fallback หาก LIFF SDK ทำงานไม่ได้
-    """
-    line_login_url = (f"https://access.line.me/oauth2/v2.1/authorize?response_type=code"
-                      f"&client_id={LINE_LOGIN_CHANNEL_ID}"
-                      f"&redirect_uri={url_for('callback_line', _external=True)}"
-                      f"&state={uuid.uuid4().hex}"
-                      f"&scope=profile%20openid%20email")
-    
-    # ส่ง LIFF_ID_FORM ไปยัง template เพื่อให้ JavaScript ใช้
-    return render_template('login.html',
-                           line_login_url=line_login_url,
-                           LIFF_ID_FORM=os.environ.get('LIFF_ID_FORM', '')) # <--- บรรทัดนี้สำคัญ
-
-@app.route('/logout')
-def logout():
-    session.clear() # ล้างข้อมูลผู้ใช้ออกจากระบบ
-    flash('คุณได้ออกจากระบบเรียบร้อยแล้ว', 'info')
-    return redirect(url_for('login_page'))
 
 @app.route("/")
 def root_redirect():
@@ -2083,7 +1786,6 @@ def api_update_technician_location():
         return jsonify({'status': 'error', 'message': 'An internal server error occurred.'}), 500
 # ------------------------------------------
 @app.route("/form", methods=['GET', 'POST'])
-@login_required
 def form_page():
     if request.method == 'POST':
         # --- โค้ดส่วน POST ทั้งหมดของคุณ (เหมือนเดิมทุกประการ) ---
@@ -2310,7 +2012,6 @@ def compress_image_to_fit(file, max_size_bytes):
         return None, None, None
 
 @app.route('/summary')
-@login_required
 def summary():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
@@ -2393,7 +2094,6 @@ def summary():
                            )
 
 @app.route('/summary/print')
-@login_required
 def summary_print():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
@@ -2438,7 +2138,6 @@ def summary_print():
                            now=datetime.datetime.now(THAILAND_TZ))
 
 @app.route('/calendar')
-@login_required
 def calendar_view():
     tasks_raw = get_google_tasks_for_report(show_completed=False) or []
     unscheduled_tasks = []
@@ -2529,7 +2228,6 @@ def schedule_task_from_calendar():
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
-@login_required
 def task_details(task_id):
     if request.method == 'POST':
         task_raw = get_single_task(task_id)
@@ -2769,7 +2467,6 @@ def api_edit_report_text(task_id, report_index):
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
 
 @app.route('/task/<task_id>/edit_report/<int:report_index>', methods=['POST'])
-@login_required
 def edit_report_attachments(task_id, report_index):
     task_raw = get_single_task(task_id)
     if not task_raw:
@@ -2903,7 +2600,6 @@ def delete_task_report(task_id, report_index):
 
 
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
-@login_required
 def edit_task(task_id):
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
@@ -2991,7 +2687,6 @@ def api_delete_tasks_batch():
     return jsonify({ 'status': 'success', 'message': f'Deleted {deleted} tasks, {failed} failed.'})
 
 @app.route('/settings', methods=['GET', 'POST'])
-@login_required
 def settings_page():
     if request.method == 'POST':
         try:
@@ -3344,7 +3039,6 @@ def _get_technician_report_data(year, month):
     return dict(sorted(report.items())), technician_list
 
 @app.route('/technician_report')
-@login_required
 def technician_report():
     now = datetime.datetime.now(THAILAND_TZ)
     try:
@@ -3367,7 +3061,6 @@ def technician_report():
                         technician_list=technician_list)
 
 @app.route('/technician_report/print')
-@login_required
 def technician_report_print():
     now = datetime.datetime.now(THAILAND_TZ)
     try:
@@ -3387,7 +3080,6 @@ def technician_report_print():
                         technician_list=technician_list)
 
 @app.route('/manage_duplicates', methods=['GET'])
-@login_required
 def manage_duplicates():
     tasks = get_google_tasks_for_report(show_completed=True) or []
     duplicates = defaultdict(list)
@@ -3423,7 +3115,6 @@ def delete_duplicates_batch():
     return redirect(url_for('manage_duplicates'))
 
 @app.route('/manage_equipment_duplicates', methods=['GET'])
-@login_required
 def manage_equipment_duplicates():
     catalog = get_app_settings().get('equipment_catalog', [])
     duplicates = defaultdict(list)
@@ -3814,7 +3505,6 @@ def handle_postback(event):
             app.logger.warning(f"Could not send postback reply: {e}")
 
 @app.route("/admin/organize_files", methods=['GET', 'POST'])
-@login_required
 def organize_files():
     if request.method == 'POST':
         service = get_google_drive_service()
@@ -3994,79 +3684,6 @@ def get_line_bot_status():
         "message": "การตั้งค่า LINE Bot พร้อมใช้งาน" if is_ok else "พบปัญหาในการตั้งค่า LINE Bot",
         "details": details
     })
-
-@app.route('/callback_line')
-def callback_line():
-    """
-    จัดการการเรียกกลับ (callback) จาก LINE Login หลังจากผู้ใช้ยืนยันตัวตนแล้ว
-    ฟังก์ชันนี้จะรับ authorization code จาก LINE, แลกเปลี่ยนเป็น access token,
-    ดึงข้อมูลโปรไฟล์ผู้ใช้, บันทึกข้อมูล session, และเปลี่ยนเส้นทางผู้ใช้
-    ไปยังหน้าที่ต้องการเดิม (หรือหน้าสรุปหากไม่มีการระบุ)
-    """
-    # 1. รับรหัสชั่วคราว (code) จาก LINE
-    # 'code' คือ authorization code ที่ LINE ส่งกลับมาหลังจากผู้ใช้ยืนยันตัวตน
-    code = request.args.get('code')
-    if not code:
-        # หากไม่มี code แสดงว่าการล็อกอินผิดพลาด
-        app.logger.error("LINE Login Error: Missing authorization code in callback.")
-        flash('การเข้าสู่ระบบผิดพลาด: ไม่พบ authorization code', 'danger')
-        return redirect(url_for('login_page'))
-
-    # 2. เตรียมข้อมูลเพื่อนำรหัสไปแลก Access Token
-    # สร้าง URL และข้อมูลที่จำเป็นสำหรับการส่งคำขอ POST ไปยัง LINE เพื่อแลก token
-    token_url = 'https://api.line.me/oauth2/v2.1/token'
-    token_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    token_data = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': url_for('callback_line', _external=True), # ต้องตรงกับ Callback URL ใน LINE Developers Console
-        'client_id': LINE_LOGIN_CHANNEL_ID,
-        'client_secret': LINE_LOGIN_CHANNEL_SECRET
-    }
-
-    try:
-        # 3. ส่งคำขอไปแลก Access Token
-        # ใช้ requests.post เพื่อส่งข้อมูลไปแลก token
-        response = requests.post(token_url, headers=token_headers, data=token_data)
-        response.raise_for_status() # ตรวจสอบว่ามี HTTP Error (เช่น 4xx หรือ 5xx) หรือไม่
-        token_info = response.json() # แปลง JSON response เป็น Python dictionary
-
-        # 4. นำ Access Token ไปขอข้อมูลโปรไฟล์ผู้ใช้
-        # ใช้ access token ที่ได้มาเพื่อขอข้อมูลโปรไฟล์ของผู้ใช้ LINE
-        profile_url = 'https://api.line.me/v2/profile'
-        profile_headers = {'Authorization': f'Bearer {token_info["access_token"]}'}
-        profile_response = requests.get(profile_url, headers=profile_headers)
-        profile_response.raise_for_status() # ตรวจสอบ HTTP Error อีกครั้ง
-        profile_info = profile_response.json() # แปลง JSON response เป็น Python dictionary
-      
-        app.logger.info(f"Session created for user {profile_info['displayName']} ({profile_info['userId']})")
-        app.logger.info(f"Session ID after login: {session.get('_id', 'No Session ID')}")
-
-        app.logger.info(f"User {profile_info['displayName']} ({profile_info['userId']}) logged in successfully via web.")
-
-        next_url = session.pop('next_url', None)
-
-        app.logger.info(f"DEBUG: callback_line - next_url retrieved from session: '{next_url}'")
-
-        redirect_target = url_for('summary') # ค่าเริ่มต้น
-        if next_url and next_url != '/':
-            redirect_target = next_url
-            app.logger.info(f"DEBUG: callback_line - Redirecting to stored next_url: '{redirect_target}'")
-        else:
-            app.logger.info(f"DEBUG: callback_line - No specific next_url or it was root. Redirecting to default: '{redirect_target}'")
-        
-        return redirect(redirect_target)
-
-    except requests.exceptions.RequestException as e:
-        # ดักจับข้อผิดพลาดที่เกี่ยวข้องกับการเชื่อมต่อ HTTP (เช่น Network issues, 4xx หรือ 5xx errors)
-        app.logger.error(f"LINE Login Request Error: {e}", exc_info=True)
-        flash(f'เกิดข้อผิดพลาดในการเชื่อมต่อกับ LINE: {e}', 'danger')
-        return redirect(url_for('login_page'))
-    except Exception as e:
-        # ดักจับข้อผิดพลาดอื่นๆ ที่ไม่คาดคิด
-        app.logger.error(f"An unexpected error occurred during LINE callback: {e}", exc_info=True)
-        flash('เกิดข้อผิดพลาดที่ไม่คาดคิดระหว่างการเข้าสู่ระบบ', 'danger')
-        return redirect(url_for('login_page'))
 
 @app.route('/public/report/<task_id>')
 def public_task_report(task_id):
