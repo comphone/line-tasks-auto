@@ -1,0 +1,4 @@
+ทดสอบ Debug URLs:
+
+https://line-tasks-auto.onrender.com/debug/liff
+https://line-tasks-auto.onrender.com/test/liff (เปิดใน LINE Browser)

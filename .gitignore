@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env
+.venv/
+venv/
+ENV/
+env/
+*.sqlite3
+*.db
+instance/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Testing / Coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Flask specific
+*.egg-info/
+*.egg/
+dist/
+build/
+
+# Secrets
+credentials.json
+client_secrets.json
+token.json
+secrets.json
+config.yaml
+config.yml
+
+# Zip / binary
+*.zip
+*.tar.gz
+*.tar
+*.7z
+*.exe
+*.dll
+
+# Node (if applicable)
+node_modules/
+
+# Others
+static/*.log
+*.pid

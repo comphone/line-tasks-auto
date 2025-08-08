@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แจ้งเตือน</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body { background-color: #f0f2f5; }
+        .card { border: none; border-radius: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .card-header { background-color: #00B900; color: white; border-top-left-radius: 1rem; border-top-right-radius: 1rem; }
+        .loader { border: 5px solid #f3f3f3; border-radius: 50%; border-top: 5px solid #3498db; width: 50px; height: 50px; animation: spin 2s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .action-btn { text-decoration: none; display: block; }
+    </style>
+</head>
+<body>
+    <div class="container p-3">
+        <div id="loading-spinner" class="d-flex justify-content-center align-items-center" style="height: 80vh;">
+            <div class="loader"></div>
+        </div>
+
+        <div id="content" class="d-none">
+            <div class="card">
+                <div class="card-header text-center">
+                    <h5 class="mb-0" id="notification-title"></h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <small class="text-muted">ชื่องาน</small>
+                        <h6 id="task-title" class="fw-bold"></h6>
+                    </div>
+                    <div class="mb-3">
+                        <small class="text-muted">ลูกค้า</small>
+                        <h6 id="customer-name"></h6>
+                    </div>
+                    <div class="mb-3">
+                        <small class="text-muted">นัดหมาย</small>
+                        <h6 id="due-date"></h6>
+                    </div>
+                    <hr>
+                    <div class="d-grid gap-2">
+                        <a id="btn-details" href="#" class="btn btn-primary action-btn"><i class="fas fa-file-alt me-2"></i> ดูรายละเอียดงานเต็ม</a>
+                        <a id="btn-call" href="#" class="btn btn-success action-btn"><i class="fas fa-phone me-2"></i> โทรหาลูกค้า</a>
+                        <a id="btn-map" href="#" target="_blank" class="btn btn-info action-btn"><i class="fas fa-map-marked-alt me-2"></i> เปิดแผนที่นำทาง</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function initializeLiff() {
+            try {
+                // *** สำคัญ: ใส่ LIFF ID ของคุณที่นี่ ***
+                await liff.init({ liffId: "{{ LIFF_ID_FORM }}" }); 
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                } else {
+                    fetchData();
+                }
+            } catch (error) {
+                console.error("LIFF initialization failed.", error);
+                alert("เกิดข้อผิดพลาดในการโหลด LIFF");
+            }
+        }
+
+        function fetchData() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskId = urlParams.get('task_id');
+            const notiType = urlParams.get('type');
+
+            if (!taskId) {
+                document.getElementById('loading-spinner').innerHTML = '<p class="text-danger">ไม่พบ Task ID</p>';
+                return;
+            }
+
+            // เรียก API ที่เราสร้างขึ้นมาใหม่
+            fetch(`/api/task_summary/${taskId}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    populateData(data, notiType);
+                    document.getElementById('loading-spinner').classList.add('d-none');
+                    document.getElementById('content').classList.remove('d-none');
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    document.getElementById('loading-spinner').innerHTML = '<p class="text-danger">ไม่สามารถโหลดข้อมูลงานได้</p>';
+                });
+        }
+
+        function populateData(data, notiType) {
+            const titleMap = {
+                'new_task': "✨ มีงานใหม่เข้า!",
+                'arrival': "🔔 ช่างกำลังจะถึง!",
+                'completion': "✅ งานเสร็จเรียบร้อย!",
+                'nearby_job': "📍 มีงานใกล้เคียง!",
+                'update': "🗓️ อัปเดตงาน!"
+            };
+            document.getElementById('notification-title').innerText = titleMap[notiType] || 'แจ้งเตือน';
+            document.getElementById('task-title').innerText = data.title || '-';
+            document.getElementById('customer-name').innerText = data.customer.name || '-';
+            document.getElementById('due-date').innerText = data.due_formatted || 'ไม่มีกำหนด';
+
+            document.getElementById('btn-details').href = data.task_details_url || '#';
+            document.getElementById('btn-call').href = data.customer.phone ? `tel:${data.customer.phone}` : '#';
+            document.getElementById('btn-map').href = data.customer.map_url || '#';
+
+            if (!data.customer.phone) document.getElementById('btn-call').classList.add('disabled');
+            if (!data.customer.map_url) document.getElementById('btn-map').classList.add('disabled');
+        }
+
+        window.onload = initializeLiff;
+    </script>
+</body>
+</html>

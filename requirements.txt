@@ -1,0 +1,30 @@
+# Flask and Web Server
+Flask==3.0.3
+Flask-WTF
+Flask-Cors
+gunicorn==22.0.0
+Werkzeug==3.0.3
+python-dotenv
+sentry-sdk[flask]
+
+# Google API Services
+google-api-python-client==2.130.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+google-auth
+
+# LINE Bot SDK
+line-bot-sdk==3.17.1
+
+# Data and Utilities
+pandas
+openpyxl
+python-dateutil
+pytz
+Pillow
+qrcode
+geopy
+cachetools
+
+# Scheduler
+APScheduler
