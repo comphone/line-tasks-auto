@@ -308,17 +308,16 @@
     // --- END: โค้ดใหม่สำหรับ Equipment Catalog ---
 
 async function initializeLiff() {
-    // VVVV --- [จุดที่แก้ไข] --- VVVV
-    // เราจะใช้ตัวแปรชื่อ LIFF_ID_TO_USE ที่ส่งมาจากเซิร์ฟเวอร์เสมอ
+    // VVVV --- [FINAL FIX] --- VVVV
+    // Always use the consistent variable name from the server.
     const liffId = "{{ LIFF_ID_TO_USE }}";
 
     if (!liffId || liffId.trim() === '') {
-        console.error("LIFF ID is missing from the server. LIFF features will be disabled.");
-        // ไม่ต้องแสดง alert แต่ให้บอกนักพัฒนาใน Console
-        // alert("เกิดข้อผิดพลาด: ไม่พบการตั้งค่า LIFF ID จากเซิร์ฟเวอร์");
-        return; // ออกจากฟังก์ชันทันที ไม่ต้องทำอะไรต่อ
+        console.error("CRITICAL: LIFF ID was not sent from the server. Check app.py and Environment Variables.");
+        alert("เกิดข้อผิดพลาด: ไม่พบการตั้งค่า LIFF ID จากเซิร์ฟเวอร์");
+        return; 
     }
-    // ^^^^ --- [สิ้นสุดจุดที่แก้ไข] --- ^^^^
+    // ^^^^ --- [END OF FIX] --- ^^^^
 
     try {
         await liff.init({ liffId: liffId });
