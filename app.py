@@ -1221,7 +1221,11 @@ def parse_google_task_dates(task_item):
     return parsed
 
 def parse_tech_report_from_notes(notes):
+    # ✅ DEBUG: แสดง 200 ตัวอักษรแรกของ notes ที่ได้รับ
+    app.logger.debug(f"Parsing notes: {notes[:200]}...") 
     if not notes:
+        # ✅ DEBUG: แจ้งเมื่อ notes ว่างเปล่า
+        app.logger.debug("Notes is empty, returning empty history.")
         return [], ""
 
     # ใช้ re.split เพื่อแยกส่วนข้อมูลลูกค้าและส่วนรายงานออกจากกันอย่างชัดเจน
@@ -1262,12 +1266,16 @@ def parse_tech_report_from_notes(notes):
                 # --- สิ้นสุดโค้ดประมวลผล ---
 
             except json.JSONDecodeError:
+                # ✅ DEBUG: แจ้งเมื่อไม่สามารถ Parse JSON ของรายงานได้
                 app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
 
     # ทำความสะอาด base notes เพื่อให้เหลือแค่ข้อมูลลูกค้าจริงๆ
     base_notes_text = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", base_notes_with_feedback, flags=re.DOTALL).strip()
 
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+    # ✅ DEBUG: แสดงผลลัพธ์ของ history และ base_notes_text
+    app.logger.debug(f"Parsed history: {history}")
+    app.logger.debug(f"Base notes text: {base_notes_text[:200]}...")
     return history, base_notes_text
               
 def allowed_file(filename):
