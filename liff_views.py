@@ -50,9 +50,7 @@ def root_redirect_liff():
     # ถ้าไม่มี liff.state ให้ไปที่หน้า summary ตามปกติ
     return redirect(url_for('liff.summary'))
 
-
 @liff_bp.route('/summary')
-@liff_page
 def summary():
     """
     หน้าสรุปงาน (Dashboard) ที่จะแสดงผลใน LIFF
@@ -130,7 +128,6 @@ def summary():
 
 
 @liff_bp.route('/task/<task_id>')
-@liff_page
 def task_details(task_id):
     """
     หน้ารายละเอียดงาน ที่จะแสดงผลใน LIFF
@@ -179,7 +176,6 @@ def task_details(task_id):
     return response
 
 @liff_bp.route('/form')
-@liff_page
 def form_page():
     """
     หน้าสำหรับสร้างงานใหม่
