@@ -86,7 +86,8 @@
     <div class="summary-container">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
-            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary action-btn-needs-login" style="display:none;"><i class="fas fa-edit me-1"></i> แก้ไข</a>
+            <!-- ปุ่มแก้ไขจะแสดงเสมอเมื่อปิด LIFF Login -->
+            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit me-1"></i> แก้ไข</a>
         </div>
         <div class="info-grid">
             <div class="info-card"><h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6><p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p></div>
@@ -103,7 +104,7 @@
 
     <!-- UI ใหม่: Action Cards และ ประวัติงาน -->
     <div id="main-action-container">
-        <!-- Card ที่แสดงเมื่อต้องการให้ล็อกอินก่อน -->
+        <!-- Card ที่แจ้งให้ล็อกอิน จะถูกซ่อนไว้เมื่อปิด LIFF Login -->
         <div class="card shadow-sm mb-4 action-card" id="login-prompt-card" style="display:none;">
             <div class="card-header"><h5 class="mb-0"><i class="fas fa-user-lock me-2"></i>เข้าสู่ระบบเพื่อดำเนินการ</h5></div>
             <div class="card-body text-center">
@@ -114,7 +115,8 @@
             </div>
         </div>
         
-        <div id="chooseActionCard" class="action-card-needs-login" style="display:none;">
+        <!-- Action Card จะแสดงเสมอเมื่อปิด LIFF Login -->
+        <div id="chooseActionCard" class="action-card-needs-login" style="display:block;">
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5></div>
                 <div class="card-body p-3">
@@ -211,12 +213,12 @@
     
     let technicianSelectionModal, editTextModal, editAttachmentsModal, locationConfirmModal, equipmentCatalogModal;
     let currentTechnicianTargetId, slideIndex;
-    let technicianLineUserId = null;
+    let technicianLineUserId = null; // จะไม่ถูกกำหนดค่าเมื่อปิด LIFF login
     let equipmentCatalog = [];
     let targetFormIdForEquipment;
     // --- END: ตัวแถมละข้อมูลตั้งต้น ---
 
-    // --- ระบบจัดการ LIFF ที่ปรับปรุงใหม่ (เหมือนเดิม) ---
+    // --- ระบบจัดการ LIFF ที่ปรับปรุงใหม่ (ปิด LIFF Login) ---
     const liffStatusContainer = document.getElementById('liff-status-container');
     const liffLoadingSpinner = document.getElementById('liff-loading-spinner');
     const liffErrorDisplay = document.getElementById('liff-error-display');
@@ -232,38 +234,50 @@
         liffErrorDisplay.style.display = 'block';
     }
 
+    // ✅ ปิดการล็อกอิน LIFF อัตโนมัติ
 	async function initializeLiff() {
-		try {
-			const liffId = "{{ LIFF_ID_TO_USE }}";
-			if (!liffId || liffId === 'None' || liffId.trim() === '') {
-				throw new Error("LIFF ID is missing. Please configure 'LIFF_ID_FORM' in the server's environment variables.");
-			}
-			await liff.init({ liffId: liffId });
-			
-			// หลังจาก init สำเร็จ ให้แสดงเนื้อหาหลักทันที
-			liffStatusContainer.style.display = 'none';
-			mainContent.style.display = 'block';
-			
-			if (liff.isLoggedIn()) {
-				const profile = await liff.getProfile();
-				technicianLineUserId = profile.userId;
-				// แสดงปุ่มสำหรับช่างที่ล็อกอินแล้ว
-				actionCardNeedsLogin.style.display = 'block';
-				document.getElementById('login-prompt-card').style.display = 'none';
-			} else {
-				// แสดงปุ่ม 'ล็อกอิน' และซ่อนปุ่มที่ต้องการล็อกอิน
-				document.getElementById('login-prompt-card').style.display = 'block';
-				actionCardNeedsLogin.style.display = 'none';
-			}
+        try {
+            const liffId = "{{ LIFF_ID_TO_USE }}"; // ยังคงต้องมี LIFF ID เพื่อ init SDK แม้ไม่ล็อกอิน
+            if (!liffId || liffId === 'None' || liffId.trim() === '') {
+                // หาก LIFF ID หายไป อาจจะยังคงแสดงหน้าได้แต่ฟังก์ชัน LIFF จะไม่ทำงาน
+                console.warn("LIFF ID is missing. Some LIFF functions might not work.");
+                liffStatusContainer.style.display = 'none';
+                mainContent.style.display = 'block';
+                document.getElementById('login-prompt-card').style.display = 'none'; // ซ่อนปุ่มล็อกอิน
+                actionCardNeedsLogin.style.display = 'block'; // แสดง Action Card
+                return;
+            }
 
-		} catch (error) {
+            await liff.init({ liffId: liffId });
+            console.log("LIFF SDK initialized (login disabled).");
+
+            // แสดงเนื้อหาหลักทันที
+            liffStatusContainer.style.display = 'none';
+            mainContent.style.display = 'block';
+            document.getElementById('login-prompt-card').style.display = 'none'; // ซ่อนปุ่มล็อกอิน
+            actionCardNeedsLogin.style.display = 'block'; // แสดง Action Card
+
+            // หากต้องการ LIFF User ID สำหรับฟอร์ม ให้ดึงมาถ้าล็อกอินอยู่แล้ว
+            if (liff.isLoggedIn()) {
+                const profile = await liff.getProfile();
+                technicianLineUserId = profile.userId;
+                console.log("Technician LIFF User ID:", technicianLineUserId);
+            } else {
+                console.log("User is not logged in via LIFF. Features requiring LIFF ID will be limited.");
+            }
+
+        } catch (error) {
             console.error("[LIFF] Initialization failed:", error);
             const errorMessage = "ไม่สามารถเชื่อมต่อกับบริการของ LINE ได้";
             let errorDetails = `<strong>สาเหตุ:</strong> ${error.message}<br><br><strong>คำแนะนำ:</strong><ul><li>ตรวจสอบว่า LIFF ID ที่ตั้งค่าใน Environment Variables ถูกต้องหรือไม่</li><li>ตรวจสอบการตั้งค่า Endpoint URL ใน LINE Developers Console</li><li>ลองเปิดแอปใหม่อีกครั้ง</li></ul>`;
             showLiffError(errorMessage, errorDetails);
-		}
-	}
-
+            // แม้จะมี error ก็ยังพยายามแสดงเนื้อหาหลัก
+            mainContent.style.display = 'block';
+            document.getElementById('login-prompt-card').style.display = 'none';
+            actionCardNeedsLogin.style.display = 'block';
+        }
+    }
+    
     // --- ฟังก์ชัน Helper และจัดการ Event ต่างๆ (จากไฟล์ที่อัปโหลด) ---
     function showActionCard(cardIdToShow) {
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
@@ -273,12 +287,12 @@
     async function handleFormSubmission(event, form, statusBoxId) {
         event.preventDefault();
     
-        // ✅ เพิ่มโค้ดตรวจสอบ LIFF login ก่อนทำธุรกรรมสำคัญ
-        if (!liff.isLoggedIn()) {
-            alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ');
-            liff.login();
-            return;
-        }
+        // ✅ ปิดการตรวจสอบ LIFF login ก่อนทำธุรกรรมสำคัญ
+        // if (!liff.isLoggedIn()) {
+        //     alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ');
+        //     liff.login();
+        //     return;
+        // }
 
         if (!form.checkValidity()) {
             form.classList.add('was-validated');
@@ -286,13 +300,19 @@
         }
 
         const submitButton = form.querySelector('button[type="submit"]');
-        const originalBtnText = submitButton.innerHTML;
+        const originalBtnHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
         const uploadStatusBox = document.getElementById(statusBoxId);
         const mainFormData = new FormData(form);
-        mainFormData.append('technician_line_user_id', technicianLineUserId); // ส่ง user ID ไปด้วย
+        // ส่ง technicianLineUserId ไปด้วย หากมีค่า (ถ้าผู้ใช้ล็อกอินอยู่แล้ว)
+        if (technicianLineUserId) {
+            mainFormData.append('technician_line_user_id', technicianLineUserId); 
+        } else {
+            console.warn("Technician LINE User ID is not available for form submission.");
+            // อาจจะใช้ค่า default หรือแจ้งเตือนถ้าจำเป็น
+        }
 
         const files = Array.from(mainFormData.getAll('files[]'));
         let uploadedAttachments = [];
@@ -320,7 +340,7 @@
                 } catch (error) {
                     alert(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`);
                     submitButton.disabled = false;
-                    submitButton.innerHTML = originalBtnText;
+                    submitButton.innerHTML = originalBtnHtml;
                     uploadStatusBox.style.display = 'none';
                     return;
                 }
@@ -348,7 +368,7 @@
         } catch (error) {
             alert(`เกิดข้อผิดพลาด: ${error.message}`);
             submitButton.disabled = false;
-            submitButton.innerHTML = originalBtnText;
+            submitButton.innerHTML = originalBtnHtml;
             if (uploadStatusBox) uploadStatusBox.style.display = 'none';
         }
     }
@@ -400,11 +420,11 @@
         const updateLocationBtn = document.getElementById('updateLocationBtn');
         if (updateLocationBtn) {
             updateLocationBtn.addEventListener('click', async () => {
-                // Check LIFF login before sensitive action
+                // Check LIFF login before sensitive action (ยังคงตรวจสอบไว้เผื่อต้องการข้อมูล LIFF ID)
                 if (!liff.isLoggedIn()) {
-                    alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ');
-                    liff.login();
-                    return;
+                    alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ (หากต้องการบันทึก LINE User ID ของช่าง)');
+                    // liff.login(); // ไม่ต้องสั่ง login อัตโนมัติ
+                    // แต่ยังคงให้ดำเนินการต่อได้
                 }
 
                 const originalBtnHtml = updateLocationBtn.innerHTML;
@@ -810,17 +830,16 @@
                 const statusBox = document.getElementById(statusElementId);
                 if (statusBox) statusBox.style.display = 'inline-block';
 
-                if (technicianLineUserId) {
+                if (technicianLineUserId) { // ตรวจสอบว่ามี LIFF User ID ของช่างหรือไม่
                     const techIdInput = document.createElement('input');
                     techIdInput.type = 'hidden';
                     techIdInput.name = 'technician_line_user_id';
                     techIdInput.value = technicianLineUserId;
                     form.appendChild(techIdInput);
                 } else {
-                    alert("เกิดข้อผิดพลาด: ไม่พบ LINE User ID ของช่าง กรุณาเข้าผ่าน LINE App");
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = 'ยืนยันการปิดงาน';
-                    return;
+                    // หากไม่มี LIFF User ID ของช่าง (เพราะไม่ได้ล็อกอิน)
+                    console.warn("Technician LINE User ID is not available. Proceeding without it.");
+                    // คุณสามารถเพิ่ม alert หรือการจัดการอื่น ๆ ที่นี่ได้ หากต้องการบังคับให้ล็อกอิน
                 }
 
                 if (shouldGetLocation) {
