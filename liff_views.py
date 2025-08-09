@@ -175,15 +175,17 @@ def task_details(task_id):
     response.headers['Expires'] = '0'
     return response
 
-@liff_bp.route('/form')
 # ในไฟล์ liff_views.py
+
+@liff_bp.route('/form')
 def form_page():
     """
     หน้าสำหรับสร้างงานใหม่
     """
     settings = get_app_settings()
+    # แก้ไข return statement ให้เป็นดังนี้:
     return render_template('form.html',
-                           # ✅✅✅ แก้ไขชื่อตัวแปรให้ถูกต้องตามที่ Template ต้องการ ✅✅✅
+                           # ส่งข้อมูล text_snippets แยกตามประเภทให้ถูกต้อง
                            task_detail_snippets=TEXT_SNIPPETS.get('task_details', []),
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
                            technician_list=settings.get('technician_list', []),

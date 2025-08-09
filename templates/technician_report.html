@@ -2,20 +2,6 @@
 
 {% block title %}รายงานสรุปยอดงานช่าง{% endblock %}
 
-{% block head_extra %}
-<style>
-    .report-table th {
-        background-color: #e9ecef;
-    }
-    .technician-card {
-        border-left: 5px solid #0d6efd;
-    }
-    .clickable-row {
-        cursor: pointer;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h1 class="h2 mb-0">📊 รายงานสรุปยอดงานช่าง</h1>
@@ -26,25 +12,19 @@
 </div>
 
 <div class="card shadow-sm mb-4">
-    <div class="card-header">
-        <h5 class="mb-0">เลือกช่วงเวลา</h5>
-    </div>
+    <div class="card-header"><h5 class="mb-0">เลือกช่วงเวลา</h5></div>
     <div class="card-body">
         <form method="GET" action="{{ url_for('technician_report') }}" class="row g-3 align-items-center">
             <div class="col-md-5">
                 <label for="month" class="form-label">เดือน</label>
                 <select name="month" id="month" class="form-select">
-                    {% for m in months %}
-                        <option value="{{ m.value }}" {% if m.value == selected_month %}selected{% endif %}>{{ m.name }}</option>
-                    {% endfor %}
+                    {% for m in months %}<option value="{{ m.value }}" {% if m.value == selected_month %}selected{% endif %}>{{ m.name }}</option>{% endfor %}
                 </select>
             </div>
             <div class="col-md-5">
                 <label for="year" class="form-label">ปี</label>
                 <select name="year" id="year" class="form-select">
-                    {% for y in years %}
-                        <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
-                    {% endfor %}
+                    {% for y in years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
                 </select>
             </div>
             <div class="col-md-2 d-flex align-items-end">
@@ -54,65 +34,32 @@
     </div>
 </div>
 
-{% if report_data %}
-    {% for tech_name, data in report_data.items() %}
-    <div class="card shadow-sm mb-4 technician-card">
-        <div class="card-header bg-light">
-            <h5 class="mb-0 d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-user-cog me-2"></i>{{ tech_name }}</span>
-                <span class="badge bg-primary rounded-pill">{{ data.count }} งาน</span>
-            </h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0 report-table align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" style="width: 10%;">#</th>
-                            <th scope="col" style="width: 20%;">วันที่เสร็จ</th>
-                            <th scope="col" style="width: 35%;">ลูกค้า</th>
-                            <th scope="col" style="width: 35%;">รายละเอียดงาน</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for task in data.tasks %}
-                        {# ✅✅✅ แก้ไข: เพิ่ม data-href และ class clickable-row ✅✅✅ #}
-                        <tr class="clickable-row" data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
-                            <th scope="row">{{ loop.index }}</th>
-                            <td>{{ task.completed_formatted }}</td>
-                            <td>{{ task.customer_name }}</td>
-                            <td>
-                                {# ✅✅✅ แก้ไข: ลบ <a> tag เดิมออก เพราะทั้งแถวคลิกได้แล้ว ✅✅✅ #}
-                                {{ task.title }}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+{% for tech_name, data in report_data.items() %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0 d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-user-cog me-2"></i>{{ tech_name }}</span>
+            <span class="badge bg-primary rounded-pill">{{ data.count }} งาน</span>
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0 align-middle">
+                <tbody>
+                    {% for task in data.tasks %}
+                    <tr>
+                        <td>{{ task.completed_formatted }}</td>
+                        <td>{{ task.customer_name }}</td>
+                        <td>
+                            {# ✅✅✅ แก้ไขลิงก์ที่นี่ ✅✅✅ #}
+                            <a href="{{ url_for('liff.task_details', task_id=task.id) }}">{{ task.title }}</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
-    {% endfor %}
-{% else %}
-    <div class="alert alert-info text-center">
-        <h4 class="alert-heading"><i class="fas fa-info-circle"></i> ไม่พบข้อมูล</h4>
-        <p>ไม่พบข้อมูลงานที่เสร็จสิ้นสำหรับช่างในเดือนที่เลือก</p>
-    </div>
-{% endif %}
-
-{% endblock %}
-
-{% block body_extra %}
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.clickable-row').forEach(row => {
-            row.addEventListener('click', function() {
-                const href = this.dataset.href;
-                if (href) {
-                    window.location.href = href;
-                }
-            });
-        });
-    });
-</script>
+</div>
+{% endfor %}
 {% endblock %}
