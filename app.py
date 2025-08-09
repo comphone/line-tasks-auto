@@ -2192,7 +2192,7 @@ def api_calendar_tasks():
                 'id': task.get('id'),
                 'title': f"{customer_info.get('name', 'N/A')} - {task.get('title')}",
                 'start': task.get('due'),
-                'url': url_for('task_details', task_id=task.get('id')),
+                'url': url_for('liff.task_details', task_id=task.get('id')),
                 'extendedProps': {
                     'is_completed': is_completed,
                     'is_overdue': is_overdue,
