@@ -71,7 +71,7 @@ import atexit
 
 from flask_cors import CORS
 
-from liff_views import liff_bp
+# from liff_views import liff_bp
 
 TEXT_SNIPPETS = {
     'task_details': [
@@ -88,7 +88,6 @@ TEXT_SNIPPETS = {
     ]
 }
 
-# --- โค้ด Sentry ควรวางไว้ที่นี่ ---
 SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if SENTRY_DSN:
     sentry_sdk.init(
@@ -107,7 +106,7 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 app.jinja_env.filters['dateutil_parse'] = date_parse
 csrf = CSRFProtect(app)
 
-app.register_blueprint(liff_bp, url_prefix='/')
+# app.register_blueprint(liff_bp, url_prefix='/')
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -240,8 +239,6 @@ class LineMessageQueue:
                         app.logger.warning(f"Discarding old message for {user_id} (queued {time.time() - timestamp:.2f}s ago).")
                         continue
 
-# แก้ไขในฟังก์ชัน LineMessageQueue.process_queue
-
                     try:
                         # Use v3 push message API
                         push_message_request = PushMessageRequest(
@@ -357,7 +354,7 @@ def render_template_message(template_key, task):
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     parsed_dates = parse_google_task_dates(task)
     shop_info = settings.get('shop_info', {})
-    task_url = url_for('task_details', task_id=task.get('id'), _external=True)
+    task_url = url_for('liff.task_details', task_id=task.get('id'), _external=True)
 
     # สร้าง Dictionary ของข้อมูลที่จะใช้แทนที่
     replacements = {
@@ -1914,19 +1911,6 @@ with app.app_context():
     load_settings_from_drive_on_startup()   
 
 atexit.register(cleanup_scheduler)
-
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
-    
-@app.errorhandler(413)
-def request_entity_too_large(error):
-    return jsonify({'status': 'error', 'message': f'ไฟล์มีขนาดใหญ่เกินกว่า {MAX_FILE_SIZE_MB}MB'}), 413
-
-@app.errorhandler(500)
-def internal_server_error(e):
-    app.logger.error(f"Server Error: {e}", exc_info=True)
-    return render_template('500.html'), 500
 
 @app.route('/api/customers')
 def api_customers():
