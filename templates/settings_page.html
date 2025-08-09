@@ -1199,9 +1199,49 @@ function updateEnvironmentVariable(varName) {
     // ตรวจสอบรูปแบบ
     const liffPattern = /^\d{10}-[a-zA-Z0-9]{8}$/;
     if (!liffPattern.test(value)) {
-        alert(`รูปแบบ LIFF ID ไม่ถูกต้อง\nควรเป็น: nnnnnnnnnn-xxxxxxxx\nเช่น: 1234567890-AbCdEfGh`);
+        alert(`รูปแบบ LIFF ID ไม่ถูกต้อง\nควรเป็น: nnnnnnnnnn-xxxxxxxx\nเช่น: 2007889126-AbCdEfGh`);
         return;
     }
+    
+    // ✅ เพิ่มการแสดงผลที่ชัดเจน
+    const resultDiv = document.getElementById('liffDebugResult');
+    
+    // แสดง Success Message
+    alert(`✅ LIFF ID ถูกต้อง!\n\n${varName}: ${value}\n\nการตั้งค่านี้จะมีผลหลังจาก Restart เซิร์ฟเวอร์`);
+    
+    // แสดงในหน้าเว็บด้วย
+    resultDiv.innerHTML = `
+        <div class="alert alert-success">
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>✅ LIFF ID ถูกต้อง!</strong>
+            <hr>
+            <div class="bg-light p-3 rounded">
+                <strong>Variable:</strong> <code>${varName}</code><br>
+                <strong>Value:</strong> <code>${value}</code>
+            </div>
+            
+            <div class="alert alert-info mt-3 mb-0">
+                <h6><i class="fas fa-info-circle me-2"></i>ขั้นตอนต่อไป:</h6>
+                <ol class="mb-0">
+                    <li><strong>ไปที่ Render Dashboard</strong> → Environment Variables</li>
+                    <li><strong>เพิ่ม/แก้ไข:</strong> <code>${varName} = ${value}</code></li>
+                    <li><strong>คลิก Save</strong> และ Restart Service</li>
+                    <li><strong>ทดสอบ LIFF</strong> ใหม่หลัง Deploy เสร็จ</li>
+                </ol>
+            </div>
+        </div>
+    `;
+    
+    // Clear input หลังจากประมวลผลเสร็จ
+    document.getElementById(inputId).value = '';
+    
+    // Copy ค่าไปยัง Clipboard
+    navigator.clipboard.writeText(`${varName}=${value}`).then(() => {
+        console.log('LIFF ID copied to clipboard!');
+    }).catch(err => {
+        console.log('Could not copy to clipboard:', err);
+    });
+}
     
     // แสดงข้อมูลสำหรับผู้ดูแลระบบ
     const resultDiv = document.getElementById('liffDebugResult');
