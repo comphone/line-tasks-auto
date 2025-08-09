@@ -176,14 +176,16 @@ def task_details(task_id):
     return response
 
 @liff_bp.route('/form')
+# ในไฟล์ liff_views.py
 def form_page():
     """
     หน้าสำหรับสร้างงานใหม่
     """
-    # ดึงข้อมูลที่จำเป็นสำหรับหน้าฟอร์ม
     settings = get_app_settings()
-    return render_template('form.html', 
-                           text_snippets=TEXT_SNIPPETS,
+    return render_template('form.html',
+                           # ✅✅✅ แก้ไขชื่อตัวแปรให้ถูกต้องตามที่ Template ต้องการ ✅✅✅
+                           task_detail_snippets=TEXT_SNIPPETS.get('task_details', []),
+                           progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
                            technician_list=settings.get('technician_list', []),
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 

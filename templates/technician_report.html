@@ -1,145 +1,118 @@
 {% extends "base.html" %}
 
-{% block title %}รายงานผลงานช่าง{% endblock %}
+{% block title %}รายงานสรุปยอดงานช่าง{% endblock %}
 
 {% block head_extra %}
 <style>
-    .technician-avatar-small {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        object-fit: cover;
-        margin-right: 0.5rem;
+    .report-table th {
         background-color: #e9ecef;
     }
-    .report-table th, .report-table td {
-        vertical-align: middle;
-    }
-    .report-table .task-details-row {
-        background-color: #f2f2f2;
-    }
-    .report-table .task-details-content {
-        padding-left: 2rem;
-        font-size: 0.9em;
-    }
-    .report-card {
+    .technician-card {
         border-left: 5px solid #0d6efd;
-        border-radius: .5rem;
-        margin-bottom: 1rem;
     }
-    .report-card .card-header {
-        background-color: #f8f9fa;
-        font-weight: bold;
-    }
-    .report-card .card-body {
-        padding: 1rem;
-    }
-    .report-card .task-item {
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px dashed #e9ecef;
-    }
-    .report-card .task-item:last-child {
-        border-bottom: none;
-        margin-bottom: 0;
-        padding-bottom: 0;
+    .clickable-row {
+        cursor: pointer;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4 mb-5">
-	<div class="d-flex justify-content-between align-items-center mb-4">
-		<h1 class="h2 mb-0">📊 รายงานสรุปยอดงานช่าง</h1>
-		{# ✅✅✅ แก้ไข: เพิ่ม 'liff.' เข้าไปหน้า 'summary' ✅✅✅ #}
-		<a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
-	</div>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h1 class="h2 mb-0">📊 รายงานสรุปยอดงานช่าง</h1>
+    <div>
+        <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+        <a href="{{ url_for('technician_report_print', year=selected_year, month=selected_month) }}" target="_blank" class="btn btn-info"><i class="fas fa-print me-2"></i>พิมพ์รายงาน</a>
+    </div>
+</div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>เลือกช่วงเวลา</h5>
+<div class="card shadow-sm mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">เลือกช่วงเวลา</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('technician_report') }}" class="row g-3 align-items-center">
+            <div class="col-md-5">
+                <label for="month" class="form-label">เดือน</label>
+                <select name="month" id="month" class="form-select">
+                    {% for m in months %}
+                        <option value="{{ m.value }}" {% if m.value == selected_month %}selected{% endif %}>{{ m.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label for="year" class="form-label">ปี</label>
+                <select name="year" id="year" class="form-select">
+                    {% for y in years %}
+                        <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search me-2"></i>แสดง</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if report_data %}
+    {% for tech_name, data in report_data.items() %}
+    <div class="card shadow-sm mb-4 technician-card">
+        <div class="card-header bg-light">
+            <h5 class="mb-0 d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-user-cog me-2"></i>{{ tech_name }}</span>
+                <span class="badge bg-primary rounded-pill">{{ data.count }} งาน</span>
+            </h5>
         </div>
-        <div class="card-body">
-            <form method="GET" action="{{ url_for('technician_report') }}">
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-3">
-                        <label for="month_select" class="form-label">เดือน</label>
-                        <select class="form-select" id="month_select" name="month">
-                            {% for m in months %}
-                                <option value="{{ m.value }}" {% if m.value == selected_month %}selected{% endif %}>{{ m.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="year_select" class="form-label">ปี</label>
-                        <select class="form-select" id="year_select" name="year">
-                            {% for y in years %}
-                                <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <button type="submit" class="btn btn-primary w-100"><i class="fas fa-filter me-2"></i>กรอง</button>
-                    </div>
-                    <div class="col-md-3">
-                        <a href="{{ url_for('technician_report_print', year=selected_year, month=selected_month) }}" target="_blank" class="btn btn-outline-secondary w-100">
-                            <i class="fas fa-print me-2"></i>พิมพ์รายงาน
-                        </a>
-                    </div>
-                </div>
-            </form>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0 report-table align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col" style="width: 10%;">#</th>
+                            <th scope="col" style="width: 20%;">วันที่เสร็จ</th>
+                            <th scope="col" style="width: 35%;">ลูกค้า</th>
+                            <th scope="col" style="width: 35%;">รายละเอียดงาน</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in data.tasks %}
+                        {# ✅✅✅ แก้ไข: เพิ่ม data-href และ class clickable-row ✅✅✅ #}
+                        <tr class="clickable-row" data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
+                            <th scope="row">{{ loop.index }}</th>
+                            <td>{{ task.completed_formatted }}</td>
+                            <td>{{ task.customer_name }}</td>
+                            <td>
+                                {# ✅✅✅ แก้ไข: ลบ <a> tag เดิมออก เพราะทั้งแถวคลิกได้แล้ว ✅✅✅ #}
+                                {{ task.title }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+    {% endfor %}
+{% else %}
+    <div class="alert alert-info text-center">
+        <h4 class="alert-heading"><i class="fas fa-info-circle"></i> ไม่พบข้อมูล</h4>
+        <p>ไม่พบข้อมูลงานที่เสร็จสิ้นสำหรับช่างในเดือนที่เลือก</p>
+    </div>
+{% endif %}
 
-    <h3 class="mb-3">สรุปผลงานประจำเดือน {{ months[selected_month - 1].name }} ปี {{ selected_year }}</h3>
+{% endblock %}
 
-    {% if report_data %}
-        <div class="row">
-            {% for tech_name, data in report_data.items() %}
-                {% set outer_loop = loop %}
-                <div class="col-md-6 col-lg-4 mb-4">
-                    <div class="card shadow-sm report-card h-100">
-                        <div class="card-header d-flex align-items-center">
-                            {% set tech_avatar_obj = (technician_list | selectattr('name', 'equalto', tech_name) | first) %}
-                            {% if tech_avatar_obj and tech_avatar_obj.avatar_id %}
-                                <img src="https://drive.google.com/thumbnail?id={{ tech_avatar_obj.avatar_id }}&sz=s30-c" class="technician-avatar-small" alt="{{ tech_name }}">
-                            {% else %}
-                                {% set initial = tech_name[0] | upper if tech_name else '?' %}
-                                <img src="https://via.placeholder.com/30/6c757d/ffffff?text={{ initial }}" class="technician-avatar-small" alt="{{ tech_name }}">
-                            {% endif %}
-                            <h5 class="mb-0 ms-1">{{ tech_name }}</h5>
-                            <span class="badge bg-primary ms-auto">{{ data.count }} งาน</span>
-                        </div>
-                        <div class="card-body">
-                            <h6 class="mb-2">รายการงานที่เสร็จสิ้น:</h6>
-                            {% if data.tasks %}
-                                <div class="accordion accordion-flush" id="accordionTasks-{{ outer_loop.index }}">
-                                    {% for task in data.tasks %}
-                                        <div class="accordion-item">
-                                            <h2 class="accordion-header" id="headingTask-{{ task.id }}-{{ outer_loop.index }}">
-                                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTask-{{ task.id }}-{{ outer_loop.index }}" aria-expanded="false" aria-controls="collapseTask-{{ task.id }}-{{ outer_loop.index }}">
-                                                    {{ task.title }} <small class="text-muted ms-auto">{{ task.completed_formatted }}</small>
-                                                </button>
-                                            </h2>
-                                            <div id="collapseTask-{{ task.id }}-{{ outer_loop.index }}" class="accordion-collapse collapse" aria-labelledby="headingTask-{{ task.id }}-{{ outer_loop.index }}" data-bs-parent="#accordionTasks-{{ outer_loop.index }}">
-                                                <div class="accordion-body task-details-content">
-                                                    <p class="mb-1"><strong>Task ID:</strong> {{ task.id }}</p>
-                                                    <p class="mb-1"><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">ดูรายละเอียดงาน</a></p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    {% endfor %}
-                                </div>
-                            {% else %}
-                                <p class="text-muted">ไม่มีงานที่เสร็จสิ้นในเดือนนี้</p>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            {% endfor %}
-        </div>
-    {% else %}
-        <p class="text-muted text-center mt-3">ไม่มีข้อมูลรายงานสำหรับเดือนที่เลือก</p>
-    {% endif %}
-</div>
+{% block body_extra %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.clickable-row').forEach(row => {
+            row.addEventListener('click', function() {
+                const href = this.dataset.href;
+                if (href) {
+                    window.location.href = href;
+                }
+            });
+        });
+    });
+</script>
 {% endblock %}
