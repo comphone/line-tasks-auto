@@ -3582,6 +3582,38 @@ def public_task_report(task_id):
 
 from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')
+
+@app.route('/generate_public_report_qr/<task_id>')
+def generate_public_report_qr(task_id):
+    """
+    สร้าง QR Code สำหรับให้ลูกค้าดูรายงานสาธารณะ (หน้าสำหรับพิมพ์/แชร์ QR)
+    """
+    task = get_single_task(task_id)
+    if not task:
+        abort(404)
+
+    # สร้าง URL ของรายงานสาธารณะจริง ๆ
+    public_report_url = url_for('public_task_report', task_id=task.id, _external=True)
+    
+    # สร้าง QR Code จาก URL รายงานสาธารณะ
+    qr_code = generate_qr_code_base64(public_report_url)
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
+    
+    response = make_response(render_template('public_report_qr.html',
+                                             qr_code_base64_report=qr_code,
+                                             task=task,
+                                             customer_info=customer,
+                                             public_report_url=public_report_url,
+                                             LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION, # ส่ง LIFF ID ของช่างไปให้ถ้าจำเป็น
+                                             now=datetime.datetime.now(THAILAND_TZ)
+                                             ))
+    
+    # ตั้งค่า Cache Control เพื่อให้เบราว์เซอร์ไม่เก็บแคชหน้านี้
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
  
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)

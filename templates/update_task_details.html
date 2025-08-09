@@ -203,7 +203,7 @@
                 </div>
                 <div class="mb-3">
                     <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
-                    <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
+                    <textarea class="form-control" id="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
                      <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                 </div>
                 <div class="mb-3">
@@ -830,7 +830,7 @@
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             
-            const result = await response.json();
+            const result = await response.json(); // Await the JSON parsing here
             if (response.ok && result.status === 'success') {
                 window.flashMessage(result.message, 'success');
                 setTimeout(() => window.location.reload(), 1500);
