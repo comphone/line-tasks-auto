@@ -23,7 +23,6 @@
 </style>
 {% endblock %}
 
-
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
@@ -226,6 +225,7 @@
     </div>
 </form>
 
+<!-- LIFF Debug Panel -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-info text-dark">
         <h5 class="mb-0"><i class="fas fa-bug me-2"></i>🔍 LIFF Debug Panel</h5>
@@ -261,6 +261,7 @@
             </div>
         </div>
         
+        <!-- Quick LIFF ID Input -->
         <div class="card bg-light mb-3">
             <div class="card-body p-3">
                 <h6 class="card-title mb-2">⚡ Quick LIFF ID Setup</h6>
@@ -288,6 +289,7 @@
             </div>
         </div>
         
+        <!-- Results Container -->
         <div id="liffDebugResult" class="mt-3"></div>
     </div>
 </div>
@@ -329,6 +331,7 @@
     </div>
 </form>
 
+<!-- LINE Bot Status -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-warning text-dark">
         <h5 class="mb-0"><i class="fas fa-robot me-2"></i>🤖 สถานะ LINE Bot</h5>
@@ -348,6 +351,7 @@
     </div>
 </div>
 
+<!-- Admin Tools -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-secondary text-white">
         <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เครื่องมือผู้ดูแลระบบ (Admin Tools)</h5>
@@ -405,6 +409,7 @@
     </div>
 </div>
 
+<!-- Modals -->
 <div class="modal fade" id="importEquipmentModal" tabindex="-1" aria-labelledby="importEquipmentModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -840,9 +845,11 @@ function flashMessage(message, category) {
         else newMessage.remove();
     }, 5000);
 }
- 
+
 function checkLineBotStatus() {
     const resultDiv = document.getElementById('lineBotStatusResult');
+    if (!resultDiv) return;
+    
     resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>กำลังตรวจสอบ...</div>';
     
     fetch('/admin/line_bot_status')
@@ -891,39 +898,22 @@ function checkLineBotStatus() {
         });
 }
 
-function testWebhook() {
-    const resultDiv = document.getElementById('lineBotStatusResult');
-    resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>กำลังทดสอบ Webhook...</div>';
-    
-    fetch('/admin/test_webhook', {method: 'POST'})
-        .then(response => response.json())
-        .then(data => {
-            let alertClass = data.status === 'success' ? 'success' : 'danger';
-            let iconClass = data.status === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle';
-            
-            resultDiv.innerHTML = `
-                <div class="alert alert-${alertClass}">
-                    <i class="fas ${iconClass} me-2"></i>
-                    <strong>${data.message}</strong>
-                </div>`;
-        })
-        .catch(error => {
-            resultDiv.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>เกิดข้อผิดพลาดในการทดสอบ:</strong> ${error.message}
-                </div>`;
-        });
-}
-
-// ⭐ เพิ่มฟังก์ชันใหม่ก่อน </script> ปิดท้าย ⭐
-
 function checkLiffConfiguration() {
     const resultDiv = document.getElementById('liffDebugResult');
+    if (!resultDiv) {
+        console.error('ไม่พบ element liffDebugResult');
+        return;
+    }
+    
     resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>กำลังตรวจสอบ LIFF Configuration...</div>';
     
     fetch('/debug/liff')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             let alertClass = 'info';
             let iconClass = 'fa-info-circle';
@@ -977,6 +967,7 @@ function checkLiffConfiguration() {
                 </div>`;
         })
         .catch(error => {
+            console.error('LIFF Configuration check error:', error);
             resultDiv.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle me-2"></i>
@@ -1006,6 +997,25 @@ function checkEnvironmentVariables() {
             const alertClass = missingVars.length === 0 ? 'success' : 'warning';
             const iconClass = missingVars.length === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle';
             
+            let missingVarsHtml = '';
+            if (missingVars.length > 0) {
+                missingVarsHtml = `
+                    <hr>
+                    <h6 class="text-warning">❌ ตัวแปรที่ขาดหายไป:</h6>
+                    <div class="alert alert-warning p-2">
+                        <ul class="mb-0">${missingVars.map(v => `<li><code>${v}</code></li>`).join('')}</ul>
+                    </div>
+                    <div class="alert alert-info p-2">
+                        <strong>🔧 วิธีแก้ไข:</strong>
+                        <ol class="small mb-0 mt-1">
+                            <li>ตั้งค่า Environment Variables ในเซิร์ฟเวอร์</li>
+                            <li>Restart แอปพลิเคชันหลังตั้งค่า</li>
+                            <li>ตรวจสอบ LIFF Apps ใน LINE Developers Console</li>
+                        </ol>
+                    </div>
+                `;
+            }
+            
             const statusHtml = `
                 <div class="alert alert-${alertClass}">
                     <i class="fas ${iconClass} me-2"></i>
@@ -1027,21 +1037,7 @@ function checkEnvironmentVariables() {
                             </ul>
                         </div>
                     </div>
-                    ${missingVars.length > 0 ? `
-                        <hr>
-                        <h6 class="text-warning">❌ ตัวแปรที่ขาดหายไป:</h6>
-                        <div class="alert alert-warning p-2">
-                            <ul class="mb-0">${missingVars.map(v => `<li><code>${v}</code></li>`).join('')}</ul>
-                        </div>
-                        <div class="alert alert-info p-2">
-                            <strong>🔧 วิธีแก้ไข:</strong>
-                            <ol class="small mb-0 mt-1">
-                                <li>ตั้งค่า Environment Variables ในเซิร์ฟเวอร์</li>
-                                <li>Restart แอปพลิเคชันหลังตั้งค่า</li>
-                                <li>ตรวจสอบ LIFF Apps ใน LINE Developers Console</li>
-                            </ol>
-                        </div>
-                    ` : ''}
+                    ${missingVarsHtml}
                 </div>
             `;
             
@@ -1114,40 +1110,42 @@ function testLiffUrls() {
                 return;
             }
             
+            const testResultsHtml = testResults.map(liff => {
+                const pagesHtml = liff.pages.map(page => {
+                    const testUrl = `${liff.url}?liff.state=${encodeURIComponent(page.path)}`;
+                    return `
+                        <li class="mb-1">
+                            <strong>${page.name}:</strong> 
+                            <a href="${testUrl}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+                                <i class="fas fa-external-link-alt me-1"></i>Test
+                            </a>
+                        </li>
+                    `;
+                }).join('');
+                
+                return `
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <strong>${liff.name}</strong> <code>${liff.id}</code>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Base URL:</strong> <a href="${liff.url}" target="_blank">${liff.url}</a></p>
+                            <h6>Test Pages:</h6>
+                            <ul class="list-unstyled">
+                                ${pagesHtml}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
             resultDiv.innerHTML = `
                 <div class="alert alert-info">
                     <i class="fas fa-link me-2"></i>
                     <strong>🔗 LIFF Test URLs</strong>
                     <p class="mb-0 mt-2">คลิกลิงก์เหล่านี้เพื่อทดสอบ LIFF Apps (ต้องเปิดใน LINE App)</p>
                 </div>
-                ${testResults.map(liff => {
-                    const pagesHtml = liff.pages.map(page => {
-                        const testUrl = `${liff.url}?liff.state=${encodeURIComponent(page.path)}`;
-                        return `
-                            <li class="mb-1">
-                                <strong>${page.name}:</strong> 
-                                <a href="${testUrl}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
-                                    <i class="fas fa-external-link-alt me-1"></i>Test
-                                </a>
-                            </li>
-                        `;
-                    }).join('');
-                    
-                    return `
-                        <div class="card mb-3">
-                            <div class="card-header">
-                                <strong>${liff.name}</strong> <code>${liff.id}</code>
-                            </div>
-                            <div class="card-body">
-                                <p><strong>Base URL:</strong> <a href="${liff.url}" target="_blank">${liff.url}</a></p>
-                                <h6>Test Pages:</h6>
-                                <ul class="list-unstyled">
-                                    ${pagesHtml}
-                                </ul>
-                            </div>
-                        </div>
-                    `;
-                }).join('')}
+                ${testResultsHtml}
             `;
         })
         .catch(error => {
@@ -1163,6 +1161,7 @@ function testLiffUrls() {
 
 function generateLiffTestUrl() {
     const resultDiv = document.getElementById('liffDebugResult');
+    if (!resultDiv) return;
     
     resultDiv.innerHTML = `
         <div class="alert alert-success">
@@ -1253,7 +1252,6 @@ function updateEnvironmentVariable(varName) {
     `;
     
     resultDiv.innerHTML = successHtml;
-    
     inputElement.value = '';
     
     if (navigator.clipboard && navigator.clipboard.writeText) {
