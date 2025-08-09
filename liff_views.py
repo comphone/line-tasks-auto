@@ -126,6 +126,12 @@ def summary():
                            chart_data=chart_data,
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 
+@liff_bp.route('/form/external')
+def external_job_form_page():
+    # ส่งข้อมูลที่จำเป็นสำหรับฟอร์ม
+    return render_template('external_job_form.html',
+                           # สามารถส่ง Technician list หรือข้อมูลอื่นๆ ไปได้
+                           LIFF_ID_TO_USE=LIFF_ID_FORM)
 
 @liff_bp.route('/task/<task_id>')
 def task_details(task_id):

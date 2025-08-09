@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask, request, render_template, redirect, url_for, abort, flash, jsonify, Response, session, make_response
+import json
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 from cachetools import cached, TTLCache
@@ -1473,6 +1474,44 @@ def _send_popup_notification(payload):
     except Exception as e:
         app.logger.error(f"Error in _send_popup_notification: {e}", exc_info=True)
         return False
+
+@app.route('/api/external_tasks/create', methods=['POST'])
+def api_create_external_task():
+    try:
+        task_title = f"[งานภายนอก] {str(request.form.get('task_title', '')).strip()}"
+        customer_name = str(request.form.get('customer', '')).strip()
+        external_partner = str(request.form.get('external_partner', '')).strip()
+
+        if not task_title or not customer_name:
+            return jsonify({'status': 'error', 'message': 'กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน'}), 400
+
+        notes_lines = [
+            f"ลูกค้า: {customer_name}",
+            f"ผู้รับผิดชอบภายนอก: {external_partner}",
+            f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
+            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
+        ]
+        notes = "\n".join(filter(None, notes_lines))
+
+        due_date_gmt = None
+        return_date_str = str(request.form.get('return_date', '')).strip()
+        if return_date_str:
+            try:
+                dt_local = THAILAND_TZ.localize(date_parse(f"{return_date_str}T09:00:00")) # ตั้งเวลา 9 โมงเช้า
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            except ValueError:
+                return jsonify({'status': 'error', 'message': 'รูปแบบวันกำหนดส่งกลับไม่ถูกต้อง'}), 400
+
+        new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
+        if new_task:
+            cache.clear()
+            # สามารถเพิ่มการแจ้งเตือนสำหรับงานภายนอกที่นี่ได้
+            return jsonify({'status': 'success', 'message': 'สร้างงานภายนอกเรียบร้อยแล้ว!', 'redirect_url': url_for('liff.task_details', task_id=new_task['id'])})
+        else:
+            return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการสร้างงานใน Google Tasks'}), 500
+    except Exception as e:
+        app.logger.error(f"Error in api_create_external_task: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
 @app.route('/api/trigger_mobile_popup_notification', methods=['POST'])
 def api_trigger_mobile_popup_notification():
