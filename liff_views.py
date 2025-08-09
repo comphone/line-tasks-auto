@@ -10,7 +10,7 @@ from functools import wraps
 from app import get_single_task, parse_google_task_dates, parse_customer_info_from_notes, \
                   parse_tech_report_from_notes, get_app_settings, TEXT_SNIPPETS, \
                   get_google_tasks_for_report, date_parse, parse_customer_feedback_from_notes, \
-                  generate_qr_code_base64
+                  generate_qr_code_base64, LIFF_ID_FORM # <--- เพิ่ม LIFF_ID_FORM ตรงนี้
 
 # --- การตั้งค่า LIFF และ Timezone ---
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
@@ -178,6 +178,18 @@ def task_details(task_id):
     response.headers['Expires'] = '0'
     return response
 
+@liff_bp.route('/form')
+@liff_page
+def form_page():
+    """
+    หน้าสำหรับสร้างงานใหม่
+    """
+    # ดึงข้อมูลที่จำเป็นสำหรับหน้าฟอร์ม
+    settings = get_app_settings()
+    return render_template('form.html', 
+                           text_snippets=TEXT_SNIPPETS,
+                           technician_list=settings.get('technician_list', []),
+                           LIFF_ID_TO_USE=LIFF_ID_FORM)
 
 @liff_bp.route('/liff/technician/update_location')
 def technician_location_liff_page():
