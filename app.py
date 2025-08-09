@@ -2384,6 +2384,49 @@ def task_details(task_id):
     response.headers['Expires'] = '0'
     return response
 
+@app.route('/api/task/<task_id>/update_location', methods=['POST'])
+def api_update_task_location(task_id):
+    data = request.json
+    new_map_url = data.get('map_url')
+
+    if not new_map_url:
+        return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลพิกัดใหม่'}), 400
+
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    try:
+        notes = task_raw.get('notes', '')
+        history, base_notes_text = parse_tech_report_from_notes(notes)
+        feedback_data = parse_customer_feedback_from_notes(notes)
+
+        # Regex pattern to find an existing map URL or coordinates
+        map_url_pattern = r"https?:\/\/[^\s]*google[^\s]*|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+)"
+
+        if re.search(map_url_pattern, base_notes_text):
+            # If an old URL exists, replace it
+            updated_base_notes = re.sub(map_url_pattern, new_map_url, base_notes_text)
+        else:
+            # If no old URL, append the new one
+            updated_base_notes = base_notes_text.strip() + f"\n{new_map_url}"
+
+        # Reconstruct the notes
+        all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+        final_notes = updated_base_notes
+        if all_reports_text: final_notes += all_reports_text
+        if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+        if update_google_task(task_id, notes=final_notes):
+            cache.clear()
+            return jsonify({'status': 'success', 'message': 'อัปเดตพิกัดเรียบร้อยแล้ว'})
+        else:
+            raise Exception("Failed to update Google Task.")
+
+    except Exception as e:
+        app.logger.error(f"Error updating task location for {task_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
+
 @app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
 def api_edit_report_text(task_id, report_index):
     data = request.json

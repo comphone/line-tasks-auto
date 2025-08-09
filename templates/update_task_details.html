@@ -620,6 +620,68 @@
         editTextModal = new bootstrap.Modal(document.getElementById('editTextModal'));
         editAttachmentsModal = new bootstrap.Modal(document.getElementById('editAttachmentsModal'));
 
+		// วางโค้ดนี้ภายใน document.addEventListener('DOMContentLoaded', function() { ... });
+
+		const updateLocationBtn = document.getElementById('updateLocationBtn');
+		if (updateLocationBtn) {
+			updateLocationBtn.addEventListener('click', async () => {
+				const originalBtnHtml = updateLocationBtn.innerHTML;
+				updateLocationBtn.disabled = true;
+				updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
+
+				if (!navigator.geolocation) {
+					alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
+					updateLocationBtn.disabled = false;
+					updateLocationBtn.innerHTML = originalBtnHtml;
+					return;
+				}
+
+				try {
+					const position = await new Promise((resolve, reject) => {
+						navigator.geolocation.getCurrentPosition(resolve, reject, {
+							enableHighAccuracy: true,
+							timeout: 15000,
+							maximumAge: 0
+						});
+					});
+
+					const { latitude, longitude } = position.coords;
+					const newMapUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
+					
+					updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังบันทึก...`;
+
+					const response = await fetch(`/api/task/${taskId}/update_location`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-CSRFToken': csrfToken
+						},
+						body: JSON.stringify({ map_url: newMapUrl })
+					});
+
+					const result = await response.json();
+					if (!response.ok) {
+						throw new Error(result.message || 'เกิดข้อผิดพลาดในการบันทึก');
+					}
+
+					// อัปเดตลิงก์บนหน้าเว็บทันทีโดยไม่ต้องรีโหลด
+					const customerMapLink = document.getElementById('customer-map-link');
+					if(customerMapLink) {
+						customerMapLink.href = newMapUrl;
+					}
+
+					window.flashMessage('อัปเดตพิกัดสำเร็จ!', 'success');
+
+				} catch (error) {
+					window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+				} finally {
+					updateLocationBtn.disabled = false;
+					updateLocationBtn.innerHTML = originalBtnHtml;
+				}
+			});
+		}
+
+
         // --- เพิ่มโค้ดเริ่มต้นสำหรับ Equipment Catalog ---
         const modalElement = document.getElementById('equipmentCatalogModal');
         if(modalElement) {
