@@ -1186,7 +1186,7 @@ function generateLiffTestUrl() {
     `;
 }
 
-// ฟังก์ชันอัปเดต Environment Variable (จำลอง)
+// ฟังก์ชันอัปเดต Environment Variable (ฉบับแก้ไขแล้ว)
 function updateEnvironmentVariable(varName) {
     const inputId = varName === 'LIFF_ID_FORM' ? 'quick-liff-form' : 'quick-liff-tech';
     const value = document.getElementById(inputId).value.trim();
@@ -1238,32 +1238,10 @@ function updateEnvironmentVariable(varName) {
     // Copy ค่าไปยัง Clipboard
     navigator.clipboard.writeText(`${varName}=${value}`).then(() => {
         console.log('LIFF ID copied to clipboard!');
+        flashMessage('คัดลอก LIFF ID ไปยัง Clipboard แล้ว!', 'info');
     }).catch(err => {
         console.log('Could not copy to clipboard:', err);
     });
 }
-    
-    // แสดงข้อมูลสำหรับผู้ดูแลระบบ
-    const resultDiv = document.getElementById('liffDebugResult');
-    resultDiv.innerHTML = `
-        <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            <strong>⚠️ Environment Variable Update Required</strong>
-            <hr>
-            <p>กรุณาอัปเดต Environment Variable ในเซิร์ฟเวอร์:</p>
-            <div class="bg-dark text-light p-2 rounded">
-                <code>export ${varName}="${value}"</code>
-            </div>
-            <p class="mt-2 mb-0">
-                <strong>📝 หมายเหตุ:</strong> หลังจากตั้งค่าแล้ว กรุณา restart แอปพลิเคชันและทดสอบอีกครั้ง
-            </p>
-        </div>
-    `;
-    
-    // Clear input
-    document.getElementById(inputId).value = '';
-}
-
-// ⭐ สิ้นสุดฟังก์ชันใหม่ ⭐
 </script>
 {% endblock %}
