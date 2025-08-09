@@ -13,37 +13,108 @@
             justify-content: center;
             min-height: 100vh;
             background-color: #f0f2f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .card {
             width: 90%;
-            max-width: 400px;
+            max-width: 450px;
+            border: none;
+            border-radius: 1rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
         }
         .spinner-border {
             width: 3rem;
             height: 3rem;
         }
+        .error-container {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .debug-info {
+            background-color: #e2e3e5;
+            border: 1px solid #d6d8db;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            font-family: monospace;
+        }
+        .btn-location {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            border: none;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.3);
+            transition: all 0.3s ease;
+        }
+        .btn-location:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,123,255,0.4);
+        }
+        .success-animation {
+            animation: successPulse 0.6s ease-in-out;
+        }
+        @keyframes successPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
-    <div class="card text-center shadow">
+    <div class="card text-center">
         <div class="card-body p-4">
+            <!-- Loading State -->
             <div id="loading-state">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
                 <p class="mt-3 text-muted">กำลังเริ่มต้น LIFF App...</p>
+                <small class="text-muted">กรุณารอสักครู่</small>
             </div>
 
+            <!-- Main Content -->
             <div id="main-content" style="display: none;">
                 <img id="user-avatar" src="" class="rounded-circle mb-3" width="80" height="80" alt="User Avatar">
-                <h5 class="card-title">สวัสดี, <span id="user-name"></span>!</h5>
-                <p class="card-text text-muted">กดปุ่มด้านล่างเพื่ออัปเดตตำแหน่งปัจจุบันของคุณสำหรับใช้ในระบบแจ้งเตือนงานใกล้เคียง</p>
-                <button id="update-location-btn" class="btn btn-primary btn-lg w-100">
+                <h5 class="card-title mb-3">สวัสดี, <span id="user-name"></span>!</h5>
+                <p class="card-text text-muted mb-4">
+                    กดปุ่มด้านล่างเพื่ออัปเดตตำแหน่งปัจจุบันของคุณสำหรับใช้ในระบบแจ้งเตือนงานใกล้เคียง
+                </p>
+                <button id="update-location-btn" class="btn btn-primary btn-location w-100">
                     <i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน
                 </button>
+                
+                <!-- Debug Info (แสดงเฉพาะเมื่อมีข้อผิดพลาด) -->
+                <div id="debug-container" style="display: none;">
+                    <div class="debug-info">
+                        <strong>🔍 Debug Information:</strong>
+                        <div id="debug-content"></div>
+                    </div>
+                </div>
             </div>
             
+            <!-- Status Messages -->
             <div id="status-message" class="mt-3"></div>
+            
+            <!-- Error Container -->
+            <div id="error-container" class="error-container" style="display: none;">
+                <h6 class="text-danger mb-2">❌ เกิดข้อผิดพลาด</h6>
+                <div id="error-message"></div>
+                <div id="error-solutions" class="mt-2">
+                    <small><strong>🔧 วิธีแก้ไข:</strong></small>
+                    <ul class="text-start small mt-1 mb-0">
+                        <li>ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต</li>
+                        <li>ปิดแล้วเปิด LINE App ใหม่</li>
+                        <li>อนุญาตให้ LINE เข้าถึงตำแหน่ง</li>
+                        <li>ลองใหม่อีกครั้งใน 1-2 นาที</li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -54,90 +125,271 @@
             const mainContent = document.getElementById('main-content');
             const statusMessage = document.getElementById('status-message');
             const updateBtn = document.getElementById('update-location-btn');
+            const errorContainer = document.getElementById('error-container');
+            const errorMessage = document.getElementById('error-message');
+            const debugContainer = document.getElementById('debug-container');
+            const debugContent = document.getElementById('debug-content');
 
-            function showStatus(message, isError = false) {
+            function showStatus(message, isError = false, showDebug = false) {
                 statusMessage.textContent = message;
                 statusMessage.className = isError ? 'alert alert-danger mt-3' : 'alert alert-info mt-3';
-                if(isError){
+                
+                if (isError) {
                     loadingState.style.display = 'none';
                     mainContent.style.display = 'none';
+                    errorContainer.style.display = 'block';
+                    errorMessage.textContent = message;
+                    
+                    if (showDebug) {
+                        debugContainer.style.display = 'block';
+                    }
                 }
             }
 
+            function addDebugInfo(info) {
+                const debugHtml = Object.entries(info).map(([key, value]) => 
+                    `<div><strong>${key}:</strong> ${JSON.stringify(value)}</div>`
+                ).join('');
+                debugContent.innerHTML = debugHtml;
+            }
+
             try {
-                // 1. Initialize LIFF
-                await liff.init({ liffId: "{{ LIFF_ID_TECHNICIAN_LOCATION }}" });
+                // ⭐ เริ่มส่วน LIFF Initialization ที่ปรับปรุงแล้ว ⭐
+                const liffId = "{{ LIFF_ID_TECHNICIAN_LOCATION }}";
+                
+                console.log("🔍 Technician Location LIFF Debug:");
+                console.log("- LIFF ID from server:", liffId);
+                console.log("- LIFF ID type:", typeof liffId);
+                console.log("- LIFF ID length:", liffId ? liffId.length : 0);
+                
+                // Validation ขั้นพื้นฐาน
+                if (!liffId || liffId.trim() === '' || liffId === 'None' || liffId === 'undefined') {
+                    const debugInfo = {
+                        'LIFF_ID_VALUE': liffId,
+                        'LIFF_ID_TYPE': typeof liffId,
+                        'LIFF_ID_LENGTH': liffId ? liffId.length : 0,
+                        'PAGE_URL': window.location.href,
+                        'USER_AGENT': navigator.userAgent.substring(0, 100) + '...'
+                    };
+                    
+                    addDebugInfo(debugInfo);
+                    throw new Error(`LIFF ID ไม่ถูกต้อง: "${liffId}". กรุณาตรวจสอบการตั้งค่า Environment Variables`);
+                }
+                
+                // ตรวจสอบรูปแบบ LIFF ID
+                const liffIdPattern = /^\d{10}-[a-zA-Z0-9]{8}$/;
+                if (!liffIdPattern.test(liffId)) {
+                    const debugInfo = {
+                        'LIFF_ID_VALUE': liffId,
+                        'EXPECTED_PATTERN': 'nnnnnnnnnn-xxxxxxxx',
+                        'PATTERN_MATCH': liffIdPattern.test(liffId),
+                        'VALIDATION_ERROR': 'Invalid LIFF ID format'
+                    };
+                    
+                    addDebugInfo(debugInfo);
+                    throw new Error(`รูปแบบ LIFF ID ไม่ถูกต้อง: "${liffId}". ควรเป็น nnnnnnnnnn-xxxxxxxx`);
+                }
+                
+                console.log("✅ LIFF ID validation passed");
+                console.log("🚀 Initializing LIFF...");
+                
+                // Initialize LIFF
+                await liff.init({ liffId: liffId });
+                console.log("✅ Technician Location LIFF initialized successfully");
+                // ⭐ สิ้นสุดส่วน LIFF Initialization ที่ปรับปรุงแล้ว ⭐
 
                 if (!liff.isLoggedIn()) {
                     showStatus("กรุณาเข้าสู่ระบบก่อนใช้งาน", true);
+                    console.log("❌ User not logged in, redirecting...");
                     liff.login();
                     return;
                 }
 
                 // 2. Get user profile
                 const profile = await liff.getProfile();
-                document.getElementById('user-avatar').src = profile.pictureUrl;
-                document.getElementById('user-name').textContent = profile.displayName;
+                console.log("✅ User profile loaded:", profile.displayName);
+                
+                document.getElementById('user-avatar').src = profile.pictureUrl || 'https://via.placeholder.com/80/007bff/ffffff?text=👤';
+                document.getElementById('user-name').textContent = profile.displayName || 'ผู้ใช้';
                 
                 loadingState.style.display = 'none';
                 mainContent.style.display = 'block';
 
                 // 3. Add event listener to the button
-                updateBtn.addEventListener('click', () => {
+                updateBtn.addEventListener('click', async () => {
+                    const originalBtnHtml = updateBtn.innerHTML;
                     showStatus("กำลังค้นหาตำแหน่งของคุณ...", false);
                     updateBtn.disabled = true;
-                    updateBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังค้นหา...`;
+                    updateBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
 
                     // 4. Use navigator.geolocation to get location
                     if (!navigator.geolocation) {
-                        showStatus("เบราว์เซอร์ของคุณไม่รองรับ Geolocation", true);
+                        const debugInfo = {
+                            'GEOLOCATION_SUPPORTED': false,
+                            'USER_AGENT': navigator.userAgent,
+                            'HTTPS_PROTOCOL': window.location.protocol === 'https:'
+                        };
+                        addDebugInfo(debugInfo);
+                        showStatus("เบราว์เซอร์ของคุณไม่รองรับ Geolocation", true, true);
                         updateBtn.disabled = false;
-                        updateBtn.innerHTML = '<i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน';
+                        updateBtn.innerHTML = originalBtnHtml;
                         return;
                     }
 
+                    const geolocationOptions = {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 0
+                    };
+
                     navigator.geolocation.getCurrentPosition(
                         async (position) => {
-                            const { latitude, longitude } = position.coords;
-                            showStatus("พบตำแหน่งแล้ว! กำลังส่งข้อมูล...", false);
-
-                            // 5. Send data to your backend API
                             try {
+                                const { latitude, longitude, accuracy } = position.coords;
+                                console.log(`📍 Location found: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
+                                
+                                showStatus("พบตำแหน่งแล้ว! กำลังส่งข้อมูลไปยังเซิร์ฟเวอร์...", false);
+                                updateBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังบันทึก...`;
+
+                                // 5. Send data to backend API
                                 const response = await fetch('/api/technician-location/update', {
                                     method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: { 
+                                        'Content-Type': 'application/json',
+                                        'X-Requested-With': 'XMLHttpRequest'
+                                    },
                                     body: JSON.stringify({
                                         line_user_id: profile.userId,
                                         latitude: latitude,
-                                        longitude: longitude
+                                        longitude: longitude,
+                                        accuracy: accuracy,
+                                        timestamp: new Date().toISOString()
                                     })
                                 });
-                                const result = await response.json();
-                                if (!response.ok) throw new Error(result.message);
 
-                                showStatus("อัปเดตตำแหน่งสำเร็จ! แอปจะปิดใน 3 วินาที", false);
-                                setTimeout(() => liff.closeWindow(), 3000);
+                                if (!response.ok) {
+                                    const errorText = await response.text();
+                                    throw new Error(`Server Error (${response.status}): ${errorText}`);
+                                }
+
+                                const result = await response.json();
+                                if (result.status !== 'success') {
+                                    throw new Error(result.message || 'Unknown server error');
+                                }
+
+                                // Success!
+                                console.log("✅ Location updated successfully");
+                                mainContent.classList.add('success-animation');
+                                updateBtn.className = 'btn btn-success btn-location w-100';
+                                updateBtn.innerHTML = '<i class="fas fa-check-circle me-2"></i>อัปเดตสำเร็จ!';
+                                
+                                showStatus("🎉 อัปเดตตำแหน่งสำเร็จ! แอปจะปิดใน 3 วินาที", false);
+                                
+                                setTimeout(() => {
+                                    if (liff.isInClient()) {
+                                        liff.closeWindow();
+                                    } else {
+                                        window.close();
+                                    }
+                                }, 3000);
 
                             } catch (apiError) {
-                                showStatus(`เกิดข้อผิดพลาด: ${apiError.message}`, true);
+                                console.error("❌ API Error:", apiError);
+                                const debugInfo = {
+                                    'API_ERROR': apiError.message,
+                                    'LOCATION_DATA': {
+                                        latitude: position.coords.latitude,
+                                        longitude: position.coords.longitude,
+                                        accuracy: position.coords.accuracy
+                                    },
+                                    'USER_ID': profile.userId,
+                                    'TIMESTAMP': new Date().toISOString()
+                                };
+                                addDebugInfo(debugInfo);
+                                showStatus(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${apiError.message}`, true, true);
                                 updateBtn.disabled = false;
-                                updateBtn.innerHTML = '<i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน';
+                                updateBtn.innerHTML = originalBtnHtml;
                             }
                         },
                         (geoError) => {
-                            let errorMessage = `ไม่สามารถดึงตำแหน่งได้: ${geoError.message}`;
-                            if (geoError.code === 1) { // PERMISSION_DENIED
-                                errorMessage = "คุณต้องอนุญาตให้เข้าถึงตำแหน่งเพื่อใช้งานฟีเจอร์นี้";
+                            console.error("❌ Geolocation Error:", geoError);
+                            
+                            let errorMessage = `ไม่สามารถดึงตำแหน่งได้`;
+                            let solutions = [];
+                            
+                            switch(geoError.code) {
+                                case 1: // PERMISSION_DENIED
+                                    errorMessage = "การเข้าถึงตำแหน่งถูกปฏิเสธ";
+                                    solutions = [
+                                        "อนุญาตให้ LINE เข้าถึงตำแหน่งในการตั้งค่าเบราว์เซอร์",
+                                        "ตรวจสอบการตั้งค่า Privacy ของอุปกรณ์",
+                                        "ลองปิดและเปิด LINE App ใหม่"
+                                    ];
+                                    break;
+                                case 2: // POSITION_UNAVAILABLE
+                                    errorMessage = "ไม่สามารถระบุตำแหน่งได้";
+                                    solutions = [
+                                        "ตรวจสอบการเชื่อมต่อ GPS",
+                                        "ลองใช้งานในที่โล่งแสง",
+                                        "รอสักครู่แล้วลองใหม่"
+                                    ];
+                                    break;
+                                case 3: // TIMEOUT
+                                    errorMessage = "หมดเวลาในการค้นหาตำแหน่ง";
+                                    solutions = [
+                                        "ลองใหม่อีกครั้ง",
+                                        "ตรวจสอบสัญญาณ GPS",
+                                        "ลองใช้งานในที่ที่มีสัญญาณดี"
+                                    ];
+                                    break;
                             }
-                            showStatus(errorMessage, true);
+                            
+                            const debugInfo = {
+                                'GEOLOCATION_ERROR_CODE': geoError.code,
+                                'GEOLOCATION_ERROR_MESSAGE': geoError.message,
+                                'GEOLOCATION_OPTIONS': geolocationOptions,
+                                'BROWSER_INFO': {
+                                    userAgent: navigator.userAgent.substring(0, 100),
+                                    language: navigator.language,
+                                    platform: navigator.platform
+                                }
+                            };
+                            
+                            addDebugInfo(debugInfo);
+                            
+                            // อัปเดต error solutions
+                            const errorSolutions = document.getElementById('error-solutions');
+                            if (errorSolutions && solutions.length > 0) {
+                                errorSolutions.innerHTML = `
+                                    <small><strong>🔧 วิธีแก้ไขเฉพาะ:</strong></small>
+                                    <ul class="text-start small mt-1 mb-0">
+                                        ${solutions.map(solution => `<li>${solution}</li>`).join('')}
+                                    </ul>
+                                `;
+                            }
+                            
+                            showStatus(errorMessage, true, true);
                             updateBtn.disabled = false;
-                            updateBtn.innerHTML = '<i class="fas fa-map-marker-alt me-2"></i>อัปเดตตำแหน่งของฉัน';
-                        }
+                            updateBtn.innerHTML = originalBtnHtml;
+                        },
+                        geolocationOptions
                     );
                 });
 
             } catch (err) {
-                showStatus(`LIFF Init Error: ${err.message}`, true);
+                console.error("❌ LIFF Error:", err);
+                
+                const debugInfo = {
+                    'ERROR_MESSAGE': err.message,
+                    'ERROR_STACK': err.stack ? err.stack.substring(0, 500) : 'No stack trace',
+                    'LIFF_ID_ATTEMPTED': "{{ LIFF_ID_TECHNICIAN_LOCATION }}",
+                    'PAGE_URL': window.location.href,
+                    'TIMESTAMP': new Date().toISOString(),
+                    'USER_AGENT': navigator.userAgent.substring(0, 100) + '...'
+                };
+                
+                addDebugInfo(debugInfo);
+                showStatus(`LIFF Error: ${err.message}`, true, true);
             }
         });
     </script>

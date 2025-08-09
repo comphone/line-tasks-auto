@@ -51,19 +51,64 @@
         </div>
     </div>
 
-    <script>
+<script>
         async function initializeLiff() {
             try {
-                // *** สำคัญ: ใส่ LIFF ID ของคุณที่นี่ ***
-                await liff.init({ liffId: "{{ LIFF_ID_FORM }}" }); 
+                // ⭐ เริ่มโค้ดใหม่ ⭐
+                const liffId = "{{ LIFF_ID_FORM }}";
+                console.log("🔍 Debug LIFF Info:");
+                console.log("- LIFF ID from server:", liffId);
+                console.log("- LIFF ID length:", liffId ? liffId.length : 0);
+                console.log("- LIFF ID type:", typeof liffId);
+                
+                // ตรวจสอบว่า LIFF ID ถูกส่งมาจากเซิร์ฟเวอร์หรือไม่
+                if (!liffId || liffId.trim() === '' || liffId === 'None' || liffId === 'undefined') {
+                    throw new Error(`LIFF ID ไม่ถูกต้อง: "${liffId}". กรุณาตรวจสอบ Environment Variables`);
+                }
+                
+                // ตรวจสอบรูปแบบ LIFF ID (ควรเป็น nnnnnnnnnn-xxxxxxxx)
+                const liffIdPattern = /^\d{10}-[a-zA-Z0-9]{8}$/;
+                if (!liffIdPattern.test(liffId)) {
+                    throw new Error(`รูปแบบ LIFF ID ไม่ถูกต้อง: "${liffId}". ควรเป็น nnnnnnnnnn-xxxxxxxx`);
+                }
+                
+                console.log("✅ LIFF ID validation passed");
+                console.log("🚀 Initializing LIFF...");
+                
+                await liff.init({ liffId: liffId });
+                console.log("✅ LIFF initialized successfully");
+                
                 if (!liff.isLoggedIn()) {
+                    console.log("❌ User not logged in, redirecting to login...");
                     liff.login();
                 } else {
+                    console.log("✅ User already logged in");
                     fetchData();
                 }
+                // ⭐ สิ้นสุดโค้ดใหม่ ⭐
             } catch (error) {
-                console.error("LIFF initialization failed.", error);
-                alert("เกิดข้อผิดพลาดในการโหลด LIFF");
+                console.error("❌ LIFF initialization failed:", error);
+                
+                // แสดงข้อผิดพลาดที่ละเอียดขึ้น
+                let errorMessage = "เกิดข้อผิดพลาดในการโหลด LIFF App:\n\n";
+                errorMessage += `🔴 ${error.message}\n\n`;
+                errorMessage += "🔧 วิธีแก้ไข:\n";
+                errorMessage += "1. ตรวจสอบ LIFF ID ใน Environment Variables\n";
+                errorMessage += "2. ตรวจสอบ LIFF App ใน LINE Developers Console\n";
+                errorMessage += "3. ตรวจสอบ Endpoint URL ใน LIFF App Settings";
+                
+                alert(errorMessage);
+                
+                // แสดงข้อมูล debug ใน console
+                console.log("🔍 Debug: Fetching server debug info...");
+                fetch('/debug/liff')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log("🔍 Server LIFF Debug Info:", data);
+                    })
+                    .catch(debugError => {
+                        console.error("❌ Failed to fetch debug info:", debugError);
+                    });
             }
         }
 

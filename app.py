@@ -573,6 +573,46 @@ def token_status():
             'detail': 'User Token JSON might be invalid or corrupted.'
         })
 
+
+@app.route('/debug/liff')
+def debug_liff():
+    """ตรวจสอบการตั้งค่า LIFF IDs"""
+    return jsonify({
+        'LIFF_ID_FORM': LIFF_ID_FORM,
+        'LIFF_ID_TECHNICIAN_LOCATION': LIFF_ID_TECHNICIAN_LOCATION,
+        'environment_configured': bool(LIFF_ID_FORM),
+        'liff_form_length': len(LIFF_ID_FORM) if LIFF_ID_FORM else 0,
+        'liff_tech_length': len(LIFF_ID_TECHNICIAN_LOCATION) if LIFF_ID_TECHNICIAN_LOCATION else 0,
+        'debug_info': {
+            'liff_form_value': LIFF_ID_FORM[:10] + '...' if LIFF_ID_FORM and len(LIFF_ID_FORM) > 10 else LIFF_ID_FORM,
+            'liff_tech_value': LIFF_ID_TECHNICIAN_LOCATION[:10] + '...' if LIFF_ID_TECHNICIAN_LOCATION and len(LIFF_ID_TECHNICIAN_LOCATION) > 10 else LIFF_ID_TECHNICIAN_LOCATION
+        }
+    })
+
+@app.route('/admin/environment_check')
+def environment_check():
+    """ตรวจสอบ Environment Variables ทั้งหมด"""
+    return jsonify({
+        'LINE_CHANNEL_ACCESS_TOKEN': bool(LINE_CHANNEL_ACCESS_TOKEN),
+        'LINE_CHANNEL_SECRET': bool(LINE_CHANNEL_SECRET),
+        'LIFF_ID_FORM': LIFF_ID_FORM,
+        'LIFF_ID_TECHNICIAN_LOCATION': LIFF_ID_TECHNICIAN_LOCATION,
+        'LINE_LOGIN_CHANNEL_ID': LINE_LOGIN_CHANNEL_ID,
+        'all_required_configured': all([
+            LINE_CHANNEL_ACCESS_TOKEN, 
+            LINE_CHANNEL_SECRET, 
+            LIFF_ID_FORM
+        ]),
+        'missing_variables': [
+            var for var, value in {
+                'LINE_CHANNEL_ACCESS_TOKEN': LINE_CHANNEL_ACCESS_TOKEN,
+                'LINE_CHANNEL_SECRET': LINE_CHANNEL_SECRET,
+                'LIFF_ID_FORM': LIFF_ID_FORM,
+                'LIFF_ID_TECHNICIAN_LOCATION': LIFF_ID_TECHNICIAN_LOCATION
+            }.items() if not value
+        ]
+    })
+
 def sanitize_filename(name):
     if not name:
         return "Unnamed"
