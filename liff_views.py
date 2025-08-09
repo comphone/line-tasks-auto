@@ -60,7 +60,7 @@ def summary():
     status_filter = str(request.args.get('status_filter', 'all')).strip()
     today_thai = datetime.datetime.now(THAILAND_TZ).date()
     final_tasks = []
-    stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw), 'today': 0}
+    stats = {'needsAction': 0, 'completed': 0, 'overdue': 0, 'total': len(tasks_raw), 'today': 0, 'external': 0}
 
     for task in tasks_raw:
         task_status = task.get('status', 'needsAction')
@@ -77,6 +77,8 @@ def summary():
             except (ValueError, TypeError):
                 pass
         
+        is_external_job = task.get('title', '').startswith('[งานภายนอก]')
+
         if task_status == 'completed':
             stats['completed'] += 1
         else:
@@ -85,6 +87,8 @@ def summary():
                 stats['overdue'] += 1
             if is_today:
                 stats['today'] += 1
+        if is_external_job:
+            stats['external'] += 1
 
         task_passes_filter = False
         if status_filter == 'all':
@@ -94,6 +98,8 @@ def summary():
         elif status_filter == 'needsAction' and task_status == 'needsAction':
             task_passes_filter = True
         elif status_filter == 'today' and is_today:
+            task_passes_filter = True
+        elif status_filter == 'external' and is_external_job:
             task_passes_filter = True
         
         if task_passes_filter:
@@ -126,12 +132,6 @@ def summary():
                            chart_data=chart_data,
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 
-@liff_bp.route('/form/external')
-def external_job_form_page():
-    # ส่งข้อมูลที่จำเป็นสำหรับฟอร์ม
-    return render_template('external_job_form.html',
-                           # สามารถส่ง Technician list หรือข้อมูลอื่นๆ ไปได้
-                           LIFF_ID_TO_USE=LIFF_ID_FORM)
 
 @liff_bp.route('/task/<task_id>')
 def task_details(task_id):
@@ -197,6 +197,14 @@ def form_page():
                            technician_list=settings.get('technician_list', []),
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 
+@liff_bp.route('/form/external')
+def external_job_form_page():
+    """
+    หน้าสำหรับสร้างงานภายนอก
+    """
+    return render_template('external_job_form.html', LIFF_ID_TO_USE=LIFF_ID_FORM)
+
+
 @liff_bp.route('/liff/technician/update_location')
 def technician_location_liff_page():
     """
@@ -245,4 +253,3 @@ def generate_customer_onboarding_qr(task_id):
     response.headers['Expires'] = '0'
     
     return response
-
