@@ -3534,6 +3534,9 @@ def public_task_report(task_id):
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
-   
+
+from liff_views import liff_bp
+app.register_blueprint(liff_bp, url_prefix='/')
+ 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
