@@ -86,7 +86,7 @@
     <div class="summary-container">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
-            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit me-1"></i> แก้ไข</a>
+            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary action-btn-needs-login" style="display:none;"><i class="fas fa-edit me-1"></i> แก้ไข</a>
         </div>
         <div class="info-grid">
             <div class="info-card"><h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6><p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p></div>
@@ -103,7 +103,18 @@
 
     <!-- UI ใหม่: Action Cards และ ประวัติงาน -->
     <div id="main-action-container">
-        <div id="chooseActionCard">
+        <!-- Card ที่แสดงเมื่อต้องการให้ล็อกอินก่อน -->
+        <div class="card shadow-sm mb-4 action-card" id="login-prompt-card" style="display:none;">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-user-lock me-2"></i>เข้าสู่ระบบเพื่อดำเนินการ</h5></div>
+            <div class="card-body text-center">
+                <p class="lead">กรุณาล็อกอินด้วย LINE เพื่อเข้าถึงเครื่องมือจัดการงานสำหรับช่าง</p>
+                <button type="button" class="btn btn-primary btn-lg" onclick="liff.login();">
+                    <i class="fab fa-line me-2"></i>ล็อกอินด้วย LINE
+                </button>
+            </div>
+        </div>
+        
+        <div id="chooseActionCard" class="action-card-needs-login" style="display:none;">
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5></div>
                 <div class="card-body p-3">
@@ -125,16 +136,24 @@
 			<div class="card-body">
 				<form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
 					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="save_report">
+					
 					<div class="mb-3">
 						<label class="form-label">สรุปความคืบหน้า</label>
 						<textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
 					</div>
+
+					<!-- ===== START: ส่วนที่เพิ่มและปรับปรุงใหม่ ===== -->
 					<div class="mb-3">
 						<label for="equipment_used_progress" class="form-label">อุปกรณ์ที่ใช้</label>
 						<div class="input-group">
 							<textarea class="form-control" id="equipment_used_progress" name="equipment_used" rows="3" placeholder="พิมพ์รายการอุปกรณ์ หรือกดปุ่ม 'เลือก'"></textarea>
+							<button class="btn btn-outline-info" type="button" onclick="openEquipmentCatalogModal('progressReportForm')">
+								<i class="fas fa-book"></i> เลือก
+							</button>
 						</div>
 					</div>
+					<!-- ===== END: ส่วนที่เพิ่มและปรับปรุงใหม่ ===== -->
+
 					<div class="mb-3">
 						<label class="form-label">ช่าง <span class="text-danger">*</span></label>
 						<div class="input-group">
@@ -143,10 +162,12 @@
 						</div>
 						<input type="hidden" id="technicians_progress" name="technicians_report" required>
 					</div>
+
 					<div class="mb-3">
 						<label class="form-label"><i class="fas fa-paperclip me-1"></i>แนบไฟล์</label>
 						<input class="form-control" type="file" name="files[]" multiple>
 					</div>
+
 					<div class="d-flex align-items-center">
 						<button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึก</button>
 						<button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">กลับ</button>
@@ -193,7 +214,7 @@
     let technicianLineUserId = null;
     let equipmentCatalog = [];
     let targetFormIdForEquipment;
-    // --- END: ตัวแปรและข้อมูลตั้งต้น ---
+    // --- END: ตัวแถมละข้อมูลตั้งต้น ---
 
     // --- ระบบจัดการ LIFF ที่ปรับปรุงใหม่ (เหมือนเดิม) ---
     const liffStatusContainer = document.getElementById('liff-status-container');
@@ -202,6 +223,7 @@
     const liffErrorMessage = document.getElementById('liff-error-message');
     const liffErrorDetails = document.getElementById('liff-error-details');
     const mainContent = document.getElementById('main-content');
+    const actionCardNeedsLogin = document.getElementById('chooseActionCard');
 
     function showLiffError(message, details = '') {
         liffLoadingSpinner.style.display = 'none';
@@ -210,40 +232,634 @@
         liffErrorDisplay.style.display = 'block';
     }
 
-    async function initializeLiff() {
-        try {
-            const liffId = "{{ LIFF_ID_TO_USE }}";
-            if (!liffId || liffId === 'None' || liffId.trim() === '') {
-                throw new Error("LIFF ID is missing. Please configure 'LIFF_ID_FORM' in the server's environment variables.");
-            }
-            await liff.init({ liffId: liffId });
-            if (!liff.isLoggedIn()) {
-                liff.login({ redirectUri: window.location.href });
-            } else {
-                const profile = await liff.getProfile();
-                technicianLineUserId = profile.userId;
-                liffStatusContainer.style.display = 'none';
-                mainContent.style.display = 'block';
-            }
-        } catch (error) {
+	async function initializeLiff() {
+		try {
+			const liffId = "{{ LIFF_ID_TO_USE }}";
+			if (!liffId || liffId === 'None' || liffId.trim() === '') {
+				throw new Error("LIFF ID is missing. Please configure 'LIFF_ID_FORM' in the server's environment variables.");
+			}
+			await liff.init({ liffId: liffId });
+			
+			// หลังจาก init สำเร็จ ให้แสดงเนื้อหาหลักทันที
+			liffStatusContainer.style.display = 'none';
+			mainContent.style.display = 'block';
+			
+			if (liff.isLoggedIn()) {
+				const profile = await liff.getProfile();
+				technicianLineUserId = profile.userId;
+				// แสดงปุ่มสำหรับช่างที่ล็อกอินแล้ว
+				actionCardNeedsLogin.style.display = 'block';
+				document.getElementById('login-prompt-card').style.display = 'none';
+			} else {
+				// แสดงปุ่ม 'ล็อกอิน' และซ่อนปุ่มที่ต้องการล็อกอิน
+				document.getElementById('login-prompt-card').style.display = 'block';
+				actionCardNeedsLogin.style.display = 'none';
+			}
+
+		} catch (error) {
             console.error("[LIFF] Initialization failed:", error);
             const errorMessage = "ไม่สามารถเชื่อมต่อกับบริการของ LINE ได้";
             let errorDetails = `<strong>สาเหตุ:</strong> ${error.message}<br><br><strong>คำแนะนำ:</strong><ul><li>ตรวจสอบว่า LIFF ID ที่ตั้งค่าใน Environment Variables ถูกต้องหรือไม่</li><li>ตรวจสอบการตั้งค่า Endpoint URL ใน LINE Developers Console</li><li>ลองเปิดแอปใหม่อีกครั้ง</li></ul>`;
             showLiffError(errorMessage, errorDetails);
+		}
+	}
+
+    // --- ฟังก์ชัน Helper และจัดการ Event ต่างๆ (จากไฟล์ที่อัปโหลด) ---
+    function showActionCard(cardIdToShow) {
+        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
+        document.getElementById(cardIdToShow).style.display = 'block';
+    }
+
+    async function handleFormSubmission(event, form, statusBoxId) {
+        event.preventDefault();
+    
+        // ✅ เพิ่มโค้ดตรวจสอบ LIFF login ก่อนทำธุรกรรมสำคัญ
+        if (!liff.isLoggedIn()) {
+            alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ');
+            liff.login();
+            return;
+        }
+
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            return;
+        }
+
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalBtnText = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+        const uploadStatusBox = document.getElementById(statusBoxId);
+        const mainFormData = new FormData(form);
+        mainFormData.append('technician_line_user_id', technicianLineUserId); // ส่ง user ID ไปด้วย
+
+        const files = Array.from(mainFormData.getAll('files[]'));
+        let uploadedAttachments = [];
+
+        if (files.length > 0 && files[0].size > 0) {
+            uploadStatusBox.style.display = 'inline-block';
+            for (let i = 0; i < files.length; i++) {
+                uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
+                const fileFormData = new FormData();
+                fileFormData.append('file', files[i]);
+                fileFormData.append('task_id', taskId);
+                
+                try {
+                    const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
+                        method: 'POST', 
+                        body: fileFormData,
+                        headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        uploadedAttachments.push(result.file_info);
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (error) {
+                    alert(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`);
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalBtnText;
+                    uploadStatusBox.style.display = 'none';
+                    return;
+                }
+            }
+        }
+        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+        if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังบันทึกข้อมูล...';
+
+        try {
+            const response = await fetch("{{ url_for('api_update_task', task_id=task.id) }}", {
+                method: 'POST',
+                body: mainFormData
+            });
+            const result = await response.json();
+            if (response.ok) {
+                alert(result.message);
+                if(result.redirect_url) {
+                    window.location.href = result.redirect_url;
+                } else {
+                    window.location.reload();
+                }
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            alert(`เกิดข้อผิดพลาด: ${error.message}`);
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalBtnText;
+            if (uploadStatusBox) uploadStatusBox.style.display = 'none';
         }
     }
 
-    // --- ฟังก์ชัน Helper และจัดการ Event ต่างๆ (จากไฟล์ที่อัปโหลด) ---
-    // (รวมฟังก์ชันทั้งหมดไว้ที่นี่)
-    
     // --- โค้ดที่ทำงานเมื่อหน้าเว็บโหลดเสร็จ ---
     document.addEventListener('DOMContentLoaded', function() {
         initializeLiff();
         
-        // ... (โค้ด JavaScript ทั้งหมดจากไฟล์ที่คุณอัปโหลด จะถูกนำมารวมและปรับปรุงที่นี่) ...
-        
-        // ตัวอย่างการรวมโค้ด
-        window.showActionCard('chooseActionCard'); // แสดง Action Card เริ่มต้น
+        // Initialise Modals
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        editTextModal = new bootstrap.Modal(document.getElementById('editTextModal'));
+        editAttachmentsModal = new bootstrap.Modal(document.getElementById('editAttachmentsModal'));
+        locationConfirmModal = new bootstrap.Modal(document.getElementById('locationConfirmModal')); // Ensure this is initialized
+
+        // Initialize Equipment Catalog Modal and fetch data
+        const modalElement = document.getElementById('equipmentCatalogModal');
+        if(modalElement) {
+            equipmentCatalogModal = new bootstrap.Modal(modalElement);
+            fetchEquipmentCatalog(); // Load catalog data on startup
+            
+            document.getElementById('equipmentSearchInput').addEventListener('keyup', function() {
+                renderCatalogInModal(this.value);
+            });
+
+            document.getElementById('confirmEquipmentSelectionBtn').addEventListener('click', function() {
+                const selectedItems = [];
+                const inputs = document.querySelectorAll('#equipment-catalog-modal-body input[type="number"]');
+                
+                inputs.forEach(input => {
+                    if (input.value && parseFloat(input.value) > 0) {
+                        const itemName = input.dataset.itemName;
+                        const quantity = input.value;
+                        selectedItems.push(`${itemName}, ${quantity}`);
+                    }
+                });
+
+                if (selectedItems.length > 0) {
+                    const targetTextarea = document.querySelector(`#${targetFormIdForEquipment} textarea[name="equipment_used"]`);
+                    if(targetTextarea) {
+                        const existingText = targetTextarea.value.trim();
+                        targetTextarea.value = (existingText ? existingText + '\n' : '') + selectedItems.join('\n');
+                    }
+                }
+                equipmentCatalogModal.hide();
+            });
+        }
+
+        // --- Event Listeners for Buttons and Modals ---
+        const updateLocationBtn = document.getElementById('updateLocationBtn');
+        if (updateLocationBtn) {
+            updateLocationBtn.addEventListener('click', async () => {
+                // Check LIFF login before sensitive action
+                if (!liff.isLoggedIn()) {
+                    alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ');
+                    liff.login();
+                    return;
+                }
+
+                const originalBtnHtml = updateLocationBtn.innerHTML;
+                updateLocationBtn.disabled = true;
+                updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
+
+                if (!navigator.geolocation) {
+                    alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
+                    updateLocationBtn.disabled = false;
+                    updateLocationBtn.innerHTML = originalBtnHtml;
+                    return;
+                }
+
+                try {
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            enableHighAccuracy: true,
+                            timeout: 15000,
+                            maximumAge: 0
+                        });
+                    });
+
+                    const { latitude, longitude } = position.coords;
+                    const newMapUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
+                    
+                    updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังบันทึก...`;
+
+                    const response = await fetch(`/api/task/${taskId}/update_location`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({ map_url: newMapUrl })
+                    });
+
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.message || 'เกิดข้อผิดพลาดในการบันทึก');
+                    }
+
+                    // อัปเดตลิงก์บนหน้าเว็บทันทีโดยไม่ต้องรีโหลด
+                    const customerMapLink = document.getElementById('customer-map-link');
+                    if(customerMapLink) {
+                        customerMapLink.href = newMapUrl;
+                    }
+
+                    window.flashMessage('อัปเดตพิกัดสำเร็จ!', 'success');
+
+                } catch (error) {
+                    window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                } finally {
+                    updateLocationBtn.disabled = false;
+                    updateLocationBtn.innerHTML = originalBtnHtml;
+                }
+            });
+        }
+
+        // Initialize Tribute.js for progress report snippets
+        const tribute = new Tribute({ values: progressReportSnippets });
+        document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
+
+        // Render history section
+        const historyContainer = document.getElementById('history-section-body');
+        if (techReportsHistory && techReportsHistory.length > 0) {
+            historyContainer.innerHTML = techReportsHistory.map((report, index) => {
+                let attachmentsHtml = '';
+                if(report.attachments && report.attachments.length > 0){
+                    attachmentsHtml = `<div class="image-gallery-grid mt-3">` +
+                    report.attachments.map(att => `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="attachment"></div>`).join('') +
+                    `</div>`;
+                }
+                
+                let editMenuHtml = '';
+                if (report.type === 'report') {
+                     editMenuHtml = `
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" onclick="window.openEditTextModal(${index})"><i class="fas fa-pen fa-fw me-2"></i>แก้ไขข้อความ</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="window.openEditAttachmentsModal(${index})"><i class="fas fa-images fa-fw me-2"></i>จัดการรูปภาพ</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" onclick="window.deleteReport(${index})"><i class="fas fa-trash-alt fa-fw me-2"></i>ลบรายงานนี้</a></li>
+                            </ul>
+                        </div>
+                    `;
+                }
+                
+                return `
+                <div class="history-entry ${report.type === 'reschedule' ? 'border-warning' : 'border-primary'}">
+                    <div class="history-entry-header">
+                        <span class="history-entry-title">${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานการปฏิบัติงาน'}</span>
+                        <div class="d-flex align-items-center">
+                            <small class="text-muted me-3">${new Date(report.summary_date).toLocaleString('th-TH')}</small>
+                            ${editMenuHtml}
+                        </div>
+                    </div>
+                    <div class="history-entry-body">
+                        ${report.type === 'reschedule' ? `<p><strong>เหตุผล:</strong> ${report.reason || '-'}</p><p><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</p>` : `<p>${report.work_summary || '-'}</p>`}
+                        <p><small class="text-muted"><strong>ช่าง:</strong> ${report.technicians ? report.technicians.join(', ') : '-'}</small></p>
+                    </div>
+                    ${attachmentsHtml}
+                </div>`;
+            }).join('');
+        } else {
+            historyContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการดำเนินงาน</p>';
+        }
+
     });
+
+    // --- START: ฟังก์ชัน Equipment Catalog (จากไฟล์ที่แนบมา) ---
+    async function fetchEquipmentCatalog() {
+        if (equipmentCatalog.length > 0) return; // Load once
+        try {
+            const response = await fetch("{{ url_for('api_equipment_catalog') }}");
+            if (response.ok) {
+                equipmentCatalog = await response.json();
+            } else {
+                console.error("Failed to load equipment catalog.");
+            }
+        } catch (error) {
+            console.error("Error fetching equipment catalog:", error);
+        }
+    }
+
+    function renderCatalogInModal(filter = '') {
+        const tbody = document.getElementById('equipment-catalog-modal-body');
+        if (!tbody) return; // Check if element exists
+        tbody.innerHTML = '';
+        const filteredCatalog = equipmentCatalog.filter(item => 
+            item.item_name.toLowerCase().includes(filter.toLowerCase())
+        );
+
+        if (filteredCatalog.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">ไม่พบอุปกรณ์ที่ค้นหา</td></tr>';
+            return;
+        }
+
+        filteredCatalog.forEach((item, index) => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.innerHTML = `
+                <td>
+                    <label for="qty-${index}" class="form-check-label w-100">
+                        <strong>${item.item_name}</strong>
+                        <br><small class="text-muted">หน่วย: ${item.unit || '-'} | ราคา: ${item.price || 0} บาท</small>
+                    </label>
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" id="qty-${index}" min="0" step="any" data-item-name="${item.item_name}">
+                </td>
+            `;
+            tr.addEventListener('click', (e) => {
+                if (e.target.tagName !== 'INPUT') {
+                    tr.querySelector('input').focus();
+                }
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    window.openEquipmentCatalogModal = (formId) => {
+        targetFormIdForEquipment = formId;
+        renderCatalogInModal();
+        if(equipmentCatalogModal) equipmentCatalogModal.show(); // Show modal if initialized
+    };
+    // --- END: ฟังก์ชัน Equipment Catalog ---
+
+
+    // --- START: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
+    window.flashMessage = (message, category = 'info') => {
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertHtml = `<div class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        container.insertAdjacentHTML('afterbegin', alertHtml);
+    };
+    window.showActionCard = (cardIdToShow) => {
+        document.getElementById('chooseActionCard').style.display = 'none';
+        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
+        const cardToShow = document.getElementById(cardIdToShow);
+        if (cardToShow) { cardToShow.style.display = 'block'; }
+        else { document.getElementById('chooseActionCard').style.display = 'block'; }
+    };
+    window.openTechnicianModal = (targetId) => {
+        currentTechnicianTargetId = targetId;
+        const container = document.getElementById('technician-list-container');
+        const hiddenInput = document.getElementById(targetId);
+        const selectedValues = hiddenInput ? hiddenInput.value.split(',').filter(Boolean) : [];
+        container.innerHTML = '';
+
+        if (technicianList.length === 0) {
+            container.innerHTML = `<div class="alert alert-warning">ไม่พบรายชื่อช่าง กรุณาเพิ่มในหน้าตั้งค่า</div>`;
+        } else {
+            technicianList.forEach(tech => {
+                const techName = tech.name;
+                const isChecked = selectedValues.includes(techName);
+                const initial = techName ? techName.charAt(0).toUpperCase() : '?';
+                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
+                container.innerHTML += `<div class="form-check mb-2 d-flex align-items-center"><input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s/g, '')}" ${isChecked ? 'checked' : ''} style="width: 1.5em; height: 1.5em;"><label class="form-check-label d-flex align-items-center ms-2" for="tech-${techName.replace(/\s/g, '')}" style="cursor: pointer;"><img src="${avatarUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;"><span class="flex-grow-1">${techName}</span></label></div>`;
+            });
+        }
+        if(technicianSelectionModal) technicianSelectionModal.show();
+    };
+    window.confirmTechnicianSelection = () => {
+        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
+        const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
+        const hiddenInput = document.getElementById(currentTechnicianTargetId);
+        if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
+        if (hiddenInput) hiddenInput.value = selectedNames.join(',');
+        if(technicianSelectionModal) technicianSelectionModal.hide();
+    };
+    window.closeLightbox = () => { document.getElementById('lightboxModal').style.display = "none"; };
+    window.openLightboxById = (attachmentId) => {
+         const index = allAttachments.findIndex(att => att.id === attachmentId);
+         if (index !== -1) {
+            slideIndex = index;
+            document.getElementById('lightboxModal').style.display = "block";
+            showSlide(slideIndex);
+         }
+    };
+    window.changeSlide = (n) => {
+        slideIndex += n;
+        if (slideIndex >= allAttachments.length) { slideIndex = 0; }
+        if (slideIndex < 0) { slideIndex = allAttachments.length - 1; }
+        showSlide(slideIndex);
+    };
+    function showSlide(index) {
+        if(index < 0 || index >= allAttachments.length) { window.closeLightbox(); return; }
+        const attachment = allAttachments[index];
+        document.getElementById('lightboxImg').src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`;
+    }
+    // --- END: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
+
+    // ✅✅ --- START: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน (โค้ดเดิม) --- ✅✅
+    window.openEditTextModal = (reportIndex) => {
+        const report = techReportsHistory[reportIndex];
+        document.getElementById('editTextarea').value = report.work_summary;
+        document.getElementById('editReportIndex').value = reportIndex;
+        if(editTextModal) editTextModal.show();
+    };
+
+    window.handleEditTextSave = async () => {
+        const reportIndex = document.getElementById('editReportIndex').value;
+        const newSummary = document.getElementById('editTextarea').value;
+        
+        try {
+            const response = await fetch(`/api/task/${taskId}/edit_report_text/${reportIndex}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ summary: newSummary })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            window.flashMessage('แก้ไขข้อความสำเร็จ!', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        } finally {
+            if(editTextModal) editTextModal.hide();
+        }
+    };
+
+    window.openEditAttachmentsModal = (reportIndex) => {
+        const report = techReportsHistory[reportIndex];
+        const container = document.getElementById('current-attachments-container');
+        container.innerHTML = '';
+        if (report.attachments && report.attachments.length > 0) {
+            report.attachments.forEach(att => {
+                container.innerHTML += `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
+                        <label class="form-check-label" for="att-${att.id}" style="cursor:pointer;">
+                            <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover; margin-right: 0.5rem;">
+                            <small>${att.name}</small>
+                        </label>
+                    </div>
+                `;
+            });
+        } else {
+            container.innerHTML = '<p class="text-muted">ไม่มีรูปภาพในรายงานนี้</p>';
+        }
+        document.getElementById('editAttachmentsReportIndex').value = reportIndex;
+        if(editAttachmentsModal) editAttachmentsModal.show();
+    };
+
+    window.handleEditAttachmentsSave = async (event) => {
+        event.preventDefault();
+        if(editAttachmentsModal) editAttachmentsModal.hide();
+        window.flashMessage('กำลังบันทึกการเปลี่ยนแปลงรูปภาพ...', 'info');
+        const form = event.target;
+        const reportIndex = form.querySelector('#editAttachmentsReportIndex').value;
+        const formData = new FormData(form);
+        formData.append('csrf_token', csrfToken);
+
+        try {
+            const response = await fetch(`/task/${taskId}/edit_report/${reportIndex}`, {
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                 throw new Error('เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ระหว่างอัปเดตรูปภาพ');
+            }
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        }
+    };
+
+    window.deleteReport = async (reportIndex) => {
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้อย่างถาวร (รวมถึงรูปภาพทั้งหมด)?')) return;
+
+        try {
+            const response = await fetch(`/api/task/${taskId}/delete_report/${reportIndex}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            window.flashMessage('ลบรายงานสำเร็จ!', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        }
+    };
+    // ✅✅ --- END: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน (โค้ดเดิม) --- ✅✅
+
+    // ✅ --- START: ฟังก์ชันจัดการการส่งฟอร์ม (ที่เคยหายไป) --- ✅
+    async function submitFormData(form, statusElementId) {
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        const statusBox = document.getElementById(statusElementId);
+        
+        try {
+            const formData = new FormData();
+            new FormData(form).forEach((value, key) => { if (key !== 'files[]') formData.append(key, value); });
+
+            const filesInput = form.querySelector('input[type="file"][name="files[]"]');
+            const files = filesInput ? Array.from(filesInput.files) : [];
+            let uploadedAttachments = [];
+
+            if (files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    if (statusBox) statusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
+                    const fileFormData = new FormData();
+                    fileFormData.append('file', files[i]);
+                    fileFormData.append('task_id', taskId);
+                    
+                    try {
+                        const response = await fetch("{{ url_for('api_upload_attachment') }}", { method: 'POST', body: fileFormData, headers: {'X-CSRFToken': csrfToken } });
+                        const result = await response.json();
+                        if (response.ok && result.status === 'success') {
+                            uploadedAttachments.push(result.file_info);
+                        } else { throw new Error(result.message); }
+                    } catch (error) { window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger'); }
+                }
+            }
+            formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+
+            if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
+
+            const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-with': 'XMLHttpRequest' } });
+            
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                if (result.redirect_url) {
+                    window.location.href = result.redirect_url;
+                } 
+                else { 
+                    window.location.reload(); 
+                }
+            } else { 
+                throw new Error(result.message || 'Error'); 
+            }
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        } finally {
+            if (statusBox) statusBox.style.display = 'none';
+        }
+    }
+
+    window.handleFormSubmission = async (event, form, statusElementId) => {
+        event.preventDefault();
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            return;
+        }
+
+        const actionInput = form.querySelector('input[name="action"]');
+        
+        if (actionInput && actionInput.value === 'complete_task') {
+            
+            const proceedWithSubmission = async (shouldGetLocation) => {
+                if(locationConfirmModal) locationConfirmModal.hide(); // Hide modal if it's open
+                
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+                submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+                const statusBox = document.getElementById(statusElementId);
+                if (statusBox) statusBox.style.display = 'inline-block';
+
+                if (technicianLineUserId) {
+                    const techIdInput = document.createElement('input');
+                    techIdInput.type = 'hidden';
+                    techIdInput.name = 'technician_line_user_id';
+                    techIdInput.value = technicianLineUserId;
+                    form.appendChild(techIdInput);
+                } else {
+                    alert("เกิดข้อผิดพลาด: ไม่พบ LINE User ID ของช่าง กรุณาเข้าผ่าน LINE App");
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = 'ยืนยันการปิดงาน';
+                    return;
+                }
+
+                if (shouldGetLocation) {
+                    if (navigator.geolocation) {
+                        try {
+                            const position = await new Promise((resolve, reject) => {
+                                navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 });
+                            });
+                            
+                            const latInput = document.createElement('input');
+                            latInput.type = 'hidden'; latInput.name = 'current_latitude';
+                            latInput.value = position.coords.latitude;
+                            form.appendChild(latInput);
+
+                            const lonInput = document.createElement('input');
+                            lonInput.type = 'hidden'; lonInput.name = 'current_longitude';
+                            lonInput.value = position.coords.longitude;
+                            form.appendChild(lonInput);
+                            
+                        } catch (error) {
+                            window.flashMessage(`ไม่สามารถดึงพิกัดได้: ${error.message}`, 'warning');
+                        }
+                    }
+                }
+                
+                await submitFormData(form, statusElementId);
+            };
+            
+            // Re-attach event listeners to modal buttons to ensure they work after modal is closed/reopened
+            document.getElementById('btnIsInLocation').onclick = () => proceedWithSubmission(true);
+            document.getElementById('btnNotInLocation').onclick = () => proceedWithSubmission(false);
+
+            if(locationConfirmModal) locationConfirmModal.show();
+
+        } else {
+            await submitFormData(form, statusElementId);
+        }
+    };
+    // ✅ --- END: ฟังก์ชันจัดการการส่งฟอร์ม --- ✅
+
 </script>
 {% endblock %}
