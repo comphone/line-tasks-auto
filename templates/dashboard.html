@@ -75,14 +75,15 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="mb-0">แดชบอร์ด</h1>
-    <a href="{{ url_for('form_page') }}" class="btn btn-success btn-lg">
+    {# ✅✅✅ แก้ไข: เพิ่ม 'liff.' เข้าไปหน้า 'form_page' ✅✅✅ #}
+    <a href="{{ url_for('liff.form_page') }}" class="btn btn-success btn-lg">
         <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
     </a>
 </div>
 
 <div class="row">
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='all') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('liff.summary', status_filter='all') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-primary h-100">
                 <div class="icon"><i class="fas fa-globe-asia"></i></div>
                 <div class="text-content">
@@ -93,7 +94,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('liff.summary', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-warning h-100">
                 <div class="icon"><i class="fas fa-hourglass-half"></i></div>
                 <div class="text-content">
@@ -104,7 +105,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='completed') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('liff.summary', status_filter='completed') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-success h-100">
                 <div class="icon"><i class="fas fa-check-double"></i></div>
                 <div class="text-content">
@@ -115,7 +116,7 @@
         </a>
     </div>
     <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('summary', status_filter='today') }}#task-list-section" class="summary-card-link">
+        <a href="{{ url_for('liff.summary', status_filter='today') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-info h-100">
                 <div class="icon"><i class="fas fa-calendar-day"></i></div>
                 <div class="text-content">
@@ -179,7 +180,7 @@
                         <tbody>
                             {% for task in tasks %}
                             <tr class="task-row clickable-row {{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}"
-                                data-href="{{ url_for('task_details', task_id=task.id) }}">
+                                data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
                                 <td class="checkbox-col">
                                     <input class="form-check-input task-checkbox" type="checkbox" data-task-id="{{ task.id }}">
                                 </td>
@@ -206,7 +207,7 @@
                                     <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+                                    <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
                                         <i class="fas fa-file-alt"></i>
                                     </a>
                                 </td>
@@ -215,7 +216,7 @@
                             <tr>
                                 <td colspan="6" class="text-center p-4">
                                     <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
-                                    <p>ลอง<a href="{{ url_for('form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
+                                    <p>ลอง<a href="{{ url_for('liff.form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
                                 </td>
                             </tr>
                             {% endfor %}
