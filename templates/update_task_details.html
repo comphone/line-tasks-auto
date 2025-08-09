@@ -347,6 +347,7 @@
             }
         }
         mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+
         if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังบันทึกข้อมูล...';
 
         try {
@@ -359,11 +360,12 @@
                 alert(result.message);
                 if(result.redirect_url) {
                     window.location.href = result.redirect_url;
-                } else {
-                    window.location.reload();
+                } 
+                else { 
+                    window.location.reload(); 
                 }
-            } else {
-                throw new Error(result.message);
+            } else { 
+                throw new Error(result.message || 'Error'); 
             }
         } catch (error) {
             alert(`เกิดข้อผิดพลาด: ${error.message}`);
@@ -442,7 +444,7 @@
                     const position = await new Promise((resolve, reject) => {
                         navigator.geolocation.getCurrentPosition(resolve, reject, {
                             enableHighAccuracy: true,
-                            timeout: 15000,
+                            timeout: 10000,
                             maximumAge: 0
                         });
                     });
@@ -776,7 +778,11 @@
                     fileFormData.append('task_id', taskId);
                     
                     try {
-                        const response = await fetch("{{ url_for('api_upload_attachment') }}", { method: 'POST', body: fileFormData, headers: {'X-CSRFToken': csrfToken } });
+                        const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
+                            method: 'POST', 
+                            body: fileFormData,
+                            headers: {'X-CSRFToken': csrfToken }
+                        });
                         const result = await response.json();
                         if (response.ok && result.status === 'success') {
                             uploadedAttachments.push(result.file_info);
