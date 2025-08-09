@@ -997,24 +997,34 @@ function checkLiffConfiguration() {
 // ฟังก์ชันตรวจสอบ Environment Variables
 function checkEnvironmentVariables() {
     const resultDiv = document.getElementById('liffDebugResult');
+    if (!resultDiv) {
+        console.error('ไม่พบ element liffDebugResult');
+        return;
+    }
+    
     resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>กำลังตรวจสอบ Environment Variables...</div>';
     
     fetch('/admin/environment_check')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             const missingVars = data.missing_variables || [];
-            const alertClass = missingVars.length === 0 ? 'success' : 'danger';
+            const alertClass = missingVars.length === 0 ? 'success' : 'warning';
             const iconClass = missingVars.length === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle';
             
             let missingVarsHtml = '';
             if (missingVars.length > 0) {
                 missingVarsHtml = `
                     <hr>
-                    <h6 class="text-danger">❌ ตัวแปรที่ขาดหายไป:</h6>
-                    <div class="alert alert-danger p-2">
+                    <h6 class="text-warning">❌ ตัวแปรที่ขาดหายไป:</h6>
+                    <div class="alert alert-warning p-2">
                         <ul class="mb-0">${missingVars.map(v => `<li><code>${v}</code></li>`).join('')}</ul>
                     </div>
-                    <div class="alert alert-warning p-2">
+                    <div class="alert alert-info p-2">
                         <strong>🔧 วิธีแก้ไข:</strong>
                         <ol class="small mb-0 mt-1">
                             <li>ตั้งค่า Environment Variables ในเซิร์ฟเวอร์</li>
@@ -1025,7 +1035,8 @@ function checkEnvironmentVariables() {
                 `;
             }
             
-            resultDiv.innerHTML = `
+            // สร้าง HTML แบบปลอดภัย
+            const statusHtml = `
                 <div class="alert alert-${alertClass}">
                     <i class="fas ${iconClass} me-2"></i>
                     <strong>🔧 Environment Variables Status</strong>
@@ -1047,24 +1058,37 @@ function checkEnvironmentVariables() {
                         </div>
                     </div>
                     ${missingVarsHtml}
-                </div>`;
+                </div>
+            `;
+            
+            resultDiv.innerHTML = statusHtml;
         })
         .catch(error => {
+            console.error('Environment check error:', error);
             resultDiv.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <strong>❌ เกิดข้อผิดพลาด:</strong> ${error.message}
-                </div>`;
+                </div>
+            `;
         });
-}
-
-// ฟังก์ชันทดสอบ LIFF URLs
+}// ⭐ แก้ไขฟังก์ชัน testLiffUrls (บรรทัด ~785)
 function testLiffUrls() {
     const resultDiv = document.getElementById('liffDebugResult');
+    if (!resultDiv) {
+        console.error('ไม่พบ element liffDebugResult');
+        return;
+    }
+    
     resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>กำลังทดสอบ LIFF URLs...</div>';
     
     fetch('/debug/liff')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             const testResults = [];
             
@@ -1102,31 +1126,40 @@ function testLiffUrls() {
                         <i class="fas fa-exclamation-triangle me-2"></i>
                         <strong>❌ ไม่พบ LIFF ID ที่จะทดสอบ</strong>
                         <p class="mb-0 mt-2">กรุณาตั้งค่า LIFF_ID_FORM และ LIFF_ID_TECHNICIAN_LOCATION ก่อน</p>
-                    </div>`;
+                    </div>
+                `;
                 return;
             }
             
-            const testResultsHtml = testResults.map(liff => `
-                <div class="card mb-3">
-                    <div class="card-header">
-                        <strong>${liff.name}</strong> <code>${liff.id}</code>
+            // สร้าง test results HTML แบบปลอดภัย
+            const testResultsHtml = testResults.map(liff => {
+                const pagesHtml = liff.pages.map(page => {
+                    const testUrl = `${liff.url}?liff.state=${encodeURIComponent(page.path)}`;
+                    return `
+                        <li class="mb-1">
+                            <strong>${page.name}:</strong> 
+                            <a href="${testUrl}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+                                <i class="fas fa-external-link-alt me-1"></i>Test
+                            </a>
+                        </li>
+                    `;
+                }).join('');
+                
+                return `
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <strong>${liff.name}</strong> <code>${liff.id}</code>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Base URL:</strong> <a href="${liff.url}" target="_blank">${liff.url}</a></p>
+                            <h6>Test Pages:</h6>
+                            <ul class="list-unstyled">
+                                ${pagesHtml}
+                            </ul>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <p><strong>Base URL:</strong> <a href="${liff.url}" target="_blank">${liff.url}</a></p>
-                        <h6>Test Pages:</h6>
-                        <ul class="list-unstyled">
-                            ${liff.pages.map(page => `
-                                <li class="mb-1">
-                                    <strong>${page.name}:</strong> 
-                                    <a href="${liff.url}?liff.state=${encodeURIComponent(page.path)}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
-                                        <i class="fas fa-external-link-alt me-1"></i>Test
-                                    </a>
-                                </li>
-                            `).join('')}
-                        </ul>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
             
             resultDiv.innerHTML = `
                 <div class="alert alert-info">
@@ -1138,11 +1171,13 @@ function testLiffUrls() {
             `;
         })
         .catch(error => {
+            console.error('LIFF URLs test error:', error);
             resultDiv.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <strong>❌ เกิดข้อผิดพลาด:</strong> ${error.message}
-                </div>`;
+                </div>
+            `;
         });
 }
 
@@ -1186,31 +1221,41 @@ function generateLiffTestUrl() {
     `;
 }
 
-// ฟังก์ชันอัปเดต Environment Variable (ฉบับแก้ไขแล้ว)
+// ⭐ แก้ไขฟังก์ชัน updateEnvironmentVariable (บรรทัด ~891)
 function updateEnvironmentVariable(varName) {
     const inputId = varName === 'LIFF_ID_FORM' ? 'quick-liff-form' : 'quick-liff-tech';
-    const value = document.getElementById(inputId).value.trim();
+    const inputElement = document.getElementById(inputId);
+    
+    if (!inputElement) {
+        console.error(`ไม่พบ input element: ${inputId}`);
+        return;
+    }
+    
+    const value = inputElement.value.trim();
     
     if (!value) {
         alert(`กรุณาใส่ค่า ${varName}`);
         return;
     }
     
-    // ตรวจสอบรูปแบบ
+    // ตรวจสอบรูปแบบ LIFF ID
     const liffPattern = /^\d{10}-[a-zA-Z0-9]{8}$/;
     if (!liffPattern.test(value)) {
         alert(`รูปแบบ LIFF ID ไม่ถูกต้อง\nควรเป็น: nnnnnnnnnn-xxxxxxxx\nเช่น: 2007889126-AbCdEfGh`);
         return;
     }
     
-    // ✅ เพิ่มการแสดงผลที่ชัดเจน
     const resultDiv = document.getElementById('liffDebugResult');
+    if (!resultDiv) {
+        console.error('ไม่พบ element liffDebugResult');
+        return;
+    }
     
     // แสดง Success Message
     alert(`✅ LIFF ID ถูกต้อง!\n\n${varName}: ${value}\n\nการตั้งค่านี้จะมีผลหลังจาก Restart เซิร์ฟเวอร์`);
     
-    // แสดงในหน้าเว็บด้วย
-    resultDiv.innerHTML = `
+    // แสดงผลในหน้าเว็บ
+    const successHtml = `
         <div class="alert alert-success">
             <i class="fas fa-check-circle me-2"></i>
             <strong>✅ LIFF ID ถูกต้อง!</strong>
@@ -1232,16 +1277,20 @@ function updateEnvironmentVariable(varName) {
         </div>
     `;
     
+    resultDiv.innerHTML = successHtml;
+    
     // Clear input หลังจากประมวลผลเสร็จ
-    document.getElementById(inputId).value = '';
+    inputElement.value = '';
     
     // Copy ค่าไปยัง Clipboard
-    navigator.clipboard.writeText(`${varName}=${value}`).then(() => {
-        console.log('LIFF ID copied to clipboard!');
-        flashMessage('คัดลอก LIFF ID ไปยัง Clipboard แล้ว!', 'info');
-    }).catch(err => {
-        console.log('Could not copy to clipboard:', err);
-    });
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(`${varName}=${value}`).then(() => {
+            console.log('LIFF ID copied to clipboard!');
+            flashMessage('คัดลอก LIFF ID ไปยัง Clipboard แล้ว!', 'info');
+        }).catch(err => {
+            console.log('Could not copy to clipboard:', err);
+        });
+    }
 }
 </script>
 {% endblock %}
