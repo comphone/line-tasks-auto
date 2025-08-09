@@ -54,429 +54,502 @@
 {% endblock %}
 
 {% block content %}
-<div id="liff-status-container">
-    <div id="liff-loading-spinner">
-        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="mt-3 text-muted">กำลังเชื่อมต่อกับ LINE...</p>
-    </div>
-    <div id="liff-error-display" style="display: none;">
-        <div class="card liff-error-card">
-            <div class="card-body">
-                <h5 class="card-title text-danger"><i class="fas fa-exclamation-triangle me-2"></i>เกิดข้อผิดพลาด</h5>
-                <p class="card-text" id="liff-error-message">ไม่สามารถเริ่มต้น LIFF App ได้</p>
-                <hr>
-                <small class="text-muted" id="liff-error-details"></small>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="container mt-4 mb-5">
+    
+    <div id="js-flash-message-container"></div>
 
-<div id="main-content">
-    <div id="js-flash-message-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1080"></div>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">📝 จัดการงาน</h1>
-        <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i> กลับหน้าสรุป</a>
+        <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
     <div class="summary-container">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
-            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary action-btn-needs-login" style="display:none;"><i class="fas fa-edit me-1"></i> แก้ไข</a>
+            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
         </div>
-        <div class="info-grid">
-            <div class="info-card"><h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6><p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p></div>
-            <div class="info-card"><h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6><p class="info-value">{{ task.customer.phone or '-' }}</p></div>
-            <div class="info-card full-width-card">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div><h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6><p class="info-value">{{ task.customer.address or '-' }}</p></div>
-                    {% if task.customer.map_url %}<a id="customer-map-link" href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" title="เปิดแผนที่"><i class="fas fa-map-marked-alt text-danger"></i></a>{% endif %}
-                </div>
-            </div>
-            <div class="info-card full-width-card"><h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6><p class="info-value customer-name">{{ task.title | replace('\n', '<br>') | safe }}</p></div>
-        </div>
-    </div>
 
-    <div id="main-action-container">
-        <div class="card shadow-sm mb-4 action-card" id="login-prompt-card" style="display:none;">
-            <div class="card-header"><h5 class="mb-0"><i class="fas fa-user-lock me-2"></i>เข้าสู่ระบบเพื่อดำเนินการ</h5></div>
-            <div class="card-body text-center">
-                <p class="lead">กรุณาล็อกอินด้วย LINE เพื่อเข้าถึงเครื่องมือจัดการงานสำหรับช่าง</p>
-                <button type="button" class="btn btn-primary btn-lg" onclick="liff.login();">
-                    <i class="fab fa-line me-2"></i>ล็อกอินด้วย LINE
-                </button>
+        <div class="info-grid">
+            <div class="info-card task-title-card">
+                <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
+                <p class="info-value task-title">{{ task.title | replace('\n', '<br>') | safe }}</p>
             </div>
-        </div>
-        
-        <div id="chooseActionCard" class="action-card-needs-login" style="display:none;">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5></div>
-                <div class="card-body p-3">
-                     <div class="action-button-grid">
-                        <button type="button" id="updateLocationBtn" class="btn btn-info action-btn"><i class="fas fa-map-marker-alt"></i>อัปเดตพิกัด</button>
-                        <button type="button" onclick="window.showActionCard('progressReportCard')" class="btn btn-primary action-btn"><i class="fas fa-edit"></i>เพิ่มรายงาน</button>
-                        <button type="button" onclick="window.showActionCard('finalReportCard')" class="btn btn-success action-btn"><i class="fas fa-check-circle"></i>ปิดงาน</button>
-                        <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning action-btn"><i class="fas fa-calendar-alt"></i>เลื่อนนัด</button>
-                        <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-secondary action-btn" style="grid-column: 1 / -1;"><i class="fas fa-id-card"></i>สร้าง QR Onboarding</a>
+            <div class="info-card">
+                 <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
+                <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+            </div>
+             <div class="info-card">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
+                        <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
+                    </div>
+                    <div class="text-end">
+                        <h6 class="info-label" style="font-size: 0.7rem;"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                        <p class="info-value info-value-small {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
                     </div>
                 </div>
             </div>
+            <div class="info-card full-width-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+                        <p class="info-value">{{ task.customer.address or '-' }}</p>
+                    </div>
+                    {% if task.customer.map_url %}
+                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
+                            <i class="fas fa-map-marked-alt text-danger"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if task.status != 'completed' %}
+            <div id="updateLocationSection" class="info-card full-width-card">
+                <h6 class="info-label"><i class="fas fa-location-arrow"></i>อัปเดตพิกัดงาน</h6>
+                <button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
+                    <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน (จากตำแหน่งช่าง)
+                </button>
+                <form id="updateLocationForm" onsubmit="window.handleFormSubmission(event, this, 'location-status')" style="display:none;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="update_location">
+                    <div class="row mt-3">
+                        <div class="col-md-6 mb-2">
+                            <label for="latitude" class="form-label">ละติจูด (Latitude)</label>
+                            <input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label for="longitude" class="form-label">ลองจิจูด (Longitude)</label>
+                            <input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center mt-2">
+                        <button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
+                        <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
+                    </div>
+                </form>
+                 <div id="location-status" class="mt-2" style="display:none;"></div>
+            </div>
+            {% endif %}
         </div>
 
-        {% include 'update_task_action_cards.html' %}
+        <hr>
+        {% if task.status == 'completed' %}
+        <p>
+            <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn btn-outline-info btn-sm">
+                 <i class="fas fa-file-alt me-1"></i> ดู QR Code รายงานสรุปสาธารณะ
+            </a>
+        </p>
+        {% endif %}
+    </div>
 
-		<div class="card shadow-sm mb-4 action-card" id="progressReportCard" style="display:none;">
-			<div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มรายงานความคืบหน้า</h5></div>
-			<div class="card-body">
-				<form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
-					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="save_report">
-					
-					<div class="mb-3">
-						<label class="form-label">สรุปความคืบหน้า</label>
-						<textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
-					</div>
+    <div class="card shadow-sm mb-4" id="chooseActionCard">
+        <div class="card-body text-center p-4">
+            <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
+             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+                <button type="button" onclick="window.showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
+                <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัด</button>
+                <button type="button" onclick="window.showActionCard('qrCodeCard')" class="btn btn-info btn-lg px-4"><i class="fas fa-qrcode me-2"></i>QR Code</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
+        <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
+        <div class="card-body">
+            <form id="completeTaskForm" onsubmit="window.handleFormSubmission(event, this, 'complete-upload-status')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="action" value="complete_task">
+                <div class="mb-3">
+                    <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
+                    <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
+                    <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
+                </div>
+                 <div class="mb-3">
+                    <label for="technicians_final_display" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
+                        <input type="text" id="technicians_final_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_final')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_final')">เลือก</button>
+                    </div>
+                    <input type="hidden" id="technicians_final" name="technicians_report" required>
+                </div>
+                <div class="mb-3">
+                    <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
+                    <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+                </div>
+                <hr>
+                <div class="d-flex align-items-center">
+                    <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
+                    <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
+                    <div id="complete-upload-status" class="ms-3" style="display:none;"></div>
+                </div>
+            </form>
+        </div>
+    </div>
 
-					<div class="mb-3">
-						<label for="equipment_used_progress" class="form-label">อุปกรณ์ที่ใช้</label>
-						<div class="input-group">
-							<textarea class="form-control" id="equipment_used_progress" name="equipment_used" rows="3" placeholder="พิมพ์รายการอุปกรณ์ หรือกดปุ่ม 'เลือก'"></textarea>
-							<button class="btn btn-outline-info" type="button" onclick="openEquipmentCatalogModal('progressReportForm')">
-								<i class="fas fa-book"></i> เลือก
-							</button>
-						</div>
-					</div>
-					<div class="mb-3">
-						<label class="form-label">ช่าง <span class="text-danger">*</span></label>
-						<div class="input-group">
-							<input type="text" id="technicians_progress_display" class="form-control" placeholder="เลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
-							<button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
-						</div>
-						<input type="hidden" id="technicians_progress" name="technicians_report" required>
-					</div>
+    <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
+        <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
+        <div class="card-body">
+            <form id="rescheduleTaskForm" onsubmit="window.handleFormSubmission(event, this, 'reschedule-upload-status')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="action" value="reschedule_task">
+                <div class="mb-3">
+                    <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                        <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
+                    <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
+                     <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
+                </div>
+                <div class="mb-3">
+                    <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
+                        <input type="text" id="technicians_reschedule_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_reschedule')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_reschedule')">เลือก</button>
+                    </div>
+                    <input type="hidden" id="technicians_reschedule" name="technicians_reschedule" required>
+                </div>
+                <hr>
+                <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
+                <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
+                <div id="reschedule-upload-status" class="ms-3" style="display:none;"></div>
+            </form>
+        </div>
+    </div>
 
-					<div class="mb-3">
-						<label class="form-label"><i class="fas fa-paperclip me-1"></i>แนบไฟล์</label>
-						<input class="form-control" type="file" name="files[]" multiple>
-					</div>
+    <div class="card shadow-sm mt-4" id="qrCodeCard" style="display:none;">
+        <div class="card-header"><h5 class="mb-0">สร้าง QR Code สำหรับงานนี้</h5></div>
+        <div class="card-body text-center">
+            <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+                <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-qrcode me-2"></i>QR Code สำหรับลูกค้า</a>
+                {% if task.status == 'completed' %}
+                <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" class="btn btn-info btn-lg px-4" target="_blank"><i class="fas fa-file-alt me-2"></i>QR Code รายงานสรุปสาธารณะ</a>
+                {% endif %}
+            </div>
+            <button type="button" class="btn btn-secondary mt-3" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
+        </div>
+    </div>
+    
+    <div class="card shadow-sm mb-4" id="progressReportCard">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
+        </div>
+        <div class="card-body">
+            <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="action" value="save_report">
+                <div class="mb-3">
+                    <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
+                        <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
+                    </div>
+                    <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
+                </div>
+                <div class="mb-3">
+                    <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
+                        <input type="text" id="technicians_progress_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
+                    </div>
+                    <input type="hidden" id="technicians_progress" name="technicians_report" required>
+                </div>
+                <div class="mb-3">
+                    <label for="files_progress" class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
+                    <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+                </div>
+                <div class="d-flex align-items-center">
+                    <button type="submit" id="saveProgressBtn" class="btn btn-primary" disabled><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+                    <div id="report-upload-status" class="ms-3" style="display:none;"></div>
+                </div>
+            </form>
+        </div>
+    </div>
 
-					<div class="d-flex align-items-center">
-						<button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึก</button>
-						<button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">กลับ</button>
-						<div id="report-upload-status" class="ms-3" style="display:none;"></div>
-					</div>
-				</form>
-			</div>
-		</div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
+        </div>
+        <div class="card-body" id="history-section-body">
+            {# ✅✅✅ โค้ดส่วนนี้จะถูกสร้างด้วย JavaScript แทน ✅✅✅ #}
+            <p class="text-muted text-center mt-3">กำลังโหลดประวัติงาน...</p>
+        </div>
+    </div>
+    
+    <hr class="my-5">
 
-        <div class="card shadow-sm mb-4">
-            <div class="card-header"><h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5></div>
-            <div class="card-body" id="history-section-body"></div>
+    <div class="danger-zone-header" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse" aria-expanded="false" aria-controls="dangerZoneCollapse">
+        <h6><i class="fas fa-exclamation-triangle text-warning me-2"></i>การจัดการขั้นสูง</h6>
+        <i class="fas fa-chevron-down icon"></i>
+    </div>
+    <div class="collapse" id="dangerZoneCollapse">
+        <div class="card card-body border-danger mt-2">
+            <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
+            <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger w-100">
+                    <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
+                </button>
+            </form>
         </div>
     </div>
 </div>
 
-{% include 'modals/technician_selection_modal.html' %}
-{% include 'modals/location_confirm_modal.html' %}
-{% include 'modals/edit_text_modal.html' %}
-{% include 'modals/edit_attachments_modal.html' %}
-{% include 'modals/equipment_catalog_modal.html' %}
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
-    <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
-    <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
+    <div id="lightboxCaption" class="lightbox-caption"></div>
+    
+    <div class="lightbox-nav-container">
+        <a class="lightbox-nav" onclick="window.changeSlide(-1)">❮</a>
+        <a class="lightbox-nav" onclick="window.changeSlide(1)">❯</a>
+    </div>
 </div>
+
+<div class="modal fade" id="technicianSelectionModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">เลือกช่างผู้รับผิดชอบ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="technician-list-container"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" onclick="window.confirmTechnicianSelection()">ตกลง</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editReportForm" method="POST" action="" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="modal-header">
+          <h5 class="modal-title" id="editReportModalLabel">แก้ไขรูปภาพในรายงาน</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <h6><i class="fas fa-images me-2"></i>รูปภาพปัจจุบัน</h6>
+          <p class="text-muted small">เอาเครื่องหมาย ✔ ออกเพื่อลบรูปภาพออกจากรายงานนี้</p>
+          <div id="current-attachments-container" class="image-gallery-grid mb-3"></div>
+          <hr>
+          <h6><i class="fas fa-plus-circle me-2"></i>เพิ่มรูปภาพ/ไฟล์อื่นๆ</h6>
+          <input type="file" class="form-control" name="new_files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editReportTextForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editReportTextModalLabel">แก้ไขข้อความสรุป</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <label for="editTextarea" class="form-label">ข้อความสรุป</label>
+            <textarea class="form-control" id="editTextarea" rows="5" required></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block body_extra %}
 <script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
 <script>
-    // --- START: ตัวแปรและข้อมูลตั้งต้น ---
-    const allAttachments = {{ all_attachments | tojson | safe }};
-    const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
+    // --- Global Variables and Constants ---
+    const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
+    const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
+    const LIFF_ID_TASK_PAGE = "{{ LIFF_ID_FORM }}";
     
     let technicianSelectionModal, editTextModal, editAttachmentsModal, locationConfirmModal, equipmentCatalogModal;
     let currentTechnicianTargetId, slideIndex;
-    let technicianLineUserId = null; // จะไม่ถูกกำหนดค่าเมื่อปิด LIFF login
+    let technicianLineUserId = null;
     let equipmentCatalog = [];
     let targetFormIdForEquipment;
-    // --- END: ตัวแถมละข้อมูลตั้งต้น ---
 
-    // --- ระบบจัดการ LIFF ที่ปรับปรุงใหม่ (ปิด LIFF Login) ---
-    const liffStatusContainer = document.getElementById('liff-status-container');
-    const liffLoadingSpinner = document.getElementById('liff-loading-spinner');
-    const liffErrorDisplay = document.getElementById('liff-error-display');
-    const liffErrorMessage = document.getElementById('liff-error-message');
-    const liffErrorDetails = document.getElementById('liff-error-details');
-    const mainContent = document.getElementById('main-content');
-    const actionCardNeedsLogin = document.getElementById('chooseActionCard');
+    // --- Helper Functions (attached to window for global access from onclick) ---
 
-    function showLiffError(message, details = '') {
-        liffLoadingSpinner.style.display = 'none';
-        liffErrorMessage.textContent = message;
-        liffErrorDetails.innerHTML = details;
-        liffErrorDisplay.style.display = 'block';
-    }
-
-    // ✅ ปิดการล็อกอิน LIFF อัตโนมัติ
-	async function initializeLiff() {
-        try {
-            const liffId = "{{ LIFF_ID_TO_USE }}"; // ยังคงต้องมี LIFF ID เพื่อ init SDK แม้ไม่ล็อกอิน
-            if (!liffId || liffId === 'None' || liffId.trim() === '') {
-                // หาก LIFF ID หายไป อาจจะยังคงแสดงหน้าได้แต่ฟังก์ชัน LIFF จะไม่ทำงาน
-                console.warn("LIFF ID is missing. Some LIFF functions might not work.");
-                liffStatusContainer.style.display = 'none';
-                mainContent.style.display = 'block';
-                document.getElementById('login-prompt-card').style.display = 'none'; // ซ่อนปุ่มล็อกอิน
-                actionCardNeedsLogin.style.display = 'block'; // แสดง Action Card
-                return;
+    window.flashMessage = (message, category = 'info') => {
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `
+            <div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', alertHtml);
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement) {
+                const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                if (alertInstance) alertInstance.close();
+                else alertElement.remove();
             }
+        }, 5000);
+    };
 
-            await liff.init({ liffId: liffId });
-            console.log("LIFF SDK initialized (login disabled).");
-
-            // แสดงเนื้อหาหลักทันที
-            liffStatusContainer.style.display = 'none';
-            mainContent.style.display = 'block';
-            document.getElementById('login-prompt-card').style.display = 'none'; // ซ่อนปุ่มล็อกอิน
-            actionCardNeedsLogin.style.display = 'block'; // แสดง Action Card
-
-            // หากต้องการ LIFF User ID สำหรับฟอร์ม ให้ดึงมาถ้าล็อกอินอยู่แล้ว
-            if (liff.isLoggedIn()) {
-                const profile = await liff.getProfile();
-                technicianLineUserId = profile.userId;
-                console.log("Technician LIFF User ID:", technicianLineUserId);
-            } else {
-                console.log("User is not logged in via LIFF. Features requiring LIFF ID will be limited.");
-            }
-
-        } catch (error) {
-            console.error("[LIFF] Initialization failed:", error);
-            const errorMessage = "ไม่สามารถเชื่อมต่อกับบริการของ LINE ได้";
-            let errorDetails = `<strong>สาเหตุ:</strong> ${error.message}<br><br><strong>คำแนะนำ:</strong><ul><li>ตรวจสอบว่า LIFF ID ที่ตั้งค่าใน Environment Variables ถูกต้องหรือไม่</li><li>ตรวจสอบการตั้งค่า Endpoint URL ใน LINE Developers Console</li><li>ลองเปิดแอปใหม่อีกครั้ง</li></ul>`;
-            showLiffError(errorMessage, errorDetails);
-            // แม้จะมี error ก็ยังพยายามแสดงเนื้อหาหลัก
-            mainContent.style.display = 'block';
-            document.getElementById('login-prompt-card').style.display = 'none';
-            actionCardNeedsLogin.style.display = 'block';
-        }
-    }
-    
-    // --- ฟังก์ชัน Helper และจัดการ Event ต่างๆ (จากไฟล์ที่อัปโหลด) ---
-    function showActionCard(cardIdToShow) {
+    window.showActionCard = (cardIdToShow) => {
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
-        document.getElementById(cardIdToShow).style.display = 'block';
-    }
-
-    async function handleFormSubmission(event, form, statusBoxId) {
-        event.preventDefault();
+        document.getElementById('chooseActionCard').style.display = 'none';
+        
+        const cardToShow = document.getElementById(cardIdToShow);
+        if (cardToShow) cardToShow.style.display = 'block';
+        else document.getElementById('chooseActionCard').style.display = 'block';
+    };
     
-        // ✅ ปิดการตรวจสอบ LIFF login ก่อนทำธุรกรรมสำคัญ
-        // if (!liff.isLoggedIn()) {
-        //     alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ');
-        //     liff.login();
-        //     return;
-        // }
+    window.openTechnicianModal = (targetId) => {
+        currentTechnicianTargetId = targetId;
+        const container = document.getElementById('technician-list-container');
+        const hiddenInput = document.getElementById(targetId);
+        const selectedValues = hiddenInput ? hiddenInput.value.split(',').filter(Boolean) : [];
 
+        container.innerHTML = '';
+        technicianList.forEach(tech => {
+            const techName = typeof tech === 'object' ? tech.name : tech;
+            const isChecked = selectedValues.includes(techName);
+            container.innerHTML += `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}>
+                    <label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}">${techName}</label>
+                </div>
+            `;
+        });
+        technicianSelectionModal.show();
+    };
+
+    window.confirmTechnicianSelection = () => {
+        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
+        const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
+        const hiddenInput = document.getElementById(currentTechnicianTargetId);
+
+        if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
+        if (hiddenInput) hiddenInput.value = selectedNames.join(',');
+        
+        technicianSelectionModal.hide();
+    };
+
+    window.handleFormSubmission = async (event, form, statusElementId) => {
+        event.preventDefault();
         if (!form.checkValidity()) {
             form.classList.add('was-validated');
+            window.flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning');
             return;
         }
 
         const submitButton = form.querySelector('button[type="submit"]');
-        const originalBtnHtml = submitButton.innerHTML;
+        const originalButtonHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
-        const uploadStatusBox = document.getElementById(statusBoxId);
-        const mainFormData = new FormData(form);
-        // ส่ง technicianLineUserId ไปด้วย หากมีค่า (ถ้าผู้ใช้ล็อกอินอยู่แล้ว)
-        if (technicianLineUserId) {
-            mainFormData.append('technician_line_user_id', technicianLineUserId); 
-        } else {
-            console.warn("Technician LINE User ID is not available for form submission.");
-            // อาจจะใช้ค่า default หรือแจ้งเตือนถ้าจำเป็น
+        const uploadStatusBox = document.getElementById(statusElementId);
+        if (uploadStatusBox) {
+            uploadStatusBox.style.display = 'inline-block';
+            uploadStatusBox.innerHTML = '';
         }
 
-        const files = Array.from(mainFormData.getAll('files[]'));
+        const formData = new FormData(form);
+        const filesInput = form.querySelector('input[type="file"][name="files[]"]');
+        const files = filesInput ? Array.from(filesInput.files) : [];
         let uploadedAttachments = [];
 
-        if (files.length > 0 && files[0].size > 0) {
-            uploadStatusBox.style.display = 'inline-block';
+        if (files.length > 0) {
             for (let i = 0; i < files.length; i++) {
-                uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
+                if(statusBox) statusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
                 const fileFormData = new FormData();
                 fileFormData.append('file', files[i]);
                 fileFormData.append('task_id', taskId);
-                
+                fileFormData.append('csrf_token', csrfToken);
                 try {
-                    const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
-                        method: 'POST', 
-                        body: fileFormData,
-                        headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
-                    });
+                    const response = await fetch("{{ url_for('api_upload_attachment') }}", { method: 'POST', body: fileFormData });
                     const result = await response.json();
-                    if (response.ok) {
+                    if (response.ok && result.status === 'success') {
                         uploadedAttachments.push(result.file_info);
-                    } else {
-                        throw new Error(result.message);
-                    }
-                } catch (error) {
-                    alert(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`);
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = originalBtnHtml;
-                    uploadStatusBox.style.display = 'none';
-                    return;
-                }
+                    } else { throw new Error(result.message); }
+                } catch (error) { window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger'); }
             }
         }
-        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+        
+        formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+        if (filesInput) formData.delete('files[]');
 
-        if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังบันทึกข้อมูล...';
+        if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
 
         try {
-            const response = await fetch("{{ url_for('api_update_task', task_id=task.id) }}", {
+            const response = await fetch(form.action || window.location.href, {
                 method: 'POST',
-                body: mainFormData
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             const result = await response.json();
-            if (response.ok) {
-                alert(result.message);
-                if(result.redirect_url) {
-                    window.location.href = result.redirect_url;
-                } 
-                else { 
-                    window.location.reload(); 
-                }
-            } else { 
-                throw new Error(result.message || 'Error'); 
-            }
+            if (response.ok && result.status === 'success') {
+                window.flashMessage(result.message, 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            } else { throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก'); }
         } catch (error) {
-            alert(`เกิดข้อผิดพลาด: ${error.message}`);
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
             submitButton.disabled = false;
             submitButton.innerHTML = originalButtonHtml;
-            if (uploadStatusBox) uploadStatusBox.style.display = 'none';
+            if(statusBox) statusBox.style.display = 'none';
         }
-    }
-
-    // --- โค้ดที่ทำงานเมื่อหน้าเว็บโหลดเสร็จ ---
+    };
+    
     document.addEventListener('DOMContentLoaded', function() {
-        initializeLiff();
-        
-        // Initialise Modals
-        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        editTextModal = new bootstrap.Modal(document.getElementById('editTextModal'));
-        editAttachmentsModal = new bootstrap.Modal(document.getElementById('editAttachmentsModal'));
-        locationConfirmModal = new bootstrap.Modal(document.getElementById('locationConfirmModal')); // Ensure this is initialized
-
-        // Initialize Equipment Catalog Modal and fetch data
-        const modalElement = document.getElementById('equipmentCatalogModal');
-        if(modalElement) {
-            equipmentCatalogModal = new bootstrap.Modal(modalElement);
-            fetchEquipmentCatalog(); // Load catalog data on startup
-            
-            document.getElementById('equipmentSearchInput').addEventListener('keyup', function() {
-                renderCatalogInModal(this.value);
-            });
-
-            document.getElementById('confirmEquipmentSelectionBtn').addEventListener('click', function() {
-                const selectedItems = [];
-                const inputs = document.querySelectorAll('#equipment-catalog-modal-body input[type="number"]');
-                
-                inputs.forEach(input => {
-                    if (input.value && parseFloat(input.value) > 0) {
-                        const itemName = input.dataset.itemName;
-                        const quantity = input.value;
-                        selectedItems.push(`${itemName}, ${quantity}`);
+        // Initialize LIFF and get user ID
+        if (liffId && liffId !== 'None' && liffId.trim() !== '') {
+            liff.init({ liffId: liffId })
+                .then(() => {
+                    if (liff.isLoggedIn()) {
+                        return liff.getProfile();
+                    } else {
+                        return null;
                     }
+                })
+                .then(profile => {
+                    if (profile) {
+                        technicianLineUserId = profile.userId;
+                    }
+                })
+                .catch(err => {
+                    console.error("LIFF initialization failed", err);
                 });
-
-                if (selectedItems.length > 0) {
-                    const targetTextarea = document.querySelector(`#${targetFormIdForEquipment} textarea[name="equipment_used"]`);
-                    if(targetTextarea) {
-                        const existingText = targetTextarea.value.trim();
-                        targetTextarea.value = (existingText ? existingText + '\n' : '') + selectedItems.join('\n');
-                    }
-                }
-                equipmentCatalogModal.hide();
-            });
         }
-
-        // --- Event Listeners for Buttons and Modals ---
-        const updateLocationBtn = document.getElementById('updateLocationBtn');
-        if (updateLocationBtn) {
-            updateLocationBtn.addEventListener('click', async () => {
-                // Check LIFF login before sensitive action (ยังคงตรวจสอบไว้เผื่อต้องการข้อมูล LIFF ID)
-                if (!liff.isLoggedIn()) {
-                    alert('กรุณาล็อกอินด้วย LINE ก่อนดำเนินการ (หากต้องการบันทึก LINE User ID ของช่าง)');
-                    // liff.login(); // ไม่ต้องสั่ง login อัตโนมัติ
-                    // แต่ยังคงให้ดำเนินการต่อได้
-                }
-
-                const originalBtnHtml = updateLocationBtn.innerHTML;
-                updateLocationBtn.disabled = true;
-                updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...`;
-
-                if (!navigator.geolocation) {
-                    alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
-                    updateLocationBtn.disabled = false;
-                    updateLocationBtn.innerHTML = originalBtnHtml;
-                    return;
-                }
-
-                try {
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            enableHighAccuracy: true,
-                            timeout: 15000,
-                            maximumAge: 0
-                        });
-                    });
-
-                    const { latitude, longitude } = position.coords;
-                    const newMapUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
-                    
-                    updateLocationBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังบันทึก...`;
-
-                    const response = await fetch(`/api/task/${taskId}/update_location`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken
-                        },
-                        body: JSON.stringify({ map_url: newMapUrl })
-                    });
-
-                    const result = await response.json();
-                    if (!response.ok) {
-                        throw new Error(result.message || 'เกิดข้อผิดพลาดในการบันทึก');
-                    }
-
-                    // อัปเดตลิงก์บนหน้าเว็บทันทีโดยไม่ต้องรีโหลด
-                    const customerMapLink = document.getElementById('customer-map-link');
-                    if(customerMapLink) {
-                        customerMapLink.href = newMapUrl;
-                    }
-
-                    window.flashMessage('อัปเดตพิกัดสำเร็จ!', 'success');
-
-                } catch (error) {
-                    window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-                } finally {
-                    updateLocationBtn.disabled = false;
-                    updateLocationBtn.innerHTML = originalBtnHtml;
-                }
-            });
-        }
-
-        // Initialize Tribute.js for progress report snippets
-        const tribute = new Tribute({ values: progressReportSnippets });
-        document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
+        
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
 
         // Render history section
         const historyContainer = document.getElementById('history-section-body');
@@ -525,7 +598,9 @@
         } else {
             historyContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการดำเนินงาน</p>';
         }
-
+        
+        const tribute = new Tribute({ values: progressReportSnippets });
+        document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
     });
 
     // --- START: ฟังก์ชัน Equipment Catalog (จากไฟล์ที่แนบมา) ---
@@ -588,44 +663,6 @@
 
 
     // --- START: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
-    window.flashMessage = (message, category = 'info') => {
-        const container = document.getElementById('js-flash-message-container');
-        if (!container) return;
-        const alertHtml = `<div class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
-        container.insertAdjacentHTML('afterbegin', alertHtml);
-    };
-    window.showActionCard = (cardIdToShow) => {
-        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
-        document.getElementById(cardIdToShow).style.display = 'block';
-    };
-    window.openTechnicianModal = (targetId) => {
-        currentTechnicianTargetId = targetId;
-        const container = document.getElementById('technician-list-container');
-        const hiddenInput = document.getElementById(targetId);
-        const selectedValues = hiddenInput ? hiddenInput.value.split(',').filter(Boolean) : [];
-        container.innerHTML = '';
-
-        if (technicianList.length === 0) {
-            container.innerHTML = `<div class="alert alert-warning">ไม่พบรายชื่อช่าง กรุณาเพิ่มในหน้าตั้งค่า</div>`;
-        } else {
-            technicianList.forEach(tech => {
-                const techName = tech.name;
-                const isChecked = selectedValues.includes(techName);
-                const initial = techName ? techName.charAt(0).toUpperCase() : '?';
-                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
-                container.innerHTML += `<div class="form-check mb-2 d-flex align-items-center"><input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s/g, '')}" ${isChecked ? 'checked' : ''} style="width: 1.5em; height: 1.5em;"><label class="form-check-label d-flex align-items-center ms-2" for="tech-${techName.replace(/\s/g, '')}" style="cursor: pointer;"><img src="${avatarUrl}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 1rem;"><span class="flex-grow-1">${techName}</span></label></div>`;
-            });
-        }
-        if(technicianSelectionModal) technicianSelectionModal.show();
-    };
-    window.confirmTechnicianSelection = () => {
-        const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
-        const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
-        const hiddenInput = document.getElementById(currentTechnicianTargetId);
-        if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
-        if (hiddenInput) hiddenInput.value = selectedNames.join(',');
-        if(technicianSelectionModal) technicianSelectionModal.hide();
-    };
     window.closeLightbox = () => { document.getElementById('lightboxModal').style.display = "none"; };
     window.openLightboxById = (attachmentId) => {
          const index = allAttachments.findIndex(att => att.id === attachmentId);
@@ -645,67 +682,75 @@
         if(index < 0 || index >= allAttachments.length) { window.closeLightbox(); return; }
         const attachment = allAttachments[index];
         document.getElementById('lightboxImg').src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`;
+        document.getElementById('lightboxCaption').textContent = attachment.name || '';
     }
     // --- END: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
 
     // ✅✅ --- START: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน --- ✅✅
     window.openEditTextModal = (reportIndex) => {
+        currentReportIndex = reportIndex;
         const report = techReportsHistory[reportIndex];
-        document.getElementById('editTextarea').value = report.work_summary;
-        document.getElementById('editReportIndex').value = reportIndex;
-        if(editTextModal) editTextModal.show();
+        document.getElementById('editTextarea').value = report.work_summary || '';
+        if(editReportTextModal) editReportTextModal.show();
     };
 
-    window.handleEditTextSave = async () => {
-        const reportIndex = document.getElementById('editReportIndex').value;
-        const newSummary = document.getElementById('editTextarea').value;
+    window.handleEditTextSave = async (event) => {
+        event.preventDefault();
+        const newSummary = document.getElementById('editTextarea').value.trim();
+        if (newSummary === "" || currentReportIndex < 0) return;
         
+        const submitButton = event.target.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
         try {
-            const response = await fetch(`/api/task/${taskId}/edit_report_text/${reportIndex}`, {
+            const response = await fetch(`/api/task/${taskId}/edit_report_text/${currentReportIndex}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ summary: newSummary })
             });
             const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
-            window.flashMessage('แก้ไขข้อความสำเร็จ!', 'success');
-            setTimeout(() => window.location.reload(), 1000);
-        } catch (error) {
-            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-        } finally {
-            if(editTextModal) editTextModal.hide();
+            if (response.ok && result.status === 'success') {
+                document.getElementById(`summary-text-${currentReportIndex}`).textContent = newSummary;
+                techReportsHistory[currentReportIndex].work_summary = newSummary; // Update local data
+                editReportTextModal.hide();
+                window.flashMessage(result.message, 'success');
+            } else { throw new Error(result.message); }
+        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
+        finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
         }
     };
 
     window.openEditAttachmentsModal = (reportIndex) => {
+        currentReportIndex = reportIndex;
         const report = techReportsHistory[reportIndex];
+        if (!report) return;
+
         const container = document.getElementById('current-attachments-container');
-        container.innerHTML = '';
-        if (report.attachments && report.attachments.length > 0) {
-            report.attachments.forEach(att => {
-                container.innerHTML += `
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
-                        <label class="form-check-label" for="att-${att.id}" style="cursor:pointer;">
-                            <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover; margin-right: 0.5rem;">
-                            <small>${att.name}</small>
-                        </label>
-                    </div>
-                `;
-            });
-        } else {
-            container.innerHTML = '<p class="text-muted">ไม่มีรูปภาพในรายงานนี้</p>';
-        }
-        document.getElementById('editAttachmentsReportIndex').value = reportIndex;
-        if(editAttachmentsModal) editAttachmentsModal.show();
+        container.innerHTML = (report.attachments && report.attachments.length > 0) ?
+            report.attachments.map(att => `
+                <div class="form-check d-inline-block p-1 text-center">
+                    <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="img-thumbnail" alt="${att.name}">
+                    <br><input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
+                    <label class="form-check-label" for="att-${att.id}"><small>${att.name || 'ไฟล์'}</small></label>
+                </div>
+            `).join('') :
+            '<p class="text-muted">รายงานนี้ไม่มีรูปภาพ</p>';
+        
+        document.getElementById('editReportForm').action = `/task/${taskId}/edit_report/${reportIndex}`;
+        document.querySelector('#editReportForm input[name="new_files[]"]').value = '';
+        editReportModal.show();
     };
 
     window.handleEditAttachmentsSave = async (event) => {
         event.preventDefault();
-        if(editAttachmentsModal) editAttachmentsModal.hide();
+        if(editReportModal) editReportModal.hide();
         window.flashMessage('กำลังบันทึกการเปลี่ยนแปลงรูปภาพ...', 'info');
         const form = event.target;
-        const reportIndex = form.querySelector('#editAttachmentsReportIndex').value;
+        const reportIndex = currentReportIndex; // Use currentReportIndex
         const formData = new FormData(form);
         formData.append('csrf_token', csrfToken);
 
@@ -715,7 +760,6 @@
                 body: formData
             });
             if (response.ok) {
-                // Server will handle redirect with flash message, so we just reload.
                 window.location.reload();
             } else {
                  throw new Error('เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ระหว่างอัปเดตรูปภาพ');
@@ -725,21 +769,20 @@
         }
     };
 
-    window.deleteReport = async (reportIndex) => {
-        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้อย่างถาวร (รวมถึงรูปภาพทั้งหมด)?')) return;
-
+    window.deleteReport = async (index) => {
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้และไฟล์แนบทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้')) return;
+        
         try {
-            const response = await fetch(`/api/task/${taskId}/delete_report/${reportIndex}`, {
+            const response = await fetch(`/api/task/${taskId}/delete_report/${index}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
             });
             const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
-            window.flashMessage('ลบรายงานสำเร็จ!', 'success');
-            setTimeout(() => window.location.reload(), 1000);
-        } catch (error) {
-            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-        }
+            if (response.ok && result.status === 'success') {
+                document.getElementById(`history-entry-${index}`).remove();
+                window.flashMessage(result.message, 'success');
+            } else { throw new Error(result.message); }
+        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
     };
     // ✅✅ --- END: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน --- ✅✅
 
@@ -765,7 +808,11 @@
                     fileFormData.append('task_id', taskId);
                     
                     try {
-                        const response = await fetch("{{ url_for('api_upload_attachment') }}", { method: 'POST', body: fileFormData, headers: {'X-CSRFToken': csrfToken } });
+                        const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
+                            method: 'POST', 
+                            body: fileFormData,
+                            headers: {'X-CSRFToken': csrfToken }
+                        });
                         const result = await response.json();
                         if (response.ok && result.status === 'success') {
                             uploadedAttachments.push(result.file_info);
@@ -777,16 +824,16 @@
 
             if(statusBox) statusBox.innerHTML = 'กำลังประมวลผล...';
 
-            const response = await fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-with': 'XMLHttpRequest' } });
+            const response = await fetch(form.action || window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
             
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                if (result.redirect_url) {
-                    window.location.href = result.redirect_url;
-                } 
-                else { 
-                    window.location.reload(); 
-                }
+                window.flashMessage(result.message, 'success');
+                setTimeout(() => window.location.reload(), 1500);
             } else { 
                 throw new Error(result.message || 'Error'); 
             }
@@ -794,26 +841,25 @@
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
             submitButton.disabled = false;
             submitButton.innerHTML = originalButtonHtml;
-        } finally {
             if (statusBox) statusBox.style.display = 'none';
         }
     }
 
-    // ✅ ฟังก์ชันหลักที่จัดการการส่งฟอร์มทั้งหมด (ปรับปรุงใหม่)
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
         if (!form.checkValidity()) {
             form.classList.add('was-validated');
+            window.flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning');
             return;
         }
 
         const actionInput = form.querySelector('input[name="action"]');
         
         if (actionInput && actionInput.value === 'complete_task') {
-            const confirmModal = new bootstrap.Modal(document.getElementById('locationConfirmModal'));
             
             const proceedWithSubmission = async (shouldGetLocation) => {
-                confirmModal.hide();
+                const confirmModalInstance = new bootstrap.Modal(document.getElementById('locationConfirmModal'));
+                confirmModalInstance.hide();
                 
                 const submitButton = form.querySelector('button[type="submit"]');
                 submitButton.disabled = true;
@@ -828,10 +874,7 @@
                     techIdInput.value = technicianLineUserId;
                     form.appendChild(techIdInput);
                 } else {
-                    alert("เกิดข้อผิดพลาด: ไม่พบ LINE User ID ของช่าง กรุณาเข้าผ่าน LINE App");
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = 'ยืนยันการปิดงาน';
-                    return;
+                    console.warn("Technician LINE User ID is not available. Proceeding without it.");
                 }
 
                 if (shouldGetLocation) {
@@ -860,94 +903,17 @@
                 await submitFormData(form, statusElementId);
             };
             
+            // Re-attach event listeners to modal buttons to ensure they work after modal is closed/reopened
             document.getElementById('btnIsInLocation').onclick = () => proceedWithSubmission(true);
             document.getElementById('btnNotInLocation').onclick = () => proceedWithSubmission(false);
 
-            confirmModal.show();
+            const confirmModalInstance = new bootstrap.Modal(document.getElementById('locationConfirmModal'));
+            confirmModalInstance.show();
 
         } else {
             await submitFormData(form, statusElementId);
         }
     };
 
-    // --- START: โค้ดที่ทำงานเมื่อหน้าเว็บโหลดเสร็จ ---
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize LIFF and get user ID
-        const liffId = "{{ LIFF_ID_FORM }}";
-        if (liffId && liffId !== 'None' && liffId.trim() !== '') {
-            liff.init({ liffId: liffId })
-                .then(() => {
-                    if (liff.isLoggedIn()) {
-                        return liff.getProfile();
-                    } else {
-                        // For features that don't require login, we can still proceed.
-                        // For features that require login, the user will be prompted later.
-                        return null;
-                    }
-                })
-                .then(profile => {
-                    if (profile) {
-                        technicianLineUserId = profile.userId;
-                    }
-                })
-                .catch(err => {
-                    console.error("LIFF initialization failed", err);
-                });
-        }
-        
-        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        editTextModal = new bootstrap.Modal(document.getElementById('editTextModal'));
-        editAttachmentsModal = new bootstrap.Modal(document.getElementById('editAttachmentsModal'));
-
-        const historyContainer = document.getElementById('history-section-body');
-        if (techReportsHistory && techReportsHistory.length > 0) {
-            historyContainer.innerHTML = techReportsHistory.map((report, index) => {
-                let attachmentsHtml = '';
-                if(report.attachments && report.attachments.length > 0){
-                    attachmentsHtml = `<div class="image-gallery-grid mt-3">` +
-                    report.attachments.map(att => `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="attachment"></div>`).join('') +
-                    `</div>`;
-                }
-                
-                let editMenuHtml = '';
-                if (report.type === 'report') {
-                     editMenuHtml = `
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="#" onclick="window.openEditTextModal(${index})"><i class="fas fa-pen fa-fw me-2"></i>แก้ไขข้อความ</a></li>
-                                <li><a class="dropdown-item" href="#" onclick="window.openEditAttachmentsModal(${index})"><i class="fas fa-images fa-fw me-2"></i>จัดการรูปภาพ</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="#" onclick="window.deleteReport(${index})"><i class="fas fa-trash-alt fa-fw me-2"></i>ลบรายงานนี้</a></li>
-                            </ul>
-                        </div>
-                    `;
-                }
-                
-                return `
-                <div class="history-entry ${report.type === 'reschedule' ? 'border-warning' : 'border-primary'}">
-                    <div class="history-entry-header">
-                        <span class="history-entry-title">${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานการปฏิบัติงาน'}</span>
-                        <div class="d-flex align-items-center">
-                            <small class="text-muted me-3">${new Date(report.summary_date).toLocaleString('th-TH')}</small>
-                            ${editMenuHtml}
-                        </div>
-                    </div>
-                    <div class="history-entry-body">
-                        ${report.type === 'reschedule' ? `<p><strong>เหตุผล:</strong> ${report.reason || '-'}</p><p><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</p>` : `<p>${report.work_summary || '-'}</p>`}
-                        <p><small class="text-muted"><strong>ช่าง:</strong> ${report.technicians ? report.technicians.join(', ') : '-'}</small></p>
-                    </div>
-                    ${attachmentsHtml}
-                </div>`;
-            }).join('');
-        } else {
-            historyContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการดำเนินงาน</p>';
-        }
-        
-        const tribute = new Tribute({ values: progressReportSnippets });
-        document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
-    });
 </script>
 {% endblock %}
