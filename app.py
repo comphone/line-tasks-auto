@@ -172,6 +172,14 @@ else:
 app.logger.info(f"==========================================")
 
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
+
+# VVVV --- [เพิ่มโค้ด Debug นี้เข้าไป] --- VVVV
+app.logger.info("=" * 30)
+app.logger.info(f"DEBUG: LIFF_ID_FORM loaded from environment: '{LIFF_ID_FORM}'")
+app.logger.info(f"DEBUG: Type of LIFF_ID_FORM is: {type(LIFF_ID_FORM)}")
+app.logger.info("=" * 30)
+# ^^^^ --- [สิ้นสุดโค้ด Debug] --- ^^^^
+
 # --- NEW: เพิ่ม LIFF ID สำหรับหน้าอัปเดตตำแหน่งช่าง ---
 LIFF_ID_TECHNICIAN_LOCATION = os.environ.get('LIFF_ID_TECHNICIAN_LOCATION')
 # ----------------------------------------------------
@@ -2183,7 +2191,7 @@ def schedule_task_from_calendar():
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
-        # --- ส่วน POST request logic (เหมือนเดิม) ---
+        # --- ส่วน POST request logic (เหมือนเดิมทุกประการ) ---
         task_raw = get_single_task(task_id)
         if not task_raw:
             if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -2372,14 +2380,18 @@ def task_details(task_id):
                 all_attachments.append(att)
 
     # VVVV --- [จุดที่แก้ไข] --- VVVV
-    # เราจะส่ง LIFF ID ตัวเดียวกับฟอร์มสร้างงานไปให้หน้านี้ใช้
-    # เพื่อให้แน่ใจว่ามีค่าส่งไปให้ Template เสมอ
+    # ดึงค่า LIFF_ID_FORM จาก Environment โดยตรงเพื่อความแน่นอน
+    liff_id_to_use = os.environ.get('LIFF_ID_FORM')
+    if not liff_id_to_use:
+        # หากหาไม่เจอ ให้ Log แจ้งเตือนไว้
+        app.logger.warning("LIFF_ID_FORM is NOT SET in environment variables for task_details page!")
+    
     response = make_response(render_template('update_task_details.html',
                            task=task,
                            technician_list=app_settings.get('technician_list', []),
                            all_attachments=all_attachments,
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
-                           LIFF_ID_TASK_PAGE=LIFF_ID_FORM # ใช้ LIFF_ID_FORM ที่โหลดมาตอนเริ่มแอป
+                           LIFF_ID_TASK_PAGE=liff_id_to_use # ส่งค่าที่ดึงมาได้ไปให้ Template
                            ))
     # ^^^^ --- [สิ้นสุดจุดที่แก้ไข] --- ^^^^
                            
@@ -2387,6 +2399,7 @@ def task_details(task_id):
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
 
 @app.route('/api/task/<task_id>/update_location', methods=['POST'])
 def api_update_task_location(task_id):
