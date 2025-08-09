@@ -226,7 +226,6 @@
     </div>
 </form>
 
-<!-- ⭐ เพิ่มโค้ดใหม่ตรงนี้ (หลัง </form> ของ LINE Bot Info) ⭐ -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-info text-dark">
         <h5 class="mb-0"><i class="fas fa-bug me-2"></i>🔍 LIFF Debug Panel</h5>
@@ -262,7 +261,6 @@
             </div>
         </div>
         
-        <!-- Quick LIFF ID Input -->
         <div class="card bg-light mb-3">
             <div class="card-body p-3">
                 <h6 class="card-title mb-2">⚡ Quick LIFF ID Setup</h6>
@@ -290,11 +288,9 @@
             </div>
         </div>
         
-        <!-- Results Container -->
         <div id="liffDebugResult" class="mt-3"></div>
     </div>
 </div>
-<!-- ⭐ สิ้นสุดโค้ดใหม่ ⭐ -->
 
 <form method="POST" action="{{ url_for('settings_page') }}" id="form_shop_tech_info">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -333,7 +329,6 @@
     </div>
 </form>
 
-<!-- เพิ่มส่วนนี้ก่อน Admin Tools -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-warning text-dark">
         <h5 class="mb-0"><i class="fas fa-robot me-2"></i>🤖 สถานะ LINE Bot</h5>
@@ -770,7 +765,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// เพิ่มฟังก์ชันเหล่านี้ก่อน flashMessage
 function create_task_flex_message(task) {
     const customer = parse_customer_info_from_notes(task.notes || '');
     const taskTitle = task.title || 'ไม่มีชื่องาน';
@@ -924,7 +918,6 @@ function testWebhook() {
 
 // ⭐ เพิ่มฟังก์ชันใหม่ก่อน </script> ปิดท้าย ⭐
 
-// ฟังก์ชันตรวจสอบ LIFF Configuration
 function checkLiffConfiguration() {
     const resultDiv = document.getElementById('liffDebugResult');
     resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>กำลังตรวจสอบ LIFF Configuration...</div>';
@@ -936,7 +929,6 @@ function checkLiffConfiguration() {
             let iconClass = 'fa-info-circle';
             let recommendations = [];
             
-            // Analyze results
             if (!data.LIFF_ID_FORM && !data.LIFF_ID_TECHNICIAN_LOCATION) {
                 alertClass = 'danger';
                 iconClass = 'fa-exclamation-triangle';
@@ -951,7 +943,6 @@ function checkLiffConfiguration() {
                 recommendations.push('✅ การตั้งค่า LIFF ดูถูกต้อง');
             }
             
-            // Check LIFF ID format
             const liffPattern = /^\d{10}-[a-zA-Z0-9]{8}$/;
             if (data.LIFF_ID_FORM && !liffPattern.test(data.LIFF_ID_FORM)) {
                 recommendations.push('❌ รูปแบบ LIFF_ID_FORM ไม่ถูกต้อง (ควรเป็น nnnnnnnnnn-xxxxxxxx)');
@@ -994,7 +985,6 @@ function checkLiffConfiguration() {
         });
 }
 
-// ฟังก์ชันตรวจสอบ Environment Variables
 function checkEnvironmentVariables() {
     const resultDiv = document.getElementById('liffDebugResult');
     if (!resultDiv) {
@@ -1016,26 +1006,6 @@ function checkEnvironmentVariables() {
             const alertClass = missingVars.length === 0 ? 'success' : 'warning';
             const iconClass = missingVars.length === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle';
             
-            let missingVarsHtml = '';
-            if (missingVars.length > 0) {
-                missingVarsHtml = `
-                    <hr>
-                    <h6 class="text-warning">❌ ตัวแปรที่ขาดหายไป:</h6>
-                    <div class="alert alert-warning p-2">
-                        <ul class="mb-0">${missingVars.map(v => `<li><code>${v}</code></li>`).join('')}</ul>
-                    </div>
-                    <div class="alert alert-info p-2">
-                        <strong>🔧 วิธีแก้ไข:</strong>
-                        <ol class="small mb-0 mt-1">
-                            <li>ตั้งค่า Environment Variables ในเซิร์ฟเวอร์</li>
-                            <li>Restart แอปพลิเคชันหลังตั้งค่า</li>
-                            <li>ตรวจสอบ LIFF Apps ใน LINE Developers Console</li>
-                        </ol>
-                    </div>
-                `;
-            }
-            
-            // สร้าง HTML แบบปลอดภัย
             const statusHtml = `
                 <div class="alert alert-${alertClass}">
                     <i class="fas ${iconClass} me-2"></i>
@@ -1057,7 +1027,21 @@ function checkEnvironmentVariables() {
                             </ul>
                         </div>
                     </div>
-                    ${missingVarsHtml}
+                    ${missingVars.length > 0 ? `
+                        <hr>
+                        <h6 class="text-warning">❌ ตัวแปรที่ขาดหายไป:</h6>
+                        <div class="alert alert-warning p-2">
+                            <ul class="mb-0">${missingVars.map(v => `<li><code>${v}</code></li>`).join('')}</ul>
+                        </div>
+                        <div class="alert alert-info p-2">
+                            <strong>🔧 วิธีแก้ไข:</strong>
+                            <ol class="small mb-0 mt-1">
+                                <li>ตั้งค่า Environment Variables ในเซิร์ฟเวอร์</li>
+                                <li>Restart แอปพลิเคชันหลังตั้งค่า</li>
+                                <li>ตรวจสอบ LIFF Apps ใน LINE Developers Console</li>
+                            </ol>
+                        </div>
+                    ` : ''}
                 </div>
             `;
             
@@ -1072,7 +1056,8 @@ function checkEnvironmentVariables() {
                 </div>
             `;
         });
-}// ⭐ แก้ไขฟังก์ชัน testLiffUrls (บรรทัด ~785)
+}
+
 function testLiffUrls() {
     const resultDiv = document.getElementById('liffDebugResult');
     if (!resultDiv) {
@@ -1092,7 +1077,6 @@ function testLiffUrls() {
         .then(data => {
             const testResults = [];
             
-            // Test main form LIFF
             if (data.LIFF_ID_FORM) {
                 const formLiffUrl = `https://liff.line.me/${data.LIFF_ID_FORM}`;
                 testResults.push({
@@ -1107,7 +1091,6 @@ function testLiffUrls() {
                 });
             }
             
-            // Test technician location LIFF
             if (data.LIFF_ID_TECHNICIAN_LOCATION) {
                 const techLiffUrl = `https://liff.line.me/${data.LIFF_ID_TECHNICIAN_LOCATION}`;
                 testResults.push({
@@ -1131,43 +1114,40 @@ function testLiffUrls() {
                 return;
             }
             
-            // สร้าง test results HTML แบบปลอดภัย
-            const testResultsHtml = testResults.map(liff => {
-                const pagesHtml = liff.pages.map(page => {
-                    const testUrl = `${liff.url}?liff.state=${encodeURIComponent(page.path)}`;
-                    return `
-                        <li class="mb-1">
-                            <strong>${page.name}:</strong> 
-                            <a href="${testUrl}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
-                                <i class="fas fa-external-link-alt me-1"></i>Test
-                            </a>
-                        </li>
-                    `;
-                }).join('');
-                
-                return `
-                    <div class="card mb-3">
-                        <div class="card-header">
-                            <strong>${liff.name}</strong> <code>${liff.id}</code>
-                        </div>
-                        <div class="card-body">
-                            <p><strong>Base URL:</strong> <a href="${liff.url}" target="_blank">${liff.url}</a></p>
-                            <h6>Test Pages:</h6>
-                            <ul class="list-unstyled">
-                                ${pagesHtml}
-                            </ul>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            
             resultDiv.innerHTML = `
                 <div class="alert alert-info">
                     <i class="fas fa-link me-2"></i>
                     <strong>🔗 LIFF Test URLs</strong>
                     <p class="mb-0 mt-2">คลิกลิงก์เหล่านี้เพื่อทดสอบ LIFF Apps (ต้องเปิดใน LINE App)</p>
                 </div>
-                ${testResultsHtml}
+                ${testResults.map(liff => {
+                    const pagesHtml = liff.pages.map(page => {
+                        const testUrl = `${liff.url}?liff.state=${encodeURIComponent(page.path)}`;
+                        return `
+                            <li class="mb-1">
+                                <strong>${page.name}:</strong> 
+                                <a href="${testUrl}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+                                    <i class="fas fa-external-link-alt me-1"></i>Test
+                                </a>
+                            </li>
+                        `;
+                    }).join('');
+                    
+                    return `
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <strong>${liff.name}</strong> <code>${liff.id}</code>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Base URL:</strong> <a href="${liff.url}" target="_blank">${liff.url}</a></p>
+                                <h6>Test Pages:</h6>
+                                <ul class="list-unstyled">
+                                    ${pagesHtml}
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
             `;
         })
         .catch(error => {
@@ -1181,7 +1161,6 @@ function testLiffUrls() {
         });
 }
 
-// ฟังก์ชันสร้าง Test URL
 function generateLiffTestUrl() {
     const resultDiv = document.getElementById('liffDebugResult');
     
@@ -1221,7 +1200,6 @@ function generateLiffTestUrl() {
     `;
 }
 
-// ⭐ แก้ไขฟังก์ชัน updateEnvironmentVariable (บรรทัด ~891)
 function updateEnvironmentVariable(varName) {
     const inputId = varName === 'LIFF_ID_FORM' ? 'quick-liff-form' : 'quick-liff-tech';
     const inputElement = document.getElementById(inputId);
@@ -1238,7 +1216,6 @@ function updateEnvironmentVariable(varName) {
         return;
     }
     
-    // ตรวจสอบรูปแบบ LIFF ID
     const liffPattern = /^\d{10}-[a-zA-Z0-9]{8}$/;
     if (!liffPattern.test(value)) {
         alert(`รูปแบบ LIFF ID ไม่ถูกต้อง\nควรเป็น: nnnnnnnnnn-xxxxxxxx\nเช่น: 2007889126-AbCdEfGh`);
@@ -1251,10 +1228,8 @@ function updateEnvironmentVariable(varName) {
         return;
     }
     
-    // แสดง Success Message
     alert(`✅ LIFF ID ถูกต้อง!\n\n${varName}: ${value}\n\nการตั้งค่านี้จะมีผลหลังจาก Restart เซิร์ฟเวอร์`);
     
-    // แสดงผลในหน้าเว็บ
     const successHtml = `
         <div class="alert alert-success">
             <i class="fas fa-check-circle me-2"></i>
@@ -1279,10 +1254,8 @@ function updateEnvironmentVariable(varName) {
     
     resultDiv.innerHTML = successHtml;
     
-    // Clear input หลังจากประมวลผลเสร็จ
     inputElement.value = '';
     
-    // Copy ค่าไปยัง Clipboard
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(`${varName}=${value}`).then(() => {
             console.log('LIFF ID copied to clipboard!');
