@@ -239,7 +239,7 @@
     const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
-    const LIFF_ID_TASK_PAGE = "{{ LIFF_ID_TASK_PAGE }}";
+    const LIFF_ID_TASK_PAGE = "{{ LIFF_ID_TO_USE }}";
     
     let technicianSelectionModal, editTextModal, editAttachmentsModal;
     let currentTechnicianTargetId, slideIndex;
