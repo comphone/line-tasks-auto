@@ -2180,6 +2180,7 @@ def schedule_task_from_calendar():
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
+        # --- ส่วน POST request logic (เหมือนเดิม) ---
         task_raw = get_single_task(task_id)
         if not task_raw:
             if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -2257,12 +2258,10 @@ def task_details(task_id):
             if not selected_technicians:
                 return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}), 400
             
-            # ✅ รับค่าพิกัดและ user_id ของช่างจากฟอร์ม
             latitude = request.form.get('current_latitude')
             longitude = request.form.get('current_longitude')
             technician_line_user_id = request.form.get('technician_line_user_id')
 
-            # อัปเดตพิกัดบ้านลูกค้า (ถ้ามี)
             if latitude and longitude:
                 new_map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
                 if re.search(r"https?:\/\/[^\s]+", base_notes_text):
@@ -2271,7 +2270,6 @@ def task_details(task_id):
                     base_notes_text += f"\n{new_map_url}"
                 app.logger.info(f"Updated customer location for task {task_id} to {new_map_url}")
 
-                # อัปเดตพิกัดล่าสุดของช่าง
                 if technician_line_user_id:
                     locations = load_technician_locations()
                     locations[technician_line_user_id] = {
@@ -2309,12 +2307,10 @@ def task_details(task_id):
             if updated_task:
                 cache.clear()
                 
-                # ✅ จัดการ Notification และ Redirect หลังบันทึกสำเร็จ
                 if action == 'complete_task':
                     technicians = request.form.get('technicians_report', '').split(',')
-                    send_completion_notification(updated_task, technicians) # ส่งหาลูกค้า (ถ้ามี LINE ID)
+                    send_completion_notification(updated_task, technicians)
                     
-                    # ส่ง Notification สรุปเข้ากลุ่ม
                     settings = get_app_settings()
                     recipients = settings.get('line_recipients', {})
                     admin_group_id = recipients.get('admin_group_id')
@@ -2325,7 +2321,7 @@ def task_details(task_id):
                                      f"ชื่องาน: {updated_task.get('title', '-')}\n"
                                      f"ลูกค้า: {customer_info.get('name', '-')}\n"
                                      f"ช่าง: {', '.join(technicians)}\n"
-                                     f"สถานะ: ปิดงานเรียบร้อยแล้ว") # <-- บรรทัดที่เพิ่มเข้ามา
+                                     f"สถานะ: ปิดงานเรียบร้อยแล้ว")
                     
                     if admin_group_id: message_queue.add_message(admin_group_id, TextMessage(text=summary_message))
                     if tech_group_id and tech_group_id != admin_group_id:
@@ -2372,13 +2368,18 @@ def task_details(task_id):
             for att in report['attachments']:
                 all_attachments.append(att)
 
+    # VVVV --- [จุดที่แก้ไข] --- VVVV
+    # เราจะส่ง LIFF ID ตัวเดียวกับฟอร์มสร้างงานไปให้หน้านี้ใช้
+    # เพื่อให้แน่ใจว่ามีค่าส่งไปให้ Template เสมอ
     response = make_response(render_template('update_task_details.html',
                            task=task,
                            technician_list=app_settings.get('technician_list', []),
                            all_attachments=all_attachments,
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
-                           LIFF_ID_TASK_PAGE=os.environ.get('LIFF_ID_TASK_PAGE') # ส่ง LIFF ID ไปให้ Template
+                           LIFF_ID_TASK_PAGE=LIFF_ID_FORM # ใช้ LIFF_ID_FORM ที่โหลดมาตอนเริ่มแอป
                            ))
+    # ^^^^ --- [สิ้นสุดจุดที่แก้ไข] --- ^^^^
+                           
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
