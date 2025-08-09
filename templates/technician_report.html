@@ -51,7 +51,6 @@
                         <td>{{ task.completed_formatted }}</td>
                         <td>{{ task.customer_name }}</td>
                         <td>
-                            {# ✅✅✅ แก้ไขลิงก์ที่นี่ ✅✅✅ #}
                             <a href="{{ url_for('liff.task_details', task_id=task.id) }}">{{ task.title }}</a>
                         </td>
                     </tr>

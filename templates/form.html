@@ -13,42 +13,6 @@
             width: 42px; /* Fixed width for icons */
             justify-content: center;
         }
-        .autocomplete-container {
-            position: relative;
-        }
-        .autocomplete-items {
-            position: absolute;
-            border: 1px solid #d4d4d4;
-            border-bottom: none;
-            border-top: none;
-            z-index: 99;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background-color: #fff;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-            border-radius: 0 0 .375rem .375rem;
-        }
-        .autocomplete-items div {
-            padding: 10px;
-            cursor: pointer;
-            background-color: #fff;
-            border-bottom: 1px solid #d4d4d4;
-        }
-        .autocomplete-items div:hover {
-            background-color: #e9e9e9;
-        }
-        .autocomplete-active {
-            background-color: DodgerBlue !important;
-            color: #ffffff;
-        }
-        .autocomplete-item-name {
-            font-weight: 500;
-        }
-        .autocomplete-item-details {
-            font-size: 0.85em;
-            color: #6c757d;
-        }
         .tribute-container {
             border: 1px solid #dee2e6;
             border-radius: .375rem;
@@ -68,13 +32,12 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-10 col-md-12">
-        <form id="createTaskForm" class="needs-validation" novalidate enctype="multipart/form-data" onsubmit="handleFormSubmission(event, this)">
+        <form id="createTaskForm" class="needs-validation" novalidate onsubmit="handleFormSubmission(event, this)">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="uploaded_attachments_json" id="uploaded_attachments_json" value="[]">
 
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h1 class="h2 mb-0">📝 สร้างงานใหม่</h1>
-                {# ✅✅✅ แก้ไข: เพิ่ม 'liff.' เข้าไปหน้า 'summary' ✅✅✅ #}
                 <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
             </div>
 
@@ -88,14 +51,14 @@
                             <label for="organization_name" class="form-label">ชื่อหน่วยงาน/บริษัท (ถ้ามี)</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-building"></i></span>
-                                <input type="text" class="form-control" id="organization_name" name="organization_name" value="{{ request.form.organization_name or '' }}" autocomplete="off">
+                                <input type="text" class="form-control" id="organization_name" name="organization_name" autocomplete="off">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="customer" class="form-label"><strong>ค้นหา/เพิ่มชื่อผู้ติดต่อ</strong> <span class="text-danger">*</span></label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                <input type="text" class="form-control" id="customer" name="customer" required value="{{ request.form.customer or '' }}" autofocus autocomplete="off" placeholder="พิมพ์เพื่อค้นหาลูกค้าเดิม...">
+                                <input type="text" class="form-control" id="customer" name="customer" required autofocus autocomplete="off" placeholder="พิมพ์เพื่อค้นหาลูกค้าเดิม...">
                                 <div class="invalid-feedback">กรุณากรอกชื่อผู้ติดต่อ</div>
                             </div>
                             <small class="form-text text-muted">พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหาจากฐานข้อมูล</small>
@@ -106,14 +69,14 @@
                             <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-phone"></i></span>
-                                <input type="tel" class="form-control" id="phone" name="phone" value="{{ request.form.phone or '' }}" placeholder="เช่น 08x-xxx-xxxx">
+                                <input type="tel" class="form-control" id="phone" name="phone" placeholder="เช่น 08x-xxx-xxxx">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
                             <div class="input-group">
                                  <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
-                                <textarea class="form-control" id="address" name="address" rows="1">{{ request.form.address or '' }}</textarea>
+                                <textarea class="form-control" id="address" name="address" rows="1"></textarea>
                             </div>
                         </div>
                     </div>
@@ -121,7 +84,7 @@
                         <label for="latitude_longitude" class="form-label">พิกัดแผนที่ (Google Maps URL)</label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-map-pin"></i></span>
-                            <input type="url" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ request.form.latitude_longitude or '' }}" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่ง">
+                            <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" placeholder="กดปุ่มด้านขวาเพื่อแชร์ตำแหน่ง">
                             <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
                                 <i class="fas fa-location-arrow"></i>
                             </button>
@@ -140,7 +103,7 @@
                         <label for="task_title" class="form-label"><strong>รายละเอียดงาน (อาการเสีย, สิ่งที่ต้องทำ)</strong> <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
-                            <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ request.form.task_title or '' }}</textarea>
+                            <textarea class="form-control" id="task_title" name="task_title" rows="4" required></textarea>
                             <div class="invalid-feedback">กรุณากรอกรายละเอียดงาน</div>
                         </div>
                          <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
@@ -156,7 +119,7 @@
 
                     <div class="mb-3">
                         <label for="files" class="form-label">แนบรูปภาพ/ไฟล์อื่นๆ (PDF, KMZ)</label>
-                        <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml" capture="environment">
+                        <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
                     </div>
                 </div>
             </div>
@@ -178,7 +141,6 @@
         let customerDatabase = [];
 
         document.addEventListener('DOMContentLoaded', async function() {
-			// START: วางโค้ด Autocomplete ทั้งหมดที่นี่
 			try {
 				const response = await fetch("{{ url_for('api_customers') }}");
 				if (response.ok) {
@@ -194,7 +156,7 @@
 							let phonePart = item.original.phone ? `<br><small style="color: #6c757d;">📞 ${item.original.phone}</small>` : '';
 							return `<div class="p-2">${item.original.name}${orgPart}${phonePart}</div>`;
 						},
-						noMatchTemplate: function () { return '<li class="p-2 text-muted">ไม่พบลูกค้าที่ตรงกัน (สามารถพิมพ์เพื่อสร้างใหม่ได้)</li>'; },
+						noMatchTemplate: function () { return '<li class="p-2 text-muted">ไม่พบลูกค้า (พิมพ์เพื่อสร้างใหม่ได้)</li>'; },
 					});
 
 					tributeCustomer.attach(document.getElementById("customer"));
@@ -206,39 +168,28 @@
 						document.getElementById('address').value = selectedCustomer.address || '';
 						document.getElementById('latitude_longitude').value = selectedCustomer.map_url || '';
 					});
-
-				} else {
-					console.error("Failed to load customer database.");
 				}
 			} catch (error) {
 				console.error("Error fetching customer database:", error);
 			}
-			// END: สิ้นสุดโค้ด Autocomplete
             
             flatpickr(".datetimepicker", {
                 enableTime: true,
                 dateFormat: "Y-m-d H:i",
-                locale: "th",
-                defaultDate: document.getElementById('appointment').value ? document.getElementById('appointment').value : null
+                locale: "th"
             });
 
             const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }};
             if (taskDetailSnippets && taskDetailSnippets.length > 0) {
                 const tributeTask = new Tribute({
                     values: taskDetailSnippets,
+                    trigger: '/',
                     selectTemplate: function (item) {
-                        if (item === undefined) return null;
-                        const originalText = this.current.element.value;
-                        const triggerPos = this.current.mentionTriggerPos;
-                        const textBeforeTrigger = originalText.substring(0, triggerPos);
-                        return (textBeforeTrigger + item.original.value).trim() + ' ';
+                        return item.original.value;
                     },
                     menuItemTemplate: function(item) {
                         return `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`;
-                    },
-                    noMatchTemplate: function () { return '<li class="p-2 text-muted">ไม่พบข้อความที่ตรงกัน</li>'; },
-                    allowSpaces: true,
-                    menuContainer: document.body
+                    }
                 });
                 tributeTask.attach(document.getElementById('task_title'));
             }
@@ -250,94 +201,40 @@
             if (shareBtn) {
                 shareBtn.addEventListener('click', function() {
                     statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                            (position) => {
-                                const lat = position.coords.latitude;
-                                const lon = position.coords.longitude;
-                                locationInput.value = `http://googleusercontent.com/maps.google.com/6{lat},${lon}`;
-                                statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
-                                statusText.classList.remove('text-danger');
-                                statusText.classList.add('text-success');
-                            },
-                            (error) => {
-                                let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
-                                switch(error.code) {
-                                    case error.PERMISSION_DENIED: errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง."; break;
-                                    case error.POSITION_UNAVAILABLE: errorMessage = "ไม่สามารถระบุตำแหน่งได้."; break;
-                                    case error.TIMEOUT: errorMessage = "ค้นหาตำแหน่งใช้เวลานานเกินไป."; break;
-                                    default: errorMessage = `เกิดข้อผิดพลาด: ${error.message}`; break;
-                                }
-                                statusText.textContent = errorMessage;
-                                statusText.classList.remove('text-success');
-                                statusText.classList.add('text-danger');
-                            },
-                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                        );
-                    } else {
-                        statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
-                        statusText.classList.remove('text-success');
-                        statusText.classList.add('text-danger');
-                    }
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const lat = position.coords.latitude;
+                            const lon = position.coords.longitude;
+                            locationInput.value = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                            statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                            statusText.classList.add('text-success');
+                        },
+                        (error) => {
+                            statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้: ' + error.message;
+                            statusText.classList.add('text-danger');
+                        }
+                    );
                 });
             }
-
-            var forms = document.querySelectorAll('.needs-validation');
-            Array.prototype.slice.call(forms)
-                .forEach(function (form) {
-                    form.addEventListener('submit', function (event) {
-                        if (!form.checkValidity()) {
-                            event.preventDefault();
-                            event.stopPropagation();
-                        }
-                        form.classList.add('was-validated');
-                    }, false);
-                });
         });
         
-        const csrfToken = '{{ csrf_token() }}';
-
-        function flashMessage(message, category) {
-            const container = document.getElementById('flash-messages-area');
-            if (!container) { // If the main container isn't there, create one.
-                const contentDiv = document.querySelector('.col-lg-10');
-                const newContainer = document.createElement('div');
-                newContainer.id = 'flash-messages-area';
-                contentDiv.prepend(newContainer);
-                flashMessage(message, category); // Retry
-                return;
-            }
-            const alert = document.createElement('div');
-            alert.className = `alert alert-${category} alert-dismissible fade show`;
-            alert.role = 'alert';
-            alert.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
-            container.prepend(alert);
-            setTimeout(() => {
-                const alertInstance = new bootstrap.Alert(alert);
-                if (alertInstance) alertInstance.close();
-            }, 5000);
-        }
-
     async function handleFormSubmission(event, form) {
         event.preventDefault();
-
         if (!form.checkValidity()) {
             form.classList.add('was-validated');
-            event.stopPropagation();
             return;
         }
 
         const submitButton = form.querySelector('button[type="submit"]');
-        const originalButtonHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
         const uploadStatusBox = document.getElementById('upload-status');
-        const filesInput = form.querySelector('input[type="file"][name="files[]"]');
-        const files = filesInput ? Array.from(filesInput.files) : [];
+        const mainFormData = new FormData(form);
+        const files = Array.from(mainFormData.getAll('files[]'));
         let uploadedAttachments = [];
 
-        if (files.length > 0) {
+        if (files.length > 0 && files[0].size > 0) {
             uploadStatusBox.style.display = 'inline-block';
             for (let i = 0; i < files.length; i++) {
                 uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
@@ -349,49 +246,47 @@
                     const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
                         method: 'POST', 
                         body: fileFormData,
-                        headers: {
-                            'X-CSRFToken': csrfToken
-                        }
+                        headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
                     });
                     const result = await response.json();
-                    if (response.ok && result.status === 'success') {
+                    if (response.ok) {
                         uploadedAttachments.push(result.file_info);
                     } else {
-                        flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${result.message}`, 'danger');
+                        throw new Error(result.message);
                     }
                 } catch (error) {
-                    flashMessage(`เกิดข้อผิดพลาดระหว่างอัปโหลดไฟล์ "${files[i].name}"`, 'danger');
+                    alert(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`);
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
+                    uploadStatusBox.style.display = 'none';
+                    return;
                 }
             }
         }
 
-        document.getElementById('uploaded_attachments_json').value = JSON.stringify(uploadedAttachments);
+        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
         if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังสร้างงาน...';
 
-        const mainFormData = new FormData(form);
-
         try {
-            const response = await fetch("{{ url_for('form_page') }}", {
+            // ✅✅✅ แก้ไข: เรียก API route ที่ถูกต้อง ✅✅✅
+            const response = await fetch("{{ url_for('api_create_task') }}", {
                 method: 'POST',
                 body: mainFormData
             });
             
-            if (response.redirected) {
-                window.location.href = response.url;
+            const result = await response.json();
+            if (response.ok) {
+               alert(result.message);
+               if(result.redirect_url) {
+                   window.location.href = result.redirect_url;
+               }
             } else {
-                const result = await response.json();
-                if (response.ok) {
-                   flashMessage(result.message || 'สร้างงานสำเร็จ แต่ไม่สามารถ redirect ได้', 'success');
-                } else {
-                   throw new Error(result.message || 'เกิดข้อผิดพลาดในการสร้างงาน');
-                }
+               throw new Error(result.message);
             }
-
         } catch (error) {
-            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            alert(`เกิดข้อผิดพลาด: ${error.message}`);
             submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHtml;
-        } finally {
+            submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
             if (uploadStatusBox) uploadStatusBox.style.display = 'none';
         }
     }
