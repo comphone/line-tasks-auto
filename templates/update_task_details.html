@@ -102,30 +102,51 @@
 
         {% include 'update_task_action_cards.html' %}
 
-        <div class="card shadow-sm mb-4 action-card" id="progressReportCard" style="display:none;">
-            <div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มรายงานความคืบหน้า</h5></div>
-            <div class="card-body">
-                <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="save_report">
-                    <div class="mb-3"><label class="form-label">สรุปความคืบหน้า</label><textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea></div>
-                    <div class="mb-3">
-                        <label class="form-label">ช่าง <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <input type="text" id="technicians_progress_display" class="form-control" placeholder="เลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
-                            <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
-                        </div>
-                        <input type="hidden" id="technicians_progress" name="technicians_report" required>
-                    </div>
-                    <div class="mb-3"><label class="form-label"><i class="fas fa-paperclip me-1"></i>แนบไฟล์</label><input class="form-control" type="file" name="files[]" multiple></div>
-                    <div class="d-flex align-items-center">
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึก</button>
-                        <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">กลับ</button>
-                        <div id="report-upload-status" class="ms-3" style="display:none;"></div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+		<div class="card shadow-sm mb-4 action-card" id="progressReportCard" style="display:none;">
+			<div class="card-header bg-light"><h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มรายงานความคืบหน้า</h5></div>
+			<div class="card-body">
+				<form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
+					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="save_report">
+					
+					<div class="mb-3">
+						<label class="form-label">สรุปความคืบหน้า</label>
+						<textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
+					</div>
+
+					<!-- ===== START: ส่วนที่เพิ่มและปรับปรุงใหม่ ===== -->
+					<div class="mb-3">
+						<label for="equipment_used_progress" class="form-label">อุปกรณ์ที่ใช้</label>
+						<div class="input-group">
+							<textarea class="form-control" id="equipment_used_progress" name="equipment_used" rows="3" placeholder="พิมพ์รายการอุปกรณ์ หรือกดปุ่ม 'เลือก'"></textarea>
+							<button class="btn btn-outline-info" type="button" onclick="openEquipmentCatalogModal('progressReportForm')">
+								<i class="fas fa-book"></i> เลือก
+							</button>
+						</div>
+					</div>
+					<!-- ===== END: ส่วนที่เพิ่มและปรับปรุงใหม่ ===== -->
+
+					<div class="mb-3">
+						<label class="form-label">ช่าง <span class="text-danger">*</span></label>
+						<div class="input-group">
+							<input type="text" id="technicians_progress_display" class="form-control" placeholder="เลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
+							<button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
+						</div>
+						<input type="hidden" id="technicians_progress" name="technicians_report" required>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label"><i class="fas fa-paperclip me-1"></i>แนบไฟล์</label>
+						<input class="form-control" type="file" name="files[]" multiple>
+					</div>
+
+					<div class="d-flex align-items-center">
+						<button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึก</button>
+						<button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">กลับ</button>
+						<div id="report-upload-status" class="ms-3" style="display:none;"></div>
+					</div>
+				</form>
+			</div>
+		</div>
 
     <div class="card shadow-sm mb-4">
         <div class="card-header"><h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5></div>
@@ -225,7 +246,69 @@
     let technicianLineUserId = null;
     // --- END: ตัวแปรและข้อมูลตั้งต้น ---
 
-    // ✅ ฟังก์ชันเริ่มต้น LIFF
+    // --- START: โค้ดใหม่สำหรับ Equipment Catalog ---
+    let equipmentCatalog = [];
+    let equipmentCatalogModal;
+    let targetFormIdForEquipment;
+
+    async function fetchEquipmentCatalog() {
+        if (equipmentCatalog.length > 0) return; // โหลดครั้งเดียวพอ
+        try {
+            const response = await fetch("{{ url_for('api_equipment_catalog') }}");
+            if (response.ok) {
+                equipmentCatalog = await response.json();
+            } else {
+                console.error("Failed to load equipment catalog.");
+            }
+        } catch (error) {
+            console.error("Error fetching equipment catalog:", error);
+        }
+    }
+
+    function renderCatalogInModal(filter = '') {
+        const tbody = document.getElementById('equipment-catalog-modal-body');
+        tbody.innerHTML = '';
+        const filteredCatalog = equipmentCatalog.filter(item => 
+            item.item_name.toLowerCase().includes(filter.toLowerCase())
+        );
+
+        if (filteredCatalog.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">ไม่พบอุปกรณ์ที่ค้นหา</td></tr>';
+            return;
+        }
+
+        filteredCatalog.forEach((item, index) => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.innerHTML = `
+                <td>
+                    <label for="qty-${index}" class="form-check-label w-100">
+                        <strong>${item.item_name}</strong>
+                        <br><small class="text-muted">หน่วย: ${item.unit || '-'} | ราคา: ${item.price || 0} บาท</small>
+                    </label>
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" id="qty-${index}" min="0" step="any" data-item-name="${item.item_name}">
+                </td>
+            `;
+            tr.addEventListener('click', (e) => {
+                if (e.target.tagName !== 'INPUT') {
+                    tr.querySelector('input').focus();
+                }
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    window.openEquipmentCatalogModal = (formId) => {
+        targetFormIdForEquipment = formId;
+        renderCatalogInModal();
+        equipmentCatalogModal.show();
+    };
+    // --- END: โค้ดใหม่สำหรับ Equipment Catalog ---
+
+
+    // ✅ ฟังก์ชันเริ่มต้น LIFF (โค้ดเดิม)
     async function initializeLiff() {
         try {
             if (!liff || !LIFF_ID_TASK_PAGE) {
@@ -246,7 +329,7 @@
         }
     }
 
-    // --- START: ฟังก์ชัน Helper พื้นฐาน ---
+    // --- START: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -308,9 +391,9 @@
         const attachment = allAttachments[index];
         document.getElementById('lightboxImg').src = `https://drive.google.com/thumbnail?id=${attachment.id}&sz=w1280`;
     }
-    // --- END: ฟังก์ชัน Helper พื้นฐาน ---
+    // --- END: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
 
-    // ✅✅ --- START: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน --- ✅✅
+    // ✅✅ --- START: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน (โค้ดเดิม) --- ✅✅
     window.openEditTextModal = (reportIndex) => {
         const report = techReportsHistory[reportIndex];
         document.getElementById('editTextarea').value = report.work_summary;
@@ -375,7 +458,6 @@
                 body: formData
             });
             if (response.ok) {
-                // Server will handle redirect with flash message, so we just reload.
                 window.location.reload();
             } else {
                  throw new Error('เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ระหว่างอัปเดตรูปภาพ');
@@ -401,9 +483,9 @@
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
         }
     };
-    // ✅✅ --- END: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน --- ✅✅
+    // ✅✅ --- END: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน (โค้ดเดิม) --- ✅✅
 
-    // ✅ ฟังก์ชันสำหรับส่งข้อมูลฟอร์ม (แยกออกมาเพื่อให้เรียกใช้ซ้ำได้)
+    // ✅ --- START: ฟังก์ชันจัดการการส่งฟอร์ม (ที่เคยหายไป) --- ✅
     async function submitFormData(form, statusElementId) {
         const submitButton = form.querySelector('button[type="submit"]');
         const originalButtonHtml = submitButton.innerHTML;
@@ -459,7 +541,6 @@
         }
     }
 
-    // ✅ ฟังก์ชันหลักที่จัดการการส่งฟอร์มทั้งหมด (ปรับปรุงใหม่)
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
         if (!form.checkValidity()) {
@@ -529,14 +610,49 @@
             await submitFormData(form, statusElementId);
         }
     };
+    // ✅ --- END: ฟังก์ชันจัดการการส่งฟอร์ม --- ✅
 
-    // --- START: โค้ดที่ทำงานเมื่อหน้าเว็บโหลดเสร็จ ---
+    // --- START: โค้ดที่ทำงานเมื่อหน้าเว็บโหลดเสร็จ (ปรับปรุงใหม่) ---
     document.addEventListener('DOMContentLoaded', function() {
         initializeLiff();
         
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
         editTextModal = new bootstrap.Modal(document.getElementById('editTextModal'));
         editAttachmentsModal = new bootstrap.Modal(document.getElementById('editAttachmentsModal'));
+
+        // --- เพิ่มโค้ดเริ่มต้นสำหรับ Equipment Catalog ---
+        const modalElement = document.getElementById('equipmentCatalogModal');
+        if(modalElement) {
+            equipmentCatalogModal = new bootstrap.Modal(modalElement);
+            fetchEquipmentCatalog(); // โหลดข้อมูลแคตตาล็อกล่วงหน้า
+            
+            document.getElementById('equipmentSearchInput').addEventListener('keyup', function() {
+                renderCatalogInModal(this.value);
+            });
+
+            document.getElementById('confirmEquipmentSelectionBtn').addEventListener('click', function() {
+                const selectedItems = [];
+                const inputs = document.querySelectorAll('#equipment-catalog-modal-body input[type="number"]');
+                
+                inputs.forEach(input => {
+                    if (input.value && parseFloat(input.value) > 0) {
+                        const itemName = input.dataset.itemName;
+                        const quantity = input.value;
+                        selectedItems.push(`${itemName}, ${quantity}`);
+                    }
+                });
+
+                if (selectedItems.length > 0) {
+                    const targetTextarea = document.querySelector(`#${targetFormIdForEquipment} textarea[name="equipment_used"]`);
+                    if(targetTextarea) {
+                        const existingText = targetTextarea.value.trim();
+                        targetTextarea.value = (existingText ? existingText + '\n' : '') + selectedItems.join('\n');
+                    }
+                }
+                equipmentCatalogModal.hide();
+            });
+        }
+        // --- สิ้นสุดโค้ดเริ่มต้นสำหรับ Equipment Catalog ---
 
         const historyContainer = document.getElementById('history-section-body');
         if (techReportsHistory && techReportsHistory.length > 0) {

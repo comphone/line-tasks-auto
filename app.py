@@ -17,7 +17,7 @@ import uuid
 from queue import Queue
 import threading
 import requests # เพิ่ม import requests สำหรับเรียก API ภายในแอปตัวเอง
-
+import random
 from PIL import Image
 
 from dotenv import load_dotenv
@@ -28,6 +28,7 @@ from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic # สำหรับคำนวณระยะทาง
+from urllib.parse import urlparse, parse_qs, unquote, quote_plus
 
 import qrcode
 import base64
@@ -49,12 +50,10 @@ from linebot.v3.messaging.models import (
 from linebot.v3.webhooks import (
     MessageEvent, TextMessageContent, PostbackEvent, 
     ImageMessageContent, FileMessageContent, 
-    GroupSource, UserSource
+    GroupSource, UserSource, FollowEvent
 )
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
-
-from urllib.parse import quote_plus
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -69,6 +68,8 @@ from dateutil.parser import parse as date_parse
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
+
+from flask_cors import CORS
 
 TEXT_SNIPPETS = {
     'task_details': [
@@ -98,6 +99,7 @@ if SENTRY_DSN:
     )
 
 app = Flask(__name__, static_folder='static')
+CORS(app) # --- เพิ่มบรรทัดนี้เพื่อเปิดใช้งาน CORS ---
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
@@ -286,9 +288,9 @@ _DEFAULT_APP_SETTINGS_STORE = {
     # --- เพิ่มส่วนนี้เข้าไปทั้งหมด ---
     'message_templates': {
         'welcome_customer': "เรียน คุณ[customer_name],\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: [shop_phone]\nLINE ID: [shop_line_id]",
-        'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\nดูรายละเอียด: [task_url]",
-        'daily_reminder_header': "🔔 งานสำหรับวันนี้ ([task_count] งาน)",
-        'daily_reminder_task_line': "ชื่องาน: [task_title]\n👤 ลูกค้า: [customer_name]\n📞 โทร: [customer_phone]\n🗓️ นัดหมาย: [due_date]\n📍 พิกัด: [map_url]\n🔗 ดูรายละเอียด/แก้ไข:\n[task_url]"
+    'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\n\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\n\n🔗 ดูรายละเอียดงาน:\n[task_url]",
+    'daily_reminder_header': "...",
+    'daily_reminder_task_line': "..."
     }
 }
 
@@ -329,6 +331,43 @@ def get_app_settings():
     app_settings['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
     
     return app_settings
+    
+def render_template_message(template_key, task):
+    """
+    ฟังก์ชันกลางสำหรับสร้างข้อความจาก Template โดยใช้ข้อมูลจาก Task
+    """
+    if not task:
+        return ""
+        
+    settings = get_app_settings()
+    template_str = settings.get('message_templates', {}).get(template_key, '')
+    if not template_str:
+        return f"ไม่พบ Template สำหรับ '{template_key}'"
+
+    # ดึงข้อมูลที่ต้องใช้บ่อยๆ
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    parsed_dates = parse_google_task_dates(task)
+    shop_info = settings.get('shop_info', {})
+    task_url = url_for('task_details', task_id=task.get('id'), _external=True)
+
+    # สร้าง Dictionary ของข้อมูลที่จะใช้แทนที่
+    replacements = {
+        '[customer_name]': customer_info.get('name', '-'),
+        '[customer_phone]': customer_info.get('phone', '-'),
+        '[customer_address]': customer_info.get('address', '-'),
+        '[task_title]': task.get('title', '-'),
+        '[due_date]': parsed_dates.get('due_formatted', '-'),
+        '[map_url]': customer_info.get('map_url', '-'),
+        '[shop_phone]': shop_info.get('contact_phone', '-'),
+        '[shop_line_id]': shop_info.get('line_id', '-'),
+        '[task_url]': task_url
+    }
+
+    # วนลูปเพื่อแทนที่ค่าทั้งหมด
+    for placeholder, value in replacements.items():
+        template_str = template_str.replace(placeholder, str(value))
+        
+    return template_str    
 
 def save_app_settings(settings_data):
     current_settings = get_app_settings()
@@ -912,7 +951,7 @@ def parse_tech_report_from_notes(notes):
 
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, base_notes_text
-
+              
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -1037,23 +1076,9 @@ def _create_liff_notification_flex_message(recipient_line_id, notification_type,
                                           customer_info, shop_info, logo_url, liff_base_url,
                                           technician_name=None, distance_km=None, public_report_url=None):
     
-    # ส่วนนี้สร้าง URL สำหรับ LIFF App พร้อมพารามิเตอร์ต่างๆ
-    liff_params = {
-        'type': notification_type,
-        'task_id': task_id,
-        'message': message_text,
-        'customer_name': customer_info.get('name', ''),
-        'customer_phone': customer_info.get('phone', ''),
-        'customer_address': customer_info.get('address', ''),
-        'customer_map_url': customer_info.get('map_url', ''),
-        'shop_phone': shop_info.get('contact_phone', ''),
-        'logo_url': logo_url,
-        'technician_name': technician_name,
-        'distance_km': distance_km,
-        'report_url': public_report_url
-    }
-    query_string = '&'.join([f'{key}={quote_plus(str(value))}' for key, value in liff_params.items() if value is not None])
-    full_liff_url = f"{liff_base_url}?{query_string}"
+    # --- ✅ แก้ไข Indentation Error และปรับปรุง URL ให้สั้นลง ---
+    # โค้ดทั้งหมดในฟังก์ชันนี้ถูกย่อหน้าให้ถูกต้องแล้ว
+    full_liff_url = f"{liff_base_url}?type={notification_type}&task_id={task_id}"
 
     # ส่วนนี้กำหนดข้อความต่างๆ ตามประเภทการแจ้งเตือน
     alt_text_map = {
@@ -1349,13 +1374,8 @@ def scheduled_appointment_reminder_job():
             header_template = settings.get('message_templates', {}).get('daily_reminder_header', '')
             task_line_template = settings.get('message_templates', {}).get('daily_reminder_task_line', '')
 
-            # เราจะใช้ task_line_template สำหรับส่วนของ Popup Message
-            message_text = task_line_template.replace('[task_title]', task.get('title', '-')) \
-                                             .replace('[customer_name]', customer_info.get('name', '-')) \
-                                             .replace('[customer_phone]', customer_info.get('phone', '-')) \
-                                             .replace('[due_date]', parsed_dates.get('due_formatted', '-')) \
-                                             .replace('[map_url]', customer_info.get('map_url', '-')) \
-                                             .replace('[task_url]', url_for('task_details', task_id=task.get('id'), _external=True))
+            # (ส่วนหนึ่งของ scheduled_appointment_reminder_job)
+            message_text = render_template_message('daily_reminder_task_line', task)
             
             liff_base_url = settings.get('popup_notifications', {}).get('liff_popup_base_url')
             
@@ -1376,9 +1396,6 @@ def scheduled_appointment_reminder_job():
                         sent_to.add(recipient_id)
 
 def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
-    # LIFF_ID_FORM ต้องถูกกำหนดค่าไว้ที่ส่วนบนของไฟล์ app.py ของคุณ
-    problem_action_uri = f"https://liff.line.me/{LIFF_ID_FORM}/customer_problem_form?task_id={task_id}"
-
     # สร้าง Flex Message ในรูปแบบ Dictionary ที่ถูกต้องสำหรับ v3
     flex_json_payload = {
         "type": "bubble",
@@ -1403,9 +1420,14 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
                         },
                         {
                             "type": "button", "style": "secondary", "height": "sm", "color": "#dc3545",
-                            "action": {"type": "uri", "label": "🚨 ยังมีปัญหาอยู่", "uri": problem_action_uri}
+                            "action": {
+                                "type": "postback",
+                                "label": "🚨 ยังมีปัญหาอยู่",
+                                "data": f'action=customer_feedback&task_id={task_id}&feedback=problem',
+                                "displayText": "ฉันยังมีปัญหาเกี่ยวกับงานนี้ ต้องการให้ทีมงานติดต่อกลับ"
+                            }
                         }
-                    ]
+                    ] # <--- ✅ จุดที่แก้ไข SyntaxError
                 }
             ]
         }
@@ -1416,7 +1438,6 @@ def _create_customer_follow_up_flex_message(task_id, task_title, customer_name):
         contents=flex_json_payload
     )
 
-# --- START of scheduled_customer_follow_up_job replacement ---
 def scheduled_customer_follow_up_job():
     with app.app_context():
         app.logger.info("Running scheduled customer follow-up job...")
@@ -1606,8 +1627,7 @@ def cleanup_scheduler():
 #</editor-fold>
 
 with app.app_context():
-    load_settings_from_drive_on_startup()
-    run_scheduler()
+    load_settings_from_drive_on_startup()   
 
 atexit.register(cleanup_scheduler)
 
@@ -1629,8 +1649,53 @@ def api_customers():
     customer_list = get_customer_database()
     return jsonify(customer_list)
 
+@app.route('/api/equipment_catalog')
+def api_equipment_catalog():
+    settings = get_app_settings()
+    catalog = settings.get('equipment_catalog', [])
+    return jsonify(catalog)
+
+@app.route('/api/task_summary/<task_id>')
+def api_task_summary(task_id):
+    """
+    API สำหรับให้ LIFF Popup ดึงข้อมูลงานแบบสรุป
+    """
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'error': 'Task not found'}), 404
+    
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    
+    # ส่งคืนเฉพาะข้อมูลที่จำเป็น
+    summary_data = {
+        'id': task.get('id'),
+        'title': task.get('title'),
+        'due_formatted': task.get('due_formatted'),
+        'customer': {
+            'name': task['customer'].get('name'),
+            'phone': task['customer'].get('phone'),
+            'address': task['customer'].get('address'),
+            'map_url': task['customer'].get('map_url')
+        },
+        'task_details_url': url_for('task_details', task_id=task_id, _external=True)
+    }
+    return jsonify(summary_data)
+
 @app.route("/")
 def root_redirect():
+    # ตรวจสอบว่ามีการส่ง liff.state มาใน URL หรือไม่
+    liff_state = request.args.get('liff.state')
+
+    if liff_state:
+        # ถอดรหัส URL และตรวจสอบว่าเป็น Path ที่ถูกต้อง
+        decoded_path = unquote(liff_state)
+        if decoded_path.startswith('/'):
+            app.logger.info(f"LIFF state detected. Redirecting to: {decoded_path}")
+            # ทำการ Redirect ไปยัง Path ที่ต้องการจริงๆ
+            return redirect(decoded_path)
+
+    # ถ้าไม่มี liff.state ให้ไปที่หน้า summary ตามเดิม
     return redirect(url_for('summary'))
 
 # --- NEW: Route to render the technician location update LIFF page ---
@@ -1975,7 +2040,8 @@ def summary():
     return render_template("dashboard.html",
                            tasks=final_tasks, summary=stats,
                            search_query=search_query, status_filter=status_filter,
-                           chart_data=chart_data)
+                           chart_data=chart_data,
+                           LIFF_ID_TASK_PAGE=os.environ.get('LIFF_ID_TASK_PAGE'))
 
 @app.route('/summary/print')
 def summary_print():
@@ -2111,26 +2177,6 @@ def schedule_task_from_calendar():
         app.logger.error(f"Error scheduling task from calendar: {e}")
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดในระบบ: {e}'}), 500
 
-@app.route('/task/<task_id>/post_completion')
-def post_completion_onboarding(task_id):
-    task = get_single_task(task_id)
-    if not task:
-        abort(404)
-    
-    # สร้างข้อมูลสำหรับหน้า Onboarding QR
-    onboarding_url = url_for('customer_onboarding_page', task_id=task_id, _external=True)
-    liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
-    qr_code = generate_qr_code_base64(liff_url)
-    customer = parse_customer_info_from_notes(task.get('notes', ''))
-    
-    return render_template('post_completion_onboarding.html', 
-                           task=task, 
-                           customer_info=customer,
-                           qr_code_base64=qr_code,
-                           public_report_url=url_for('public_task_report', task_id=task_id, _external=True),
-                           now=datetime.datetime.now(THAILAND_TZ),
-                           LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
-
 @app.route('/task/<task_id>', methods=['GET', 'POST'])
 def task_details(task_id):
     if request.method == 'POST':
@@ -2143,7 +2189,6 @@ def task_details(task_id):
         
         action = request.form.get('action')
         update_payload = {}
-        notification_to_send = None
         flash_message = None
         flash_category = 'info'
 
@@ -2164,9 +2209,9 @@ def task_details(task_id):
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
             if not (work_summary or new_attachments):
-                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพสำหรับรายงานใหม่'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพ'}), 400
             if not selected_technicians:
-                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานใหม่นี้'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}), 400
 
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -2178,23 +2223,6 @@ def task_details(task_id):
             flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
             flash_category = 'success'
             
-        elif action == 'update_location':
-            latitude = request.form.get('latitude')
-            longitude = request.form.get('longitude')
-            if not latitude or not longitude:
-                return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลพิกัด'}), 400
-
-            new_map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
-            if re.search(r"https?:\/\/[^\s]+", base_notes_text):
-                base_notes_text = re.sub(r"https?:\/\/[^\s]+", new_map_url, base_notes_text)
-            elif re.search(r"\-?\d+\.\d+,\s*\-?\d+\.\d+", base_notes_text):
-                 base_notes_text = re.sub(r"\-?\d+\.\d+,\s*\-?\d+\.\d+", f"{latitude},{longitude}", base_notes_text)
-            else:
-                base_notes_text += f"\n{new_map_url}"
-
-            flash_message = 'อัปเดตพิกัดเรียบร้อยแล้ว!'
-            flash_category = 'success'            
-        
         elif action == 'reschedule_task':
             reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
             reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
@@ -2208,15 +2236,12 @@ def task_details(task_id):
                 dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
                 update_payload['due'] = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
                 update_payload['status'] = 'needsAction'
-                new_due_date_formatted = dt_local.strftime("%d/%m/%y %H:%M")
-                is_today = dt_local.date() == datetime.datetime.now(THAILAND_TZ).date()
-                notification_to_send = ('update', new_due_date_formatted, reschedule_reason, selected_technicians, is_today)
             except ValueError:
                 return jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
 
             history.append({
                 'type': 'reschedule', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'reason': reschedule_reason, 'new_due_date': new_due_date_formatted,
+                'reason': reschedule_reason, 'new_due_date': dt_local.strftime("%d/%m/%y %H:%M"),
                 'technicians': selected_technicians
             })
             flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
@@ -2224,14 +2249,37 @@ def task_details(task_id):
 
         elif action == 'complete_task':
             work_summary = str(request.form.get('work_summary', '')).strip()
-            if not work_summary:
-                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
-                
             selected_technicians = request.form.get('technicians_report', '').split(',')
             selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
 
+            if not work_summary:
+                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
             if not selected_technicians:
-                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบสำหรับรายงานปิดงาน'}), 400
+                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}), 400
+            
+            # ✅ รับค่าพิกัดและ user_id ของช่างจากฟอร์ม
+            latitude = request.form.get('current_latitude')
+            longitude = request.form.get('current_longitude')
+            technician_line_user_id = request.form.get('technician_line_user_id')
+
+            # อัปเดตพิกัดบ้านลูกค้า (ถ้ามี)
+            if latitude and longitude:
+                new_map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+                if re.search(r"https?:\/\/[^\s]+", base_notes_text):
+                    base_notes_text = re.sub(r"https?:\/\/[^\s]+", new_map_url, base_notes_text)
+                else:
+                    base_notes_text += f"\n{new_map_url}"
+                app.logger.info(f"Updated customer location for task {task_id} to {new_map_url}")
+
+                # อัปเดตพิกัดล่าสุดของช่าง
+                if technician_line_user_id:
+                    locations = load_technician_locations()
+                    locations[technician_line_user_id] = {
+                        'lat': float(latitude), 'lon': float(longitude),
+                        'timestamp': datetime.datetime.now(THAILAND_TZ).isoformat()
+                    }
+                    save_technician_locations(locations)
+                    app.logger.info(f"Updated technician {technician_line_user_id} location.")
             
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
@@ -2242,9 +2290,6 @@ def task_details(task_id):
             })
             
             update_payload['status'] = 'completed'
-            notification_to_send = ('completion', selected_technicians)
-            flash_message = 'ปิดงานและบันทึกรายงานสรุปเรียบร้อยแล้ว!'
-            flash_category = 'success'
         
         else:
             return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
@@ -2263,43 +2308,41 @@ def task_details(task_id):
 
             if updated_task:
                 cache.clear()
-                if notification_to_send:
-                    notif_type = notification_to_send[0]
-                    if notif_type == 'update':
-                        send_update_notification(updated_task, *notification_to_send[1:])
-                        return jsonify({'status': 'success', 'message': flash_message})
-
-                    elif notif_type == 'completion':
-                        send_completion_notification(updated_task, *notification_to_send[1:])
-
-                        customer_feedback = parse_customer_feedback_from_notes(updated_task.get('notes', ''))
-                        has_line_id = customer_feedback.get('customer_line_user_id')
-
-                        if has_line_id:
-                            redirect_url = url_for('generate_public_report_qr', task_id=task_id)
-                        else:
-                            redirect_url = url_for('post_completion_onboarding', task_id=task_id)
-
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'ปิดงานสำเร็จ!',
-                            'redirect_url': redirect_url
-                        })
+                
+                # ✅ จัดการ Notification และ Redirect หลังบันทึกสำเร็จ
+                if action == 'complete_task':
+                    technicians = request.form.get('technicians_report', '').split(',')
+                    send_completion_notification(updated_task, technicians) # ส่งหาลูกค้า (ถ้ามี LINE ID)
+                    
+                    # ส่ง Notification สรุปเข้ากลุ่ม
+                    settings = get_app_settings()
+                    recipients = settings.get('line_recipients', {})
+                    admin_group_id = recipients.get('admin_group_id')
+                    tech_group_id = recipients.get('technician_group_id')
+                    customer_info = parse_customer_info_from_notes(updated_task.get('notes', ''))
+                    
+                    summary_message = (f"✅ อัปเดตสถานะงาน\n\n"
+                                     f"ชื่องาน: {updated_task.get('title', '-')}\n"
+                                     f"ลูกค้า: {customer_info.get('name', '-')}\n"
+                                     f"ช่าง: {', '.join(technicians)}\n"
+                                     f"สถานะ: ปิดงานเรียบร้อยแล้ว") # <-- บรรทัดที่เพิ่มเข้ามา
+                    
+                    if admin_group_id: message_queue.add_message(admin_group_id, TextMessage(text=summary_message))
+                    if tech_group_id and tech_group_id != admin_group_id:
+                        message_queue.add_message(tech_group_id, TextMessage(text=summary_message))
+                    
+                    redirect_url = url_for('generate_customer_onboarding_qr', task_id=task_id)
+                    return jsonify({'status': 'success', 'message': 'ปิดงานสำเร็จ!', 'redirect_url': redirect_url})
 
                 return jsonify({'status': 'success', 'message': flash_message})
             else:
-                flash_message = 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'
-                return jsonify({'status': 'error', 'message': flash_message}), 500
-
-        except HttpError as e:
-            flash_message = f'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก: {e.content.decode()}'
-            return jsonify({'status': 'error', 'message': flash_message}), e.resp.status
+                return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'}), 500
 
         except Exception as e:
-            flash_message = f'เกิดข้อผิดพลาดที่ไม่คาดคิด: {str(e)}'
-            app.logger.error(f'Unexpected error in task_details: {e}', exc_info=True)
-            return jsonify({'status': 'error', 'message': flash_message}), 500
+            app.logger.error(f'Unexpected error in task_details POST: {e}', exc_info=True)
+            return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดที่ไม่คาดคิด: {str(e)}'}), 500
             
+    # --- GET Request Logic ---
     task_raw = get_single_task(task_id)
     if not task_raw: abort(404)
     
@@ -2326,20 +2369,15 @@ def task_details(task_id):
     all_attachments = []
     for report in task['tech_reports_history']:
         if report.get('attachments'):
-            report_date = parse_google_task_dates({'summary_date': report['summary_date']}).get('summary_date_formatted', '')
             for att in report['attachments']:
-                att_copy = att.copy()
-                att_copy['report_date'] = report_date
-                all_attachments.append(att_copy)
-
+                all_attachments.append(att)
 
     response = make_response(render_template('update_task_details.html',
                            task=task,
-                           common_equipment_items=app_settings.get('common_equipment_items', []),
                            technician_list=app_settings.get('technician_list', []),
                            all_attachments=all_attachments,
                            progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
-                           LIFF_ID_FORM=LIFF_ID_FORM
+                           LIFF_ID_TASK_PAGE=os.environ.get('LIFF_ID_TASK_PAGE') # ส่ง LIFF ID ไปให้ Template
                            ))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
@@ -2609,7 +2647,6 @@ def settings_page():
             current_settings = get_app_settings()
 
             # ตรวจสอบและอัปเดตข้อมูลตาม key ที่ส่งมา
-            # วิธีนี้จะทำให้ยืดหยุ่นกว่าการใช้ if/elif ที่ซับซ้อน
             if 'report_times' in data:
                 current_settings['report_times'].update(data['report_times'])
             
@@ -2617,18 +2654,13 @@ def settings_page():
                 current_settings['message_templates'].update(data['message_templates'])
 
             if 'popup_notifications' in data:
-                # ตรวจสอบและแปลงค่า checkbox ที่อาจไม่มีมาถ้าไม่ถูกเลือก
                 pn_data = data['popup_notifications']
                 for key in ['enabled_arrival', 'enabled_completion_customer', 'enabled_nearby_job']:
-                    if key in pn_data:
-                        current_settings['popup_notifications'][key] = bool(pn_data[key])
-                    else:
-                        # ถ้า key ไม่มีมา (checkbox ไม่ได้ติ๊ก) ให้ตั้งเป็น False
-                        current_settings['popup_notifications'][key] = False
+                    # ถ้า key ไม่มีมา (checkbox ไม่ได้ติ๊ก) ให้ตั้งเป็น False
+                    current_settings['popup_notifications'][key] = bool(pn_data.get(key, False))
                 
                 # อัปเดตส่วนที่เหลือ
                 current_settings['popup_notifications'].update({k: v for k, v in pn_data.items() if not isinstance(v, bool)})
-
 
             if 'line_recipients' in data:
                 current_settings['line_recipients'].update(data['line_recipients'])
@@ -2636,23 +2668,43 @@ def settings_page():
             if 'shop_info' in data:
                 current_settings['shop_info'].update(data['shop_info'])
 
-            # *** แก้ไขส่วนสำคัญ: รับข้อมูลช่างจาก key 'technician_list' โดยตรง ***
             if 'technician_list' in data:
-                # ไม่ต้องใช้ 'technician_list_json' อีกต่อไป
                 technician_list = data.get('technician_list', [])
                 if isinstance(technician_list, list):
                     current_settings['technician_list'] = technician_list
                 else:
                     return jsonify({'status': 'error', 'message': 'รูปแบบข้อมูลช่างไม่ถูกต้อง'}), 400
             
+            # --- ส่วนที่แก้ไขและเพิ่มเข้ามา ---
+            if 'equipment_catalog' in data:
+                catalog_data = data.get('equipment_catalog', [])
+                if isinstance(catalog_data, list):
+                    validated_catalog = []
+                    for item in catalog_data:
+                        # ตรวจสอบข้อมูลก่อนบันทึก
+                        if isinstance(item, dict) and item.get('item_name'):
+                            try:
+                                new_item = {
+                                    'item_name': str(item['item_name']).strip(),
+                                    'unit': str(item.get('unit', '')).strip(),
+                                    'price': float(item.get('price', 0))
+                                }
+                                validated_catalog.append(new_item)
+                            except (ValueError, TypeError):
+                                app.logger.warning(f"Skipping invalid equipment item due to non-numeric price: {item}")
+                                continue
+                    current_settings['equipment_catalog'] = validated_catalog
+                else:
+                    return jsonify({'status': 'error', 'message': 'รูปแบบข้อมูลแคตตาล็อกอุปกรณ์ไม่ถูกต้อง'}), 400
+            # --- สิ้นสุดส่วนที่แก้ไข ---
+            
             if 'auto_backup' in data:
                 current_settings['auto_backup'].update(data['auto_backup'])
 
-
             # บันทึกการตั้งค่าที่อัปเดตแล้ว
             if save_app_settings(current_settings):
-                run_scheduler()
                 cache.clear()
+                run_scheduler() # --- เพิ่มบรรทัดนี้เพื่อรีโหลด Scheduler ทันที ---
                 backup_success = backup_settings_to_drive()
                 message = 'บันทึกการตั้งค่าเรียบร้อยแล้ว'
                 if not backup_success:
@@ -2905,58 +2957,11 @@ def preview_backup_file():
     except Exception as e:
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
 
-@app.route('/technician_report')
-def technician_report():
-    now = datetime.datetime.now(THAILAND_TZ)
-    try:
-        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
-    except (ValueError, TypeError):
-        year, month = now.year, now.month
-    
-    months = [{'value': i, 'name': datetime.date(2000, i, 1).strftime('%B')} for i in range(1, 13)]
-    
-    app_settings = get_app_settings()
-    technician_list = app_settings.get('technician_list', [])
-    # --- IMPROVEMENT: Create a set of official technician names for fast checking ---
-    official_tech_names = {tech.get('name', '').strip() for tech in technician_list if tech.get('name')}
-
-    tasks = get_google_tasks_for_report(show_completed=True) or []
-    report = defaultdict(lambda: {'count': 0, 'tasks': []})
-
-    for task in tasks:
-        if task.get('status') == 'completed' and task.get('completed'):
-            try:
-                completed_dt = date_parse(task['completed']).astimezone(THAILAND_TZ)
-                if completed_dt.year == year and completed_dt.month == month:
-                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
-                    task_techs = set()
-                    for r in history:
-                        for t_name in r.get('technicians', []):
-                            if isinstance(t_name, str):
-                                task_techs.add(t_name.strip())
-
-                    for tech_name in sorted(list(task_techs)):
-                        # --- IMPROVEMENT: Only include technicians from the official list ---
-                        if tech_name in official_tech_names:
-                            report[tech_name]['count'] += 1
-                            report[tech_name]['tasks'].append({'id': task.get('id'), 'title': task.get('title'), 'completed_formatted': completed_dt.strftime("%d/%m/%Y")})
-            except Exception as e:
-                app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
-                continue
-
-    return render_template('technician_report.html',
-                           report_data=report, selected_year=year, selected_month=month,
-                           years=list(range(now.year - 5, now.year + 2)), months=months,
-                           technician_list=technician_list)
-
-@app.route('/technician_report/print')
-def technician_report_print():
-    now = datetime.datetime.now(THAILAND_TZ)
-    try:
-        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
-    except (ValueError, TypeError):
-        year, month = now.year, now.month
-
+def _get_technician_report_data(year, month):
+    """
+    ฟังก์ชันกลางสำหรับดึงและประมวลผลข้อมูลรายงานของช่าง
+    รับปีและเดือนเป็น input และคืนค่า report_data และ technician_list
+    """
     app_settings = get_app_settings()
     technician_list = app_settings.get('technician_list', [])
     # --- IMPROVEMENT: Create a set of official technician names for fast checking ---
@@ -2983,8 +2988,8 @@ def technician_report_print():
                             report[tech_name]['count'] += 1
                             customer_name = parse_customer_info_from_notes(task.get('notes', '')).get('name', 'N/A')
                             report[tech_name]['tasks'].append({
-                                'id': task.get('id'), 
-                                'title': task.get('title'), 
+                                'id': task.get('id'),
+                                'title': task.get('title'),
                                 'customer_name': customer_name,
                                 'completed_formatted': completed_dt.strftime("%d/%m/%Y")
                             })
@@ -2994,15 +2999,50 @@ def technician_report_print():
 
     for tech_name in report:
         report[tech_name]['tasks'].sort(key=lambda x: x['completed_formatted'])
-    
-    sorted_report = dict(sorted(report.items()))
 
+    # คืนค่าเป็น dict ที่เรียงลำดับตามชื่อช่าง และรายชื่อช่างทั้งหมด
+    return dict(sorted(report.items())), technician_list
+
+@app.route('/technician_report')
+def technician_report():
+    now = datetime.datetime.now(THAILAND_TZ)
+    try:
+        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
+    except (ValueError, TypeError):
+        year, month = now.year, now.month
+
+    months = [{'value': i, 'name': datetime.date(2000, i, 1).strftime('%B')} for i in range(1, 13)]
+
+    # เรียกใช้ฟังก์ชันกลางที่เราสร้างขึ้น
+    report_data, technician_list = _get_technician_report_data(year, month)
+
+    # ส่งข้อมูลไปยัง Template
+    return render_template('technician_report.html',
+                        report_data=report_data, 
+                        selected_year=year, 
+                        selected_month=month,
+                        years=list(range(now.year - 5, now.year + 2)), 
+                        months=months,
+                        technician_list=technician_list)
+
+@app.route('/technician_report/print')
+def technician_report_print():
+    now = datetime.datetime.now(THAILAND_TZ)
+    try:
+        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
+    except (ValueError, TypeError):
+        year, month = now.year, now.month
+
+    # เรียกใช้ฟังก์ชันกลางที่เราสร้างขึ้น
+    sorted_report, technician_list = _get_technician_report_data(year, month)
+
+    # ส่งข้อมูลไปยัง Template
     return render_template('technician_report_print.html',
-                           report_data=sorted_report,
-                           selected_year=year,
-                           selected_month=month,
-                           now=datetime.datetime.now(THAILAND_TZ),
-                           technician_list=technician_list)
+                        report_data=sorted_report,
+                        selected_year=year,
+                        selected_month=month,
+                        now=datetime.datetime.now(THAILAND_TZ),
+                        technician_list=technician_list)
 
 @app.route('/manage_duplicates', methods=['GET'])
 def manage_duplicates():
@@ -3067,193 +3107,36 @@ def delete_equipment_duplicates_batch():
         flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงแคตตาล็อกอุปกรณ์', 'danger')
     return redirect(url_for('manage_equipment_duplicates'))
 
-@app.route('/customer_onboarding/<task_id>')
-def customer_onboarding_page(task_id):
-    task = get_single_task(task_id)
-    if not task: abort(404)
-    return render_template('customer_onboarding.html', task=task, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
-
-@app.route('/customer_onboarding/')
-def customer_onboarding_redirect():
-    liff_state = request.args.get('liff.state', '')
-    # The liff.state can be messy, so we find the first full URL within it
-    url_match = re.search(r'(https?:\/\/[^\s]+)', liff_state)
-    if url_match:
-        correct_url = url_match.group(1)
-        return redirect(correct_url)
-    # Fallback to summary if no URL is found in the state
-    return redirect(url_for('summary'))
-
 @app.route('/generate_customer_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
-    cache.clear()
     task = get_single_task(task_id)
-    if not task or not LIFF_ID_FORM: abort(404)
-    onboarding_url = url_for('customer_onboarding_page', task_id=task_id, _external=True)
-    liff_url = f"https://liff.line.me/{LIFF_ID_FORM}?liff.state={onboarding_url}"
-    qr_code = generate_qr_code_base64(liff_url)
-    customer = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('generate_onboarding_qr.html', 
-                           qr_code_base64=qr_code, 
-                           task=task, 
-                           customer_info=customer,
-                           liff_url=liff_url, # <--- เพิ่มบรรทัดนี้
-                           LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
-@app.route('/customer_problem_form')
-def customer_problem_form():
-    task_id = request.args.get('task_id')
-    task = get_single_task(task_id)
-    if not task: abort(404)
-    parsed = parse_google_task_dates(task)
-    parsed['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('customer_problem_form.html', task=parsed, LINE_LOGIN_CHANNEL_ID=LINE_LOGIN_CHANNEL_ID)
-
-@app.route('/generate_public_report_qr/<task_id>')
-def generate_public_report_qr(task_id):
-    cache.clear()
-    task = get_single_task(task_id)
-    if not task or task.get('status') != 'completed': abort(404)
-    url = url_for('public_task_report', task_id=task_id, _external=True)
-    qr = generate_qr_code_base64(url)
-    customer = parse_customer_info_from_notes(task.get('notes', ''))
-    return render_template('public_report_qr.html', task=task, customer_info=customer, public_report_url=url, qr_code_base64_report=qr,
-    LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
-
-@app.route('/trigger_customer_follow_up_test', methods=['POST'])
-def trigger_customer_follow_up_test():
-    with app.app_context():
-        tasks = [t for t in (get_google_tasks_for_report(True) or []) if t.get('status') == 'completed' and t.get('completed')]
-        if not tasks:
-            flash('ไม่พบงานที่เสร็จแล้วสำหรับใช้ทดสอบ.', 'warning')
-            return redirect(url_for('settings_page'))
-        latest = max(tasks, key=lambda x: date_parse(x.get('completed', '0001-01-01T00:00:00Z')))
-        notes = latest.get('notes', '')
-        feedback = parse_customer_feedback_from_notes(notes)
-        feedback.pop('follow_up_sent_date', None)
-        
-        history_reports, base_notes = parse_tech_report_from_notes(notes)
-        tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
-        new_notes_content = base_notes.strip()
-        if tech_reports_text: new_notes_content += tech_reports_text
-        new_notes_content += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-        _execute_google_api_call_with_retry(update_google_task, latest['id'], notes=new_notes_content)
-        
-        latest['completed'] = (datetime.datetime.now(pytz.utc) - datetime.timedelta(days=1, minutes=5)).isoformat().replace('+00:00', 'Z')
-        _execute_google_api_call_with_retry(update_google_task, latest['id'], completed=latest['completed'])
-        
-        cache.clear()
-        scheduled_customer_follow_up_job()
-        flash(f"กำลังทดสอบส่งแบบสอบถามสำหรับงานล่าสุด: '{latest.get('title')}'", 'info')
-    return redirect(url_for('settings_page'))
-
-@app.route('/public_report/<task_id>')
-def public_task_report(task_id):
-    cache.clear()
-    task = get_single_task(task_id)
-    if not task or task.get('status') != 'completed':
+    if not task:
         abort(404)
+
+    # ✅ ดึง LINE OA ID ของคุณจาก Environment Variable (ถ้ามี) หรือใส่ค่าโดยตรง
+    # เช่น "@123abcde" (ต้องมี @)
+    line_oa_id = os.environ.get('LINE_OA_ID', '@comphone') 
+
+    # ✅ สร้างลิงก์เพิ่มเพื่อนพร้อม Referral Code ที่เป็นรหัสงาน
+    add_friend_url = f"https://line.me/R/ti/p/{line_oa_id}?referral={task_id}"
     
-    notes = task.get('notes', '')
-    customer = parse_customer_info_from_notes(notes)
-    reports, _ = parse_tech_report_from_notes(notes)
-    latest_report = reports[0] if reports else {}
+    qr_code = generate_qr_code_base64(add_friend_url)
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
     
-    app_settings = get_app_settings() 
+    response = make_response(render_template('generate_onboarding_qr.html',
+                                             qr_code_base64=qr_code,
+                                             task=task,
+                                             customer_info=customer,
+                                             liff_url=add_friend_url, # ส่ง URL ใหม่ไปให้ Template
+                                             now=datetime.datetime.now(THAILAND_TZ)
+                                             ))
     
-    equipment = latest_report.get('equipment_used', [])
-    catalog = {item['item_name']: item for item in app_settings.get('equipment_catalog', [])}
-    costs, total = [], 0.0
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
     
-    if isinstance(equipment, list):
-        for item in equipment:
-            name, qty = item.get('item'), item.get('quantity', 0)
-            if isinstance(qty, (int, float)):
-                cat_item = catalog.get(name, {})
-                price = float(cat_item.get('price', 0))
-                subtotal = qty * price
-                total += subtotal
-                costs.append({'item': name, 'quantity': qty, 'unit': cat_item.get('unit', ''), 'price_per_unit': price, 'subtotal': subtotal})
-            else:
-                costs.append({'item': name, 'quantity': qty, 'unit': catalog.get(name, {}).get('unit', ''), 'price_per_unit': 'N/A', 'subtotal': 'N/A'})
-    
-    return render_template('public_task_report.html', 
-                           task=task, 
-                           customer_info=customer, 
-                           latest_report=latest_report, 
-                           detailed_costs=costs, 
-                           total_cost=total,
-                           settings=app_settings)
+    return response
 
-@app.route('/submit_customer_problem', methods=['POST'])
-def submit_customer_problem():
-    data = request.json
-    task_id, problem_desc, user_id = data.get('task_id'), data.get('problem_description'), data.get('customer_line_user_id')
-    if not task_id or not problem_desc: return jsonify({"status": "error"}), 400
-    task = get_single_task(task_id)
-    if not task: return jsonify({"status": "error"}), 404
-    notes = task.get('notes', '')
-    feedback = parse_customer_feedback_from_notes(notes)
-    feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': 'problem_reported', 'customer_line_user_id': user_id})
-
-    reports_history, base = parse_tech_report_from_notes(notes)
-    reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
-    final_notes = f"{base.strip()}"
-    if reports_text: final_notes += reports_text
-    final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-    _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes, status='needsAction')
-    cache.clear()
-    admin_group = get_app_settings().get('line_recipients', {}).get('admin_group_id')
-    if admin_group:
-        customer = parse_customer_info_from_notes(notes)
-        settings = get_app_settings()
-        template = settings.get('message_templates', {}).get('problem_report_admin', '')
-        
-        notif = template.replace('[task_title]', task.get('title', 'N/A')) \
-                        .replace('[customer_name]', customer.get('name', 'N/A')) \
-                        .replace('[problem_desc]', problem_desc) \
-                        .replace('[task_url]', url_for('task_details', task_id=task_id, _external=True))
-                        
-        message_queue.add_message(admin_group, TextMessage(text=notif))
-    return jsonify({"status": "success"})
-
-@app.route('/save_customer_line_id', methods=['POST'])
-@csrf.exempt  # <--- 1. เพิ่มบรรทัดนี้เพื่อยกเว้นการตรวจสอบ CSRF
-def save_customer_line_id():
-    cache.clear() # <--- 2. เพิ่มบรรทัดนี้เพื่อล้างแคช ป้องกัน "Invalid task ID"
-    data = request.json
-    task_id, user_id = data.get('task_id'), data.get('customer_line_user_id')
-    if not task_id or not user_id: return jsonify({"status": "error"}), 400
-    task = get_single_task(task_id)
-    if not task: return jsonify({"status": "error"}), 404
-    notes = task.get('notes', '')
-    feedback = parse_customer_feedback_from_notes(notes)
-    if feedback.get('customer_line_user_id') != user_id:
-        feedback['customer_line_user_id'] = user_id
-        feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
-
-        reports_history, base = parse_tech_report_from_notes(notes)
-        reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
-        final_notes = f"{base.strip()}"
-        if reports_text: final_notes += reports_text
-        final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-        if _execute_google_api_call_with_retry(update_google_task, task_id=task_id, notes=final_notes):
-            cache.clear()
-            settings = get_app_settings()
-            shop = settings.get('shop_info', {})
-            customer = parse_customer_info_from_notes(notes)
-
-            welcome_template = settings.get('message_templates', {}).get('welcome_customer', '')
-            welcome_message = welcome_template.replace('[customer_name]', customer.get('name', 'ลูกค้า')) \
-                                              .replace('[shop_phone]', shop.get('contact_phone', '-')) \
-                                              .replace('[shop_line_id]', shop.get('line_id', '-'))
-
-            message_queue.add_message(user_id, TextMessage(text=welcome_message))
-    return jsonify({"status": "success"})
-
-# === แทนที่ด้วยโค้ดใหม่นี้ ===
 @app.route("/callback", methods=['POST'])
 @csrf.exempt  # เพิ่มบรรทัดนี้เพื่อยกเว้น CSRF check
 def callback():
@@ -3348,7 +3231,56 @@ def create_full_summary_message(title, tasks):
     if len(message) > 4900: message = message[:4900] + "\n\n... (ข้อความยาวเกินไป)"
     return TextMessage(text=message)
 
-# --- START of handle_text_message replacement ---
+@handler.add(FollowEvent)
+def handle_follow_event(event):
+    # 1. ดึง User ID ของลูกค้าที่เพิ่งแอดเรามา
+    user_id = event.source.user_id
+    
+    # 2. ตรวจสอบว่ามี Referral Code (รหัสงาน) แนบมาด้วยหรือไม่
+    if hasattr(event, 'follow') and hasattr(event.follow, 'referral'):
+        task_id = event.follow.referral
+        app.logger.info(f"User {user_id} followed via referral link for task: {task_id}")
+
+        # 3. บันทึก User ID ลงใน Google Task (เหมือนที่ save_customer_line_id เคยทำ)
+        task = get_single_task(task_id)
+        if task:
+            notes = task.get('notes', '')
+            feedback = parse_customer_feedback_from_notes(notes)
+            
+            feedback['customer_line_user_id'] = user_id
+            feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
+
+            reports_history, base = parse_tech_report_from_notes(notes)
+            reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
+            final_notes = f"{base.strip()}"
+            if reports_text: final_notes += reports_text
+            final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+            if update_google_task(task_id=task_id, notes=final_notes):
+                cache.clear()
+                
+                # 4. ส่งข้อความต้อนรับและลิงก์รายงานซ่อม
+                settings = get_app_settings()
+                shop = settings.get('shop_info', {})
+                customer = parse_customer_info_from_notes(notes)
+
+                # (ส่วนหนึ่งของ handle_follow_event)
+                welcome_message = render_template_message('welcome_customer', task)
+                
+                report_url = url_for('public_task_report', task_id=task_id, _external=True)
+                report_message = f"คุณสามารถดูรายละเอียดและสถานะงานซ่อมของคุณได้ที่นี่:\n{report_url}"
+
+                # ส่งข้อความทั้งหมดในครั้งเดียว
+                message_queue.add_message(user_id, [
+                    TextMessage(text=welcome_message),
+                    TextMessage(text=report_message)
+                ])
+                app.logger.info(f"Welcome & Report Link messages queued for user {user_id}.")
+    else:
+        # กรณีที่แอดเพื่อนมาแบบปกติ (ไม่มี Referral)
+        app.logger.info(f"User {user_id} followed without a referral.")
+        # อาจจะส่งข้อความต้อนรับทั่วไปที่นี่
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
     text = event.message.text.strip().lower()
@@ -3462,20 +3394,27 @@ def handle_text_message(event):
             )
         except Exception as e:
             app.logger.error(f"Error replying to text message: {e}")
-# --- END of handle_text_message replacement ---
 
-# --- START of handle_postback replacement ---
 @handler.add(PostbackEvent)
 def handle_postback(event):
     data = dict(x.split('=') for x in event.postback.data.split('&'))
-    action, task_id = data.get('action'), data.get('task_id')
+    action = data.get('action')
+    task_id = data.get('task_id')
+    feedback_type = data.get('feedback') # รับค่า feedback (ok หรือ problem)
 
     if action == 'customer_feedback':
         task = get_single_task(task_id)
-        if not task: return
+        if not task:
+            return
+
+        # --- บันทึก Feedback ลงใน Task Notes (เหมือนเดิม) ---
         notes = task.get('notes', '')
         feedback = parse_customer_feedback_from_notes(notes)
-        feedback.update({'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(), 'feedback_type': data.get('feedback'), 'customer_line_user_id': event.source.user_id})
+        feedback.update({
+            'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
+            'feedback_type': feedback_type,
+            'customer_line_user_id': event.source.user_id
+        })
         history_reports, base = parse_tech_report_from_notes(notes)
         reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
         final_notes = f"{base.strip()}"
@@ -3483,19 +3422,35 @@ def handle_postback(event):
         final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
         _execute_google_api_call_with_retry(update_google_task, task_id, notes=final_notes)
         cache.clear()
-        
+
+        # --- ส่วนที่เพิ่มเข้ามา: ตรวจสอบและส่งแจ้งเตือน ---
+        reply_text = "ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏" # ข้อความตอบกลับเริ่มต้น
+
+        if feedback_type == 'problem':
+            reply_text = "รับทราบปัญหาครับ/ค่ะ เดี๋ยวทีมงานจะรีบติดต่อกลับไปนะครับ/คะ"
+            
+            settings = get_app_settings()
+            admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
+            if admin_group_id:
+                # สร้างข้อความแจ้งเตือนแอดมินโดยใช้ Template ใหม่
+                admin_message = render_template_message('problem_report_admin', task)
+                # แทนที่ส่วนของรายละเอียดปัญหา
+                admin_message = admin_message.replace('[problem_desc]', 'ลูกค้ากดปุ่มแจ้งว่ายังมีปัญหาอยู่')
+                
+                # ส่งเข้าคิวเพื่อแจ้งเตือน
+                message_queue.add_message(admin_group_id, TextMessage(text=admin_message))
+                app.logger.info(f"Problem report for task {task_id} sent to admin group.")
+
+        # --- ตอบกลับลูกค้า (เหมือนเดิม) ---
         try:
-            # Use the global line_messaging_api object for efficiency
             line_messaging_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text="ขอบคุณสำหรับคำยืนยันครับ/ค่ะ 🙏")]
+                    messages=[TextMessage(text=reply_text)]
                 )
             )
         except Exception as e:
-            # It's okay if reply fails (e.g., token expired), the main action is done.
             app.logger.warning(f"Could not send postback reply: {e}")
-# --- END of handle_postback replacement ---
 
 @app.route("/admin/organize_files", methods=['GET', 'POST'])
 def organize_files():
@@ -3685,5 +3640,38 @@ def callback_line():
     # as the LIFF SDK handles the token on the client-side.
     return "OK", 200
 
+@app.route('/public/report/<task_id>')
+def public_task_report(task_id):
+    """
+    หน้ารายงานสาธารณะสำหรับให้ลูกค้าดู
+    """
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        abort(404)
+
+    # ตรวจสอบว่างานเสร็จสิ้นแล้วหรือไม่ (เพื่อความปลอดภัย)
+    if task_raw.get('status') != 'completed':
+        # อาจจะแสดงข้อความว่า "รายงานจะพร้อมให้ดูเมื่องานเสร็จสิ้น" หรือ 404 ไปเลย
+        abort(404)
+
+    task = parse_google_task_dates(task_raw)
+    notes = task.get('notes', '')
+
+    # ดึงข้อมูลที่จำเป็นเท่านั้น
+    task['customer'] = parse_customer_info_from_notes(notes)
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
+
+    # คัดกรองเฉพาะรายงานที่มีเนื้อหาหรือรูปภาพ
+    task['tech_reports_history'] = [
+        r for r in task['tech_reports_history'] 
+        if r.get('work_summary') or r.get('attachments')
+    ]
+
+    response = make_response(render_template('public_report.html', task=task))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+   
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
