@@ -54,7 +54,6 @@
 {% endblock %}
 
 {% block content %}
-<!-- ส่วนแสดงสถานะการโหลด LIFF (เหมือนเดิม) -->
 <div id="liff-status-container">
     <div id="liff-loading-spinner">
         <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
@@ -74,7 +73,6 @@
     </div>
 </div>
 
-<!-- เนื้อหาหลักของหน้า (จะแสดงหลัง LIFF โหลดสำเร็จ) -->
 <div id="main-content">
     <div id="js-flash-message-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1080"></div>
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -82,7 +80,6 @@
         <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i> กลับหน้าสรุป</a>
     </div>
 
-    <!-- UI ใหม่: ส่วนข้อมูลสรุป -->
     <div class="summary-container">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
@@ -101,9 +98,7 @@
         </div>
     </div>
 
-    <!-- UI ใหม่: Action Cards และ ประวัติงาน -->
     <div id="main-action-container">
-        <!-- Card ที่แสดงเมื่อต้องการให้ล็อกอินก่อน -->
         <div class="card shadow-sm mb-4 action-card" id="login-prompt-card" style="display:none;">
             <div class="card-header"><h5 class="mb-0"><i class="fas fa-user-lock me-2"></i>เข้าสู่ระบบเพื่อดำเนินการ</h5></div>
             <div class="card-body text-center">
@@ -142,7 +137,6 @@
 						<textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
 					</div>
 
-					<!-- ===== START: ส่วนที่เพิ่มและปรับปรุงใหม่ ===== -->
 					<div class="mb-3">
 						<label for="equipment_used_progress" class="form-label">อุปกรณ์ที่ใช้</label>
 						<div class="input-group">
@@ -152,8 +146,6 @@
 							</button>
 						</div>
 					</div>
-					<!-- ===== END: ส่วนที่เพิ่มและปรับปรุงใหม่ ===== -->
-
 					<div class="mb-3">
 						<label class="form-label">ช่าง <span class="text-danger">*</span></label>
 						<div class="input-group">
@@ -184,14 +176,13 @@
     </div>
 </div>
 
-<!-- All Modals -->
 {% include 'modals/technician_selection_modal.html' %}
 {% include 'modals/location_confirm_modal.html' %}
 {% include 'modals/edit_text_modal.html' %}
 {% include 'modals/edit_attachments_modal.html' %}
 {% include 'modals/equipment_catalog_modal.html' %}
 <div id="lightboxModal" class="lightbox">
-    <span class="lightbox-close" onclick="window.closeLightbox()">&times;</span>
+    <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
     <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
     <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
@@ -368,7 +359,7 @@
         } catch (error) {
             alert(`เกิดข้อผิดพลาด: ${error.message}`);
             submitButton.disabled = false;
-            submitButton.innerHTML = originalBtnHtml;
+            submitButton.innerHTML = originalButtonHtml;
             if (uploadStatusBox) uploadStatusBox.style.display = 'none';
         }
     }
@@ -442,7 +433,7 @@
                     const position = await new Promise((resolve, reject) => {
                         navigator.geolocation.getCurrentPosition(resolve, reject, {
                             enableHighAccuracy: true,
-                            timeout: 10000,
+                            timeout: 15000,
                             maximumAge: 0
                         });
                     });
@@ -657,7 +648,7 @@
     }
     // --- END: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
 
-    // ✅✅ --- START: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน (โค้ดเดิม) --- ✅✅
+    // ✅✅ --- START: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน --- ✅✅
     window.openEditTextModal = (reportIndex) => {
         const report = techReportsHistory[reportIndex];
         document.getElementById('editTextarea').value = report.work_summary;
@@ -724,6 +715,7 @@
                 body: formData
             });
             if (response.ok) {
+                // Server will handle redirect with flash message, so we just reload.
                 window.location.reload();
             } else {
                  throw new Error('เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ระหว่างอัปเดตรูปภาพ');
@@ -749,9 +741,9 @@
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
         }
     };
-    // ✅✅ --- END: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน (โค้ดเดิม) --- ✅✅
+    // ✅✅ --- END: ฟังก์ชันสำหรับแก้ไข-ลบ รายงาน --- ✅✅
 
-    // ✅ --- START: ฟังก์ชันจัดการการส่งฟอร์ม (ที่เคยหายไป) --- ✅
+    // ✅ ฟังก์ชันสำหรับส่งข้อมูลฟอร์ม (แยกออกมาเพื่อให้เรียกใช้ซ้ำได้)
     async function submitFormData(form, statusElementId) {
         const submitButton = form.querySelector('button[type="submit"]');
         const originalButtonHtml = submitButton.innerHTML;
@@ -773,11 +765,7 @@
                     fileFormData.append('task_id', taskId);
                     
                     try {
-                        const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
-                            method: 'POST', 
-                            body: fileFormData,
-                            headers: {'X-CSRFToken': csrfToken }
-                        });
+                        const response = await fetch("{{ url_for('api_upload_attachment') }}", { method: 'POST', body: fileFormData, headers: {'X-CSRFToken': csrfToken } });
                         const result = await response.json();
                         if (response.ok && result.status === 'success') {
                             uploadedAttachments.push(result.file_info);
@@ -811,6 +799,7 @@
         }
     }
 
+    // ✅ ฟังก์ชันหลักที่จัดการการส่งฟอร์มทั้งหมด (ปรับปรุงใหม่)
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
         if (!form.checkValidity()) {
@@ -821,9 +810,10 @@
         const actionInput = form.querySelector('input[name="action"]');
         
         if (actionInput && actionInput.value === 'complete_task') {
+            const confirmModal = new bootstrap.Modal(document.getElementById('locationConfirmModal'));
             
             const proceedWithSubmission = async (shouldGetLocation) => {
-                if(locationConfirmModal) locationConfirmModal.hide(); // Hide modal if it's open
+                confirmModal.hide();
                 
                 const submitButton = form.querySelector('button[type="submit"]');
                 submitButton.disabled = true;
@@ -838,9 +828,10 @@
                     techIdInput.value = technicianLineUserId;
                     form.appendChild(techIdInput);
                 } else {
-                    // หากไม่มี LIFF User ID ของช่าง (เพราะไม่ได้ล็อกอิน)
-                    console.warn("Technician LINE User ID is not available. Proceeding without it.");
-                    // คุณสามารถเพิ่ม alert หรือการจัดการอื่น ๆ ที่นี่ได้ หากต้องการบังคับให้ล็อกอิน
+                    alert("เกิดข้อผิดพลาด: ไม่พบ LINE User ID ของช่าง กรุณาเข้าผ่าน LINE App");
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = 'ยืนยันการปิดงาน';
+                    return;
                 }
 
                 if (shouldGetLocation) {
@@ -869,17 +860,94 @@
                 await submitFormData(form, statusElementId);
             };
             
-            // Re-attach event listeners to modal buttons to ensure they work after modal is closed/reopened
             document.getElementById('btnIsInLocation').onclick = () => proceedWithSubmission(true);
             document.getElementById('btnNotInLocation').onclick = () => proceedWithSubmission(false);
 
-            if(locationConfirmModal) locationConfirmModal.show();
+            confirmModal.show();
 
         } else {
             await submitFormData(form, statusElementId);
         }
     };
-    // ✅ --- END: ฟังก์ชันจัดการการส่งฟอร์ม --- ✅
 
+    // --- START: โค้ดที่ทำงานเมื่อหน้าเว็บโหลดเสร็จ ---
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize LIFF and get user ID
+        const liffId = "{{ LIFF_ID_FORM }}";
+        if (liffId && liffId !== 'None' && liffId.trim() !== '') {
+            liff.init({ liffId: liffId })
+                .then(() => {
+                    if (liff.isLoggedIn()) {
+                        return liff.getProfile();
+                    } else {
+                        // For features that don't require login, we can still proceed.
+                        // For features that require login, the user will be prompted later.
+                        return null;
+                    }
+                })
+                .then(profile => {
+                    if (profile) {
+                        technicianLineUserId = profile.userId;
+                    }
+                })
+                .catch(err => {
+                    console.error("LIFF initialization failed", err);
+                });
+        }
+        
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        editTextModal = new bootstrap.Modal(document.getElementById('editTextModal'));
+        editAttachmentsModal = new bootstrap.Modal(document.getElementById('editAttachmentsModal'));
+
+        const historyContainer = document.getElementById('history-section-body');
+        if (techReportsHistory && techReportsHistory.length > 0) {
+            historyContainer.innerHTML = techReportsHistory.map((report, index) => {
+                let attachmentsHtml = '';
+                if(report.attachments && report.attachments.length > 0){
+                    attachmentsHtml = `<div class="image-gallery-grid mt-3">` +
+                    report.attachments.map(att => `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="attachment"></div>`).join('') +
+                    `</div>`;
+                }
+                
+                let editMenuHtml = '';
+                if (report.type === 'report') {
+                     editMenuHtml = `
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" onclick="window.openEditTextModal(${index})"><i class="fas fa-pen fa-fw me-2"></i>แก้ไขข้อความ</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="window.openEditAttachmentsModal(${index})"><i class="fas fa-images fa-fw me-2"></i>จัดการรูปภาพ</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" onclick="window.deleteReport(${index})"><i class="fas fa-trash-alt fa-fw me-2"></i>ลบรายงานนี้</a></li>
+                            </ul>
+                        </div>
+                    `;
+                }
+                
+                return `
+                <div class="history-entry ${report.type === 'reschedule' ? 'border-warning' : 'border-primary'}">
+                    <div class="history-entry-header">
+                        <span class="history-entry-title">${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานการปฏิบัติงาน'}</span>
+                        <div class="d-flex align-items-center">
+                            <small class="text-muted me-3">${new Date(report.summary_date).toLocaleString('th-TH')}</small>
+                            ${editMenuHtml}
+                        </div>
+                    </div>
+                    <div class="history-entry-body">
+                        ${report.type === 'reschedule' ? `<p><strong>เหตุผล:</strong> ${report.reason || '-'}</p><p><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</p>` : `<p>${report.work_summary || '-'}</p>`}
+                        <p><small class="text-muted"><strong>ช่าง:</strong> ${report.technicians ? report.technicians.join(', ') : '-'}</small></p>
+                    </div>
+                    ${attachmentsHtml}
+                </div>`;
+            }).join('');
+        } else {
+            historyContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการดำเนินงาน</p>';
+        }
+        
+        const tribute = new Tribute({ values: progressReportSnippets });
+        document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
+    });
 </script>
 {% endblock %}
