@@ -307,27 +307,33 @@
     };
     // --- END: โค้ดใหม่สำหรับ Equipment Catalog ---
 
+async function initializeLiff() {
+    // VVVV --- [จุดที่แก้ไข] --- VVVV
+    // เราจะใช้ตัวแปรชื่อ LIFF_ID_TO_USE ที่ส่งมาจากเซิร์ฟเวอร์เสมอ
+    const liffId = "{{ LIFF_ID_TO_USE }}";
 
-    // ✅ ฟังก์ชันเริ่มต้น LIFF (โค้ดเดิม)
-    async function initializeLiff() {
-        try {
-            if (!liff || !LIFF_ID_TASK_PAGE) {
-                console.warn("LIFF SDK or LIFF ID not available, running in standard web mode.");
-                return;
-            }
-            await liff.init({ liffId: LIFF_ID_TASK_PAGE });
-            if (liff.isLoggedIn()) {
-                const profile = await liff.getProfile();
-                technicianLineUserId = profile.userId;
-                console.log("LIFF Initialized. Technician ID:", technicianLineUserId);
-            } else {
-                liff.login();
-            }
-        } catch (error) {
-            console.error("LIFF initialization failed.", error);
-            alert("ไม่สามารถโหลด LIFF App ได้ กรุณาลองใหม่ในแอป LINE");
-        }
+    if (!liffId || liffId.trim() === '') {
+        console.error("LIFF ID is missing from the server. LIFF features will be disabled.");
+        // ไม่ต้องแสดง alert แต่ให้บอกนักพัฒนาใน Console
+        // alert("เกิดข้อผิดพลาด: ไม่พบการตั้งค่า LIFF ID จากเซิร์ฟเวอร์");
+        return; // ออกจากฟังก์ชันทันที ไม่ต้องทำอะไรต่อ
     }
+    // ^^^^ --- [สิ้นสุดจุดที่แก้ไข] --- ^^^^
+
+    try {
+        await liff.init({ liffId: liffId });
+        if (liff.isLoggedIn()) {
+            const profile = await liff.getProfile();
+            technicianLineUserId = profile.userId;
+            console.log("LIFF Initialized. Technician ID:", technicianLineUserId);
+        } else {
+            liff.login();
+        }
+    } catch (error) {
+        console.error("LIFF initialization failed:", error);
+        alert("ไม่สามารถโหลด LIFF App ได้ กรุณาลองใหม่ในแอป LINE");
+    }
+}
 
     // --- START: ฟังก์ชัน Helper พื้นฐาน (โค้ดเดิม) ---
     window.flashMessage = (message, category = 'info') => {
