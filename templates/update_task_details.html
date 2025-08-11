@@ -95,13 +95,13 @@
     
     <div id="js-flash-message-container"></div>
 
-    <div class="d-flex justify-content-between align-items: center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">📝 จัดการงาน</h1>
         <a href="{{ url_for('liff.summary') }}" class="btn btn-light border"><i class="fas fa-arrow-left me-2"></i>กลับ</a>
     </div>
 
     <div class="summary-container">
-        <div class="d-flex justify-content-between align-items: center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="mb-0">ข้อมูลสรุป</h5>
             <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไข</a>
         </div>
@@ -317,7 +317,7 @@
     const csrfToken = '{{ csrf_token() }}';
     const LIFF_ID_TO_USE = "{{ LIFF_ID_TO_USE }}";
     
-    let technicianSelectionModal, equipmentCatalogModal;
+    let technicianSelectionModal, equipmentCatalogModal, editReportModal, editReportTextModal;
     let currentTechnicianTargetId, currentEquipmentTargetPrefix;
     let technicianLineUserId = null;
     let currentLightboxImages = [], slideIndex = 0;
@@ -374,7 +374,7 @@
             });
 
             const { latitude, longitude } = position.coords;
-            const newMapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+            const newMapUrl = `http://googleusercontent.com/maps/google.com/7{latitude},${longitude}`;
 
             const response = await fetch(`/api/task/{{ task.id }}/update_location`, {
                 method: 'POST',
@@ -695,6 +695,7 @@
         }
     }
     
+    // --- Event Listeners Initialization ---
     document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('main-content').style.display = 'block';
 

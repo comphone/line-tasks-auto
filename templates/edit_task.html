@@ -18,7 +18,9 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2">แก้ไขข้อมูลหลักของงาน</h1>
-    <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียด</a>
+    {# --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ --- #}
+    <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียด</a>
+    {# --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ --- #}
 </div>
 
 <div class="row justify-content-center">
@@ -97,7 +99,9 @@
                     <hr class="my-4">
                     <div class="text-center">
                         <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
-                        <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
+                        {# --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ --- #}
+                        <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
+                        {# --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ --- #}
                     </div>
                 </div>
             </div>
