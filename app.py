@@ -72,9 +72,7 @@ import atexit
 from flask_cors import CORS
 from liff_views import liff_bp
 
-# --- VVV [เพิ่ม] import ฟังก์ชันจาก utils.py VVV ---
 from utils import get_single_task, parse_google_task_dates, parse_customer_info_from_notes, parse_tech_report_from_notes
-# --- ^^^ [สิ้นสุดการเพิ่ม] ^^^ ---
 
 TEXT_SNIPPETS = {
     'task_details': [
@@ -560,32 +558,6 @@ def api_create_task():
     except Exception as e:
         app.logger.error(f"Error in api_create_task: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
-
-# 1. (เพิ่ม) Route สำหรับแสดงฟอร์มสร้างงานเคลม
-@liff_bp.route('/external_claim/new/from/<ref_id>')
-def create_external_claim_form(ref_id):
-    original_task_raw = get_single_task(ref_id)
-    if not original_task_raw:
-        abort(404)
-
-    # ดึงข้อมูลที่จำเป็นจาก Task เดิม
-    original_task = parse_google_task_dates(original_task_raw)
-    original_task['customer'] = parse_customer_info_from_notes(original_task.get('notes', ''))
-    
-    # ดึงรายการอุปกรณ์ทั้งหมดที่เคยใช้ในงานเดิม
-    history, _ = parse_tech_report_from_notes(original_task.get('notes', ''))
-    all_equipment = []
-    for report in history:
-        if isinstance(report.get('equipment_used'), list):
-            all_equipment.extend(report.get('equipment_used'))
-    
-    # ทำให้รายการอุปกรณ์ไม่ซ้ำกัน (อาจต้องมี Logic รวมจำนวนถ้าชื่อซ้ำ)
-    unique_equipment = list({v['item']:v for v in all_equipment}.values())
-
-    return render_template('external_job_form.html', 
-                           original_task=original_task, 
-                           original_task_equipment=unique_equipment)
-
 
 # 2. (แก้ไข) API สำหรับรับข้อมูลการสร้างงานภายนอก/งานเคลม
 @app.route('/api/external_tasks/create', methods=['POST'])

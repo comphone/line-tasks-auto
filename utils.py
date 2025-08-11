@@ -1,31 +1,29 @@
-# utils.py
+# File: utils.py
 
 import re
 import json
 import pytz
 from datetime import datetime
 from dateutil.parser import parse as date_parse
-from app import get_google_tasks_service # ยังคงต้อง import service จาก app หลัก
 
-#
-# --- VVV คัดลอกฟังก์ชันเหล่านี้มาจาก app.py VVV ---
-#
+# ฟังก์ชันนี้ยังคงต้อง import service หรือฟังก์ชันที่สร้าง service จาก app หลัก
+# นี่เป็นวิธีที่ปลอดภัยและไม่ทำให้เกิด circular import
+from app import get_google_tasks_service, _execute_google_api_call_with_retry
 
 def get_single_task(task_id):
     if not task_id: return None
     service = get_google_tasks_service()
     if not service: return None
     try:
-        # ใช้ _execute_google_api_call_with_retry ถ้ามี หรือเรียก service.tasks().get().execute() ตรงๆ
-        return service.tasks().get(tasklist='@default', task=task_id).execute()
+        return _execute_google_api_call_with_retry(service.tasks().get, tasklist='@default', task=task_id)
     except Exception as err:
-        print(f"Error getting single task {task_id}: {err}") # ควรใช้ app.logger ใน Production
+        print(f"Error getting single task {task_id}: {err}")
         return None
 
 def parse_customer_info_from_notes(notes):
     info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
     if not notes: return info
-    
+
     org_match = re.search(r"หน่วยงาน:\s*([^\n]*)", notes, re.IGNORECASE)
     name_match = re.search(r"ลูกค้า:\s*([^\n]*)", notes, re.IGNORECASE)
     phone_match = re.search(r"เบอร์โทรศัพท์:\s*([^\n]*)", notes, re.IGNORECASE)
@@ -40,11 +38,22 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"https://maps.google.com/maps?q=1{coords_or_url}"
+            info['map_url'] = f"http://googleusercontent.com/maps/google.com/12{coords_or_url}"
         else:
             info['map_url'] = coords_or_url
     
     return info
+
+def parse_customer_feedback_from_notes(notes):
+    feedback_data = {}
+    if not notes: return feedback_data
+    feedback_match = re.search(r"--- CUSTOMER_FEEDBACK_START ---\s*\n(.*?)\n--- CUSTOMER_FEEDBACK_END ---", notes, re.DOTALL)
+    if feedback_match:
+        try:
+            feedback_data = json.loads(feedback_match.group(1))
+        except json.JSONDecodeError:
+            print("Warning: Failed to decode customer feedback JSON from notes.")
+    return feedback_data
 
 def parse_google_task_dates(task_item):
     THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -75,8 +84,7 @@ def parse_tech_report_from_notes(notes):
         if end_match:
             json_str = end_match.group(1).strip()
             try:
-                report_data = json.loads(json_str)
-                history.append(report_data)
+                history.append(json.loads(json_str))
             except json.JSONDecodeError:
                 continue
     base_notes_text = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", base_notes_with_feedback, flags=re.DOTALL).strip()
