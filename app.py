@@ -71,7 +71,7 @@ import atexit
 
 from flask_cors import CORS
 
-# from liff_views import liff_bp
+from liff_views import liff_bp
 
 TEXT_SNIPPETS = {
     'task_details': [
@@ -3655,7 +3655,6 @@ def public_task_report(task_id):
     response.headers['Expires'] = '0'
     return response
 
-from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')
 
 @app.route('/generate_public_report_qr/<task_id>')
