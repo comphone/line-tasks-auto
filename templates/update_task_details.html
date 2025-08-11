@@ -49,6 +49,27 @@
     .action-button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
     .action-btn { display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; font-size: 1rem; font-weight: 500; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: all 0.2s ease-in-out; text-decoration: none; }
     .action-btn:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); }
+    .action-btn i { margin-right: 0.5rem; }
+    
+    /* --- CSS for Equipment Modal --- */
+    .equipment-item {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 0.5rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .equipment-item:last-child {
+        border-bottom: none;
+    }
+    .equipment-info {
+        flex-grow: 1;
+        display: flex;
+        align-items: center;
+    }
+    .equipment-quantity {
+        width: 120px;
+        flex-shrink: 0;
+    }
 </style>
 {% endblock %}
 
@@ -57,7 +78,7 @@
     
     <div id="js-flash-message-container"></div>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items: center mb-4">
         <h1 class="h2 mb-0">📝 จัดการงาน</h1>
         <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
@@ -444,11 +465,9 @@
     };
 
     window.showActionCard = (cardIdToShow) => {
-        // ซ่อนทุก action card
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
         document.getElementById('chooseActionCard').style.display = 'none';
         
-        // แสดง card ที่ต้องการ
         const cardToShow = document.getElementById(cardIdToShow);
         if (cardToShow) {
             cardToShow.style.display = 'block';
@@ -485,13 +504,10 @@
         if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
         if (hiddenInput) hiddenInput.value = selectedNames.join(',');
         
-        // เปิดใช้งานปุ่ม Submit ถ้าเลือกช่างแล้ว
         updateSubmitButtonState();
-        
         technicianSelectionModal.hide();
     };
 
-    // ฟังก์ชันสำหรับเปิดใช้งาน/ปิดใช้งานปุ่ม Submit
     function updateSubmitButtonState() {
         const progressBtn = document.getElementById('saveProgressBtn');
         const technicianInput = document.getElementById('technicians_progress');
@@ -500,7 +516,93 @@
         }
     }
 
-    // ฟังก์ชันสำหรับ Lightbox
+    // --- ✅✅✅ START: NEW FUNCTIONS FOR EQUIPMENT CATALOG ✅✅✅ ---
+    window.openEquipmentModal = (targetPrefix) => {
+        currentEquipmentTargetPrefix = targetPrefix;
+        const hiddenInput = document.getElementById(`equipment_used_${targetPrefix}`);
+        let currentSelection = [];
+        try {
+            if (hiddenInput && hiddenInput.value) {
+                currentSelection = JSON.parse(hiddenInput.value);
+            }
+        } catch (e) { console.error("Could not parse current equipment selection", e); }
+        
+        renderEquipmentList(equipmentCatalog, currentSelection);
+        equipmentCatalogModal.show();
+    };
+    
+    function renderEquipmentList(items, selection) {
+        const container = document.getElementById('equipment-catalog-list');
+        container.innerHTML = '';
+        if (items.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลในแคตตาล็อกอุปกรณ์</p>';
+            return;
+        }
+
+        items.forEach((item, index) => {
+            const selectedItem = selection.find(s => s.item === item.item_name);
+            const isChecked = !!selectedItem;
+            const quantity = selectedItem ? selectedItem.quantity : 1;
+            
+            const itemHtml = `
+                <div class="equipment-item" data-item-name="${item.item_name.toLowerCase()}">
+                    <div class="equipment-info">
+                        <input class="form-check-input me-3" type="checkbox" id="equip-check-${index}" data-item-name="${item.item_name}" ${isChecked ? 'checked' : ''}>
+                        <label class="form-check-label" for="equip-check-${index}">
+                            <strong>${item.item_name}</strong>
+                            <br><small class="text-muted">ราคา: ${item.price} บาท / ${item.unit}</small>
+                        </label>
+                    </div>
+                    <div class="equipment-quantity">
+                        <input type="number" class="form-control form-control-sm" id="equip-qty-${index}" value="${quantity}" min="0" step="any" ${!isChecked ? 'disabled' : ''}>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', itemHtml);
+        });
+
+        // Add event listeners to new elements
+        container.querySelectorAll('.form-check-input').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const qtyInput = e.target.closest('.equipment-item').querySelector('.form-control');
+                qtyInput.disabled = !e.target.checked;
+            });
+        });
+    }
+
+    window.confirmEquipmentSelection = () => {
+        const selectedItems = [];
+        document.querySelectorAll('#equipment-catalog-list .equipment-item').forEach((item, index) => {
+            const checkbox = item.querySelector(`#equip-check-${index}`);
+            if (checkbox.checked) {
+                const qtyInput = item.querySelector(`#equip-qty-${index}`);
+                selectedItems.push({
+                    item: checkbox.dataset.itemName,
+                    quantity: parseFloat(qtyInput.value) || 0
+                });
+            }
+        });
+        
+        const hiddenInput = document.getElementById(`equipment_used_${currentEquipmentTargetPrefix}`);
+        hiddenInput.value = JSON.stringify(selectedItems);
+        
+        renderSelectedEquipmentSummary(currentEquipmentTargetPrefix, selectedItems);
+        equipmentCatalogModal.hide();
+    };
+
+    function renderSelectedEquipmentSummary(targetPrefix, items) {
+        const container = document.getElementById(`selected-equipment-${targetPrefix}`);
+        if (!container) return;
+
+        if (items.length === 0) {
+            container.innerHTML = '<p class="text-muted small">ยังไม่ได้เลือกอุปกรณ์</p>';
+        } else {
+            const listHtml = items.map(item => `<li>${item.item} (จำนวน: ${item.quantity})</li>`).join('');
+            container.innerHTML = `<ul class="list-unstyled small">${listHtml}</ul>`;
+        }
+    }
+    // --- ✅✅✅ END: NEW FUNCTIONS FOR EQUIPMENT CATALOG ✅✅✅ ---
+
     window.openLightboxById = (fileId) => {
         currentLightboxImages = [];
         techReportsHistory.forEach(report => {
@@ -553,7 +655,6 @@
         document.getElementById('lightboxModal').style.display = "none";
     };
 
-    // ฟังก์ชันสำหรับแก้ไขข้อความรายงาน
     window.openEditTextModal = (reportIndex) => {
         if (!techReportsHistory[reportIndex]) return;
         
@@ -565,7 +666,6 @@
         editReportTextModal.show();
     };
 
-    // ฟังก์ชันสำหรับแก้ไขไฟล์แนบ
     window.openEditAttachmentsModal = (reportIndex) => {
         if (!techReportsHistory[reportIndex]) return;
         
@@ -594,7 +694,6 @@
         editReportModal.show();
     };
 
-    // ฟังก์ชันสำหรับลบรายงาน
     window.deleteReport = async (reportIndex) => {
         if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
             return;
@@ -621,7 +720,6 @@
         }
     };
 
-    // ฟังก์ชันส่งฟอร์ม
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
         if (!form.checkValidity()) {
@@ -707,7 +805,6 @@
         }
     };
     
-    // ฟังก์ชันสำหรับ render ประวัติงาน
     function renderHistorySection() {
         const historyContainer = document.getElementById('history-section-body');
         
@@ -796,75 +893,41 @@
         }
     }
 
-    // --- Event Listeners และ Initialization ---
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize LIFF และดึง User ID
         if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE !== 'None' && LIFF_ID_TO_USE.trim() !== '') {
             liff.init({ liffId: LIFF_ID_TO_USE })
-                .then(() => {
-                    if (liff.isLoggedIn()) {
-                        return liff.getProfile();
-                    } else {
-                        return null;
-                    }
-                })
-                .then(profile => {
-                    if (profile) {
-                        technicianLineUserId = profile.userId;
-                    }
-                })
-                .catch(err => {
-                    console.error("LIFF initialization failed", err);
-                });
+                .then(() => liff.isLoggedIn() ? liff.getProfile() : null)
+                .then(profile => { if (profile) technicianLineUserId = profile.userId; })
+                .catch(err => console.error("LIFF initialization failed", err));
         }
         
-        // Initialize Bootstrap Modals
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
 
-        // Event listener สำหรับปุ่มอัปเดตตำแหน่ง
-        const updateLocationBtn = document.getElementById('updateLocationBtn');
-        if (updateLocationBtn) {
-            updateLocationBtn.addEventListener('click', function() {
-                // Logic to get location and fill the form
-            });
-        }
-
-        // Event listener สำหรับการเปลี่ยนแปลงช่าง (เพื่อเปิดใช้งานปุ่ม Submit)
         const technicianInputs = ['technicians_progress', 'technicians_final', 'technicians_reschedule'];
         technicianInputs.forEach(inputId => {
             const input = document.getElementById(inputId);
-            if (input) {
-                input.addEventListener('change', updateSubmitButtonState);
-            }
+            if (input) input.addEventListener('change', updateSubmitButtonState);
         });
 
-        // Event listener สำหรับฟอร์มแก้ไขข้อความ
         const editTextForm = document.getElementById('editReportTextForm');
         if (editTextForm) {
             editTextForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
-                
                 const reportIndex = this.dataset.reportIndex;
                 const newSummary = document.getElementById('editTextarea').value.trim();
-                
                 if (!newSummary) {
                     window.flashMessage('กรุณากรอกข้อความสรุป', 'warning');
                     return;
                 }
-                
                 try {
                     const response = await fetch(`/api/task/${taskId}/edit_report_text/${reportIndex}`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken
-                        },
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
                         body: JSON.stringify({ summary: newSummary })
                     });
-                    
                     const result = await response.json();
                     if (response.ok && result.status === 'success') {
                         window.flashMessage(result.message, 'success');
@@ -879,31 +942,36 @@
             });
         }
 
-        // 🎯 MAIN RENDER: เรนเดอร์ประวัติงาน
         renderHistorySection();
         
-        // Initialize Tribute (Text Snippets)
         if (typeof Tribute !== 'undefined' && progressReportSnippets && progressReportSnippets.length > 0) {
             const tribute = new Tribute({
                 values: progressReportSnippets,
                 trigger: '/',
-                selectTemplate: function (item) {
-                    return item.original.value;
-                },
-                menuItemTemplate: function(item) {
-                    return `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`;
-                }
+                selectTemplate: item => item.original.value,
+                menuItemTemplate: item => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`
             });
-            
-            // แนบ Tribute กับ textarea ทั้งหมด
-            document.querySelectorAll('textarea').forEach(textarea => {
-                tribute.attach(textarea);
-            });
+            document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
         }
         
-        // Initial button state update
         updateSubmitButtonState();
-        
+        renderSelectedEquipmentSummary('progress', []);
+        renderSelectedEquipmentSummary('final', []);
+
+        // Add event listener for equipment search
+        const searchInput = document.getElementById('equipment-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('keyup', (e) => {
+                const filter = e.target.value.toLowerCase();
+                document.querySelectorAll('.equipment-item').forEach(item => {
+                    if (item.dataset.itemName.includes(filter)) {
+                        item.style.display = 'flex';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+            });
+        }
     });
 </script>
 {% endblock %}
