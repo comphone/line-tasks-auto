@@ -32,7 +32,7 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-10 col-md-12">
-        <form id="createTaskForm" class="needs-validation" novalidate onsubmit="handleFormSubmission(event, this)">
+        <form id="createTaskForm" class="needs-validation" novalidate onsubmit="window.handleFormSubmission(event, this)">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="uploaded_attachments_json" id="uploaded_attachments_json" value="[]">
 
@@ -138,15 +138,16 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
     <script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
     <script>
-        let customerDatabase = [];
+        // [โครงสร้างที่ถูกต้อง] ย้ายโค้ดทั้งหมดเข้ามาใน DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', function() {
+            let customerDatabase = [];
 
-        document.addEventListener('DOMContentLoaded', async function() {
-			try {
-				const response = await fetch("{{ url_for('api_customers') }}");
-				if (response.ok) {
-					customerDatabase = await response.json();
-					
-					const tributeCustomer = new Tribute({
+            // --- ส่วนของการตั้งค่าลูกค้าและ Autocomplete ---
+            fetch("{{ url_for('api_customers') }}")
+                .then(response => response.ok ? response.json() : Promise.reject('Failed to load customers'))
+                .then(data => {
+                    customerDatabase = data;
+                    const tributeCustomer = new Tribute({
 						values: customerDatabase,
 						menuShowMinLength: 2,
 						lookup: item => `${item.name} ${item.organization || ''} ${item.phone || ''}`,
@@ -158,137 +159,156 @@
 						},
 						noMatchTemplate: function () { return '<li class="p-2 text-muted">ไม่พบลูกค้า (พิมพ์เพื่อสร้างใหม่ได้)</li>'; },
 					});
+                    tributeCustomer.attach(document.getElementById("customer"));
 
-					tributeCustomer.attach(document.getElementById("customer"));
-
-					document.getElementById('customer').addEventListener('tribute-replaced', function (e) {
+                    document.getElementById('customer').addEventListener('tribute-replaced', function (e) {
 						const selectedCustomer = e.detail.item.original;
 						document.getElementById('organization_name').value = selectedCustomer.organization || '';
 						document.getElementById('phone').value = selectedCustomer.phone || '';
 						document.getElementById('address').value = selectedCustomer.address || '';
 						document.getElementById('latitude_longitude').value = selectedCustomer.map_url || '';
 					});
-				}
-			} catch (error) {
-				console.error("Error fetching customer database:", error);
-			}
+                })
+                .catch(error => console.error("Error fetching customer database:", error));
             
+            // --- ส่วนของการตั้งค่า Date Picker ---
             flatpickr(".datetimepicker", {
                 enableTime: true,
                 dateFormat: "Y-m-d H:i",
                 locale: "th"
             });
 
+            // --- ส่วนของการตั้งค่าข้อความด่วน ---
             const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }};
             if (taskDetailSnippets && taskDetailSnippets.length > 0) {
                 const tributeTask = new Tribute({
                     values: taskDetailSnippets,
                     trigger: '/',
-                    selectTemplate: function (item) {
-                        return item.original.value;
-                    },
-                    menuItemTemplate: function(item) {
-                        return `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`;
-                    }
+                    selectTemplate: item => item.original.value,
+                    menuItemTemplate: item => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`
                 });
                 tributeTask.attach(document.getElementById('task_title'));
             }
 
+            // --- ส่วนของ Geolocation ---
             const shareBtn = document.getElementById('shareLocationBtn');
             const locationInput = document.getElementById('latitude_longitude');
             const statusText = document.getElementById('shareLocationStatus');
 
             if (shareBtn) {
-                shareBtn.addEventListener('click', function() {
-                    statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
-                    navigator.geolocation.getCurrentPosition(
-                        (position) => {
-                            const lat = position.coords.latitude;
-                            const lon = position.coords.longitude;
-                            locationInput.value = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
-                            statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
-                            statusText.classList.add('text-success');
-                        },
-                        (error) => {
-                            statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้: ' + error.message;
-                            statusText.classList.add('text-danger');
-                        }
-                    );
-                });
-            }
-        });
-        
-    async function handleFormSubmission(event, form) {
-        event.preventDefault();
-        if (!form.checkValidity()) {
-            form.classList.add('was-validated');
-            return;
-        }
+				shareBtn.addEventListener('click', function () {
+					if (!navigator.geolocation) {
+						statusText.textContent = 'เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง';
+						statusText.className = 'form-text text-danger';
+						return;
+					}
 
-        const submitButton = form.querySelector('button[type="submit"]');
-        submitButton.disabled = true;
-        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+					shareBtn.disabled = true; 
+					statusText.className = 'form-text text-muted';
+					statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
 
-        const uploadStatusBox = document.getElementById('upload-status');
-        const mainFormData = new FormData(form);
-        const files = Array.from(mainFormData.getAll('files[]'));
-        let uploadedAttachments = [];
+					navigator.geolocation.getCurrentPosition(
+						(position) => {
+							const lat = position.coords.latitude;
+							const lon = position.coords.longitude;
+							
+							// --- VVV [แก้ไขล่าสุด] แก้ไขการสร้าง URL ให้ถูกต้อง 100% ---
+							locationInput.value = `https://maps.google.com/maps?q=0{lat},${lon}`;
+							
+							statusText.textContent = 'ใส่ตำแหน่งปัจจุบันสำเร็จ!';
+							statusText.className = 'form-text text-success';
+							shareBtn.disabled = false;
+						},
+						(error) => {
+							statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้: ' + error.message;
+							statusText.className = 'form-text text-danger';
+							shareBtn.disabled = false;
+						},
+						{
+							enableHighAccuracy: true,
+							timeout: 10000,
+							maximumAge: 0
+						}
+					);
+				});
+			}
 
-        if (files.length > 0 && files[0].size > 0) {
-            uploadStatusBox.style.display = 'inline-block';
-            for (let i = 0; i < files.length; i++) {
-                uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
-                const fileFormData = new FormData();
-                fileFormData.append('file', files[i]);
-                fileFormData.append('task_id', 'new_task_placeholder');
-                
-                try {
-                    const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
-                        method: 'POST', 
-                        body: fileFormData,
-                        headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
-                    });
-                    const result = await response.json();
-                    if (response.ok) {
-                        uploadedAttachments.push(result.file_info);
-                    } else {
-                        throw new Error(result.message);
-                    }
-                } catch (error) {
-                    alert(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`);
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
-                    uploadStatusBox.style.display = 'none';
+            // --- ส่วนของการจัดการ Form Submission ---
+            // [โครงสร้างที่ถูกต้อง] ผูกฟังก์ชันเข้ากับ window object เพื่อให้ onsubmit ใน HTML เรียกใช้ได้
+            window.handleFormSubmission = async function(event, form) {
+                event.preventDefault();
+                if (!form.checkValidity()) {
+                    form.classList.add('was-validated');
                     return;
                 }
-            }
-        }
 
-        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
-        if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังสร้างงาน...';
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+                submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
-        try {
-            // ✅✅✅ แก้ไข: เรียก API route ที่ถูกต้อง ✅✅✅
-            const response = await fetch("{{ url_for('api_create_task') }}", {
-                method: 'POST',
-                body: mainFormData
-            });
-            
-            const result = await response.json();
-            if (response.ok) {
-               alert(result.message);
-               if(result.redirect_url) {
-                   window.location.href = result.redirect_url;
-               }
-            } else {
-               throw new Error(result.message);
-            }
-        } catch (error) {
-            alert(`เกิดข้อผิดพลาด: ${error.message}`);
-            submitButton.disabled = false;
-            submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
-            if (uploadStatusBox) uploadStatusBox.style.display = 'none';
-        }
-    }
-</script>
+                const uploadStatusBox = document.getElementById('upload-status');
+                const mainFormData = new FormData(form);
+                const files = Array.from(mainFormData.getAll('files[]'));
+                let uploadedAttachments = [];
+
+                if (files.length > 0 && files[0].size > 0) {
+                    uploadStatusBox.style.display = 'inline-block';
+                    for (let i = 0; i < files.length; i++) {
+                        uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
+                        const fileFormData = new FormData();
+                        fileFormData.append('file', files[i]);
+                        fileFormData.append('task_id', 'new_task_placeholder');
+                        
+                        try {
+                            const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
+                                method: 'POST', 
+                                body: fileFormData,
+                                headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
+                            });
+                            const result = await response.json();
+                            if (response.ok) {
+                                uploadedAttachments.push(result.file_info);
+                            } else {
+                                throw new Error(result.message);
+                            }
+                        } catch (error) {
+                            alert(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`);
+                            submitButton.disabled = false;
+                            submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
+                            uploadStatusBox.style.display = 'none';
+                            return;
+                        }
+                    }
+                }
+                
+                mainFormData.set('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+                mainFormData.delete('files[]');
+
+                if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังสร้างงาน...';
+
+                try {
+                    const response = await fetch("{{ url_for('api_create_task') }}", {
+                        method: 'POST',
+                        body: mainFormData
+                    });
+                    
+                    const result = await response.json();
+                    if (response.ok) {
+                       alert(result.message);
+                       if(result.redirect_url) {
+                           window.location.href = result.redirect_url;
+                       }
+                    } else {
+                       throw new Error(result.message);
+                    }
+                } catch (error) {
+                    alert(`เกิดข้อผิดพลาด: ${error.message}`);
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
+                    if (uploadStatusBox) uploadStatusBox.style.display = 'none';
+                }
+            }; // สิ้นสุดฟังก์ชัน handleFormSubmission
+
+        }); // สิ้นสุด DOMContentLoaded
+    </script>
 {% endblock %}

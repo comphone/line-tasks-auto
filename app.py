@@ -561,38 +561,85 @@ def api_create_task():
         app.logger.error(f"Error in api_create_task: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
+# 1. (เพิ่ม) Route สำหรับแสดงฟอร์มสร้างงานเคลม
+@liff_bp.route('/external_claim/new/from/<ref_id>')
+def create_external_claim_form(ref_id):
+    original_task_raw = get_single_task(ref_id)
+    if not original_task_raw:
+        abort(404)
+
+    # ดึงข้อมูลที่จำเป็นจาก Task เดิม
+    original_task = parse_google_task_dates(original_task_raw)
+    original_task['customer'] = parse_customer_info_from_notes(original_task.get('notes', ''))
+    
+    # ดึงรายการอุปกรณ์ทั้งหมดที่เคยใช้ในงานเดิม
+    history, _ = parse_tech_report_from_notes(original_task.get('notes', ''))
+    all_equipment = []
+    for report in history:
+        if isinstance(report.get('equipment_used'), list):
+            all_equipment.extend(report.get('equipment_used'))
+    
+    # ทำให้รายการอุปกรณ์ไม่ซ้ำกัน (อาจต้องมี Logic รวมจำนวนถ้าชื่อซ้ำ)
+    unique_equipment = list({v['item']:v for v in all_equipment}.values())
+
+    return render_template('external_job_form.html', 
+                           original_task=original_task, 
+                           original_task_equipment=unique_equipment)
+
+
+# 2. (แก้ไข) API สำหรับรับข้อมูลการสร้างงานภายนอก/งานเคลม
 @app.route('/api/external_tasks/create', methods=['POST'])
 def api_create_external_task():
     try:
-        task_title = f"[งานภายนอก] {str(request.form.get('task_title', '')).strip()}"
+        # รับข้อมูลจากฟอร์ม
+        ref_task_id = request.form.get('ref_task_id') # รหัสงานเดิม
         customer_name = str(request.form.get('customer', '')).strip()
         external_partner = str(request.form.get('external_partner', '')).strip()
+        claimed_equipment = request.form.getlist('claimed_equipment') # รายการอุปกรณ์ที่เลือก
+        problem_details = str(request.form.get('task_title', '')).strip()
+        phone = str(request.form.get('phone', '')).strip()
 
-        if not task_title or not customer_name:
-            return jsonify({'status': 'error', 'message': 'กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน'}), 400
+        if not customer_name or not external_partner or not problem_details:
+            return jsonify({'status': 'error', 'message': 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน'}), 400
 
+        # สร้าง Task Title ให้อ่านง่าย
+        task_title = f"[งานเคลม] {', '.join(claimed_equipment) if claimed_equipment else problem_details}"
+        
+        # สร้าง Notes
         notes_lines = [
             f"ลูกค้า: {customer_name}",
+            f"เบอร์โทรศัพท์: {phone}",
             f"ผู้รับผิดชอบภายนอก: {external_partner}",
-            f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
-            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
+            "---",
+            "รายละเอียดปัญหา:",
+            problem_details,
         ]
-        notes = "\n".join(filter(None, notes_lines))
+        if claimed_equipment:
+            notes_lines.append("\nอุปกรณ์ที่ส่งเคลม:")
+            notes_lines.extend([f"- {item}" for item in claimed_equipment])
+        
+        # [สำคัญ] เพิ่มการอ้างอิงถึงงานเดิม
+        if ref_task_id:
+            notes_lines.append(f"\nอ้างอิงงานติดตั้ง: {ref_task_id}")
 
+        notes = "\n".join(notes_lines)
+
+        # จัดการวันกำหนดส่งกลับ
         due_date_gmt = None
         return_date_str = str(request.form.get('return_date', '')).strip()
         if return_date_str:
             try:
-                dt_local = THAILAND_TZ.localize(date_parse(f"{return_date_str}T09:00:00")) # ตั้งเวลา 9 โมงเช้า
+                dt_local = THAILAND_TZ.localize(date_parse(f"{return_date_str}T09:00:00"))
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             except ValueError:
                 return jsonify({'status': 'error', 'message': 'รูปแบบวันกำหนดส่งกลับไม่ถูกต้อง'}), 400
 
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
+        
         if new_task:
             cache.clear()
-            # สามารถเพิ่มการแจ้งเตือนสำหรับงานภายนอกที่นี่ได้
-            return jsonify({'status': 'success', 'message': 'สร้างงานภายนอกเรียบร้อยแล้ว!', 'redirect_url': url_for('liff.task_details', task_id=new_task['id'])})
+            # อาจจะต้องเพิ่ม Logic เพื่อบันทึกใน Task เดิมว่ามีงานเคลมนี้ด้วย
+            return jsonify({'status': 'success', 'message': 'สร้างงานเคลมเรียบร้อยแล้ว!', 'redirect_url': url_for('liff.task_details', task_id=new_task['id'])})
         else:
             return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการสร้างงานใน Google Tasks'}), 500
     except Exception as e:
