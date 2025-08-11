@@ -16,7 +16,7 @@ import tempfile
 import uuid
 from queue import Queue
 import threading
-import requests # เพิ่ม import requests สำหรับเรียก API ภายในแอปตัวเอง
+import requests
 import random
 from PIL import Image
 
@@ -27,26 +27,16 @@ from flask import Flask, request, render_template, redirect, url_for, abort, fla
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 from cachetools import cached, TTLCache
-from geopy.distance import geodesic # สำหรับคำนวณระยะทาง
+from geopy.distance import geodesic
 from urllib.parse import urlparse, parse_qs, unquote, quote_plus
 
 import qrcode
 import base64
-from urllib.parse import quote_plus # สำหรับเข้ารหัส URL parameters
 from linebot.v3.messaging import (
-    Configuration,
-    ApiClient,
-    MessagingApi,
-    ReplyMessageRequest,
-    PushMessageRequest,
-    TextMessage,
-    FlexMessage,
-    QuickReply,
-    QuickReplyItem
+    Configuration, ApiClient, MessagingApi, ReplyMessageRequest,
+    PushMessageRequest, TextMessage, FlexMessage, QuickReply, QuickReplyItem
 )
-from linebot.v3.messaging.models import (
-    URIAction
-)
+from linebot.v3.messaging.models import URIAction
 from linebot.v3.webhooks import (
     MessageEvent, TextMessageContent, PostbackEvent,
     ImageMessageContent, FileMessageContent,
@@ -70,137 +60,59 @@ from apscheduler.triggers.cron import CronTrigger
 import atexit
 
 from flask_cors import CORS
+
+# --- [แก้ไข] จัดระเบียบ Import ทั้งหมด ---
+# 1. Import จากไฟล์ config.py
+from config import (
+    LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, UPLOAD_FOLDER, THAILAND_TZ,
+    GOOGLE_TASKS_LIST_ID, GOOGLE_DRIVE_FOLDER_ID, LINE_RATE_LIMIT_PER_MINUTE, SCOPES
+)
+
+# 2. Import จากไฟล์ utils.py (รวมไว้ที่เดียว)
+from utils import (
+    get_app_settings, get_single_task, parse_google_task_dates,
+    parse_customer_info_from_notes, parse_tech_report_from_notes,
+    save_technician_locations, load_technician_locations
+)
+
+# 3. Import Blueprint จาก liff_views.py
 from liff_views import liff_bp
+# --- สิ้นสุดการจัดระเบียบ Import ---
 
-from utils import get_single_task, parse_google_task_dates, parse_customer_info_from_notes, parse_tech_report_from_notes
-
-TEXT_SNIPPETS = {
-    'task_details': [
-        {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
-    ],
-    'progress_reports': [
-        {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
-        {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
-        {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
-        {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
-    ]
-}
 
 SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        integrations=[
-            FlaskIntegration(),
-        ],
+        integrations=[FlaskIntegration()],
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0
     )
 
 app = Flask(__name__, static_folder='static')
-CORS(app) # --- เพิ่มบรรทัดนี้เพื่อเปิดใช้งาน CORS ---
+CORS(app)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
-app.jinja_env.filters['dateutil_parse'] = date_parse
 csrf = CSRFProtect(app)
 
-# app.register_blueprint(liff_bp, url_prefix='/')
-
-UPLOAD_FOLDER = 'static/uploads'
+# --- [แก้ไข] ตั้งค่า Config โดยใช้ตัวแปรที่ Import มา ---
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
-MAX_FILE_SIZE_MB = 500
-MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+app.jinja_env.filters['dateutil_parse'] = date_parse
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# Get the variable and remove leading/trailing whitespace
-LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '').strip()
-# If quotes exist after stripping, remove them and strip again
-if LINE_CHANNEL_ACCESS_TOKEN.startswith('"') and LINE_CHANNEL_ACCESS_TOKEN.endswith('"'):
-    LINE_CHANNEL_ACCESS_TOKEN = LINE_CHANNEL_ACCESS_TOKEN[1:-1].strip()
-
-LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET', '').strip()
-# VVVV เพิ่ม 2 บรรทัดนี้ VVVV
-if LINE_CHANNEL_SECRET.startswith('"') and LINE_CHANNEL_SECRET.endswith('"'):
-    LINE_CHANNEL_SECRET = LINE_CHANNEL_SECRET[1:-1].strip()
-
+# --- LINE Bot API Setup ---
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
-# Initialize LINE Bot API v3 objects once and reuse them globally
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 api_client = ApiClient(configuration)
-line_messaging_api = MessagingApi(api_client) # This object will be reused
+line_messaging_api = MessagingApi(api_client)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-app.logger.info(f"======== DEBUG LINE CREDENTIALS ========")
-app.logger.info(f"Channel Secret configured: {bool(LINE_CHANNEL_SECRET)}")
-app.logger.info(f"Secret Length: {len(LINE_CHANNEL_SECRET)}")
-app.logger.info(f"Secret (masked): {'*' * (len(LINE_CHANNEL_SECRET) - 4) + LINE_CHANNEL_SECRET[-4:] if len(LINE_CHANNEL_SECRET) > 4 else '****'}")
-app.logger.info(f"Access Token configured: {bool(LINE_CHANNEL_ACCESS_TOKEN)}")
-app.logger.info(f"Access Token (masked): {'*' * (len(LINE_CHANNEL_ACCESS_TOKEN) - 6) + LINE_CHANNEL_ACCESS_TOKEN[-6:] if len(LINE_CHANNEL_ACCESS_TOKEN) > 6 else '****'}")
-
-def check_line_bot_configuration():
-    """ตรวจสอบการตั้งค่า LINE Bot"""
-    issues = []
-    
-    if not LINE_CHANNEL_ACCESS_TOKEN:
-        issues.append("LINE_CHANNEL_ACCESS_TOKEN ไม่ได้ตั้งค่า")
-    elif len(LINE_CHANNEL_ACCESS_TOKEN) < 50:
-        issues.append("LINE_CHANNEL_ACCESS_TOKEN อาจไม่ถูกต้อง (สั้นเกินไป)")
-        
-    if not LINE_CHANNEL_SECRET:
-        issues.append("LINE_CHANNEL_SECRET ไม่ได้ตั้งค่า")
-    elif len(LINE_CHANNEL_SECRET) != 32:
-        issues.append(f"LINE_CHANNEL_SECRET ไม่ถูกต้อง (ความยาว: {len(LINE_CHANNEL_SECRET)}, ควรเป็น 32)")
-        
-    return issues     
-
-# ตรวจสอบปัญหา
-line_issues = check_line_bot_configuration()
-if line_issues:
-    app.logger.error("LINE Bot Configuration Issues:")
-    for issue in line_issues:
-        app.logger.error(f"  - {issue}")
-else:
-    app.logger.info("LINE Bot configuration looks good!")
-    
-app.logger.info(f"==========================================")
-
-LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
-
-# VVVV --- [เพิ่มโค้ด Debug นี้เข้าไป] --- VVVV
-app.logger.info("=" * 30)
-app.logger.info(f"DEBUG: LIFF_ID_FORM loaded from environment: '{LIFF_ID_FORM}'")
-app.logger.info(f"DEBUG: Type of LIFF_ID_FORM is: {type(LIFF_ID_FORM)}")
-app.logger.info("=" * 30)
-# ^^^^ --- [สิ้นสุดโค้ด Debug] --- ^^^^
-
-# --- NEW: เพิ่ม LIFF ID สำหรับหน้าอัปเดตตำแหน่งช่าง ---
-LIFF_ID_TECHNICIAN_LOCATION = os.environ.get('LIFF_ID_TECHNICIAN_LOCATION')
-# ----------------------------------------------------
-LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
-GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
-
-LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 100))
-
-if not GOOGLE_DRIVE_FOLDER_ID:
-    app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
-if not LIFF_ID_FORM:
-    app.logger.warning("LIFF_ID_FORM environment variable is not set. LIFF features will not work.")
-if not LINE_LOGIN_CHANNEL_ID:
-    app.logger.warning("LINE_LOGIN_CHANNEL_ID environment variable is not set. LIFF initialization might fail.")
-
-SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/drive.file']
-THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
-
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
-#<editor-fold desc="Helper and Utility Functions">
 
 class LineMessageQueue:
     def __init__(self, max_per_minute=100):
@@ -263,13 +175,6 @@ message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
 threading.Thread(target=message_queue.process_queue, daemon=True).start()
 app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PER_MINUTE} messages/minute.")
 
-SETTINGS_FILE = 'settings.json'
-_DEFAULT_APP_SETTINGS_STORE = {
-    'report_times': {
-        'appointment_reminder_hour_thai': 7,
-        'outstanding_report_hour_thai': 20,
-        'customer_followup_hour_thai': 9
-    },
     'line_recipients': {
         'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
         'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
@@ -297,117 +202,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
     'daily_reminder_task_line': "..."
     }
 }
-
-def load_settings_from_file():
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            app.logger.error(f"Error handling settings.json: {e}")
-            if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) == 0:
-                os.remove(SETTINGS_FILE)
-                app.logger.warning(f"Empty settings.json deleted. Using default settings.")
-    return None
-
-def save_settings_to_file(settings_data):
-    try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
-        return True
-    except IOError as e:
-        app.logger.error(f"Error writing to settings.json: {e}")
-        return False
-
-def get_app_settings():
-    app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
-    loaded_settings = load_settings_from_file()
-    
-    if loaded_settings:
-        for key, default_value in app_settings.items():
-            if key in loaded_settings:
-                if isinstance(default_value, dict) and isinstance(loaded_settings[key], dict):
-                    app_settings[key].update(loaded_settings[key])
-                else:
-                    app_settings[key] = loaded_settings[key]
-    else:
-        save_settings_to_file(app_settings)
-        
-    equipment_catalog = app_settings.get('equipment_catalog', [])
-    app_settings['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
-    
-    return app_settings
-    
-def render_template_message(template_key, task):
-    """
-    ฟังก์ชันกลางสำหรับสร้างข้อความจาก Template โดยใช้ข้อมูลจาก Task
-    """
-    if not task:
-        return ""
-        
-    settings = get_app_settings()
-    template_str = settings.get('message_templates', {}).get(template_key, '')
-    if not template_str:
-        return f"ไม่พบ Template สำหรับ '{template_key}'"
-
-    # ดึงข้อมูลที่ต้องใช้บ่อยๆ
-    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-    parsed_dates = parse_google_task_dates(task)
-    shop_info = settings.get('shop_info', {})
-    task_url = url_for('liff.task_details', task_id=task.get('id'), _external=True)
-
-    # สร้าง Dictionary ของข้อมูลที่จะใช้แทนที่
-    replacements = {
-        '[customer_name]': customer_info.get('name', '-'),
-        '[customer_phone]': customer_info.get('phone', '-'),
-        '[customer_address]': customer_info.get('address', '-'),
-        '[task_title]': task.get('title', '-'),
-        '[due_date]': parsed_dates.get('due_formatted', '-'),
-        '[map_url]': customer_info.get('map_url', '-'),
-        '[shop_phone]': shop_info.get('contact_phone', '-'),
-        '[shop_line_id]': shop_info.get('line_id', '-'),
-        '[task_url]': task_url
-    }
-
-    # วนลูปเพื่อแทนที่ค่าทั้งหมด
-    for placeholder, value in replacements.items():
-        template_str = template_str.replace(placeholder, str(value))
-        
-    return template_str    
-
-def save_app_settings(settings_data):
-    current_settings = get_app_settings()
-    
-    for key, value in settings_data.items():
-        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
-            current_settings[key].update(value)
-        else:
-            current_settings[key] = value
-            
-    return save_settings_to_file(current_settings)
-
-# --- เพิ่ม 2 ฟังก์ชันนี้เข้าไป ---
-LOCATIONS_FILE = 'technician_locations.json'
-
-def load_technician_locations():
-    if not os.path.exists(LOCATIONS_FILE):
-        return {}
-    try:
-        with open(LOCATIONS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return {}
-
-def save_technician_locations(locations_data):
-    try:
-        with open(LOCATIONS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(locations_data, f, ensure_ascii=False, indent=4)
-        return True
-    except IOError:
-        return False
-
-def safe_execute(request_object):
-    if hasattr(request_object, 'execute'):
-        return request_object.execute()
-    return request_object
 
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     max_retries = 3
@@ -880,7 +674,6 @@ def token_status():
             'detail': 'User Token JSON might be invalid or corrupted.'
         })
 
-
 @app.route('/debug/liff')
 def debug_liff():
     """ตรวจสอบการตั้งค่า LIFF IDs"""
@@ -952,44 +745,6 @@ def find_or_create_drive_folder(name, parent_id):
     except HttpError as e:
         app.logger.error(f"Error finding or creating folder '{name}': {e}")
         return None
-
-@cached(cache)
-def get_customer_database():
-    app.logger.info("Building customer database from Google Tasks...")
-    all_tasks = get_google_tasks_for_report(show_completed=True)
-    if not all_tasks:
-        return []
-
-    customers_dict = {}
-    all_tasks.sort(key=lambda x: x.get('created', '0'), reverse=True)
-
-    for task in all_tasks:
-        notes = task.get('notes', '')
-        if not notes:
-            continue
-        
-        _, base_notes = parse_tech_report_from_notes(notes)
-        customer_info = parse_customer_info_from_notes(base_notes)
-
-        name = customer_info.get('name', '').strip()
-        phone = customer_info.get('phone', '').strip()
-
-        if not name:
-            continue
-
-        customer_key = (name.lower(), phone)
-        
-        if customer_key not in customers_dict:
-            customers_dict[customer_key] = {
-                'name': name,
-                'phone': phone,
-                'organization': customer_info.get('organization', '').strip(),
-                'address': customer_info.get('address', '').strip(),
-                'map_url': customer_info.get('map_url', '')
-            }
-    
-    app.logger.info(f"Customer database built with {len(customers_dict)} unique customers.")
-    return list(customers_dict.values())
 
 def load_settings_from_drive_on_startup():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)

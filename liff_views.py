@@ -1,43 +1,41 @@
 # File: liff_views.py
 
-import os
 import datetime
-import json
 import pytz
-from flask import Blueprint, render_template, request, abort, redirect, url_for, make_response, current_app
+from flask import (
+    Blueprint, render_template, request, abort,
+    redirect, url_for, make_response, current_app
+)
 from functools import wraps
 from dateutil.parser import parse as date_parse
 
-# --- VVV [แก้ไข] เปลี่ยนมา import จาก utils.py และ app.py อย่างถูกต้อง VVV ---
-# 1. Import ฟังก์ชัน Helper จาก utils.py เพื่อทำลายวงจร
+# --- VVV [การเปลี่ยนแปลงที่สำคัญที่สุด] VVV ---
+# 1. Import ฟังก์ชัน Helper ทั้งหมดจาก utils.py
 from utils import (
     get_single_task,
     parse_google_task_dates,
     parse_customer_info_from_notes,
     parse_tech_report_from_notes,
-    parse_customer_feedback_from_notes
-)
-# 2. Import ฟังก์ชัน/ตัวแปรอื่นๆ ที่จำเป็นจาก app.py
-from app import (
+    parse_customer_feedback_from_notes,
     get_app_settings,
-    TEXT_SNIPPETS,
-    get_google_tasks_for_report,
-    generate_qr_code_base64
+    generate_qr_code_base64,
+    get_google_tasks_for_report # <-- ย้ายมา import จาก utils
 )
+# 2. Import ค่าคงที่จาก config.py
+from config import TEXT_SNIPPETS, THAILAND_TZ
+# --- ^^^ สิ้นสุดการเปลี่ยนแปลง ^^^ ---
 
-# สร้าง Blueprint
+
+# สร้าง Blueprint สำหรับ LIFF views
 liff_bp = Blueprint('liff', __name__)
 
-# --- Timezone Constant ---
-THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
-@liff_bp.route('/summary')
+@liff_bp.route("/summary")
 def summary():
     """
     หน้าสรุปงาน (Dashboard) ที่จะแสดงผลใน LIFF
     """
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
-    # (โค้ดส่วนที่เหลือของฟังก์ชันนี้เหมือนเดิม... ไม่มีการเปลี่ยนแปลง)
     search_query = str(request.args.get('search_query', '')).strip().lower()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
     today_thai = datetime.datetime.now(THAILAND_TZ).date()
@@ -59,7 +57,7 @@ def summary():
             except (ValueError, TypeError):
                 pass
         
-        is_external_job = task.get('title', '').startswith('[งานเคลม]')
+        is_external_job = task.get('title', '').startswith(('[งานเคลม]', '[งานภายนอก]'))
 
         if task_status == 'completed':
             stats['completed'] += 1
@@ -99,6 +97,7 @@ def summary():
                            status_filter=status_filter,
                            LIFF_ID_TO_USE=current_app.config.get('LIFF_ID_FORM'))
 
+
 @liff_bp.route('/task/<task_id>')
 def task_details(task_id):
     """
@@ -114,7 +113,6 @@ def task_details(task_id):
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
     task['customer_feedback'] = parse_customer_feedback_from_notes(notes)
     
-    # (โค้ดส่วนที่เหลือของฟังก์ชันนี้เหมือนเดิม... ไม่มีการเปลี่ยนแปลง)
     task['is_overdue'] = False
     task['is_today'] = False
     if task.get('status') == 'needsAction' and task.get('due'):
@@ -142,6 +140,7 @@ def task_details(task_id):
     response.headers['Expires'] = '0'
     return response
 
+
 @liff_bp.route('/form')
 def form_page():
     """
@@ -150,11 +149,10 @@ def form_page():
     settings = get_app_settings()
     return render_template('form.html',
                            task_detail_snippets=TEXT_SNIPPETS.get('task_details', []),
-                           progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
                            technician_list=settings.get('technician_list', []),
                            LIFF_ID_TO_USE=current_app.config.get('LIFF_ID_FORM'))
 
-# --- VVV [ย้ายมา] ย้าย Route นี้มาจาก app.py VVV ---
+
 @liff_bp.route('/external_claim/new/from/<ref_id>')
 def create_external_claim_form(ref_id):
     """
@@ -169,11 +167,13 @@ def create_external_claim_form(ref_id):
     
     history, _ = parse_tech_report_from_notes(original_task.get('notes', ''))
     all_equipment = [eq for report in history if isinstance(report.get('equipment_used'), list) for eq in report.get('equipment_used')]
+    # ทำให้รายการอุปกรณ์ไม่ซ้ำกัน
     unique_equipment = list({v['item']: v for v in all_equipment}.values())
 
     return render_template('external_job_form.html', 
                            original_task=original_task, 
                            original_task_equipment=unique_equipment)
+
 
 @liff_bp.route('/generate_customer_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
@@ -184,7 +184,7 @@ def generate_customer_onboarding_qr(task_id):
     if not task:
         abort(404)
 
-    line_oa_id = os.environ.get('LINE_OA_ID', '@your-oa-id') # ควรตั้งค่า LINE_OA_ID ใน .env
+    line_oa_id = get_app_settings().get('shop_info', {}).get('line_id', '@your-oa-id')
     add_friend_url = f"https://line.me/R/ti/p/{line_oa_id}?referral={task_id}"
     
     qr_code = generate_qr_code_base64(add_friend_url)
@@ -200,6 +200,3 @@ def generate_customer_onboarding_qr(task_id):
     
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return response
-
-# เพิ่ม Route อื่นๆ ของ liff_bp ที่จำเป็นตามไฟล์เดิมของคุณ...
-# เช่น /liff/technician/update_location, /liff_notification_popup
