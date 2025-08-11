@@ -2511,7 +2511,8 @@ def delete_task_report(task_id, report_index):
 @app.route('/edit_task/<task_id>', methods=['GET', 'POST'])
 def edit_task(task_id):
     task_raw = get_single_task(task_id)
-    if not task_raw: abort(404)
+    if not task_raw:
+        abort(404)
 
     if request.method == 'POST':
         new_title = str(request.form.get('task_title', '')).strip()
@@ -2519,9 +2520,11 @@ def edit_task(task_id):
             flash('กรุณากรอกรายละเอียดงาน', 'danger')
             return redirect(url_for('edit_task', task_id=task_id))
 
+        # Reconstruct the base notes section from the form
         notes_lines = []
         organization_name = str(request.form.get('organization_name', '')).strip()
-        if organization_name: notes_lines.append(f"หน่วยงาน: {organization_name}")
+        if organization_name:
+            notes_lines.append(f"หน่วยงาน: {organization_name}")
 
         notes_lines.extend([
             f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
@@ -2529,18 +2532,23 @@ def edit_task(task_id):
             f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
         ])
         map_url = str(request.form.get('latitude_longitude', '')).strip()
-        if map_url: notes_lines.append(map_url)
+        if map_url:
+            notes_lines.append(map_url)
         
         new_base_notes = "\n".join(filter(None, notes_lines))
 
-        tech_reports, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        # Preserve existing reports and feedback from the original notes
+        original_notes = task_raw.get('notes', '')
+        tech_reports, _ = parse_tech_report_from_notes(original_notes)
+        feedback_data = parse_customer_feedback_from_notes(original_notes)
         
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in tech_reports])
         
         final_notes = new_base_notes
-        if all_reports_text: final_notes += all_reports_text
-        if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+        if all_reports_text:
+            final_notes += all_reports_text
+        if feedback_data:
+            final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
 
         due_date_gmt = None
         appointment_str = str(request.form.get('appointment_due', '')).strip()
@@ -2555,13 +2563,15 @@ def edit_task(task_id):
         if update_google_task(task_id, title=new_title, notes=final_notes, due=due_date_gmt):
             cache.clear()
             flash('บันทึกข้อมูลหลักของงานเรียบร้อยแล้ว!', 'success')
-            return redirect(url_for('summary'))
+            return redirect(url_for('liff.task_details', task_id=task_id))
         else:
             flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger')
             return redirect(url_for('edit_task', task_id=task_id))
 
+    # For GET request
     task = parse_google_task_dates(task_raw)
-    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    _, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    task['customer'] = parse_customer_info_from_notes(base_notes)
     return render_template('edit_task.html', task=task)
 
 @app.route('/delete_task/<task_id>', methods=['POST'])

@@ -8,7 +8,6 @@
 <style>
     /* ซ่อนเนื้อหาหลักไว้ก่อน รอ LIFF โหลดเสร็จ */
     #main-content { display: none; }
-    /* รูปแบบสำหรับ Spinner และข้อความ Error */
     #liff-status-container {
         min-height: 80vh;
         display: flex;
@@ -21,7 +20,6 @@
         border-left: 5px solid #dc3545;
     }
     
-    /* --- CSS จากไฟล์เดิม --- */
     .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 2rem; background-color: #f8f9fa; }
     .info-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
     @media (min-width: 768px) { .info-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -29,8 +27,14 @@
     .full-width-card { grid-column: 1 / -1; }
     .info-label { display: flex; align-items: center; font-size: 0.8rem; font-weight: 600; color: #6c757d; margin-bottom: 0.35rem; }
     .info-label i { width: 20px; text-align: center; margin-right: 0.5rem; color: #adb5bd; }
-    .info-value { font-size: 1.05em; font-weight: 500; color: #343a40; word-break: break-word; margin-bottom: 0; }
-    .info-value.customer-name { font-size: 1.25em; font-weight: 700; color: #0d6efd; }
+    .info-value { font-weight: 500; color: #343a40; word-break: break-word; margin-bottom: 0; }
+    
+    /* --- START: CSS Classes ใหม่สำหรับปรับขนาด Font --- */
+    .info-value.value-large { font-size: 1.25em; font-weight: 700; }
+    .info-value.value-medium { font-size: 1.1em; }
+    .info-value.value-small { font-size: 0.95em; }
+    /* --- END: CSS Classes ใหม่ --- */
+
     .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .history-entry-title { font-weight: 600; }
@@ -101,23 +105,19 @@
         </div>
 
         <div class="info-grid">
-            <div class="info-card task-title-card">
-                <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
-                <p class="info-value task-title">{{ task.title | replace('\n', '<br>') | safe }}</p>
-            </div>
-            <div class="info-card">
+             <div class="info-card">
                  <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
-                <p class="info-value customer-name">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+                <p class="info-value value-large text-primary">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
             </div>
              <div class="info-card">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
-                        <p class="info-value phone-number">{{ task.customer.phone or '-' }}</p>
+                        <p class="info-value value-medium">{{ task.customer.phone or '-' }}</p>
                     </div>
                     <div class="text-end">
-                        <h6 class="info-label" style="font-size: 0.7rem;"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
-                        <p class="info-value info-value-small {% if task.is_today and task.status != 'completed' %}text-primary{% elif task.is_overdue and task.status != 'completed' %}text-danger{% endif %}">{{ task.due_formatted or '-' }}</p>
+                        <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                        <p class="info-value value-small {% if task.is_today and task.status != 'completed' %}text-primary fw-bold{% elif task.is_overdue and task.status != 'completed' %}text-danger fw-bold{% endif %}">{{ task.due_formatted or '-' }}</p>
                     </div>
                 </div>
             </div>
@@ -134,45 +134,33 @@
                     {% endif %}
                 </div>
             </div>
+            <div class="info-card full-width-card">
+                <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
+                <p class="info-value value-large">{{ task.title | replace('\n', '<br>') | safe }}</p>
+            </div>
         </div>
-
-        <hr>
-        {% if task.status == 'completed' %}
-        <p>
-            <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn btn-outline-info btn-sm">
-                 <i class="fas fa-file-alt me-1"></i> ดู QR Code รายงานสรุปสาธารณะ
-            </a>
-        </p>
-        {% endif %}
     </div>
-    
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
         </div>
         <div class="card-body">
-            <div class="action-button-grid mb-3">
-                <button type="button" class="btn btn-info action-btn" onclick="window.updateLocationAndNotify()">
-                    <i class="fas fa-map-marker-alt"></i> อัปเดตพิกัด
-                </button>
+            <div class="action-button-grid">
                 <button type="button" class="btn btn-primary action-btn" data-bs-toggle="collapse" data-bs-target="#progressReportCollapse" aria-expanded="false" aria-controls="progressReportCollapse">
                     <i class="fas fa-edit"></i> เพิ่มรายงาน
-                </button>
-                <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
-                    <i class="fas fa-check-circle"></i> ปิดงาน
                 </button>
                 <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
                     <i class="fas fa-calendar-alt"></i> เลื่อนนัด
                 </button>
-            </div>
-            <div class="d-grid">
-                <button type="button" class="btn btn-secondary action-btn" onclick="window.showActionCard('qrCodeCard')">
-                    <i class="fas fa-qrcode"></i> สร้าง QR Onboarding
+                <button type="button" class="btn btn-info action-btn" onclick="window.showActionCard('qrCodeCard')">
+                    <i class="fas fa-qrcode"></i> สร้าง QR Code
+                </button>
+                <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
+                    <i class="fas fa-check-circle"></i> ปิดงาน
                 </button>
             </div>
         </div>
     </div>
-
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -281,17 +269,11 @@
         </div>
     </div>
     
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center" 
-             style="cursor: pointer;" 
-             data-bs-toggle="collapse" 
-             data-bs-target="#progressReportCollapse" 
-             aria-expanded="false" 
-             aria-controls="progressReportCollapse">
-            <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
-            <i class="fas fa-chevron-down"></i>
-        </div>
-        <div class="collapse" id="progressReportCollapse">
+    <div class="collapse" id="progressReportCollapse">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
+            </div>
             <div class="card-body">
                 <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -336,7 +318,6 @@
             </div>
         </div>
     </div>
-
     <div class="card shadow-sm mb-4">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
@@ -494,7 +475,7 @@
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
-                const mapUrl = `http://googleusercontent.com/maps/google.com/3${latitude},${longitude}`;
+                const mapUrl = `http://googleusercontent.com/maps/google.com/4${latitude},${longitude}`;
                 
                 try {
                     const response = await fetch(`/api/task/${taskId}/update_location`, {
@@ -947,6 +928,12 @@
     }
 
     function handleLocationUpdate() {
+        // --- START: เพิ่มการยืนยันก่อนดึงพิกัด ---
+        if (!confirm("คุณอยู่ที่หน้างานของลูกค้าใช่หรือไม่? การกด 'ตกลง' จะเป็นการบันทึกพิกัดปัจจุบันของคุณ")) {
+            return;
+        }
+        // --- END: เพิ่มการยืนยัน ---
+        
         const updateBtn = document.getElementById('updateLocationBtn_final');
         const statusText = document.getElementById('location-status-text-final');
         const latInput = document.getElementById('current_latitude');
@@ -1093,25 +1080,12 @@
                 });
             });
         }
-
-        // --- START: โค้ดสำหรับจัดการการยุบ-ขยายฟอร์ม ---
+        
         const progressCollapseElement = document.getElementById('progressReportCollapse');
-        const progressCollapse = new bootstrap.Collapse(progressCollapseElement, {
-            toggle: false // ไม่ให้สลับสถานะเมื่อสร้าง
-        });
-
-        // เมื่อ collapse กำลังจะแสดง
-        progressCollapseElement.addEventListener('show.bs.collapse', event => {
-            // เลื่อนไปยังการ์ด
-            document.getElementById('progressReportCollapse').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-
-        // เมื่อ collapse แสดงผลเสร็จ
         progressCollapseElement.addEventListener('shown.bs.collapse', event => {
-            // โฟกัสที่ textarea
             document.getElementById('work_summary_progress').focus();
+            progressCollapseElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
-        // --- END: โค้ดสำหรับจัดการการยุบ-ขยายฟอร์ม ---
     });
 </script>
 {% endblock %}
