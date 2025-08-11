@@ -6,11 +6,15 @@ import pytz
 from datetime import datetime
 from dateutil.parser import parse as date_parse
 
-# ฟังก์ชันนี้ยังคงต้อง import service หรือฟังก์ชันที่สร้าง service จาก app หลัก
-# นี่เป็นวิธีที่ปลอดภัยและไม่ทำให้เกิด circular import
-from app import get_google_tasks_service, _execute_google_api_call_with_retry
+# ❌ ลบ import นี้ออกจากด้านบนสุดของไฟล์
+# from app import get_google_tasks_service, _execute_google_api_call_with_retry
 
 def get_single_task(task_id):
+    # --- VVV [แก้ไข] ย้าย import มาไว้ในฟังก์ชันนี้ ---
+    # การทำแบบนี้จะทำให้ import ทำงานก็ต่อเมื่อฟังก์ชันถูกเรียกใช้
+    # ซึ่งเป็นเวลาที่ app.py โหลดเสร็จสมบูรณ์แล้ว
+    from app import get_google_tasks_service, _execute_google_api_call_with_retry
+    
     if not task_id: return None
     service = get_google_tasks_service()
     if not service: return None
@@ -19,6 +23,11 @@ def get_single_task(task_id):
     except Exception as err:
         print(f"Error getting single task {task_id}: {err}")
         return None
+
+#
+# --- ฟังก์ชันอื่นๆ ใน utils.py ไม่ต้องแก้ไข ---
+# (คัดลอกโค้ดส่วนที่เหลือมาวางต่อจากนี้ได้เลย)
+#
 
 def parse_customer_info_from_notes(notes):
     info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
@@ -38,7 +47,7 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"http://googleusercontent.com/maps/google.com/12{coords_or_url}"
+            info['map_url'] = f"http://googleusercontent.com/maps/google.com/13{coords_or_url}"
         else:
             info['map_url'] = coords_or_url
     
