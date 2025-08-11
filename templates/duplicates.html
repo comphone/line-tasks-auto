@@ -5,7 +5,9 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2">จัดการข้อมูลซ้ำซ้อน</h1>
-    <a href="{{ url_for('summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a> {# Changed to summary #}
+    {# --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ --- #}
+    <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+    {# --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ --- #}
 </div>
 
 <div class="card">
@@ -27,11 +29,10 @@
                         <strong>ลูกค้า:</strong> {{ group_key[1]|title }}
                     </div>
                     <ul class="list-group list-group-flush">
-                        {% for task in tasks %} {# tasks are already sorted by creation date in app.py #}
+                        {% for task in tasks %}
                         <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="form-check">
-                                    {# Checkbox for deletion - default to checked for older items, unchecked for newest #}
                                     <input class="form-check-input" type="checkbox" name="task_ids" value="{{ task.id }}" id="task-{{ task.id }}" {% if loop.index > 1 %}checked{% endif %}>
                                     <label class="form-check-label" for="task-{{ task.id }}">
                                         <strong>ID:</strong> {{ task.id }} <br>
@@ -46,9 +47,11 @@
                                     </label>
                                 </div>
                             </div>
-                            <a href="{{ url_for('task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" target="_blank">
+                            {# --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ --- #}
+                            <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" target="_blank">
                                 <i class="fas fa-eye"></i> ดูรายละเอียด
                             </a>
+                            {# --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ --- #}
                         </li>
                         {% endfor %}
                     </ul>
@@ -67,16 +70,13 @@
 </div>
 
 <script>
-// Add a confirmation before submitting the delete form
 document.getElementById('deleteForm').addEventListener('submit', function(e) {
-    // Check if at least one checkbox is checked
     const checkedCheckboxes = document.querySelectorAll('#deleteForm input[name="task_ids"]:checked');
     if (checkedCheckboxes.length === 0) {
         alert('กรุณาเลือกอย่างน้อยหนึ่งรายการที่ต้องการลบ');
         e.preventDefault();
         return;
     }
-
     if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการที่เลือก? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
         e.preventDefault();
     }
