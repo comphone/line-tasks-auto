@@ -374,7 +374,7 @@
             });
 
             const { latitude, longitude } = position.coords;
-            const newMapUrl = `http://googleusercontent.com/maps/google.com/7{latitude},${longitude}`;
+            const newMapUrl = `http://googleusercontent.com/maps/google.com/9{latitude},${longitude}`;
 
             const response = await fetch(`/api/task/{{ task.id }}/update_location`, {
                 method: 'POST',
@@ -482,7 +482,6 @@
         }
     }
     
-    // --- All other helper functions (flashMessage, openTechnicianModal, etc.) ---
     window.openLightboxById = (fileId) => {
         currentLightboxImages = [];
         techReportsHistory.forEach(report => {
@@ -642,7 +641,7 @@
                 
                 const fileFormData = new FormData();
                 fileFormData.append('file', files[i]);
-                fileFormData.append('task_id', taskId);
+                fileFormData.append('task_id', "{{ task.id }}");
                 
                 try {
                     const response = await fetch("{{ url_for('api_upload_attachment') }}", {
@@ -670,7 +669,7 @@
         if (uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังประมวลผล...';
 
         try {
-            const response = await fetch(`/api/task/${taskId}/update`, {
+            const response = await fetch(`/api/task/{{ task.id }}/update`, {
                 method: 'POST',
                 body: formData,
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
