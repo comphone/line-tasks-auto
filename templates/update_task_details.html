@@ -374,7 +374,7 @@
             });
 
             const { latitude, longitude } = position.coords;
-            const newMapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+            const newMapUrl = `http://googleusercontent.com/maps/google.com/9{latitude},${longitude}`;
 
             const response = await fetch(`/api/task/{{ task.id }}/update_location`, {
                 method: 'POST',
