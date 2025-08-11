@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     (position) => {
                         const lat = position.coords.latitude;
                         const lon = position.coords.longitude;
-                        locationInput.value = `http://googleusercontent.com/maps/google.com/0{lat},${lon}`;
+                        locationInput.value = `http://googleusercontent.com/maps/google.com/2{lat},${lon}`;
                         statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
                         statusText.classList.remove('text-danger');
                         statusText.classList.add('text-success');
