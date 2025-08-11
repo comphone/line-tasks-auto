@@ -132,7 +132,6 @@ def summary():
                            chart_data=chart_data,
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 
-
 @liff_bp.route('/task/<task_id>')
 def task_details(task_id):
     """
@@ -169,19 +168,20 @@ def task_details(task_id):
         if report.get('attachments'):
             all_attachments.extend(report['attachments'])
 
+    # --- ✅✅✅ START: ส่วนที่แก้ไข ✅✅✅ ---
     response = make_response(render_template('update_task_details.html',
                                              task=task,
                                              technician_list=app_settings.get('technician_list', []),
                                              all_attachments=all_attachments,
                                              progress_report_snippets=TEXT_SNIPPETS.get('progress_reports', []),
+                                             equipment_catalog=app_settings.get('equipment_catalog', []), # <-- ส่ง catalog ไปที่ template
                                              LIFF_ID_TO_USE=LIFF_ID_FORM))
+    # --- ✅✅✅ END: ส่วนที่แก้ไข ✅✅✅ ---
                            
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
-
-# ในไฟล์ liff_views.py
 
 @liff_bp.route('/form')
 def form_page():

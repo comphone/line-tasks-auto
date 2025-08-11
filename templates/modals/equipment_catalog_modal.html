@@ -1,15 +1,20 @@
 <div class="modal fade" id="equipmentCatalogModal" tabindex="-1" aria-labelledby="equipmentCatalogModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="equipmentCatalogModalLabel">เลือกอุปกรณ์จากแคตตาล็อก</h5>
+        <h5 class="modal-title" id="equipmentCatalogModalLabel"><i class="fas fa-toolbox me-2"></i>เลือกอุปกรณ์ที่ใช้</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p>กำลังโหลดข้อมูล...</p>
+        <div class="mb-3">
+            <input type="text" id="equipment-search-input" class="form-control" placeholder="🔍 ค้นหาชื่ออุปกรณ์...">
+        </div>
+        <div id="equipment-catalog-list" style="max-height: 60vh; overflow-y: auto;">
+            </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" onclick="window.confirmEquipmentSelection()">บันทึกรายการ</button>
       </div>
     </div>
   </div>
