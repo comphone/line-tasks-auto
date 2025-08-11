@@ -78,7 +78,7 @@
     
     <div id="js-flash-message-container"></div>
 
-    <div class="d-flex justify-content-between align-items: center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">📝 จัดการงาน</h1>
         <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
@@ -123,34 +123,6 @@
                     {% endif %}
                 </div>
             </div>
-
-            {% if task.status != 'completed' %}
-            <div id="updateLocationSection" class="info-card full-width-card">
-                <h6 class="info-label"><i class="fas fa-location-arrow"></i>อัปเดตพิกัดงาน</h6>
-                <button type="button" class="btn btn-outline-info btn-sm" id="updateLocationBtn">
-                    <i class="fas fa-map-marker-alt me-1"></i> อัปเดตพิกัดปัจจุบัน (จากตำแหน่งช่าง)
-                </button>
-                <form id="updateLocationForm" onsubmit="window.handleFormSubmission(event, this, 'location-status')" style="display:none;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <input type="hidden" name="action" value="update_location">
-                    <div class="row mt-3">
-                        <div class="col-md-6 mb-2">
-                            <label for="latitude" class="form-label">ละติจูด (Latitude)</label>
-                            <input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
-                        </div>
-                        <div class="col-md-6 mb-2">
-                            <label for="longitude" class="form-label">ลองจิจูด (Longitude)</label>
-                            <input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center mt-2">
-                        <button type="submit" class="btn btn-primary btn-sm">บันทึกพิกัดใหม่</button>
-                        <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="window.cancelLocationUpdate()">ยกเลิก</button>
-                    </div>
-                </form>
-                 <div id="location-status" class="mt-2" style="display:none;"></div>
-            </div>
-            {% endif %}
         </div>
 
         <hr>
@@ -181,6 +153,12 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="complete_task">
                 <input type="hidden" id="equipment_used_final" name="equipment_used" value="[]">
+                
+                {# --- ✅✅✅ START: เพิ่ม Hidden Inputs สำหรับ Location ✅✅✅ --- #}
+                <input type="hidden" id="current_latitude" name="current_latitude">
+                <input type="hidden" id="current_longitude" name="current_longitude">
+                <input type="hidden" id="technician_line_user_id" name="technician_line_user_id">
+                {# --- ✅✅✅ END: เพิ่ม Hidden Inputs สำหรับ Location ✅✅✅ --- #}
 
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
@@ -209,6 +187,19 @@
                     <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
                 </div>
+                
+                {# --- ✅✅✅ START: ย้ายปุ่มอัปเดตพิกัดมาที่นี่ ✅✅✅ --- #}
+                <div class="mb-3">
+                    <label class="form-label"><strong><i class="fas fa-map-marker-alt me-1"></i>พิกัดปิดงาน</strong></label>
+                    <div id="location-status-container">
+                        <button type="button" class="btn btn-info w-100" id="updateLocationBtn_final">
+                            <i class="fas fa-location-arrow me-2"></i>อัปเดตพิกัดปัจจุบัน
+                        </button>
+                        <div id="location-status-text-final" class="form-text mt-2 text-center"></div>
+                    </div>
+                </div>
+                {# --- ✅✅✅ END: ย้ายปุ่มอัปเดตพิกัดมาที่นี่ ✅✅✅ --- #}
+
                 <hr>
                 <div class="d-flex align-items-center">
                     <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
@@ -893,11 +884,78 @@
         }
     }
 
+    // --- ✅✅✅ START: NEW LOCATION UPDATE FUNCTION ✅✅✅ ---
+    function handleLocationUpdate() {
+        const updateBtn = document.getElementById('updateLocationBtn_final');
+        const statusText = document.getElementById('location-status-text-final');
+        const latInput = document.getElementById('current_latitude');
+        const lonInput = document.getElementById('current_longitude');
+        const techIdInput = document.getElementById('technician_line_user_id');
+
+        const originalBtnHtml = updateBtn.innerHTML;
+        updateBtn.disabled = true;
+        updateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...';
+        statusText.textContent = 'กำลังค้นหาตำแหน่งของคุณ...';
+        statusText.className = 'form-text mt-2 text-center text-primary';
+
+        if (!navigator.geolocation) {
+            statusText.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation';
+            statusText.className = 'form-text mt-2 text-center text-danger';
+            updateBtn.disabled = false;
+            updateBtn.innerHTML = originalBtnHtml;
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                latInput.value = lat;
+                lonInput.value = lon;
+                if (technicianLineUserId) {
+                    techIdInput.value = technicianLineUserId;
+                }
+
+                updateBtn.innerHTML = '<i class="fas fa-check-circle me-2"></i>ดึงพิกัดสำเร็จ!';
+                updateBtn.classList.remove('btn-info');
+                updateBtn.classList.add('btn-success');
+                statusText.textContent = `พิกัดล่าสุด: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                statusText.className = 'form-text mt-2 text-center text-success';
+                updateBtn.disabled = false;
+            },
+            (error) => {
+                let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMessage = "โปรดอนุญาตให้เข้าถึงตำแหน่ง"; break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMessage = "สัญญาณ GPS อ่อน"; break;
+                    case error.TIMEOUT:
+                        errorMessage = "หมดเวลาค้นหาตำแหน่ง"; break;
+                }
+                statusText.textContent = errorMessage;
+                statusText.className = 'form-text mt-2 text-center text-danger';
+                updateBtn.disabled = false;
+                updateBtn.innerHTML = originalBtnHtml;
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    }
+    // --- ✅✅✅ END: NEW LOCATION UPDATE FUNCTION ✅✅✅ ---
+
     document.addEventListener('DOMContentLoaded', function() {
         if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE !== 'None' && LIFF_ID_TO_USE.trim() !== '') {
             liff.init({ liffId: LIFF_ID_TO_USE })
                 .then(() => liff.isLoggedIn() ? liff.getProfile() : null)
-                .then(profile => { if (profile) technicianLineUserId = profile.userId; })
+                .then(profile => { 
+                    if (profile) {
+                        technicianLineUserId = profile.userId;
+                        // Pre-fill the technician ID if we get it
+                        const techIdInput = document.getElementById('technician_line_user_id');
+                        if(techIdInput) techIdInput.value = technicianLineUserId;
+                    }
+                })
                 .catch(err => console.error("LIFF initialization failed", err));
         }
         
@@ -905,6 +963,13 @@
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
+
+        // --- ✅✅✅ START: Add Event Listener for the new location button ✅✅✅ ---
+        const updateLocationBtnFinal = document.getElementById('updateLocationBtn_final');
+        if (updateLocationBtnFinal) {
+            updateLocationBtnFinal.addEventListener('click', handleLocationUpdate);
+        }
+        // --- ✅✅✅ END: Add Event Listener ---
 
         const technicianInputs = ['technicians_progress', 'technicians_final', 'technicians_reschedule'];
         technicianInputs.forEach(inputId => {
@@ -958,7 +1023,6 @@
         renderSelectedEquipmentSummary('progress', []);
         renderSelectedEquipmentSummary('final', []);
 
-        // Add event listener for equipment search
         const searchInput = document.getElementById('equipment-search-input');
         if (searchInput) {
             searchInput.addEventListener('keyup', (e) => {
