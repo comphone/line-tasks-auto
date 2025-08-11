@@ -21,7 +21,7 @@
         border-left: 5px solid #dc3545;
     }
     
-    /* --- CSS ใหม่ จากไฟล์ที่อัปโหลด --- */
+    /* --- CSS จากไฟล์เดิม --- */
     .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 2rem; background-color: #f8f9fa; }
     .info-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
     @media (min-width: 768px) { .info-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -46,10 +46,24 @@
     .next { right: 15px; }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
-    .action-button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-    .action-btn { display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; font-size: 1rem; font-weight: 500; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: all 0.2s ease-in-out; text-decoration: none; }
-    .action-btn:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); }
+    
+    /* --- START: CSS ที่เพิ่มเข้ามาสำหรับเมนูใหม่ --- */
+    .action-button-grid { 
+        display: grid; 
+        grid-template-columns: 1fr 1fr; 
+        gap: 0.75rem; 
+    }
+    .action-btn { 
+        display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; 
+        font-size: 1rem; font-weight: 500; border-radius: 0.5rem; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: all 0.2s ease-in-out; 
+        text-decoration: none; color: white;
+    }
+    .action-btn:hover { 
+        transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); color: white;
+    }
     .action-btn i { margin-right: 0.5rem; }
+    /* --- END: CSS ที่เพิ่มเข้ามาสำหรับเมนูใหม่ --- */
     
     /* --- CSS for Equipment Modal --- */
     .equipment-item {
@@ -134,18 +148,33 @@
         </p>
         {% endif %}
     </div>
-
+    
     <div class="card shadow-sm mb-4" id="chooseActionCard">
-        <div class="card-body text-center p-4">
-            <h5 class="card-title mb-3">เลือกการกระทำสำหรับงานนี้</h5>
-             <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                <button type="button" onclick="window.showActionCard('finalReportCard')" class="btn btn-success btn-lg px-4"><i class="fas fa-check-circle me-2"></i>ปิดงาน</button>
-                <button type="button" onclick="window.showActionCard('rescheduleCard')" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-alt me-2"></i>เลื่อนนัด</button>
-                <button type="button" onclick="window.showActionCard('qrCodeCard')" class="btn btn-info btn-lg px-4"><i class="fas fa-qrcode me-2"></i>QR Code</button>
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
+        </div>
+        <div class="card-body">
+            <div class="action-button-grid mb-3">
+                <button type="button" class="btn btn-info action-btn" onclick="window.updateLocationAndNotify()">
+                    <i class="fas fa-map-marker-alt"></i> อัปเดตพิกัด
+                </button>
+                <button type="button" class="btn btn-primary action-btn" onclick="document.getElementById('progressReportCard').scrollIntoView({ behavior: 'smooth' }); document.getElementById('work_summary_progress').focus();">
+                    <i class="fas fa-edit"></i> เพิ่มรายงาน
+                </button>
+                <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
+                    <i class="fas fa-check-circle"></i> ปิดงาน
+                </button>
+                <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
+                    <i class="fas fa-calendar-alt"></i> เลื่อนนัด
+                </button>
+            </div>
+            <div class="d-grid">
+                <button type="button" class="btn btn-secondary action-btn" onclick="window.showActionCard('qrCodeCard')">
+                    <i class="fas fa-qrcode"></i> สร้าง QR Onboarding
+                </button>
             </div>
         </div>
     </div>
-    
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -154,11 +183,9 @@
                 <input type="hidden" name="action" value="complete_task">
                 <input type="hidden" id="equipment_used_final" name="equipment_used" value="[]">
                 
-                {# --- ✅✅✅ START: เพิ่ม Hidden Inputs สำหรับ Location ✅✅✅ --- #}
                 <input type="hidden" id="current_latitude" name="current_latitude">
                 <input type="hidden" id="current_longitude" name="current_longitude">
                 <input type="hidden" id="technician_line_user_id" name="technician_line_user_id">
-                {# --- ✅✅✅ END: เพิ่ม Hidden Inputs สำหรับ Location ✅✅✅ --- #}
 
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
@@ -188,7 +215,6 @@
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
                 </div>
                 
-                {# --- ✅✅✅ START: ย้ายปุ่มอัปเดตพิกัดมาที่นี่ ✅✅✅ --- #}
                 <div class="mb-3">
                     <label class="form-label"><strong><i class="fas fa-map-marker-alt me-1"></i>พิกัดปิดงาน</strong></label>
                     <div id="location-status-container">
@@ -198,7 +224,6 @@
                         <div id="location-status-text-final" class="form-text mt-2 text-center"></div>
                     </div>
                 </div>
-                {# --- ✅✅✅ END: ย้ายปุ่มอัปเดตพิกัดมาที่นี่ ✅✅✅ --- #}
 
                 <hr>
                 <div class="d-flex align-items-center">
@@ -311,7 +336,6 @@
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
         </div>
         <div class="card-body" id="history-section-body">
-            {# ✅✅✅ โค้ดส่วนนี้จะถูกสร้างด้วย JavaScript แทน ✅✅✅ #}
             <p class="text-muted text-center mt-3">กำลังโหลดประวัติงาน...</p>
         </div>
     </div>
@@ -455,6 +479,43 @@
         }, 5000);
     };
 
+    // --- START: JavaScript function ที่เพิ่มเข้ามา ---
+    window.updateLocationAndNotify = () => {
+        window.flashMessage('กำลังค้นหาตำแหน่งของคุณ...', 'info');
+        if (!navigator.geolocation) {
+            window.flashMessage('เบราว์เซอร์ของคุณไม่รองรับ Geolocation', 'danger');
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                const mapUrl = `http://googleusercontent.com/maps/google.com/2${latitude},${longitude}`;
+                
+                try {
+                    const response = await fetch(`/api/task/${taskId}/update_location`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                        body: JSON.stringify({ map_url: mapUrl })
+                    });
+                    const result = await response.json();
+                    if (response.ok && result.status === 'success') {
+                        window.flashMessage('อัปเดตพิกัดสำเร็จ! กำลังรีเฟรชหน้า...', 'success');
+                        setTimeout(() => window.location.reload(), 2000);
+                    } else {
+                        throw new Error(result.message || 'เกิดข้อผิดพลาดในการบันทึกพิกัด');
+                    }
+                } catch (error) {
+                    window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                }
+            },
+            (error) => {
+                window.flashMessage(`ไม่สามารถดึงตำแหน่งได้: ${error.message}`, 'danger');
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    };
+    // --- END: JavaScript function ที่เพิ่มเข้ามา ---
+
     window.showActionCard = (cardIdToShow) => {
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
         document.getElementById('chooseActionCard').style.display = 'none';
@@ -507,7 +568,6 @@
         }
     }
 
-    // --- ✅✅✅ START: NEW FUNCTIONS FOR EQUIPMENT CATALOG ✅✅✅ ---
     window.openEquipmentModal = (targetPrefix) => {
         currentEquipmentTargetPrefix = targetPrefix;
         const hiddenInput = document.getElementById(`equipment_used_${targetPrefix}`);
@@ -552,7 +612,6 @@
             container.insertAdjacentHTML('beforeend', itemHtml);
         });
 
-        // Add event listeners to new elements
         container.querySelectorAll('.form-check-input').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const qtyInput = e.target.closest('.equipment-item').querySelector('.form-control');
@@ -592,7 +651,6 @@
             container.innerHTML = `<ul class="list-unstyled small">${listHtml}</ul>`;
         }
     }
-    // --- ✅✅✅ END: NEW FUNCTIONS FOR EQUIPMENT CATALOG ✅✅✅ ---
 
     window.openLightboxById = (fileId) => {
         currentLightboxImages = [];
@@ -884,7 +942,6 @@
         }
     }
 
-    // --- ✅✅✅ START: NEW LOCATION UPDATE FUNCTION ✅✅✅ ---
     function handleLocationUpdate() {
         const updateBtn = document.getElementById('updateLocationBtn_final');
         const statusText = document.getElementById('location-status-text-final');
@@ -942,7 +999,6 @@
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     }
-    // --- ✅✅✅ END: NEW LOCATION UPDATE FUNCTION ✅✅✅ ---
 
     document.addEventListener('DOMContentLoaded', function() {
         if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE !== 'None' && LIFF_ID_TO_USE.trim() !== '') {
@@ -951,7 +1007,6 @@
                 .then(profile => { 
                     if (profile) {
                         technicianLineUserId = profile.userId;
-                        // Pre-fill the technician ID if we get it
                         const techIdInput = document.getElementById('technician_line_user_id');
                         if(techIdInput) techIdInput.value = technicianLineUserId;
                     }
@@ -964,12 +1019,10 @@
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
 
-        // --- ✅✅✅ START: Add Event Listener for the new location button ✅✅✅ ---
         const updateLocationBtnFinal = document.getElementById('updateLocationBtn_final');
         if (updateLocationBtnFinal) {
             updateLocationBtnFinal.addEventListener('click', handleLocationUpdate);
         }
-        // --- ✅✅✅ END: Add Event Listener ---
 
         const technicianInputs = ['technicians_progress', 'technicians_final', 'technicians_reschedule'];
         technicianInputs.forEach(inputId => {
