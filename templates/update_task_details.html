@@ -47,7 +47,6 @@
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
     
-    /* --- START: CSS ที่เพิ่มเข้ามาสำหรับเมนูใหม่ --- */
     .action-button-grid { 
         display: grid; 
         grid-template-columns: 1fr 1fr; 
@@ -63,9 +62,7 @@
         transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); color: white;
     }
     .action-btn i { margin-right: 0.5rem; }
-    /* --- END: CSS ที่เพิ่มเข้ามาสำหรับเมนูใหม่ --- */
     
-    /* --- CSS for Equipment Modal --- */
     .equipment-item {
         display: flex;
         align-items: center;
@@ -158,7 +155,7 @@
                 <button type="button" class="btn btn-info action-btn" onclick="window.updateLocationAndNotify()">
                     <i class="fas fa-map-marker-alt"></i> อัปเดตพิกัด
                 </button>
-                <button type="button" class="btn btn-primary action-btn" onclick="document.getElementById('progressReportCard').scrollIntoView({ behavior: 'smooth' }); document.getElementById('work_summary_progress').focus();">
+                <button type="button" class="btn btn-primary action-btn" data-bs-toggle="collapse" data-bs-target="#progressReportCollapse" aria-expanded="false" aria-controls="progressReportCollapse">
                     <i class="fas fa-edit"></i> เพิ่มรายงาน
                 </button>
                 <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
@@ -175,6 +172,7 @@
             </div>
         </div>
     </div>
+
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -283,51 +281,59 @@
         </div>
     </div>
     
-    <div class="card shadow-sm mb-4" id="progressReportCard">
-        <div class="card-header bg-light">
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center" 
+             style="cursor: pointer;" 
+             data-bs-toggle="collapse" 
+             data-bs-target="#progressReportCollapse" 
+             aria-expanded="false" 
+             aria-controls="progressReportCollapse">
             <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
+            <i class="fas fa-chevron-down"></i>
         </div>
-        <div class="card-body">
-            <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <input type="hidden" name="action" value="save_report">
-                <input type="hidden" id="equipment_used_progress" name="equipment_used" value="[]">
+        <div class="collapse" id="progressReportCollapse">
+            <div class="card-body">
+                <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="save_report">
+                    <input type="hidden" id="equipment_used_progress" name="equipment_used" value="[]">
 
-                <div class="mb-3">
-                    <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
-                        <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
+                    <div class="mb-3">
+                        <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
+                            <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
+                        </div>
+                        <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                     </div>
-                    <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
-                </div>
-                <div class="mb-3">
-                    <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
-                        <input type="text" id="technicians_progress_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
-                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
+                    <div class="mb-3">
+                        <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
+                            <input type="text" id="technicians_progress_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
+                            <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
+                        </div>
+                        <input type="hidden" id="technicians_progress" name="technicians_report" required>
                     </div>
-                    <input type="hidden" id="technicians_progress" name="technicians_report" required>
-                </div>
 
-                <div class="mb-3">
-                    <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
-                    <div id="selected-equipment-progress" class="mb-2"></div>
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('progress')">
-                        <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
-                    </button>
-                </div>
+                    <div class="mb-3">
+                        <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
+                        <div id="selected-equipment-progress" class="mb-2"></div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('progress')">
+                            <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
+                        </button>
+                    </div>
 
-                <div class="mb-3">
-                    <label for="files_progress" class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
-                    <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
-                </div>
-                <div class="d-flex align-items-center">
-                    <button type="submit" id="saveProgressBtn" class="btn btn-primary" disabled><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
-                    <div id="report-upload-status" class="ms-3" style="display:none;"></div>
-                </div>
-            </form>
+                    <div class="mb-3">
+                        <label for="files_progress" class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
+                        <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <button type="submit" id="saveProgressBtn" class="btn btn-primary" disabled><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+                        <div id="report-upload-status" class="ms-3" style="display:none;"></div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -479,7 +485,6 @@
         }, 5000);
     };
 
-    // --- START: JavaScript function ที่เพิ่มเข้ามา ---
     window.updateLocationAndNotify = () => {
         window.flashMessage('กำลังค้นหาตำแหน่งของคุณ...', 'info');
         if (!navigator.geolocation) {
@@ -489,7 +494,7 @@
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
-                const mapUrl = `http://googleusercontent.com/maps/google.com/2${latitude},${longitude}`;
+                const mapUrl = `http://googleusercontent.com/maps/google.com/3${latitude},${longitude}`;
                 
                 try {
                     const response = await fetch(`/api/task/${taskId}/update_location`, {
@@ -514,7 +519,6 @@
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     };
-    // --- END: JavaScript function ที่เพิ่มเข้ามา ---
 
     window.showActionCard = (cardIdToShow) => {
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
@@ -1089,6 +1093,25 @@
                 });
             });
         }
+
+        // --- START: โค้ดสำหรับจัดการการยุบ-ขยายฟอร์ม ---
+        const progressCollapseElement = document.getElementById('progressReportCollapse');
+        const progressCollapse = new bootstrap.Collapse(progressCollapseElement, {
+            toggle: false // ไม่ให้สลับสถานะเมื่อสร้าง
+        });
+
+        // เมื่อ collapse กำลังจะแสดง
+        progressCollapseElement.addEventListener('show.bs.collapse', event => {
+            // เลื่อนไปยังการ์ด
+            document.getElementById('progressReportCollapse').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        // เมื่อ collapse แสดงผลเสร็จ
+        progressCollapseElement.addEventListener('shown.bs.collapse', event => {
+            // โฟกัสที่ textarea
+            document.getElementById('work_summary_progress').focus();
+        });
+        // --- END: โค้ดสำหรับจัดการการยุบ-ขยายฟอร์ม ---
     });
 </script>
 {% endblock %}
