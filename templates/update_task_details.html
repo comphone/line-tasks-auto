@@ -57,36 +57,210 @@
     /* History Card Styles */
     .history-entry { 
         background-color: #fff; 
-        border: 1px solid #e9ecef; 
-        border-left-width: 5px; 
-        border-radius: .375rem; 
-        padding: 1rem; 
-        margin-bottom: 1rem; 
+        border: 2px solid #e9ecef; 
+        border-radius: 12px; 
+        padding: 20px; 
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
-    .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; }
-    .history-entry-title { font-weight: 600; font-size: 1.1rem; }
-    .history-entry-meta { font-size: 0.8rem; color: #6c757d; }
-    .history-entry-body .field { margin-bottom: 0.5rem; }
-    .history-entry-body .field strong { color: #495057; }
+    .border-primary { border-color: #0d6efd !important; }
+    .border-warning { border-color: #ffc107 !important; }
     
-    .image-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
-    .thumbnail { cursor: pointer; border-radius: .375rem; overflow: hidden; aspect-ratio: 1 / 1; background-color: #e9ecef; position: relative; }
-    .thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+    .history-entry-header { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: flex-start;
+    }
+    .history-entry-title { 
+        color: #495057;
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 0;
+    }
+    .history-entry-meta { 
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+    .history-entry-body {
+        color: #212529;
+        line-height: 1.6;
+    }
+    .history-entry-body .field { 
+        margin-bottom: 8px;
+    }
+    .history-entry-body .field strong { 
+        color: #495057; 
+    }
     
-    /* Lightbox Styles */
-    .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
-    .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; }
-    .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; }
-    .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); cursor: pointer; color: white; font-size: 3rem; background-color: rgba(30,30,30,0.5); border-radius: 50%; width: 60px; height: 60px; display: flex; align-items:center; justify-content: center; transition: background-color 0.2s ease;}
-    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
-    .prev { left: 15px; }
-    .next { right: 15px; }
+    /* Image Gallery Grid */
+    .image-gallery-grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .thumbnail { 
+        position: relative;
+        width: 100%;
+        height: 100px;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        overflow: hidden;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+    }
+    .thumbnail:hover {
+        border-color: #0d6efd;
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .thumbnail img { 
+        width: 100%; 
+        height: 100%; 
+        object-fit: cover; 
+    }
+    
+    /* Lightbox Styles - ปรับปรุงใหม่ */
+    .lightbox-modal {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(5px);
+    }
+
+    .lightbox-content {
+        position: relative;
+        margin: auto;
+        padding: 0;
+        width: 90%;
+        height: 90%;
+        max-width: 1200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 5vh;
+    }
+
+    .lightbox-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 8px;
+        box-shadow: 0 4px 30px rgba(255, 255, 255, 0.1);
+    }
+
+    .lightbox-close {
+        position: absolute;
+        top: 20px;
+        right: 35px;
+        color: #fff;
+        font-size: 40px;
+        font-weight: bold;
+        cursor: pointer;
+        z-index: 10001;
+        transition: color 0.3s ease;
+    }
+
+    .lightbox-close:hover {
+        color: #ff6b6b;
+    }
+
+    .lightbox-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 10px 15px;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 50%;
+        transition: all 0.3s ease;
+        z-index: 10001;
+    }
+
+    .lightbox-nav:hover {
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+    }
+
+    .lightbox-prev {
+        left: 20px;
+    }
+
+    .lightbox-next {
+        right: 20px;
+    }
+
+    .lightbox-info {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: white;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+    }
 
     /* Equipment Modal Styles */
     .equipment-item { display: flex; align-items: center; padding: 0.75rem 0.5rem; border-bottom: 1px solid #e9ecef; }
     .equipment-item:last-child { border-bottom: none; }
     .equipment-info { flex-grow: 1; display: flex; align-items: center; }
     .equipment-quantity { width: 120px; flex-shrink: 0; }
+
+    /* Loading States */
+    .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .lightbox-content {
+            width: 95%;
+            height: 95%;
+            margin-top: 2.5vh;
+        }
+
+        .lightbox-nav {
+            font-size: 20px;
+            padding: 8px 12px;
+        }
+
+        .lightbox-close {
+            top: 10px;
+            right: 20px;
+            font-size: 30px;
+        }
+
+        .image-gallery-grid {
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 8px;
+        }
+
+        .thumbnail {
+            height: 80px;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -298,11 +472,16 @@
 {% include 'modals/edit_attachments_modal.html' %}
 {% include 'modals/edit_text_modal.html' %}
 {% include 'modals/equipment_catalog_modal.html' %}
-<div id="lightboxModal" class="lightbox">
-    <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
-    <img class="lightbox-content" id="lightboxImg">
-    <div class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</div>
-    <div class="lightbox-nav next" onclick="window.changeSlide(1)">❯</div>
+
+<!-- Lightbox Modal - ปรับปรุงใหม่ -->
+<div id="lightboxModal" class="lightbox-modal">
+    <div class="lightbox-content">
+        <span class="lightbox-close" onclick="window.closeLightbox()">&times;</span>
+        <div class="lightbox-nav lightbox-prev" onclick="window.changeSlide(-1)">&#10094;</div>
+        <img id="lightboxImg" class="lightbox-image" alt="ภาพขยาย">
+        <div class="lightbox-nav lightbox-next" onclick="window.changeSlide(1)">&#10095;</div>
+        <div class="lightbox-info">1 / 1</div>
+    </div>
 </div>
 
 {% endblock %}
@@ -310,7 +489,7 @@
 {% block body_extra %}
 <script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
 <script>
-    // --- Global Variables and Constants ---
+    // === Global Variables and Constants ===
     const technicianList = {{ technician_list | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
@@ -323,10 +502,17 @@
     let technicianLineUserId = null;
     let currentLightboxImages = [], slideIndex = 0;
 
-    // --- Helper Functions ---
+    // === Helper Functions ===
     function flashMessage(message, category = 'info') {
         const container = document.getElementById('js-flash-message-container');
-        if (!container) return;
+        if (!container) {
+            // สร้าง container ใหม่ถ้าไม่มี
+            const newContainer = document.createElement('div');
+            newContainer.id = 'js-flash-message-container';
+            newContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; width: 350px;';
+            document.body.appendChild(newContainer);
+        }
+        
         const alertId = `flash-${Date.now()}`;
         const alertHtml = `
             <div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">
@@ -334,7 +520,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `;
-        container.insertAdjacentHTML('beforeend', alertHtml);
+        (container || document.getElementById('js-flash-message-container')).insertAdjacentHTML('beforeend', alertHtml);
+        
         setTimeout(() => {
             const alertElement = document.getElementById(alertId);
             if (alertElement) {
@@ -361,6 +548,7 @@
         document.getElementById('action-section').style.display = 'block';
     }
 
+    // === Location Functions - แก้ไข URL ที่ผิด ===
     async function updateLocationAction(event) {
         const btn = event.currentTarget;
         const originalHtml = btn.innerHTML;
@@ -375,7 +563,8 @@
             });
 
             const { latitude, longitude } = position.coords;
-            const newMapUrl = `http://googleusercontent.com/maps/google.com/1{latitude},${longitude}`;
+            // ✅ แก้ไข URL ให้ถูกต้อง (เดิมเป็น googleusercontent.com/maps/google.com/1{latitude})
+            const newMapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
 
             const response = await fetch(`/api/task/${taskId}/update_location`, {
                 method: 'POST',
@@ -394,6 +583,9 @@
         } catch (error) {
             let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
             if (error && error.code === 1) errorMessage = "โปรดอนุญาตให้เข้าถึงตำแหน่ง";
+            else if (error && error.code === 2) errorMessage = "ไม่สามารถหาตำแหน่งได้";
+            else if (error && error.code === 3) errorMessage = "หมดเวลาในการค้นหาตำแหน่ง";
+            
             flashMessage(errorMessage, 'danger');
             btn.disabled = false;
             btn.innerHTML = originalHtml;
@@ -405,6 +597,11 @@
         const statusText = document.getElementById('location-status-text-final');
         const latInput = document.getElementById('current_latitude');
         const lonInput = document.getElementById('current_longitude');
+
+        if (!updateBtn || !statusText || !latInput || !lonInput) {
+            console.error('❌ ไม่พบ element ที่จำเป็นสำหรับอัปเดตตำแหน่ง');
+            return;
+        }
 
         const originalBtnHtml = updateBtn.innerHTML;
         updateBtn.disabled = true;
@@ -425,22 +622,33 @@
                 statusText.textContent = `พิกัดล่าสุด: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
                 statusText.className = 'form-text mt-2 text-center text-success';
                 updateBtn.disabled = false;
+                
+                console.log(`✅ อัปเดตตำแหน่งสำเร็จ: ${lat}, ${lon}`);
             },
             (error) => {
                 let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
                 if(error.code === 1) errorMessage = "โปรดอนุญาตให้เข้าถึงตำแหน่ง";
+                else if(error.code === 2) errorMessage = "ไม่สามารถหาตำแหน่งได้";
+                else if(error.code === 3) errorMessage = "หมดเวลาในการค้นหาตำแหน่ง";
+                
                 statusText.textContent = errorMessage;
                 statusText.className = 'form-text mt-2 text-center text-danger';
                 updateBtn.disabled = false;
                 updateBtn.innerHTML = originalBtnHtml;
+                
+                console.error('❌ ไม่สามารถดึงตำแหน่งได้:', error);
             },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     }
     
+    // === History Section - แก้ไขการแสดงภาพใหม่ ===
     function renderHistorySection() {
         const historyContainer = document.getElementById('history-section-body');
-        if (!historyContainer) return;
+        if (!historyContainer) {
+            console.error('ไม่พบ history-section-body element');
+            return;
+        }
 
         if (techReportsHistory && techReportsHistory.length > 0) {
             historyContainer.innerHTML = techReportsHistory.map((report, index) => {
@@ -448,19 +656,67 @@
                 const borderColor = isReschedule ? 'border-warning' : 'border-primary';
                 const title = isReschedule ? 'เลื่อนนัดหมาย' : 'รายงานการปฏิบัติงาน';
                 
-                let formattedDate = report.summary_date ? new Date(report.summary_date).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : 'ไม่ทราบวันที่';
+                // จัดรูปแบบวันที่
+                let formattedDate = report.summary_date ? 
+                    new Date(report.summary_date).toLocaleString('th-TH', { 
+                        dateStyle: 'medium', 
+                        timeStyle: 'short' 
+                    }) : 'ไม่ทราบวันที่';
 
-                let bodyHtml = isReschedule ?
-                    `<div class="field"><strong>เหตุผล:</strong> ${report.reason || '-'}</div><div class="field"><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</div>` :
-                    `<p>${(report.work_summary || '-').replace(/\n/g, '<br>')}</p>`;
+                // สร้างเนื้อหาตามประเภทรายงาน
+                let bodyHtml = '';
+                if (isReschedule) {
+                    bodyHtml = `
+                        <div class="field"><strong>เหตุผล:</strong> ${report.reason || '-'}</div>
+                        <div class="field"><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</div>
+                    `;
+                } else {
+                    bodyHtml = `<p>${(report.work_summary || '-').replace(/\n/g, '<br>')}</p>`;
+                    
+                    // แสดงอุปกรณ์ที่ใช้
+                    if (report.equipment_used_display) {
+                        bodyHtml += `<div class="field mt-2"><strong>อุปกรณ์ที่ใช้:</strong><br>${report.equipment_used_display}</div>`;
+                    } else if (report.equipment_used && Array.isArray(report.equipment_used) && report.equipment_used.length > 0) {
+                        const equipmentHtml = report.equipment_used.map(eq => {
+                            if (typeof eq === 'object' && eq.item) {
+                                return `${eq.item}${eq.quantity ? ` (จำนวน: ${eq.quantity})` : ''}`;
+                            }
+                            return eq.toString();
+                        }).join('<br>');
+                        bodyHtml += `<div class="field mt-2"><strong>อุปกรณ์ที่ใช้:</strong><br>${equipmentHtml}</div>`;
+                    }
+                }
 
-                let attachmentsHtml = (report.attachments && report.attachments.length > 0) ?
-                    `<div class="image-gallery-grid mt-3">
-                        ${report.attachments.map(att => `
-                            <div class="thumbnail" onclick="window.openLightboxById('${att.id}')" title="${att.name || 'ไฟล์แนบ'}">
-                                <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="${att.name || 'attachment'}" loading="lazy">
-                            </div>`).join('')}
-                    </div>` : '';
+                // ✅ สร้างแกลเลอรี่รูปภาพที่แก้ไขแล้ว
+                let attachmentsHtml = '';
+                if (report.attachments && Array.isArray(report.attachments) && report.attachments.length > 0) {
+                    const validAttachments = report.attachments.filter(att => att && att.id);
+                    if (validAttachments.length > 0) {
+                        attachmentsHtml = `
+                            <div class="mt-3">
+                                <h6 class="mb-2"><i class="fas fa-paperclip me-1"></i>ไฟล์แนบ (${validAttachments.length} ไฟล์)</h6>
+                                <div class="image-gallery-grid">
+                                    ${validAttachments.map((att, attIndex) => {
+                                        const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
+                                        const fileName = att.name || `ไฟล์แนบ ${attIndex + 1}`;
+                                        
+                                        return `
+                                            <div class="thumbnail" 
+                                                 onclick="window.openLightboxFromReport(${index}, ${attIndex})" 
+                                                 title="${fileName}"
+                                                 data-file-id="${att.id}">
+                                                <img src="${thumbnailUrl}" 
+                                                     alt="${fileName}" 
+                                                     loading="lazy"
+                                                     onerror="this.parentElement.innerHTML='<div class=\\"d-flex align-items-center justify-content-center h-100 bg-light\\"><i class=\\"fas fa-file fa-2x text-muted\\"></i></div>'">
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
                 
                 return `
                     <div class="history-entry ${borderColor}">
@@ -473,61 +729,236 @@
                         <hr class="my-2">
                         <div class="history-entry-body">
                             ${bodyHtml}
-                            <div class="field"><small class="text-muted"><strong>ช่าง:</strong> ${report.technicians ? report.technicians.join(', ') : '-'}</small></div>
+                            <div class="field mt-2">
+                                <small class="text-muted">
+                                    <strong>ช่าง:</strong> ${Array.isArray(report.technicians) ? report.technicians.join(', ') : (report.technicians || '-')}
+                                </small>
+                            </div>
                         </div>
                         ${attachmentsHtml}
-                    </div>`;
+                    </div>
+                `;
             }).join('');
         } else {
             historyContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการดำเนินงาน</p>';
         }
+
+        console.log('✅ แสดงประวัติงานสำเร็จ:', techReportsHistory.length, 'รายการ');
     }
     
-    window.openLightboxById = (fileId) => {
+    // === Lightbox Functions - ปรับปรุงใหม่ ===
+    
+    /**
+     * 🖼️ เปิด Lightbox จากรายงานเฉพาะ
+     */
+    window.openLightboxFromReport = (reportIndex, attachmentIndex) => {
+        console.log(`🔍 เปิด Lightbox: รายงาน ${reportIndex}, ไฟล์ ${attachmentIndex}`);
+        
+        if (!techReportsHistory || !techReportsHistory[reportIndex]) {
+            console.error('❌ ไม่พบข้อมูลรายงาน');
+            alert('ไม่พบข้อมูลรายงาน');
+            return;
+        }
+        
+        const report = techReportsHistory[reportIndex];
+        if (!report.attachments || !Array.isArray(report.attachments)) {
+            console.error('❌ ไม่พบไฟล์แนบในรายงาน');
+            alert('ไม่พบไฟล์แนบในรายงานนี้');
+            return;
+        }
+        
+        // สร้างรายการรูปภาพทั้งหมดจากรายงานนี้
         currentLightboxImages = [];
-        techReportsHistory.forEach(report => {
-            if (report.attachments) {
-                report.attachments.forEach(att => {
-                    if (att.id && att.name) {
+        report.attachments.forEach((att, index) => {
+            if (att && att.id) {
+                currentLightboxImages.push({
+                    id: att.id,
+                    url: `https://drive.google.com/uc?export=view&id=${att.id}`,
+                    thumbnailUrl: `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`,
+                    name: att.name || `ไฟล์แนบ ${index + 1}`,
+                    reportIndex: reportIndex,
+                    attachmentIndex: index
+                });
+            }
+        });
+        
+        if (currentLightboxImages.length === 0) {
+            console.error('❌ ไม่พบรูปภาพที่ถูกต้อง');
+            alert('ไม่พบรูปภาพที่สามารถแสดงได้');
+            return;
+        }
+        
+        // เริ่มต้นที่รูปที่เลือก
+        slideIndex = Math.max(0, Math.min(attachmentIndex, currentLightboxImages.length - 1));
+        
+        showLightboxImage();
+        document.getElementById('lightboxModal').style.display = "block";
+        console.log(`✅ เปิด Lightbox สำเร็จ: ${slideIndex + 1}/${currentLightboxImages.length}`);
+    };
+
+    /**
+     * 🎯 เปิด Lightbox โดยใช้ File ID
+     */
+    window.openLightboxById = (fileId) => {
+        console.log(`🔍 ค้นหารูปภาพด้วย ID: ${fileId}`);
+        
+        if (!techReportsHistory) {
+            console.error('❌ ไม่พบข้อมูลประวัติงาน');
+            alert('ไม่พบข้อมูลประวัติงาน');
+            return;
+        }
+        
+        // รวบรวมรูปภาพจากทุกรายงาน
+        currentLightboxImages = [];
+        techReportsHistory.forEach((report, reportIndex) => {
+            if (report.attachments && Array.isArray(report.attachments)) {
+                report.attachments.forEach((att, attIndex) => {
+                    if (att && att.id) {
                         currentLightboxImages.push({
                             id: att.id,
-                            url: `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`,
-                            name: att.name || 'ไฟล์แนบ'
+                            url: `https://drive.google.com/uc?export=view&id=${att.id}`,
+                            thumbnailUrl: `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`,
+                            name: att.name || `ไฟล์แนบ ${attIndex + 1}`,
+                            reportIndex: reportIndex,
+                            attachmentIndex: attIndex
                         });
                     }
                 });
             }
         });
         
-        slideIndex = currentLightboxImages.findIndex(img => img.id === fileId);
-        if (slideIndex === -1) slideIndex = 0;
-        
-        if (currentLightboxImages.length > 0) {
-            showLightboxImage();
-            document.getElementById('lightboxModal').style.display = "block";
+        if (currentLightboxImages.length === 0) {
+            console.error('❌ ไม่พบรูปภาพในระบบ');
+            alert('ไม่พบรูปภาพในระบบ');
+            return;
         }
+        
+        // หารูปที่ตรงกับ fileId
+        slideIndex = currentLightboxImages.findIndex(img => img.id === fileId);
+        if (slideIndex === -1) {
+            console.warn(`⚠️ ไม่พบรูป ID: ${fileId}, ใช้รูปแรก`);
+            slideIndex = 0;
+        }
+        
+        showLightboxImage();
+        document.getElementById('lightboxModal').style.display = "block";
+        console.log(`✅ เปิด Lightbox โดย ID สำเร็จ: ${fileId}`);
     };
 
+    /**
+     * 🖼️ แสดงรูปใน Lightbox
+     */
     function showLightboxImage() {
-        if (currentLightboxImages.length === 0) return;
+        if (currentLightboxImages.length === 0) {
+            console.error('❌ ไม่มีรูปภาพใน Lightbox');
+            return;
+        }
         
         const img = document.getElementById('lightboxImg');
         const currentImage = currentLightboxImages[slideIndex];
         
+        if (!currentImage) {
+            console.error('❌ ไม่พบรูปภาพที่ต้องการแสดง');
+            return;
+        }
+        
+        // แสดง loading
+        const lightboxContent = document.querySelector('.lightbox-content');
+        let loadingDiv = lightboxContent.querySelector('.loading-indicator');
+        if (!loadingDiv) {
+            loadingDiv = document.createElement('div');
+            loadingDiv.className = 'loading-indicator position-absolute';
+            loadingDiv.style.cssText = 'top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10000;';
+            loadingDiv.innerHTML = '<div class="loading-spinner"></div>';
+            lightboxContent.appendChild(loadingDiv);
+        }
+        loadingDiv.style.display = 'block';
+        
+        // ลองใช้ URL หลัก ถ้าไม่ได้ให้ใช้ thumbnail
         img.src = currentImage.url;
+        img.alt = currentImage.name;
+        
+        // จัดการเมื่อโหลดสำเร็จ
+        img.onload = function() {
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            console.log(`✅ โหลดรูปสำเร็จ: ${currentImage.name}`);
+        };
+        
+        // จัดการ error ถ้าโหลดรูปไม่ได้
+        img.onerror = function() {
+            console.warn(`⚠️ ไม่สามารถโหลดรูปหลักได้ เปลี่ยนไปใช้ thumbnail: ${currentImage.id}`);
+            this.src = currentImage.thumbnailUrl;
+            this.onerror = function() {
+                console.error(`❌ ไม่สามารถโหลดรูป ${currentImage.id} ได้เลย`);
+                this.alt = `ไม่สามารถโหลดรูป: ${currentImage.name}`;
+                this.style.display = 'none';
+                if (loadingDiv) {
+                    loadingDiv.innerHTML = '<div class="text-white text-center"><i class="fas fa-exclamation-triangle fa-3x mb-2"></i><br>ไม่สามารถโหลดรูปภาพได้</div>';
+                }
+            };
+        };
+        
+        // แสดงข้อมูลการนำทาง
+        const navInfo = document.querySelector('.lightbox-info');
+        if (navInfo) {
+            navInfo.textContent = `${slideIndex + 1} / ${currentLightboxImages.length}`;
+        }
+        
+        console.log(`📷 แสดงรูปที่ ${slideIndex + 1}/${currentLightboxImages.length}: ${currentImage.name}`);
     }
 
+    /**
+     * ⬅️➡️ เปลี่ยนสไลด์
+     */
     window.changeSlide = (direction) => {
+        if (currentLightboxImages.length === 0) return;
+        
         slideIndex += direction;
         if (slideIndex >= currentLightboxImages.length) slideIndex = 0;
         if (slideIndex < 0) slideIndex = currentLightboxImages.length - 1;
+        
         showLightboxImage();
     };
 
+    /**
+     * ❌ ปิด Lightbox
+     */
     window.closeLightbox = () => {
         document.getElementById('lightboxModal').style.display = "none";
+        currentLightboxImages = [];
+        slideIndex = 0;
+        
+        // ลบ loading indicator
+        const loadingDiv = document.querySelector('.lightbox-content .loading-indicator');
+        if (loadingDiv) loadingDiv.remove();
+        
+        console.log('✅ ปิด Lightbox');
     };
 
+    /**
+     * ⌨️ การจัดการ keyboard navigation
+     */
+    document.addEventListener('keydown', function(e) {
+        const lightbox = document.getElementById('lightboxModal');
+        if (lightbox && lightbox.style.display === 'block') {
+            switch(e.key) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    window.changeSlide(-1);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    window.changeSlide(1);
+                    break;
+                case 'Escape':
+                    e.preventDefault();
+                    window.closeLightbox();
+                    break;
+            }
+        }
+    });
+
+    // === Equipment Modal Functions ===
     window.openEquipmentModal = (targetPrefix) => {
         currentEquipmentTargetPrefix = targetPrefix;
         const hiddenInput = document.getElementById(`equipment_used_${targetPrefix}`);
@@ -536,7 +967,9 @@
             if (hiddenInput && hiddenInput.value) {
                 currentSelection = JSON.parse(hiddenInput.value);
             }
-        } catch (e) { console.error("Could not parse current equipment selection", e); }
+        } catch (e) { 
+            console.error("Could not parse current equipment selection", e); 
+        }
         
         renderEquipmentList(equipmentCatalog, currentSelection);
         equipmentCatalogModal.show();
@@ -544,6 +977,11 @@
     
     function renderEquipmentList(items, selection) {
         const container = document.getElementById('equipment-catalog-list');
+        if (!container) {
+            console.error('❌ ไม่พบ equipment-catalog-list');
+            return;
+        }
+        
         container.innerHTML = '';
         if (items.length === 0) {
             container.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลในแคตตาล็อกอุปกรณ์</p>';
@@ -584,7 +1022,7 @@
         const selectedItems = [];
         document.querySelectorAll('#equipment-catalog-list .equipment-item').forEach((item, index) => {
             const checkbox = item.querySelector(`#equip-check-${index}`);
-            if (checkbox.checked) {
+            if (checkbox && checkbox.checked) {
                 const qtyInput = item.querySelector(`#equip-qty-${index}`);
                 selectedItems.push({
                     item: checkbox.dataset.itemName,
@@ -594,7 +1032,9 @@
         });
         
         const hiddenInput = document.getElementById(`equipment_used_${currentEquipmentTargetPrefix}`);
-        hiddenInput.value = JSON.stringify(selectedItems);
+        if (hiddenInput) {
+            hiddenInput.value = JSON.stringify(selectedItems);
+        }
         
         renderSelectedEquipmentSummary(currentEquipmentTargetPrefix, selectedItems);
         equipmentCatalogModal.hide();
@@ -612,8 +1052,132 @@
         }
     }
 
+    // === Technician Modal Functions - เพิ่มฟังก์ชันที่ขาดหายไป ===
+    window.openTechnicianModal = (targetId) => {
+        console.log(`🔧 เปิด Technician Modal สำหรับ: ${targetId}`);
+        
+        if (!technicianList || !Array.isArray(technicianList)) {
+            console.error('❌ ไม่พบรายชื่อช่าง');
+            alert('ไม่พบรายชื่อช่างในระบบ');
+            return;
+        }
+        
+        currentTechnicianTargetId = targetId;
+        
+        // สร้าง modal content สำหรับเลือกช่าง
+        const modalBody = document.querySelector('#technicianSelectionModal .modal-body');
+        if (!modalBody) {
+            console.error('❌ ไม่พบ technician modal body');
+            alert('ไม่สามารถเปิด Modal เลือกช่างได้');
+            return;
+        }
+        
+        // ดึงค่าช่างที่เลือกไว้แล้ว (ถ้ามี)
+        const currentSelectedInput = document.getElementById(targetId);
+        const currentSelected = currentSelectedInput ? currentSelectedInput.value.split(',').map(s => s.trim()).filter(s => s) : [];
+        
+        modalBody.innerHTML = `
+            <div class="mb-3">
+                <label class="form-label">เลือกช่างผู้รับผิดชอบ:</label>
+                <div class="list-group">
+                    ${technicianList.map((tech, index) => {
+                        const isSelected = currentSelected.includes(tech.name);
+                        return `
+                            <label class="list-group-item d-flex align-items-center">
+                                <input class="form-check-input me-3" 
+                                       type="checkbox" 
+                                       value="${tech.name}" 
+                                       data-tech-index="${index}"
+                                       data-line-user-id="${tech.line_user_id || ''}"
+                                       ${isSelected ? 'checked' : ''}>
+                                <div>
+                                    <strong>${tech.name}</strong>
+                                    ${tech.line_user_id ? `<br><small class="text-muted">LINE ID: ${tech.line_user_id}</small>` : ''}
+                                </div>
+                            </label>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+            <div class="text-end">
+                <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" onclick="window.confirmTechnicianSelection()">ยืนยัน</button>
+            </div>
+        `;
+        
+        // เปิด modal
+        if (technicianSelectionModal) {
+            technicianSelectionModal.show();
+        } else {
+            console.error('❌ ไม่พบ technicianSelectionModal instance');
+        }
+        
+        console.log('✅ เปิด Technician Modal สำเร็จ');
+    };
+
+    /**
+     * ✅ ยืนยันการเลือกช่าง
+     */
+    window.confirmTechnicianSelection = () => {
+        const selectedTechnicians = [];
+        const selectedLineUserIds = [];
+        const checkboxes = document.querySelectorAll('#technicianSelectionModal input[type="checkbox"]:checked');
+        
+        checkboxes.forEach(checkbox => {
+            selectedTechnicians.push(checkbox.value);
+            
+            // เก็บ LINE User ID สำหรับการปิดงาน
+            const lineUserId = checkbox.dataset.lineUserId;
+            if (lineUserId && currentTechnicianTargetId === 'technicians_final') {
+                selectedLineUserIds.push(lineUserId);
+            }
+        });
+        
+        if (selectedTechnicians.length === 0) {
+            alert('กรุณาเลือกช่างอย่างน้อย 1 คน');
+            return;
+        }
+        
+        // อัปเดตค่าในฟิลด์
+        const targetInput = document.getElementById(currentTechnicianTargetId);
+        const targetDisplayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
+        
+        if (targetInput) {
+            targetInput.value = selectedTechnicians.join(', ');
+        }
+        if (targetDisplayInput) {
+            targetDisplayInput.value = selectedTechnicians.join(', ');
+        }
+        
+        // อัปเดต LINE User ID (สำหรับการปิดงาน)
+        if (currentTechnicianTargetId === 'technicians_final' && selectedLineUserIds.length > 0) {
+            const lineUserIdInput = document.getElementById('technician_line_user_id');
+            if (lineUserIdInput) {
+                lineUserIdInput.value = selectedLineUserIds[0]; // ใช้คนแรก
+            }
+        }
+        
+        // อัปเดตการแสดงผล
+        const displayElement = document.getElementById(`selected-${currentTechnicianTargetId}`);
+        if (displayElement) {
+            displayElement.innerHTML = selectedTechnicians.length > 0 ? 
+                `<span class="badge bg-primary me-1">${selectedTechnicians.join('</span><span class="badge bg-primary me-1">')}</span>` : 
+                '<span class="text-muted">ยังไม่ได้เลือกช่าง</span>';
+        }
+        
+        // ปิด modal
+        if (technicianSelectionModal) {
+            technicianSelectionModal.hide();
+        }
+        
+        console.log('✅ เลือกช่างสำเร็จ:', selectedTechnicians);
+    };
+
+    // === Form Submission Functions - แก้ไขฟังก์ชันที่ขาดหายไป ===
     async function handleFormSubmission(event, form, statusElementId) {
         event.preventDefault();
+        
+        // ตรวจสอบความถูกต้องของฟอร์ม
         if (!form.checkValidity()) {
             form.classList.add('was-validated');
             flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning');
@@ -621,6 +1185,11 @@
         }
 
         const submitButton = form.querySelector('button[type="submit"]');
+        if (!submitButton) {
+            console.error('❌ ไม่พบปุ่ม submit');
+            return;
+        }
+
         const originalButtonHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
@@ -631,49 +1200,55 @@
             uploadStatusBox.innerHTML = '';
         }
 
-        const formData = new FormData(form);
-        const filesInput = form.querySelector('input[type="file"][name="files[]"]');
-        const files = filesInput ? Array.from(filesInput.files) : [];
-        let uploadedAttachments = [];
+        try {
+            const formData = new FormData(form);
+            const filesInput = form.querySelector('input[type="file"][name="files[]"]');
+            const files = filesInput ? Array.from(filesInput.files) : [];
+            let uploadedAttachments = [];
 
-        if (files.length > 0) {
-            for (let i = 0; i < files.length; i++) {
-                if (uploadStatusBox) uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
-                
-                const fileFormData = new FormData();
-                fileFormData.append('file', files[i]);
-                fileFormData.append('task_id', taskId);
-                
-                try {
+            // อัปโหลดไฟล์ทีละไฟล์
+            if (files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    if (uploadStatusBox) {
+                        uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
+                    }
+                    
+                    const fileFormData = new FormData();
+                    fileFormData.append('file', files[i]);
+                    fileFormData.append('task_id', taskId);
+                    
                     const response = await fetch("{{ url_for('api_upload_attachment') }}", {
                         method: 'POST',
                         body: fileFormData,
-                        headers: { 'X-CSRFToken': csrfToken }
+                        headers: { 
+                            'X-CSRFToken': csrfToken
+                        }
                     });
+                    
                     const result = await response.json();
                     if (response.ok && result.status === 'success') {
                         uploadedAttachments.push(result.file_info);
-                    } else { throw new Error(result.message); }
-                } catch (error) {
-                    flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger');
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = originalButtonHtml;
-                    if (uploadStatusBox) uploadStatusBox.style.display = 'none';
-                    return;
+                    } else { 
+                        throw new Error(result.message || 'อัปโหลดไฟล์ไม่สำเร็จ'); 
+                    }
                 }
             }
-        }
-        
-        formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
-        if (filesInput) formData.delete('files[]');
+            
+            // เพิ่มข้อมูลไฟล์ที่อัปโหลดแล้วลงในฟอร์ม
+            formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+            if (filesInput) formData.delete('files[]');
 
-        if (uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังประมวลผล...';
+            if (uploadStatusBox) {
+                uploadStatusBox.innerHTML = 'กำลังประมวลผล...';
+            }
 
-        try {
+            // ส่งข้อมูลฟอร์ม
             const response = await fetch(`/api/task/${taskId}/update`, {
                 method: 'POST',
                 body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                headers: { 
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             });
             
             const result = await response.json();
@@ -687,39 +1262,146 @@
             } else {
                 throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก');
             }
+            
         } catch (error) {
+            console.error('❌ เกิดข้อผิดพลาดในการส่งฟอร์ม:', error);
             flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            
+            // คืนค่าปุ่มเดิม
             submitButton.disabled = false;
             submitButton.innerHTML = originalButtonHtml;
-            if (uploadStatusBox) uploadStatusBox.style.display = 'none';
+            if (uploadStatusBox) {
+                uploadStatusBox.style.display = 'none';
+            }
         }
     }
-    
-    // --- Event Listeners Initialization ---
-    document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('main-content').style.display = 'block';
 
+    // เพิ่มให้ function เป็น global
+    window.handleFormSubmission = handleFormSubmission;
+    
+    // === Progress Report Functions ===
+    function enableSaveProgressButton() {
+        const technicianInput = document.getElementById('technicians_progress');
+        const saveBtn = document.getElementById('saveProgressBtn');
+        
+        if (saveBtn && technicianInput) {
+            saveBtn.disabled = !technicianInput.value.trim();
+        }
+    }
+
+    // === Event Listeners Initialization ===
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 เริ่มต้นระบบ...');
+        
+        // แสดงเนื้อหาหลัก
+        const mainContent = document.getElementById('main-content');
+        if (mainContent) {
+            mainContent.style.display = 'block';
+        }
+
+        // เริ่มต้น LIFF (LINE Front-end Framework)
         if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE.trim() !== '') {
             liff.init({ liffId: LIFF_ID_TO_USE })
                 .then(() => liff.isLoggedIn() ? liff.getProfile() : null)
                 .then(profile => { 
                     if (profile) {
                         technicianLineUserId = profile.userId;
-                        document.getElementById('technician_line_user_id').value = technicianLineUserId;
+                        const lineUserIdInput = document.getElementById('technician_line_user_id');
+                        if (lineUserIdInput) {
+                            lineUserIdInput.value = technicianLineUserId;
+                        }
+                        console.log('✅ LIFF เริ่มต้นสำเร็จ, User ID:', technicianLineUserId);
                     }
                 })
-                .catch(err => console.error("LIFF initialization failed", err));
+                .catch(err => console.error("❌ LIFF initialization failed", err));
         }
         
-        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
+        // เริ่มต้น Bootstrap Modals
+        const technicianModalElement = document.getElementById('technicianSelectionModal');
+        if (technicianModalElement) {
+            technicianSelectionModal = new bootstrap.Modal(technicianModalElement);
+            console.log('✅ เริ่มต้น Technician Modal สำเร็จ');
+        } else {
+            console.warn('⚠️ ไม่พบ technicianSelectionModal element');
+        }
+        
+        const equipmentModalElement = document.getElementById('equipmentCatalogModal');
+        if (equipmentModalElement) {
+            equipmentCatalogModal = new bootstrap.Modal(equipmentModalElement);
+            console.log('✅ เริ่มต้น Equipment Modal สำเร็จ');
+        } else {
+            console.warn('⚠️ ไม่พบ equipmentCatalogModal element');
+        }
 
-        document.getElementById('action-update-location-btn').addEventListener('click', updateLocationAction);
-        document.getElementById('updateLocationBtn_final').addEventListener('click', handleLocationUpdateInForm);
+        // เพิ่ม Event Listeners
+        const actionUpdateLocationBtn = document.getElementById('action-update-location-btn');
+        if (actionUpdateLocationBtn) {
+            actionUpdateLocationBtn.addEventListener('click', updateLocationAction);
+        }
         
-        document.querySelectorAll('.action-card .btn-secondary').forEach(btn => btn.addEventListener('click', cancelAction));
+        const updateLocationBtnFinal = document.getElementById('updateLocationBtn_final');
+        if (updateLocationBtnFinal) {
+            updateLocationBtnFinal.addEventListener('click', handleLocationUpdateInForm);
+        }
         
+        // Event Listeners สำหรับปุ่มยกเลิก
+        document.querySelectorAll('.action-card .btn-secondary').forEach(btn => {
+            if (btn.textContent.includes('ยกเลิก')) {
+                btn.addEventListener('click', cancelAction);
+            }
+        });
+        
+        // Event Listener สำหรับ technician input ใน progress report
+        const technicianProgressInput = document.getElementById('technicians_progress');
+        if (technicianProgressInput) {
+            technicianProgressInput.addEventListener('input', enableSaveProgressButton);
+        }
+        
+        // เริ่มต้น tribute.js สำหรับ text shortcuts (ถ้ามี)
+        if (typeof Tribute !== 'undefined') {
+            const textAreas = document.querySelectorAll('textarea');
+            textAreas.forEach(textarea => {
+                const tribute = new Tribute({
+                    values: [
+                        {key: 'งานเสร็จ', value: 'งานเสร็จเรียบร้อย ระบบทำงานปกติ'},
+                        {key: 'ทดสอบ', value: 'ทำการทดสอบระบบแล้ว ใช้งานได้ปกติ'},
+                        {key: 'ติดตั้ง', value: 'ติดตั้งอุปกรณ์เรียบร้อย'},
+                    ]
+                });
+                tribute.attach(textarea);
+            });
+            console.log('✅ เริ่มต้น Text Shortcuts สำเร็จ');
+        }
+        
+        // แสดงประวัติงาน
         renderHistorySection();
+        
+        console.log('✅ เริ่มต้นระบบสำเร็จ');
+        console.log('📋 ข้อมูลที่โหลด:', {
+            technicians: technicianList.length,
+            reports: techReportsHistory.length,
+            equipment: equipmentCatalog.length
+        });
     });
+
+    // === Global Function Assignments ===
+    // ทำให้ functions เป็น global เพื่อให้ HTML สามารถเรียกใช้ได้
+    window.showFormCard = showFormCard;
+    window.cancelAction = cancelAction;
+    window.flashMessage = flashMessage;
+    window.renderHistorySection = renderHistorySection;
+    window.enableSaveProgressButton = enableSaveProgressButton;
+
+    // === Debug Functions (สำหรับการ debug) ===
+    window.debugInfo = function() {
+        console.log('🔍 Debug Information:');
+        console.log('- Task ID:', taskId);
+        console.log('- Tech Reports:', techReportsHistory);
+        console.log('- Technicians:', technicianList);
+        console.log('- Equipment:', equipmentCatalog);
+        console.log('- Current Lightbox Images:', currentLightboxImages);
+        console.log('- Slide Index:', slideIndex);
+    };
+
 </script>
 {% endblock %}
