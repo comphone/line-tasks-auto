@@ -52,10 +52,10 @@
                         <a class="nav-link {% if request.endpoint == 'liff.summary' %}active{% endif %}" href="{{ url_for('liff.summary') }}"><i class="fas fa-list-check me-1"></i>สรุปงาน</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'calendar_view' %}active{% endif %}" href="{{ url_for('calendar_view') }}"><i class="fas fa-calendar-alt me-1"></i>ปฏิทิน</a>
+                        <a class="nav-link {% if request.endpoint == 'liff.calendar_view' %}active{% endif %}" href="{{ url_for('liff.calendar_view') }}"><i class="fas fa-calendar-alt me-1"></i>ปฏิทิน</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'technician_report' %}active{% endif %}" href="{{ url_for('technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
+                        <a class="nav-link {% if request.endpoint == 'liff.technician_report' %}active{% endif %}" href="{{ url_for('liff.technician_report') }}"><i class="fas fa-user-chart me-1"></i>รายงานช่าง</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'settings_page' %}active{% endif %}" href="{{ url_for('settings_page') }}"><i class="fas fa-cog me-1"></i>ตั้งค่า</a>

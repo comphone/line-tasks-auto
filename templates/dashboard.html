@@ -215,14 +215,14 @@
                                         <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
                                     {% endif %}
                                 </td>
-                                <td class="text-center">
-                                    <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
-                                        <i class="fas fa-edit"></i>
-                                    </a>
-                                    <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
-                                        <i class="fas fa-file-alt"></i>
-                                    </a>
-                                </td>
+								<td class="text-center">
+									<a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
+										<i class="fas fa-edit"></i>
+									</a>
+									<a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+										<i class="fas fa-file-alt"></i>
+									</a>
+								</td>
                             </tr>
                             {% else %}
                             <tr>

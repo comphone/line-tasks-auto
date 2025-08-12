@@ -36,7 +36,7 @@
 
 <div class="row justify-content-center">
     <div class="col-lg-10 col-md-12">
-        <form method="POST" action="{{ url_for('edit_task', task_id=task.id) }}" class="needs-validation" novalidate>
+        <form method="POST" action="{{ url_for('liff.edit_task', task_id=task.id) }}" class="needs-validation" novalidate>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="card shadow-sm">
                 <div class="card-header bg-warning text-dark">

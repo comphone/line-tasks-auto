@@ -7,14 +7,14 @@
     <h1 class="h2 mb-0">📊 รายงานสรุปยอดงานช่าง</h1>
     <div>
         <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
-        <a href="{{ url_for('technician_report_print', year=selected_year, month=selected_month) }}" target="_blank" class="btn btn-info"><i class="fas fa-print me-2"></i>พิมพ์รายงาน</a>
+        <a href="{{ url_for('liff.technician_report_print', year=selected_year, month=selected_month) }}" target="_blank" class="btn btn-info"><i class="fas fa-print me-2"></i>พิมพ์รายงาน</a>
     </div>
 </div>
 
 <div class="card shadow-sm mb-4">
     <div class="card-header"><h5 class="mb-0">เลือกช่วงเวลา</h5></div>
     <div class="card-body">
-        <form method="GET" action="{{ url_for('technician_report') }}" class="row g-3 align-items-center">
+        <form method="GET" action="{{ url_for('liff.technician_report') }}" class="row g-3 align-items-center">
             <div class="col-md-5">
                 <label for="month" class="form-label">เดือน</label>
                 <select name="month" id="month" class="form-select">
