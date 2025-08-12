@@ -212,8 +212,8 @@
 							const lat = position.coords.latitude;
 							const lon = position.coords.longitude;
 							
-							// --- VVV [แก้ไขล่าสุด] แก้ไขการสร้าง URL ให้ถูกต้อง 100% ---
-							locationInput.value = `https://maps.google.com/maps?q=0{lat},${lon}`;
+							// --- VVV [แก้ไข] แก้ไขการสร้าง URL ให้ถูกต้อง 100% ---
+							locationInput.value = `https://maps.google.com/?q=${lat},${lon}`;
 							
 							statusText.textContent = 'ใส่ตำแหน่งปัจจุบันสำเร็จ!';
 							statusText.className = 'form-text text-success';
@@ -224,11 +224,7 @@
 							statusText.className = 'form-text text-danger';
 							shareBtn.disabled = false;
 						},
-						{
-							enableHighAccuracy: true,
-							timeout: 10000,
-							maximumAge: 0
-						}
+						{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
 					);
 				});
 			}

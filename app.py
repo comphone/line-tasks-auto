@@ -175,34 +175,6 @@ message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
 threading.Thread(target=message_queue.process_queue, daemon=True).start()
 app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PER_MINUTE} messages/minute.")
 
-    'line_recipients': {
-        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
-        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
-        'manager_user_id': ''
-    },
-    'equipment_catalog': [],
-    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
-    'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
-    'technician_list': [],
-    'popup_notifications': {
-        'enabled_arrival': False,
-        'message_arrival_template': 'ช่าง [technician_name] กำลังจะถึงบ้านคุณ [customer_name] แล้วครับ/ค่ะ',
-        'enabled_completion_customer': True,
-        'message_completion_customer_template': 'งาน [task_title] ที่บ้านคุณ [customer_name] เสร็จเรียบร้อยแล้วครับ/ค่ะ',
-        'enabled_nearby_job': False,
-        'nearby_radius_km': 5,
-        'message_nearby_template': 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?',
-        'liff_popup_base_url': 'https://liff.line.me/2007690244-zBNe26ZO'
-    },
-    # --- เพิ่มส่วนนี้เข้าไปทั้งหมด ---
-    'message_templates': {
-        'welcome_customer': "เรียน คุณ[customer_name],\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: [shop_phone]\nLINE ID: [shop_line_id]",
-    'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\n\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\n\n🔗 ดูรายละเอียดงาน:\n[task_url]",
-    'daily_reminder_header': "...",
-    'daily_reminder_task_line': "..."
-    }
-}
-
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     max_retries = 3
     base_delay = 1
