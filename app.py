@@ -74,9 +74,8 @@ from utils import (
     get_app_settings, get_single_task, parse_google_task_dates,
     parse_customer_info_from_notes, parse_tech_report_from_notes,
     save_technician_locations, load_technician_locations,
-    safe_execute, create_task_flex_message, # <-- เพิ่ม 2 ตัวนี้
-    save_app_settings, find_or_create_drive_folder, sanitize_filename,
-    get_customer_database, get_google_tasks_for_report,
+    create_task_flex_message, save_app_settings, find_or_create_drive_folder, 
+    sanitize_filename, get_customer_database, get_google_tasks_for_report,
     create_google_task, update_google_task, delete_google_task,
     parse_customer_feedback_from_notes, allowed_file,
     _parse_equipment_string, generate_qr_code_base64,
