@@ -90,7 +90,6 @@ from utils import (
 from liff_views import liff_bp
 # --- สิ้นสุดการจัดระเบียบ Import ---
 
-
 SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if SENTRY_DSN:
     sentry_sdk.init(
@@ -203,90 +202,6 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
             app.logger.error(f"Unexpected error during Google API call: {e}")
             raise
     return None
-
-def get_google_service(api_name, api_version):
-    creds = None
-    SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
-    
-    if SERVICE_ACCOUNT_FILE_CONTENT:
-        try:
-            info = json.loads(SERVICE_ACCOUNT_FILE_CONTENT)
-            creds = service_account.Credentials.from_service_account_info(
-                info, scopes=SCOPES
-            )
-            app.logger.info("✅ Loaded credentials from Service Account.")
-            try:
-                service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
-                app.logger.info(f"✅ Successfully built {api_name} {api_version} service using Service Account")
-                return service
-            except Exception as e:
-                app.logger.error(f"❌ Failed to build Google API service with Service Account: {e}")
-                return None
-        except Exception as e:
-            app.logger.warning(f"Could not load Service Account from GOOGLE_SERVICE_ACCOUNT_JSON env var: {e}. Falling back to User Credentials.")
-            creds = None
-
-    google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
-    if google_token_json_str:
-        try:
-            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
-            app.logger.info(f"Loaded credentials from environment. Valid: {creds.valid}")
-            if hasattr(creds, 'expiry') and creds.expiry:
-                app.logger.info(f"Token expires at: {creds.expiry}")
-                time_left = creds.expiry - datetime.datetime.utcnow()
-                app.logger.info(f"Time left: {time_left}")
-        except Exception as e:
-            app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}")
-            creds = None
-    if creds:
-        if not creds.valid:
-            if creds.expired and creds.refresh_token:
-                try:
-                    app.logger.info("Token expired, attempting refresh...")
-                    creds.refresh(Request())
-                    try:
-                        backup_token = {
-                            'token': creds.token, 'refresh_token': creds.refresh_token,
-                            'token_uri': creds.token_uri, 'client_id': creds.client_id,
-                            'client_secret': creds.client_secret, 'scopes': creds.scopes,
-                            'expiry': creds.expiry.isoformat() if creds.expiry else None
-                        }
-                        with open('backup_token.json', 'w') as f:
-                            json.dump(backup_token, f, indent=2)
-                        app.logger.info("Token backup saved to backup_token.json")
-                    except Exception as backup_error:
-                        app.logger.warning(f"Could not save backup token: {backup_error}")
-                    app.logger.info("="*80)
-                    app.logger.info("🔄 Google access token refreshed successfully!")
-                    app.logger.info("📋 PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE:")
-                    app.logger.info(f"NEW TOKEN: {creds.to_json()}")
-                    app.logger.info("="*80)
-                except Exception as e:
-                    app.logger.error(f"❌ Error refreshing token: {e}")
-                    app.logger.error("🔧 Please run get_token.py to generate a new token")
-                    creds = None
-            else:
-                app.logger.error("❌ Token invalid and cannot be refreshed (no refresh_token)")
-                app.logger.error("🔧 Please run get_token.py to generate a new token")
-                creds = None
-    if creds and creds.valid:
-        try:
-            service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
-            app.logger.info(f"✅ Successfully built {api_name} {api_version} service")
-            return service
-        except Exception as e:
-            app.logger.error(f"❌ Failed to build Google API service: {e}")
-            return None
-    else:
-        app.logger.error("❌ No valid Google credentials available (Service Account or User Credentials).")
-        app.logger.error("🔧 Please ensure:")
-        app.logger.error("   1. GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_TOKEN_JSON environment variable is set")
-        app.logger.error("   2. OAuth consent screen is in Production mode (for User Credentials)")
-        app.logger.error("   3. Run get_token.py to generate a fresh token (for User Credentials)")
-        return None
-
-def get_google_tasks_service(): return get_google_service('tasks', 'v1')
-def get_google_drive_service(): return get_google_service('drive', 'v3')
 
 @app.route('/api/tasks/create', methods=['POST'])
 def api_create_task():
