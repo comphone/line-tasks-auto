@@ -4,7 +4,6 @@
 
 {% block head_extra %}
     <style>
-        /* --- ✏️ START: เพิ่ม/แก้ไข CSS ส่วนนี้ --- */
         /* ทำให้ช่องค้นหามีขอบสีน้ำเงินเมื่อถูกเลือก */
         .search-box-prominent .form-control:focus {
             border-color: #86b7fe;
@@ -12,17 +11,16 @@
         }
 
         /* เพิ่มแถบสีพื้นหลังสำหรับสถานะของงาน */
-        .table-row-completed { background-color: rgba(25, 135, 84, 0.15) !important; } /* Light Green */
-        .table-row-overdue   { background-color: rgba(220, 53, 69, 0.15) !important; } /* Light Red */
-        .table-row-today     { background-color: rgba(13, 202, 240, 0.15) !important; } /* Light Cyan */
-        .table-row-needs-action { background-color: rgba(255, 193, 7, 0.15) !important; } /* Light Yellow */
+        .table-row-completed { background-color: rgba(25, 135, 84, 0.15) !important; } /* สีเขียวอ่อน */
+        .table-row-overdue   { background-color: rgba(220, 53, 69, 0.15) !important; } /* สีแดงอ่อน */
+        .table-row-today     { background-color: rgba(13, 202, 240, 0.15) !important; } /* สีฟ้าอ่อน */
+        .table-row-needs-action { background-color: rgba(255, 193, 7, 0.15) !important; } /* สีเหลืองอ่อน */
 
         /* เพิ่มเอฟเฟกต์เมื่อนำเมาส์ไปวาง */
         .table-row-completed:hover { background-color: rgba(25, 135, 84, 0.25) !important; }
         .table-row-overdue:hover   { background-color: rgba(220, 53, 69, 0.25) !important; }
         .table-row-today:hover     { background-color: rgba(13, 202, 240, 0.25) !important; }
         .table-row-needs-action:hover { background-color: rgba(255, 193, 7, 0.25) !important; }
-        /* --- ✏️ END: สิ้นสุดโค้ด CSS --- */
 
         .search-highlight {
             background-color: #ffc107;
@@ -187,7 +185,7 @@
                             <i class="fas fa-print"></i>
                         </a>
                     </div>
-                    </form>
+                </form>
 
                 <div id="table-loading-spinner" class="text-center p-5">
                     <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
@@ -223,7 +221,7 @@
                                     table-row-needs-action
                                 {% endif %}"
                                 data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
-                            <td class="checkbox-col">
+                                <td class="checkbox-col">
                                     <input class="form-check-input task-checkbox" type="checkbox" data-task-id="{{ task.id }}">
                                 </td>
                                 <td>
@@ -293,7 +291,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // ✅ START: โค้ดใหม่สำหรับทำให้ทั้งแถวคลิกได้
+        // โค้ดสำหรับทำให้ทั้งแถวคลิกได้
         document.querySelectorAll('.clickable-row').forEach(row => {
             row.addEventListener('click', function(event) {
                 const ignoredElements = 'input, button, a, i';
@@ -309,9 +307,8 @@
         const style = document.createElement('style');
         style.innerHTML = `.clickable-row { cursor: pointer; }`;
         document.head.appendChild(style);
-        // ✅ END: สิ้นสุดโค้ดใหม่
 
-        // --- ส่วนของ Chart (เหมือนเดิม) ---
+        // โค้ดของ Chart
         const monthlyCtx = document.getElementById('monthlyTasksChart');
         let myChart;
         if (monthlyCtx) {
@@ -334,11 +331,11 @@
             document.getElementById('chart-tab')?.addEventListener('shown.bs.tab', () => myChart?.update());
         }
 
-        // --- ส่วนแสดงตาราง (เหมือนเดิม) ---
+        // โค้ดแสดงตาราง
         document.getElementById('task-table-container').style.display = 'block';
         document.getElementById('table-loading-spinner').style.display = 'none';
 		
-        // --- โค้ด Live Search ที่ปรับปรุงใหม่ (เหมือนเดิม) ---
+        // โค้ด "ค้นหาทันที" (Live Search)
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
             function clearHighlights(container) {
@@ -376,7 +373,7 @@
             });
         }
 
-        // --- ส่วนใหม่: จัดการ Batch Actions (เหมือนเดิม) ---
+        // โค้ดจัดการ Batch Actions
         const selectAllCheckbox = document.getElementById('select-all-tasks');
         const taskCheckboxes = document.querySelectorAll('.task-checkbox:not(#select-all-tasks)');
         const batchActionBar = document.getElementById('batch-actions-bar');

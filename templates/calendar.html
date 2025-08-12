@@ -164,7 +164,7 @@
         // Prevent moving completed tasks
         return !draggedEvent.extendedProps.is_completed;
       },
-      eventContent: function(arg) {
+	  eventContent: function(arg) {
         let iconHtml = '';
         if (arg.event.extendedProps.is_completed) {
             iconHtml = '<i class="fas fa-check-circle event-status-icon"></i>';
@@ -173,7 +173,15 @@
         } else if (arg.event.extendedProps.is_today) {
             iconHtml = '<i class="fas fa-star event-status-icon"></i>';
         }
-        return { html: `<b>${iconHtml}${arg.timeText}</b> ${arg.event.title}` };
+
+        // ตรวจสอบมุมมองปัจจุบัน
+        if (arg.view.type === 'dayGridMonth') {
+            // ถ้าเป็น "มุมมองเดือน" ให้ซ่อนเวลาเพื่อเพิ่มพื้นที่ให้ชื่อ
+            return { html: `${iconHtml} ${arg.event.title}` };
+        } else {
+            // สำหรับมุมมองอื่นๆ (สัปดาห์, รายการ) ให้แสดงเวลาตามปกติ
+            return { html: `<b>${arg.timeText}</b> ${iconHtml} ${arg.event.title}` };
+        }
       },
       eventClassNames: function(arg) {
         if (arg.event.extendedProps.is_completed) {
