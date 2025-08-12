@@ -697,11 +697,6 @@ def environment_check():
         ]
     })
 
-def sanitize_filename(name):
-    if not name:
-        return "Unnamed"
-    return re.sub(r'[\\/*?:"<>|]', "", name).strip()
-
 @cached(cache)
 def find_or_create_drive_folder(name, parent_id):
     service = get_google_drive_service()

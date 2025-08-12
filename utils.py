@@ -345,4 +345,9 @@ def find_or_create_drive_folder(name, parent_id):
             return folder.get('id')
     except HttpError as e:
         print(f"Error finding or creating folder '{name}': {e}")
-        return None        
+        return None
+
+ def sanitize_filename(name):
+    if not name:
+        return "Unnamed"
+    return re.sub(r'[\\/*?:"<>|]', "", name).strip()       
