@@ -72,7 +72,7 @@ from config import (
 from utils import (
     get_app_settings, get_single_task, parse_google_task_dates,
     parse_customer_info_from_notes, parse_tech_report_from_notes,
-    save_technician_locations, load_technician_locations
+    load_technician_locations
 )
 
 # 3. Import Blueprint จาก liff_views.py
@@ -482,7 +482,7 @@ def api_update_task(task_id):
             technician_line_user_id = request.form.get('technician_line_user_id')
 
             if latitude and longitude:
-                new_map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+                new_map_url = f"http://googleusercontent.com/maps/google.com/15{latitude},{longitude}"
                 if re.search(r"https?:\/\/[^\s]+", base_notes_text):
                     base_notes_text = re.sub(r"https?:\/\/[^\s]+", new_map_url, base_notes_text)
                 else:
@@ -490,7 +490,8 @@ def api_update_task(task_id):
                 app.logger.info(f"Updated customer location for task {task_id} to {new_map_url}")
 
                 if technician_line_user_id:
-                    locations = load_technician_locations()
+                    # [แก้ไข] เรียกใช้ฟังก์ชันจาก utils.py แทน
+                    locations = load_technician_locations() 
                     locations[technician_line_user_id] = {
                         'lat': float(latitude), 'lon': float(longitude),
                         'timestamp': datetime.datetime.now(THAILAND_TZ).isoformat()
@@ -501,7 +502,7 @@ def api_update_task(task_id):
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'work_summary': work_summary,
-                'equipment_used': equipment_used_data, # <-- ✅ ใช้ข้อมูลใหม่
+                'equipment_used': equipment_used_data,
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
@@ -534,7 +535,7 @@ def api_update_task(task_id):
     except Exception as e:
         app.logger.error(f'Unexpected error in api_update_task for task {task_id}: {e}', exc_info=True)
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดที่ไม่คาดคิด: {str(e)}'}), 500
-
+        
 @app.route('/api/task/<task_id>/edit_main', methods=['POST'])
 def api_edit_task_main(task_id):
     """API สำหรับแก้ไขข้อมูลหลักของงาน"""
@@ -588,6 +589,7 @@ def api_edit_task_main(task_id):
         app.logger.error(f"Error in api_edit_task_main for task {task_id}: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
+
 @app.route('/admin/token_status')
 def token_status():
     SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
@@ -631,7 +633,7 @@ def token_status():
         
         if hasattr(creds, 'expiry') and creds.expiry:
             status_info['expires_at'] = creds.expiry.isoformat()
-            status_info['expires_in_seconds'] = (creds.expiry - datetime.datetime.utcnow()).total_seconds()
+            status_info['expires_in_seconds'] = (datetime.datetime.now(pytz.utc).replace(tzinfo=None) - creds.expiry.replace(tzinfo=None)).total_seconds()
         
         return jsonify({
             'status': 'success',
