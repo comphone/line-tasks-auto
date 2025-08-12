@@ -159,11 +159,11 @@
                 <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
                     <i class="fas fa-check-circle"></i> ปิดงาน
                 </button>
-                {% if task.status == 'completed' %}
-                <a href="{{ url_for('generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn action-btn" style="grid-column: 1 / -1; background-color: #5c6bc0; border-color: #5c6bc0;">
-                    <i class="fas fa-file-alt"></i> QR Code รายงานสรุปสาธารณะ
-                </a>
-                {% endif %}
+				{% if task.status == 'completed' %}
+				<a href="{{ url_for('liff.generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn action-btn" style="grid-column: 1 / -1; background-color: #5c6bc0; border-color: #5c6bc0;">
+					<i class="fas fa-file-alt"></i> QR Code รายงานสรุปสาธารณะ
+				</a>
+				{% endif %}
                 </div>
         </div>
     </div>
