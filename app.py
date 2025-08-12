@@ -1,5 +1,3 @@
-# File: app.py (ช่วงบนที่แก้ไขแล้ว)
-
 import os
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
@@ -602,7 +600,6 @@ def api_edit_task_main(task_id):
     except Exception as e:
         app.logger.error(f"Error in api_edit_task_main for task {task_id}: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
-
 
 @app.route('/admin/token_status')
 def token_status():

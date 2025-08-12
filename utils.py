@@ -165,3 +165,39 @@ def parse_tech_report_from_notes(notes):
     base_notes_text = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", base_notes_with_feedback, flags=re.DOTALL).strip()
     history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
     return history, base_notes_text
+    
+def load_technician_locations():
+    """
+    โหลดข้อมูลพิกัดช่างจากไฟล์ JSON
+    """
+    # ฟังก์ชันนี้จำเป็นต้อง import os และ json ภายในตัวเองเพื่อความสมบูรณ์
+    import os
+    import json
+    from config import LOCATIONS_FILE # ดึงชื่อไฟล์มาจาก config
+
+    if os.path.exists(LOCATIONS_FILE):
+        try:
+            with open(LOCATIONS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            # หากไฟล์เสียหรืออ่านไม่ได้ ให้คืนค่า dict ว่าง
+            print(f"Warning: Error reading or parsing {LOCATIONS_FILE}. Returning empty dict.")
+            return {}
+    return {}
+
+def save_technician_locations(locations_data):
+    """
+    บันทึกข้อมูลพิกัดช่างลงในไฟล์ JSON
+    """
+    # ฟังก์ชันนี้จำเป็นต้อง import os และ json ภายในตัวเองเพื่อความสมบูรณ์
+    import os
+    import json
+    from config import LOCATIONS_FILE # ดึงชื่อไฟล์มาจาก config
+
+    try:
+        with open(LOCATIONS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(locations_data, f, ensure_ascii=False, indent=4)
+        return True
+    except IOError as e:
+        print(f"Error saving to {LOCATIONS_FILE}: {e}")
+        return False
