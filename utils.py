@@ -348,8 +348,15 @@ def find_or_create_drive_folder(name, parent_id):
         return None
 
  def sanitize_filename(name):
+    """
+    ลบอักขระที่ไม่ปลอดภัยออกจากชื่อไฟล์
+    """
+    # Import 're' ภายในฟังก์ชันเพื่อความสมบูรณ์ (หรือจะวางไว้บนสุดของไฟล์ก็ได้)
+    import re
+    
     if not name:
         return "Unnamed"
+    # ใช้ re.sub เพื่อแทนที่อักขระที่ไม่ต้องการทั้งหมดด้วยสตริงว่าง
     return re.sub(r'[\\/*?:"<>|]', "", name).strip()
 
 def get_google_service(api_name, api_version):
