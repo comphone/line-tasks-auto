@@ -121,25 +121,42 @@ document.addEventListener('DOMContentLoaded', function() {
         shareBtn.addEventListener('click', function() {
             statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
             if (navigator.geolocation) {
-				navigator.geolocation.getCurrentPosition(
-					(position) => {
-						const lat = position.coords.latitude;
-						const lon = position.coords.longitude;
-						
-						// --- VVV [แก้ไข] แก้ไขการสร้าง URL ให้ถูกต้อง 100% ---
-						locationInput.value = `https://maps.google.com/?q=${lat},${lon}`;
-						
-						statusText.textContent = 'ใส่ตำแหน่งปัจจุบันสำเร็จ!';
-						statusText.className = 'form-text text-success';
-						shareBtn.disabled = false;
-					},
-					(error) => {
-						statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้: ' + error.message;
-						statusText.className = 'form-text text-danger';
-						shareBtn.disabled = false;
-					},
-					{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-				);
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        locationInput.value = `http://googleusercontent.com/maps/google.com/2{lat},${lon}`;
+                        statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                        statusText.classList.remove('text-danger');
+                        statusText.classList.add('text-success');
+                    },
+                    (error) => {
+                        console.error("Geolocation error:", error);
+                        let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. โปรดอนุญาตในตั้งค่าเบราว์เซอร์.";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage = "ไม่สามารถระบุตำแหน่งได้. สัญญาณ GPS อ่อนแอ?";
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage = "ค้นหาตำแหน่งใช้เวลานานเกินไป.";
+                                break;
+                            default:
+                                errorMessage = `เกิดข้อผิดพลาด: ${error.message}`;
+                                break;
+                        }
+                        statusText.textContent = errorMessage;
+                        statusText.classList.remove('text-success');
+                        statusText.classList.add('text-danger');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
             } else {
                 statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
                 statusText.classList.remove('text-success');

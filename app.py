@@ -16,7 +16,7 @@ import tempfile
 import uuid
 from queue import Queue
 import threading
-import requests
+import requests # เพิ่ม import requests สำหรับเรียก API ภายในแอปตัวเอง
 import random
 from PIL import Image
 
@@ -27,16 +27,26 @@ from flask import Flask, request, render_template, redirect, url_for, abort, fla
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 from cachetools import cached, TTLCache
-from geopy.distance import geodesic
+from geopy.distance import geodesic # สำหรับคำนวณระยะทาง
 from urllib.parse import urlparse, parse_qs, unquote, quote_plus
 
 import qrcode
 import base64
+from urllib.parse import quote_plus # สำหรับเข้ารหัส URL parameters
 from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi, ReplyMessageRequest,
-    PushMessageRequest, TextMessage, FlexMessage, QuickReply, QuickReplyItem
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    ReplyMessageRequest,
+    PushMessageRequest,
+    TextMessage,
+    FlexMessage,
+    QuickReply,
+    QuickReplyItem
 )
-from linebot.v3.messaging.models import URIAction
+from linebot.v3.messaging.models import (
+    URIAction
+)
 from linebot.v3.webhooks import (
     MessageEvent, TextMessageContent, PostbackEvent,
     ImageMessageContent, FileMessageContent,
@@ -61,68 +71,138 @@ import atexit
 
 from flask_cors import CORS
 
-# --- [แก้ไข] จัดระเบียบ Import ทั้งหมด ---
-# 1. Import จากไฟล์ config.py
-from config import (
-    LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, UPLOAD_FOLDER, THAILAND_TZ,
-    GOOGLE_TASKS_LIST_ID, GOOGLE_DRIVE_FOLDER_ID, LINE_RATE_LIMIT_PER_MINUTE, SCOPES,
-    MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB # <-- เพิ่ม 2 ตัวนี้
-)
+# from liff_views import liff_bp
 
-# 2. Import จากไฟล์ utils.py (รวมไว้ที่เดียว)
-from utils import (
-    get_app_settings, get_single_task, parse_google_task_dates,
-    parse_customer_info_from_notes, parse_tech_report_from_notes,
-    save_technician_locations, load_technician_locations,
-    create_task_flex_message, save_app_settings, find_or_create_drive_folder, 
-    sanitize_filename, get_customer_database, get_google_tasks_for_report,
-    create_google_task, update_google_task, delete_google_task,
-    parse_customer_feedback_from_notes, allowed_file,
-    _parse_equipment_string, generate_qr_code_base64,
-    _create_backup_zip, backup_settings_to_drive,
-    load_settings_from_drive_on_startup,
-    send_new_task_notification, send_completion_notification,
-    send_update_notification, _send_popup_notification,
-    _create_customer_follow_up_flex_message, render_template_message
-)
-
-# 3. Import Blueprint จาก liff_views.py
-from liff_views import liff_bp
-# --- สิ้นสุดการจัดระเบียบ Import ---
+TEXT_SNIPPETS = {
+    'task_details': [
+        {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
+        {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
+        {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
+        {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
+    ],
+    'progress_reports': [
+        {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
+        {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
+        {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
+        {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
+    ]
+}
 
 SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        integrations=[FlaskIntegration()],
+        integrations=[
+            FlaskIntegration(),
+        ],
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0
     )
 
 app = Flask(__name__, static_folder='static')
-CORS(app)
+CORS(app) # --- เพิ่มบรรทัดนี้เพื่อเปิดใช้งาน CORS ---
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
+app.jinja_env.filters['dateutil_parse'] = date_parse
 csrf = CSRFProtect(app)
 
-# --- [แก้ไข] ตั้งค่า Config โดยใช้ตัวแปรที่ Import มา ---
-app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE_BYTES
+# app.register_blueprint(liff_bp, url_prefix='/')
+
+UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.jinja_env.filters['dateutil_parse'] = date_parse
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'kmz', 'kml'}
+MAX_FILE_SIZE_MB = 500
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# --- LINE Bot API Setup ---
+# Get the variable and remove leading/trailing whitespace
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '').strip()
+# If quotes exist after stripping, remove them and strip again
+if LINE_CHANNEL_ACCESS_TOKEN.startswith('"') and LINE_CHANNEL_ACCESS_TOKEN.endswith('"'):
+    LINE_CHANNEL_ACCESS_TOKEN = LINE_CHANNEL_ACCESS_TOKEN[1:-1].strip()
+
+LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET', '').strip()
+# VVVV เพิ่ม 2 บรรทัดนี้ VVVV
+if LINE_CHANNEL_SECRET.startswith('"') and LINE_CHANNEL_SECRET.endswith('"'):
+    LINE_CHANNEL_SECRET = LINE_CHANNEL_SECRET[1:-1].strip()
+
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
+# Initialize LINE Bot API v3 objects once and reuse them globally
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 api_client = ApiClient(configuration)
-line_messaging_api = MessagingApi(api_client)
+line_messaging_api = MessagingApi(api_client) # This object will be reused
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+app.logger.info(f"======== DEBUG LINE CREDENTIALS ========")
+app.logger.info(f"Channel Secret configured: {bool(LINE_CHANNEL_SECRET)}")
+app.logger.info(f"Secret Length: {len(LINE_CHANNEL_SECRET)}")
+app.logger.info(f"Secret (masked): {'*' * (len(LINE_CHANNEL_SECRET) - 4) + LINE_CHANNEL_SECRET[-4:] if len(LINE_CHANNEL_SECRET) > 4 else '****'}")
+app.logger.info(f"Access Token configured: {bool(LINE_CHANNEL_ACCESS_TOKEN)}")
+app.logger.info(f"Access Token (masked): {'*' * (len(LINE_CHANNEL_ACCESS_TOKEN) - 6) + LINE_CHANNEL_ACCESS_TOKEN[-6:] if len(LINE_CHANNEL_ACCESS_TOKEN) > 6 else '****'}")
+
+def check_line_bot_configuration():
+    """ตรวจสอบการตั้งค่า LINE Bot"""
+    issues = []
+    
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        issues.append("LINE_CHANNEL_ACCESS_TOKEN ไม่ได้ตั้งค่า")
+    elif len(LINE_CHANNEL_ACCESS_TOKEN) < 50:
+        issues.append("LINE_CHANNEL_ACCESS_TOKEN อาจไม่ถูกต้อง (สั้นเกินไป)")
+        
+    if not LINE_CHANNEL_SECRET:
+        issues.append("LINE_CHANNEL_SECRET ไม่ได้ตั้งค่า")
+    elif len(LINE_CHANNEL_SECRET) != 32:
+        issues.append(f"LINE_CHANNEL_SECRET ไม่ถูกต้อง (ความยาว: {len(LINE_CHANNEL_SECRET)}, ควรเป็น 32)")
+        
+    return issues     
+
+# ตรวจสอบปัญหา
+line_issues = check_line_bot_configuration()
+if line_issues:
+    app.logger.error("LINE Bot Configuration Issues:")
+    for issue in line_issues:
+        app.logger.error(f"  - {issue}")
+else:
+    app.logger.info("LINE Bot configuration looks good!")
+    
+app.logger.info(f"==========================================")
+
+LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
+
+# VVVV --- [เพิ่มโค้ด Debug นี้เข้าไป] --- VVVV
+app.logger.info("=" * 30)
+app.logger.info(f"DEBUG: LIFF_ID_FORM loaded from environment: '{LIFF_ID_FORM}'")
+app.logger.info(f"DEBUG: Type of LIFF_ID_FORM is: {type(LIFF_ID_FORM)}")
+app.logger.info("=" * 30)
+# ^^^^ --- [สิ้นสุดโค้ด Debug] --- ^^^^
+
+# --- NEW: เพิ่ม LIFF ID สำหรับหน้าอัปเดตตำแหน่งช่าง ---
+LIFF_ID_TECHNICIAN_LOCATION = os.environ.get('LIFF_ID_TECHNICIAN_LOCATION')
+# ----------------------------------------------------
+LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
+GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
+
+LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 100))
+
+if not GOOGLE_DRIVE_FOLDER_ID:
+    app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
+if not LIFF_ID_FORM:
+    app.logger.warning("LIFF_ID_FORM environment variable is not set. LIFF features will not work.")
+if not LINE_LOGIN_CHANNEL_ID:
+    app.logger.warning("LINE_LOGIN_CHANNEL_ID environment variable is not set. LIFF initialization might fail.")
+
+SCOPES = ['https://www.googleapis.com/auth/tasks', 'https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/drive.file']
+THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 cache = TTLCache(maxsize=100, ttl=60)
+
 scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
+
+#<editor-fold desc="Helper and Utility Functions">
 
 class LineMessageQueue:
     def __init__(self, max_per_minute=100):
@@ -185,6 +265,152 @@ message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
 threading.Thread(target=message_queue.process_queue, daemon=True).start()
 app.logger.info(f"LINE Message Queue started with a limit of {LINE_RATE_LIMIT_PER_MINUTE} messages/minute.")
 
+SETTINGS_FILE = 'settings.json'
+_DEFAULT_APP_SETTINGS_STORE = {
+    'report_times': {
+        'appointment_reminder_hour_thai': 7,
+        'outstanding_report_hour_thai': 20,
+        'customer_followup_hour_thai': 9
+    },
+    'line_recipients': {
+        'admin_group_id': os.environ.get('LINE_ADMIN_GROUP_ID', ''),
+        'technician_group_id': os.environ.get('LINE_TECHNICIAN_GROUP_ID', ''),
+        'manager_user_id': ''
+    },
+    'equipment_catalog': [],
+    'auto_backup': { 'enabled': False, 'hour_thai': 2, 'minute_thai': 0 },
+    'shop_info': { 'contact_phone': '081-XXX-XXXX', 'line_id': '@ComphoneService' },
+    'technician_list': [],
+    'popup_notifications': {
+        'enabled_arrival': False,
+        'message_arrival_template': 'ช่าง [technician_name] กำลังจะถึงบ้านคุณ [customer_name] แล้วครับ/ค่ะ',
+        'enabled_completion_customer': True,
+        'message_completion_customer_template': 'งาน [task_title] ที่บ้านคุณ [customer_name] เสร็จเรียบร้อยแล้วครับ/ค่ะ',
+        'enabled_nearby_job': False,
+        'nearby_radius_km': 5,
+        'message_nearby_template': 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?',
+        'liff_popup_base_url': 'https://liff.line.me/2007690244-zBNe26ZO'
+    },
+    # --- เพิ่มส่วนนี้เข้าไปทั้งหมด ---
+    'message_templates': {
+        'welcome_customer': "เรียน คุณ[customer_name],\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: [shop_phone]\nLINE ID: [shop_line_id]",
+    'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\n\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\n\n🔗 ดูรายละเอียดงาน:\n[task_url]",
+    'daily_reminder_header': "...",
+    'daily_reminder_task_line': "..."
+    }
+}
+
+def load_settings_from_file():
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            app.logger.error(f"Error handling settings.json: {e}")
+            if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) == 0:
+                os.remove(SETTINGS_FILE)
+                app.logger.warning(f"Empty settings.json deleted. Using default settings.")
+    return None
+
+def save_settings_to_file(settings_data):
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(settings_data, f, ensure_ascii=False, indent=4)
+        return True
+    except IOError as e:
+        app.logger.error(f"Error writing to settings.json: {e}")
+        return False
+
+def get_app_settings():
+    app_settings = json.loads(json.dumps(_DEFAULT_APP_SETTINGS_STORE))
+    loaded_settings = load_settings_from_file()
+    
+    if loaded_settings:
+        for key, default_value in app_settings.items():
+            if key in loaded_settings:
+                if isinstance(default_value, dict) and isinstance(loaded_settings[key], dict):
+                    app_settings[key].update(loaded_settings[key])
+                else:
+                    app_settings[key] = loaded_settings[key]
+    else:
+        save_settings_to_file(app_settings)
+        
+    equipment_catalog = app_settings.get('equipment_catalog', [])
+    app_settings['common_equipment_items'] = sorted(list(set(item.get('item_name') for item in equipment_catalog if item.get('item_name'))))
+    
+    return app_settings
+    
+def render_template_message(template_key, task):
+    """
+    ฟังก์ชันกลางสำหรับสร้างข้อความจาก Template โดยใช้ข้อมูลจาก Task
+    """
+    if not task:
+        return ""
+        
+    settings = get_app_settings()
+    template_str = settings.get('message_templates', {}).get(template_key, '')
+    if not template_str:
+        return f"ไม่พบ Template สำหรับ '{template_key}'"
+
+    # ดึงข้อมูลที่ต้องใช้บ่อยๆ
+    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    parsed_dates = parse_google_task_dates(task)
+    shop_info = settings.get('shop_info', {})
+    task_url = url_for('liff.task_details', task_id=task.get('id'), _external=True)
+
+    # สร้าง Dictionary ของข้อมูลที่จะใช้แทนที่
+    replacements = {
+        '[customer_name]': customer_info.get('name', '-'),
+        '[customer_phone]': customer_info.get('phone', '-'),
+        '[customer_address]': customer_info.get('address', '-'),
+        '[task_title]': task.get('title', '-'),
+        '[due_date]': parsed_dates.get('due_formatted', '-'),
+        '[map_url]': customer_info.get('map_url', '-'),
+        '[shop_phone]': shop_info.get('contact_phone', '-'),
+        '[shop_line_id]': shop_info.get('line_id', '-'),
+        '[task_url]': task_url
+    }
+
+    # วนลูปเพื่อแทนที่ค่าทั้งหมด
+    for placeholder, value in replacements.items():
+        template_str = template_str.replace(placeholder, str(value))
+        
+    return template_str    
+
+def save_app_settings(settings_data):
+    current_settings = get_app_settings()
+    
+    for key, value in settings_data.items():
+        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
+            current_settings[key].update(value)
+        else:
+            current_settings[key] = value
+            
+    return save_settings_to_file(current_settings)
+
+# --- เพิ่ม 2 ฟังก์ชันนี้เข้าไป ---
+LOCATIONS_FILE = 'technician_locations.json'
+
+def load_technician_locations():
+    if not os.path.exists(LOCATIONS_FILE):
+        return {}
+    try:
+        with open(LOCATIONS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+def save_technician_locations(locations_data):
+    try:
+        with open(LOCATIONS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(locations_data, f, ensure_ascii=False, indent=4)
+        return True
+    except IOError:
+        return False
+
+def safe_execute(request_object):
+    if hasattr(request_object, 'execute'):
+        return request_object.execute()
+    return request_object
+
 def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
     max_retries = 3
     base_delay = 1
@@ -202,6 +428,90 @@ def _execute_google_api_call_with_retry(api_call, *args, **kwargs):
             app.logger.error(f"Unexpected error during Google API call: {e}")
             raise
     return None
+
+def get_google_service(api_name, api_version):
+    creds = None
+    SERVICE_ACCOUNT_FILE_CONTENT = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
+    
+    if SERVICE_ACCOUNT_FILE_CONTENT:
+        try:
+            info = json.loads(SERVICE_ACCOUNT_FILE_CONTENT)
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=SCOPES
+            )
+            app.logger.info("✅ Loaded credentials from Service Account.")
+            try:
+                service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
+                app.logger.info(f"✅ Successfully built {api_name} {api_version} service using Service Account")
+                return service
+            except Exception as e:
+                app.logger.error(f"❌ Failed to build Google API service with Service Account: {e}")
+                return None
+        except Exception as e:
+            app.logger.warning(f"Could not load Service Account from GOOGLE_SERVICE_ACCOUNT_JSON env var: {e}. Falling back to User Credentials.")
+            creds = None
+
+    google_token_json_str = os.environ.get('GOOGLE_TOKEN_JSON')
+    if google_token_json_str:
+        try:
+            creds = Credentials.from_authorized_user_info(json.loads(google_token_json_str), SCOPES)
+            app.logger.info(f"Loaded credentials from environment. Valid: {creds.valid}")
+            if hasattr(creds, 'expiry') and creds.expiry:
+                app.logger.info(f"Token expires at: {creds.expiry}")
+                time_left = creds.expiry - datetime.datetime.utcnow()
+                app.logger.info(f"Time left: {time_left}")
+        except Exception as e:
+            app.logger.warning(f"Could not load token from GOOGLE_TOKEN_JSON env var: {e}")
+            creds = None
+    if creds:
+        if not creds.valid:
+            if creds.expired and creds.refresh_token:
+                try:
+                    app.logger.info("Token expired, attempting refresh...")
+                    creds.refresh(Request())
+                    try:
+                        backup_token = {
+                            'token': creds.token, 'refresh_token': creds.refresh_token,
+                            'token_uri': creds.token_uri, 'client_id': creds.client_id,
+                            'client_secret': creds.client_secret, 'scopes': creds.scopes,
+                            'expiry': creds.expiry.isoformat() if creds.expiry else None
+                        }
+                        with open('backup_token.json', 'w') as f:
+                            json.dump(backup_token, f, indent=2)
+                        app.logger.info("Token backup saved to backup_token.json")
+                    except Exception as backup_error:
+                        app.logger.warning(f"Could not save backup token: {backup_error}")
+                    app.logger.info("="*80)
+                    app.logger.info("🔄 Google access token refreshed successfully!")
+                    app.logger.info("📋 PLEASE UPDATE YOUR GOOGLE_TOKEN_JSON ENVIRONMENT VARIABLE:")
+                    app.logger.info(f"NEW TOKEN: {creds.to_json()}")
+                    app.logger.info("="*80)
+                except Exception as e:
+                    app.logger.error(f"❌ Error refreshing token: {e}")
+                    app.logger.error("🔧 Please run get_token.py to generate a new token")
+                    creds = None
+            else:
+                app.logger.error("❌ Token invalid and cannot be refreshed (no refresh_token)")
+                app.logger.error("🔧 Please run get_token.py to generate a new token")
+                creds = None
+    if creds and creds.valid:
+        try:
+            service = _execute_google_api_call_with_retry(build, api_name, api_version, credentials=creds)
+            app.logger.info(f"✅ Successfully built {api_name} {api_version} service")
+            return service
+        except Exception as e:
+            app.logger.error(f"❌ Failed to build Google API service: {e}")
+            return None
+    else:
+        app.logger.error("❌ No valid Google credentials available (Service Account or User Credentials).")
+        app.logger.error("🔧 Please ensure:")
+        app.logger.error("   1. GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_TOKEN_JSON environment variable is set")
+        app.logger.error("   2. OAuth consent screen is in Production mode (for User Credentials)")
+        app.logger.error("   3. Run get_token.py to generate a fresh token (for User Credentials)")
+        return None
+
+def get_google_tasks_service(): return get_google_service('tasks', 'v1')
+def get_google_drive_service(): return get_google_service('drive', 'v3')
 
 @app.route('/api/tasks/create', methods=['POST'])
 def api_create_task():
@@ -251,59 +561,38 @@ def api_create_task():
         app.logger.error(f"Error in api_create_task: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
-# 2. (แก้ไข) API สำหรับรับข้อมูลการสร้างงานภายนอก/งานเคลม
 @app.route('/api/external_tasks/create', methods=['POST'])
 def api_create_external_task():
     try:
-        # รับข้อมูลจากฟอร์ม
-        ref_task_id = request.form.get('ref_task_id') # รหัสงานเดิม
+        task_title = f"[งานภายนอก] {str(request.form.get('task_title', '')).strip()}"
         customer_name = str(request.form.get('customer', '')).strip()
         external_partner = str(request.form.get('external_partner', '')).strip()
-        claimed_equipment = request.form.getlist('claimed_equipment') # รายการอุปกรณ์ที่เลือก
-        problem_details = str(request.form.get('task_title', '')).strip()
-        phone = str(request.form.get('phone', '')).strip()
 
-        if not customer_name or not external_partner or not problem_details:
-            return jsonify({'status': 'error', 'message': 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน'}), 400
+        if not task_title or not customer_name:
+            return jsonify({'status': 'error', 'message': 'กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน'}), 400
 
-        # สร้าง Task Title ให้อ่านง่าย
-        task_title = f"[งานเคลม] {', '.join(claimed_equipment) if claimed_equipment else problem_details}"
-        
-        # สร้าง Notes
         notes_lines = [
             f"ลูกค้า: {customer_name}",
-            f"เบอร์โทรศัพท์: {phone}",
             f"ผู้รับผิดชอบภายนอก: {external_partner}",
-            "---",
-            "รายละเอียดปัญหา:",
-            problem_details,
+            f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
+            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
         ]
-        if claimed_equipment:
-            notes_lines.append("\nอุปกรณ์ที่ส่งเคลม:")
-            notes_lines.extend([f"- {item}" for item in claimed_equipment])
-        
-        # [สำคัญ] เพิ่มการอ้างอิงถึงงานเดิม
-        if ref_task_id:
-            notes_lines.append(f"\nอ้างอิงงานติดตั้ง: {ref_task_id}")
+        notes = "\n".join(filter(None, notes_lines))
 
-        notes = "\n".join(notes_lines)
-
-        # จัดการวันกำหนดส่งกลับ
         due_date_gmt = None
         return_date_str = str(request.form.get('return_date', '')).strip()
         if return_date_str:
             try:
-                dt_local = THAILAND_TZ.localize(date_parse(f"{return_date_str}T09:00:00"))
+                dt_local = THAILAND_TZ.localize(date_parse(f"{return_date_str}T09:00:00")) # ตั้งเวลา 9 โมงเช้า
                 due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
             except ValueError:
                 return jsonify({'status': 'error', 'message': 'รูปแบบวันกำหนดส่งกลับไม่ถูกต้อง'}), 400
 
         new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
-        
         if new_task:
             cache.clear()
-            # อาจจะต้องเพิ่ม Logic เพื่อบันทึกใน Task เดิมว่ามีงานเคลมนี้ด้วย
-            return jsonify({'status': 'success', 'message': 'สร้างงานเคลมเรียบร้อยแล้ว!', 'redirect_url': url_for('liff.task_details', task_id=new_task['id'])})
+            # สามารถเพิ่มการแจ้งเตือนสำหรับงานภายนอกที่นี่ได้
+            return jsonify({'status': 'success', 'message': 'สร้างงานภายนอกเรียบร้อยแล้ว!', 'redirect_url': url_for('liff.task_details', task_id=new_task['id'])})
         else:
             return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการสร้างงานใน Google Tasks'}), 500
     except Exception as e:
@@ -408,7 +697,7 @@ def api_update_task(task_id):
             technician_line_user_id = request.form.get('technician_line_user_id')
 
             if latitude and longitude:
-                new_map_url = f"http://googleusercontent.com/maps/google.com/15{latitude},{longitude}"
+                new_map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
                 if re.search(r"https?:\/\/[^\s]+", base_notes_text):
                     base_notes_text = re.sub(r"https?:\/\/[^\s]+", new_map_url, base_notes_text)
                 else:
@@ -416,8 +705,7 @@ def api_update_task(task_id):
                 app.logger.info(f"Updated customer location for task {task_id} to {new_map_url}")
 
                 if technician_line_user_id:
-                    # [แก้ไข] เรียกใช้ฟังก์ชันจาก utils.py แทน
-                    locations = load_technician_locations() 
+                    locations = load_technician_locations()
                     locations[technician_line_user_id] = {
                         'lat': float(latitude), 'lon': float(longitude),
                         'timestamp': datetime.datetime.now(THAILAND_TZ).isoformat()
@@ -428,7 +716,7 @@ def api_update_task(task_id):
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'work_summary': work_summary,
-                'equipment_used': equipment_used_data,
+                'equipment_used': equipment_used_data, # <-- ✅ ใช้ข้อมูลใหม่
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
@@ -461,7 +749,7 @@ def api_update_task(task_id):
     except Exception as e:
         app.logger.error(f'Unexpected error in api_update_task for task {task_id}: {e}', exc_info=True)
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดที่ไม่คาดคิด: {str(e)}'}), 500
-        
+
 @app.route('/api/task/<task_id>/edit_main', methods=['POST'])
 def api_edit_task_main(task_id):
     """API สำหรับแก้ไขข้อมูลหลักของงาน"""
@@ -558,7 +846,7 @@ def token_status():
         
         if hasattr(creds, 'expiry') and creds.expiry:
             status_info['expires_at'] = creds.expiry.isoformat()
-            status_info['expires_in_seconds'] = (datetime.datetime.now(pytz.utc).replace(tzinfo=None) - creds.expiry.replace(tzinfo=None)).total_seconds()
+            status_info['expires_in_seconds'] = (creds.expiry - datetime.datetime.utcnow()).total_seconds()
         
         return jsonify({
             'status': 'success',
@@ -572,6 +860,7 @@ def token_status():
             'message': f'Error parsing User Token: {e}',
             'detail': 'User Token JSON might be invalid or corrupted.'
         })
+
 
 @app.route('/debug/liff')
 def debug_liff():
@@ -612,6 +901,11 @@ def environment_check():
         ]
     })
 
+def sanitize_filename(name):
+    if not name:
+        return "Unnamed"
+    return re.sub(r'[\\/*?:"<>|]', "", name).strip()
+
 @cached(cache)
 def find_or_create_drive_folder(name, parent_id):
     service = get_google_drive_service()
@@ -639,6 +933,44 @@ def find_or_create_drive_folder(name, parent_id):
     except HttpError as e:
         app.logger.error(f"Error finding or creating folder '{name}': {e}")
         return None
+
+@cached(cache)
+def get_customer_database():
+    app.logger.info("Building customer database from Google Tasks...")
+    all_tasks = get_google_tasks_for_report(show_completed=True)
+    if not all_tasks:
+        return []
+
+    customers_dict = {}
+    all_tasks.sort(key=lambda x: x.get('created', '0'), reverse=True)
+
+    for task in all_tasks:
+        notes = task.get('notes', '')
+        if not notes:
+            continue
+        
+        _, base_notes = parse_tech_report_from_notes(notes)
+        customer_info = parse_customer_info_from_notes(base_notes)
+
+        name = customer_info.get('name', '').strip()
+        phone = customer_info.get('phone', '').strip()
+
+        if not name:
+            continue
+
+        customer_key = (name.lower(), phone)
+        
+        if customer_key not in customers_dict:
+            customers_dict[customer_key] = {
+                'name': name,
+                'phone': phone,
+                'organization': customer_info.get('organization', '').strip(),
+                'address': customer_info.get('address', '').strip(),
+                'map_url': customer_info.get('map_url', '')
+            }
+    
+    app.logger.info(f"Customer database built with {len(customers_dict)} unique customers.")
+    return list(customers_dict.values())
 
 def load_settings_from_drive_on_startup():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
@@ -730,6 +1062,16 @@ def get_google_tasks_for_report(show_completed=True):
         return results.get('items', [])
     except HttpError as err:
         app.logger.error(f"API Error getting tasks: {err}")
+        return None
+
+def get_single_task(task_id):
+    if not task_id: return None
+    service = get_google_tasks_service()
+    if not service: return None
+    try:
+        return _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
+    except HttpError as err:
+        app.logger.error(f"Error getting single task {task_id}: {err}")
         return None
 
 def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
@@ -842,6 +1184,30 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
         app.logger.error(f"Failed to update task {task_id}: {e}")
         return None
 
+def parse_customer_info_from_notes(notes):
+    info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
+    if not notes: return info
+
+    org_match = re.search(r"หน่วยงาน:\s*(.*)", notes, re.IGNORECASE)
+    name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
+    phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
+    address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
+    map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
+
+    if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
+    if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
+    if phone_match: info['phone'] = phone_match.group(1).strip().split(':')[-1].strip()
+    if address_match: info['address'] = address_match.group(1).strip().split(':')[-1].strip()
+    
+    if map_url_match:
+        coords_or_url = map_url_match.group(1).strip()
+        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
+            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
+        else:
+            info['map_url'] = coords_or_url
+    
+    return info
+
 def parse_customer_feedback_from_notes(notes):
     feedback_data = {}
     if not notes: return feedback_data
@@ -853,7 +1219,83 @@ def parse_customer_feedback_from_notes(notes):
         except json.JSONDecodeError:
             app.logger.warning("Failed to decode customer feedback JSON from notes.")
     return feedback_data
-            
+
+def parse_google_task_dates(task_item):
+    parsed = task_item.copy()
+    for key in ['created', 'due', 'completed']:
+        if parsed.get(key):
+            try:
+                dt_utc = date_parse(parsed[key])
+                parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
+                if key == 'due':
+                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
+            except (ValueError, TypeError) as e:
+                app.logger.warning(f"Could not parse date '{parsed[key]}' for key '{key}': {e}")
+                parsed[f'{key}_formatted'] = ''
+                if key == 'due': parsed['due_for_input'] = ''
+        else:
+            parsed[f'{key}_formatted'] = ''
+            if key == 'due': parsed['due_for_input'] = ''
+    return parsed
+
+def parse_tech_report_from_notes(notes):
+    # ✅ DEBUG: แสดง 200 ตัวอักษรแรกของ notes ที่ได้รับ
+    app.logger.debug(f"Parsing notes: {notes[:200]}...") 
+    if not notes:
+        # ✅ DEBUG: แจ้งเมื่อ notes ว่างเปล่า
+        app.logger.debug("Notes is empty, returning empty history.")
+        return [], ""
+
+    # ใช้ re.split เพื่อแยกส่วนข้อมูลลูกค้าและส่วนรายงานออกจากกันอย่างชัดเจน
+    parts = re.split(r'\n\s*--- TECH_REPORT_START ---', notes)
+    base_notes_with_feedback = parts[0]
+    history = []
+
+    # วนลูปเฉพาะส่วนที่เป็นรายงานเท่านั้น
+    for part in parts[1:]:
+        # หา JSON และส่วนท้ายของบล็อก
+        end_match = re.search(r'(.*?)\n\s*--- TECH_REPORT_END ---', part, re.DOTALL)
+        if end_match:
+            json_str = end_match.group(1).strip()
+            try:
+                report_data = json.loads(json_str)
+                
+                # --- โค้ดประมวลผล report_data (เหมือนเดิม) ---
+                if 'attachments' in report_data:
+                    pass
+                elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
+                    report_data['attachments'] = []
+                    for url in report_data['attachment_urls']:
+                        if isinstance(url, str):
+                            match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+                            file_id = match.group(1) if match else None
+                            report_data['attachments'].append({'id': file_id, 'url': url})
+                    report_data.pop('attachment_urls', None)
+                
+                if isinstance(report_data.get('equipment_used'), str):
+                    report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
+                else:
+                    report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
+                
+                if 'type' not in report_data:
+                    report_data['type'] = 'report'
+
+                history.append(report_data)
+                # --- สิ้นสุดโค้ดประมวลผล ---
+
+            except json.JSONDecodeError:
+                # ✅ DEBUG: แจ้งเมื่อไม่สามารถ Parse JSON ของรายงานได้
+                app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
+
+    # ทำความสะอาด base notes เพื่อให้เหลือแค่ข้อมูลลูกค้าจริงๆ
+    base_notes_text = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", base_notes_with_feedback, flags=re.DOTALL).strip()
+
+    history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
+    # ✅ DEBUG: แสดงผลลัพธ์ของ history และ base_notes_text
+    app.logger.debug(f"Parsed history: {history}")
+    app.logger.debug(f"Base notes text: {base_notes_text[:200]}...")
+    return history, base_notes_text
+              
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -3166,6 +3608,7 @@ def public_task_report(task_id):
     response.headers['Expires'] = '0'
     return response
 
+from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')
 
 @app.route('/generate_public_report_qr/<task_id>')
