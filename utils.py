@@ -291,3 +291,27 @@ def create_task_flex_message(task):
         }
     }
     return contents        
+    
+def save_app_settings(settings_data):
+    """
+    รับ Dictionary ของ settings ใหม่ทั้งหมด แล้วบันทึกลงไฟล์ settings.json
+    (ฟังก์ชันนี้จะเขียนทับไฟล์เดิมทั้งหมดด้วยข้อมูลใหม่)
+    """
+    # Import ที่จำเป็นสำหรับฟังก์ชันนี้
+    import json
+    from config import SETTINGS_FILE # ดึงชื่อไฟล์มาจาก config
+
+    try:
+        # get_app_settings() ทำหน้าที่ merge ข้อมูลให้อยู่แล้ว
+        # ฟังก์ชันนี้จึงทำหน้าที่บันทึกทับไฟล์อย่างเดียว
+        current_settings = get_app_settings()
+        current_settings.update(settings_data)
+
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(current_settings, f, ensure_ascii=False, indent=4)
+        
+        print(f"Successfully saved settings to {SETTINGS_FILE}") # สำหรับ Debug
+        return True
+    except IOError as e:
+        print(f"Error saving settings to {SETTINGS_FILE}: {e}") # สำหรับ Debug
+        return False    
