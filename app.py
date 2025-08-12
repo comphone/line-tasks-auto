@@ -935,6 +935,7 @@ def get_customer_database():
     app.logger.info("Building customer database from Google Tasks...")
     all_tasks = get_google_tasks_for_report(show_completed=True)
     if not all_tasks:
+        app.logger.error("No tasks found for customer database") # เพิ่ม log
         return []
 
     customers_dict = {}
