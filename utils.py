@@ -201,3 +201,93 @@ def save_technician_locations(locations_data):
     except IOError as e:
         print(f"Error saving to {LOCATIONS_FILE}: {e}")
         return False
+        
+def create_task_flex_message(task):
+    """
+    สร้าง Flex Message Bubble สำหรับแสดงข้อมูลสรุปของงาน 1 ชิ้น
+    """
+    # Import เฉพาะส่วนที่จำเป็นต้องใช้ภายในฟังก์ชัน
+    from flask import url_for
+    
+    # ดึงข้อมูลลูกค้าและวันที่ที่ผ่านการจัดรูปแบบแล้ว
+    customer = parse_customer_info_from_notes(task.get('notes', ''))
+    dates = parse_google_task_dates(task)
+
+    # กำหนดสถานะและสี
+    status_text = "เสร็จสิ้น" if task.get('status') == 'completed' else "งานค้าง"
+    status_color = "#28a745" if task.get('status') == 'completed' else "#ffc107"
+
+    # สร้างเนื้อหาของ Flex Message
+    contents = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": status_color,
+            "contents": [
+                {
+                    "type": "text",
+                    "text": status_text,
+                    "color": "#ffffff",
+                    "weight": "bold",
+                    "size": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": task.get('title', 'ไม่มีชื่อเรื่อง'),
+                    "color": "#ffffff",
+                    "weight": "bold",
+                    "size": "lg",
+                    "wrap": True
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "ลูกค้า:", "flex": 2, "color": "#aaaaaa"},
+                        {"type": "text", "text": customer.get('name', '-'), "flex": 5, "wrap": True}
+                    ]
+                },
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "เบอร์โทร:", "flex": 2, "color": "#aaaaaa"},
+                        {"type": "text", "text": customer.get('phone', '-'), "flex": 5, "wrap": True}
+                    ]
+                },
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {"type": "text", "text": "นัดหมาย:", "flex": 2, "color": "#aaaaaa"},
+                        {"type": "text", "text": dates.get('due_formatted', 'ไม่มีกำหนด'), "flex": 5}
+                    ]
+                }
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "uri",
+                        "label": "เปิดดูรายละเอียด",
+                        "uri": url_for('liff.task_details', task_id=task.get('id'), _external=True)
+                    },
+                    "style": "primary",
+                    "height": "sm"
+                }
+            ]
+        }
+    }
+    return contents        
