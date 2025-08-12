@@ -315,3 +315,34 @@ def save_app_settings(settings_data):
     except IOError as e:
         print(f"Error saving settings to {SETTINGS_FILE}: {e}") # สำหรับ Debug
         return False    
+        
+def find_or_create_drive_folder(name, parent_id):
+    # --- VVV เพิ่ม Local Import เข้าไป VVV ---
+    from app import get_google_drive_service, _execute_google_api_call_with_retry, cache
+    from googleapiclient.errors import HttpError
+
+    # ใช้ @cached decorator ไม่ได้โดยตรงจากภายนอก app context
+    # แต่เราสามารถ implement logic คล้ายๆ กันได้ถ้าต้องการ
+    # ในที่นี้จะเรียก API ตรงๆ ก่อนเพื่อความง่าย
+
+    service = get_google_drive_service()
+    if not service:
+        return None
+
+    query = f"name = '{name}' and '{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    try:
+        response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', pageSize=1)
+        files = response.get('files', [])
+        if files:
+            return files[0]['id']
+        else:
+            file_metadata = {
+                'name': name,
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [parent_id]
+            }
+            folder = _execute_google_api_call_with_retry(service.files().create, body=file_metadata, fields='id')
+            return folder.get('id')
+    except HttpError as e:
+        print(f"Error finding or creating folder '{name}': {e}")
+        return None        
