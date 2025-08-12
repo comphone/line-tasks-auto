@@ -1,4 +1,9 @@
 import os
+from utils import (
+    get_app_settings, get_single_task, parse_google_task_dates,
+    parse_customer_info_from_notes, parse_tech_report_from_notes,
+    load_technician_locations
+)
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import sys
@@ -66,13 +71,6 @@ from flask_cors import CORS
 from config import (
     LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, UPLOAD_FOLDER, THAILAND_TZ,
     GOOGLE_TASKS_LIST_ID, GOOGLE_DRIVE_FOLDER_ID, LINE_RATE_LIMIT_PER_MINUTE, SCOPES
-)
-
-# 2. Import จากไฟล์ utils.py (รวมไว้ที่เดียว)
-from utils import (
-    get_app_settings, get_single_task, parse_google_task_dates,
-    parse_customer_info_from_notes, parse_tech_report_from_notes,
-    load_technician_locations
 )
 
 # 3. Import Blueprint จาก liff_views.py
