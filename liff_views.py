@@ -186,69 +186,6 @@ def technician_report_print():
     sorted_report, technician_list = _get_technician_report_data(year, month)
     return render_template('technician_report_print.html', report_data=sorted_report, selected_year=year, selected_month=month, now=datetime.datetime.now(THAILAND_TZ), technician_list=technician_list)
 
-@liff_bp.route('/edit_task/<task_id>', methods=['GET', 'POST'])
-def edit_task(task_id):
-    task_raw = get_single_task(task_id)
-    if not task_raw:
-        abort(404)
-
-    if request.method == 'POST':
-        new_title = str(request.form.get('task_title', '')).strip()
-        if not new_title:
-            flash('กรุณากรอกรายละเอียดงาน', 'danger')
-            return redirect(url_for('liff.edit_task', task_id=task_id))
-
-        notes_lines = []
-        organization_name = str(request.form.get('organization_name', '')).strip()
-        if organization_name:
-            notes_lines.append(f"หน่วยงาน: {organization_name}")
-
-        notes_lines.extend([
-            f"ลูกค้า: {str(request.form.get('customer_name', '')).strip()}",
-            f"เบอร์โทรศัพท์: {str(request.form.get('customer_phone', '')).strip()}",
-            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
-        ])
-        map_url = str(request.form.get('latitude_longitude', '')).strip()
-        if map_url:
-            notes_lines.append(map_url)
-        
-        new_base_notes = "\n".join(filter(None, notes_lines))
-
-        original_notes = task_raw.get('notes', '')
-        tech_reports, _ = parse_tech_report_from_notes(original_notes)
-        feedback_data = parse_customer_feedback_from_notes(original_notes)
-        
-        all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in tech_reports])
-        
-        final_notes = new_base_notes
-        if all_reports_text:
-            final_notes += all_reports_text
-        if feedback_data:
-            final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-
-        due_date_gmt = None
-        appointment_str = str(request.form.get('appointment_due', '')).strip()
-        if appointment_str:
-            try:
-                dt_local = THAILAND_TZ.localize(date_parse(appointment_str))
-                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-            except ValueError:
-                flash('รูปแบบวันเวลานัดหมายไม่ถูกต้อง', 'warning')
-                return redirect(url_for('liff.edit_task', task_id=task_id))
-
-        if update_google_task(task_id, title=new_title, notes=final_notes, due=due_date_gmt):
-            cache.clear()
-            flash('บันทึกข้อมูลหลักของงานเรียบร้อยแล้ว!', 'success')
-            return redirect(url_for('liff.task_details', task_id=task_id))
-        else:
-            flash('เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก', 'danger')
-            return redirect(url_for('liff.edit_task', task_id=task_id))
-
-    task = parse_google_task_dates(task_raw)
-    _, base_notes = parse_tech_report_from_notes(task_raw.get('notes', ''))
-    task['customer'] = parse_customer_info_from_notes(base_notes)
-    return render_template('edit_task.html', task=task)
-
 @liff_bp.route('/technician_report')
 def technician_report():
     now = datetime.datetime.now(THAILAND_TZ)
