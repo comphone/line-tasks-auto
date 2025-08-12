@@ -4,13 +4,25 @@
 
 {% block head_extra %}
     <style>
-        /* --- ✏️ START: เพิ่มโค้ด CSS ส่วนนี้ --- */
+        /* --- ✏️ START: เพิ่ม/แก้ไข CSS ส่วนนี้ --- */
         /* ทำให้ช่องค้นหามีขอบสีน้ำเงินเมื่อถูกเลือก */
         .search-box-prominent .form-control:focus {
             border-color: #86b7fe;
             box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
         }
-        /* --- ✏️ END: สิ้นสุดโค้d CSS --- */
+
+        /* เพิ่มแถบสีพื้นหลังสำหรับสถานะของงาน */
+        .table-row-completed { background-color: rgba(25, 135, 84, 0.15) !important; } /* Light Green */
+        .table-row-overdue   { background-color: rgba(220, 53, 69, 0.15) !important; } /* Light Red */
+        .table-row-today     { background-color: rgba(13, 202, 240, 0.15) !important; } /* Light Cyan */
+        .table-row-needs-action { background-color: rgba(255, 193, 7, 0.15) !important; } /* Light Yellow */
+
+        /* เพิ่มเอฟเฟกต์เมื่อนำเมาส์ไปวาง */
+        .table-row-completed:hover { background-color: rgba(25, 135, 84, 0.25) !important; }
+        .table-row-overdue:hover   { background-color: rgba(220, 53, 69, 0.25) !important; }
+        .table-row-today:hover     { background-color: rgba(13, 202, 240, 0.25) !important; }
+        .table-row-needs-action:hover { background-color: rgba(255, 193, 7, 0.25) !important; }
+        /* --- ✏️ END: สิ้นสุดโค้ด CSS --- */
 
         .search-highlight {
             background-color: #ffc107;
@@ -36,7 +48,6 @@
         .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
         .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
         
-        .table-hover tbody tr:hover { background-color: #f1f1f1; }
         .badge { font-size: 0.9em; padding: .5em .75em; }
 
         .table-responsive {
@@ -83,7 +94,6 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="mb-0">แดชบอร์ด</h1>
-    {# ✅✅✅ แก้ไข: เพิ่ม 'liff.' เข้าไปหน้า 'form_page' ✅✅✅ #}
     <a href="{{ url_for('liff.form_page') }}" class="btn btn-success btn-lg">
         <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
     </a>
@@ -134,7 +144,6 @@
             </div>
         </a>
     </div>
-    {# ✅✅✅ เพิ่ม Card ใหม่สำหรับงานภายนอก ✅✅✅ #}
     <div class="col-lg-3 col-6 mb-4">
         <a href="{{ url_for('liff.summary', status_filter='external') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-dark h-100">
@@ -166,18 +175,19 @@
     <div class="card-body">
         <div class="tab-content" id="dashboardTabContent">
             <div class="tab-pane fade show active" id="task-list-pane" role="tabpanel" aria-labelledby="task-list-tab" tabindex="0">
-				<form class="mb-3" onsubmit="return false;">
-					<div class="input-group input-group-lg search-box-prominent">
-						<span class="input-group-text"><i class="fas fa-search"></i></span>
-						<input type="text" class="form-control" id="searchInput" name="search_query" placeholder="พิมพ์เพื่อค้นหาทันที..." value="{{ search_query or '' }}">
-						<a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-secondary" title="จัดการงานซ้ำซ้อน">
-							<i class="fas fa-copy"></i>
-						</a>
-						<a href="{{ url_for('liff.summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary" title="พิมพ์รายการนี้">
-							<i class="fas fa-print"></i>
-						</a>
-					</div>
-				</form>
+                
+                <form class="mb-3" onsubmit="return false;">
+                    <div class="input-group input-group-lg search-box-prominent">
+                        <span class="input-group-text bg-light"><i class="fas fa-search"></i></span>
+                        <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="พิมพ์เพื่อค้นหาทันที..." value="{{ search_query or '' }}">
+                        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-secondary" title="จัดการงานซ้ำซ้อน">
+                            <i class="fas fa-copy"></i>
+                        </a>
+                        <a href="{{ url_for('liff.summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary" title="พิมพ์รายการนี้">
+                            <i class="fas fa-print"></i>
+                        </a>
+                    </div>
+                    </form>
 
                 <div id="table-loading-spinner" class="text-center p-5">
                     <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
@@ -202,21 +212,34 @@
                         </thead>
                         <tbody>
                             {% for task in tasks %}
-                            <tr class="task-row clickable-row {{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}"
+                            <tr class="task-row clickable-row
+                                {% if task.status == 'completed' %}
+                                    table-row-completed
+                                {% elif task.is_overdue %}
+                                    table-row-overdue
+                                {% elif task.is_today %}
+                                    table-row-today
+                                {% else %}
+                                    table-row-needs-action
+                                {% endif %}"
                                 data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
-                                <td class="checkbox-col">
+                            <td class="checkbox-col">
                                     <input class="form-check-input task-checkbox" type="checkbox" data-task-id="{{ task.id }}">
                                 </td>
-                                <td> {% if task.customer.organization %}
+                                <td>
+                                    {% if task.customer.organization %}
                                         <strong>{{ task.customer.organization }}</strong>
                                         <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
                                     {% else %}
                                         <strong>{{ task.customer.name or '-' }}</strong>
                                     {% endif %}
                                 </td>
-                                <td class="task-title-cell" title="{{ task.title }}"> {{ task.title | replace('\n', '<br>') | safe }}
+                                <td class="task-title-cell" title="{{ task.title }}">
+                                    {{ task.title | replace('\n', '<br>') | safe }}
                                 </td>
-                                <td>{{ task.due_formatted or '-' }}</td> <td class="text-center"> {% if task.status == 'completed' %}
+                                <td>{{ task.due_formatted or '-' }}</td>
+                                <td class="text-center">
+                                    {% if task.status == 'completed' %}
                                         <span class="badge bg-success">เสร็จเรียบร้อย</span>
                                     {% elif task.is_today %}
                                         <span class="badge bg-info">งานวันนี้</span>
@@ -226,14 +249,14 @@
                                         <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
                                     {% endif %}
                                 </td>
-								<td class="text-center">
-									<a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
-										<i class="fas fa-edit"></i>
-									</a>
-									<a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
-										<i class="fas fa-file-alt"></i>
-									</a>
-								</td>
+                                <td class="text-center">
+                                    <a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+                                        <i class="fas fa-file-alt"></i>
+                                    </a>
+                                </td>
                             </tr>
                             {% else %}
                             <tr>
@@ -273,20 +296,16 @@
         // ✅ START: โค้ดใหม่สำหรับทำให้ทั้งแถวคลิกได้
         document.querySelectorAll('.clickable-row').forEach(row => {
             row.addEventListener('click', function(event) {
-                // ตรวจสอบว่าไม่ได้คลิกที่ checkbox, ปุ่ม, หรือลิงก์ภายในแถว
                 const ignoredElements = 'input, button, a, i';
                 if (event.target.matches(ignoredElements) || event.target.closest(ignoredElements)) {
                     return;
                 }
-                
                 const href = this.dataset.href;
                 if (href) {
                     window.location.href = href;
                 }
             });
         });
-
-        // เปลี่ยน CSS cursor สำหรับแถวที่คลิกได้
         const style = document.createElement('style');
         style.innerHTML = `.clickable-row { cursor: pointer; }`;
         document.head.appendChild(style);
@@ -295,7 +314,6 @@
         // --- ส่วนของ Chart (เหมือนเดิม) ---
         const monthlyCtx = document.getElementById('monthlyTasksChart');
         let myChart;
-
         if (monthlyCtx) {
             const chartData = {
                 labels: {{ chart_data['labels'] | tojson | safe }},
@@ -313,7 +331,6 @@
                 plugins: { legend: { display: false } }
             };
             myChart = new Chart(monthlyCtx, { type: 'bar', data: chartData, options: chartOptions });
-            
             document.getElementById('chart-tab')?.addEventListener('shown.bs.tab', () => myChart?.update());
         }
 
@@ -326,9 +343,7 @@
         if (searchInput) {
             function clearHighlights(container) {
                 const highlighted = container.querySelectorAll('.search-highlight');
-                highlighted.forEach(el => {
-                    el.outerHTML = el.innerHTML;
-                });
+                highlighted.forEach(el => { el.outerHTML = el.innerHTML; });
             }
             function applyHighlights(container, filter) {
                 if (!filter) return;
@@ -337,9 +352,7 @@
                 let node;
                 const nodesToReplace = [];
                 while (node = walker.nextNode()) {
-                    if (node.textContent.match(regex)) {
-                        nodesToReplace.push(node);
-                    }
+                    if (node.textContent.match(regex)) { nodesToReplace.push(node); }
                 }
                 nodesToReplace.forEach(node => {
                     const newNode = document.createElement('span');
@@ -385,16 +398,12 @@
 
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', function() {
-                taskCheckboxes.forEach(checkbox => {
-                    checkbox.checked = this.checked;
-                });
+                taskCheckboxes.forEach(checkbox => { checkbox.checked = this.checked; });
                 updateSelectionState();
             });
         }
 
-        taskCheckboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', updateSelectionState);
-        });
+        taskCheckboxes.forEach(checkbox => { checkbox.addEventListener('change', updateSelectionState); });
 
         if (deleteSelectedBtn) {
             deleteSelectedBtn.addEventListener('click', async function() {
@@ -408,10 +417,7 @@
                     try {
                         const response = await fetch("{{ url_for('api_delete_tasks_batch') }}", {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': csrfToken
-                            },
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                             body: JSON.stringify({ task_ids: taskIds })
                         });
                         const result = await response.json();

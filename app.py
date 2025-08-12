@@ -1060,6 +1060,11 @@ def get_google_tasks_for_report(show_completed=True):
         app.logger.error(f"API Error getting tasks: {err}")
         return None
 
+@app.route('/api/customers')
+def api_customers():
+    customer_list = get_customer_database()
+    return jsonify(customer_list)
+
 def get_single_task(task_id):
     if not task_id: return None
     service = get_google_tasks_service()
@@ -1970,11 +1975,6 @@ with app.app_context():
     load_settings_from_drive_on_startup()   
 
 atexit.register(cleanup_scheduler)
-
-@app.route('/api/customers')
-def api_customers():
-    customer_list = get_customer_database()
-    return jsonify(customer_list)
 
 @app.route('/api/equipment_catalog')
 def api_equipment_catalog():
