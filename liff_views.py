@@ -1,7 +1,9 @@
+# liff_views.py
 import os
 import datetime
 import pytz
 import base64
+import json
 from flask import (
     Blueprint, render_template, request, url_for, abort, jsonify,
     current_app, redirect, flash, make_response
@@ -11,7 +13,7 @@ from dateutil.parser import parse as date_parse
 # Import ฟังก์ชันที่จำเป็นจาก app.py
 from app import (
     get_google_tasks_for_report, get_single_task, parse_google_task_dates,
-    parse_customer_info_from_notes, parse_tech_report_from_notes,
+    parse_customer_info_from_notes, parse_tech_report_from_notes, parse_customer_feedback_from_notes,
     get_app_settings, TEXT_SNIPPETS, generate_qr_code_base64,
     update_google_task, cache, _get_technician_report_data,
     LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION
@@ -186,58 +188,16 @@ def technician_report_print():
     sorted_report, technician_list = _get_technician_report_data(year, month)
     return render_template('technician_report_print.html', report_data=sorted_report, selected_year=year, selected_month=month, now=datetime.datetime.now(THAILAND_TZ), technician_list=technician_list)
 
-@liff_bp.route('/technician_report')
-def technician_report():
-    now = datetime.datetime.now(THAILAND_TZ)
-    try:
-        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
-    except (ValueError, TypeError):
-        year, month = now.year, now.month
-
-    months = [{'value': i, 'name': datetime.date(2000, i, 1).strftime('%B')} for i in range(1, 13)]
-    report_data, technician_list = _get_technician_report_data(year, month)
-
-    return render_template('technician_report.html',
-                        report_data=report_data, 
-                        selected_year=year, 
-                        selected_month=month,
-                        years=list(range(now.year - 5, now.year + 2)), 
-                        months=months,
-                        technician_list=technician_list)
-
-@liff_bp.route('/technician_report/print')
-def technician_report_print():
-    now = datetime.datetime.now(THAILAND_TZ)
-    try:
-        year, month = int(request.args.get('year', now.year)), int(request.args.get('month', now.month))
-    except (ValueError, TypeError):
-        year, month = now.year, now.month
-
-    sorted_report, technician_list = _get_technician_report_data(year, month)
-
-    return render_template('technician_report_print.html',
-                        report_data=sorted_report,
-                        selected_year=year,
-                        selected_month=month,
-                        now=datetime.datetime.now(THAILAND_TZ),
-                        technician_list=technician_list)
-
 @liff_bp.route('/public/report/<task_id>')
 def public_task_report(task_id):
     task_raw = get_single_task(task_id)
     if not task_raw or task_raw.get('status') != 'completed':
         abort(404)
-
     task = parse_google_task_dates(task_raw)
     notes = task.get('notes', '')
     task['customer'] = parse_customer_info_from_notes(notes)
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
-    
-    task['tech_reports_history'] = [
-        r for r in task['tech_reports_history'] 
-        if r.get('work_summary') or r.get('attachments')
-    ]
-
+    task['tech_reports_history'] = [r for r in task['tech_reports_history'] if r.get('work_summary') or r.get('attachments')]
     response = make_response(render_template('public_report.html', task=task))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
@@ -249,75 +209,47 @@ def generate_public_report_qr(task_id):
     task = get_single_task(task_id)
     if not task:
         abort(404)
-
     public_report_url = url_for('liff.public_task_report', task_id=task['id'], _external=True)
     qr_code = generate_qr_code_base64(public_report_url)
     customer = parse_customer_info_from_notes(task.get('notes', ''))
-    
-    return render_template('public_report_qr.html',
-                           qr_code_base64_report=qr_code,
-                           task=task,
-                           customer_info=customer,
-                           public_report_url=public_report_url,
-                           LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION,
-                           now=datetime.datetime.now(THAILAND_TZ))
-# ➕ END: Các hàm được thêm vào lại
+    return render_template('public_report_qr.html', qr_code_base64_report=qr_code, task=task, customer_info=customer, public_report_url=public_report_url, LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION, now=datetime.datetime.now(THAILAND_TZ))
 
 @liff_bp.route('/form')
 def form_page():
-    """Hiển thị form để tạo công việc mới."""
     settings = get_app_settings()
-    return render_template('form.html', 
-                           task_detail_snippets=TEXT_SNIPPETS['task_details'])
+    return render_template('form.html', task_detail_snippets=TEXT_SNIPPETS['task_details'])
 
 @liff_bp.route('/external_job_form')
 def external_job_form_page():
-    """Hiển thị form để tạo công việc bên ngoài/công việc yêu cầu bồi thường."""
     from_task_id = request.args.get('from_task_id')
     original_task_data = None
     if from_task_id:
         task_raw = get_single_task(from_task_id)
         if task_raw:
-            original_task_data = {
-                'customer': parse_customer_info_from_notes(task_raw.get('notes', '')),
-                'id': task_raw.get('id')
-            }
+            original_task_data = {'customer': parse_customer_info_from_notes(task_raw.get('notes', '')), 'id': task_raw.get('id')}
     return render_template('external_job_form.html', original_task_data=original_task_data)
 
 @liff_bp.route('/task/<task_id>')
 def task_details(task_id):
-    """Hiển thị thông tin chi tiết của một công việc."""
     task_raw = get_single_task(task_id)
     if not task_raw:
         abort(404)
-
     task = parse_google_task_dates(task_raw)
     notes = task.get('notes', '')
-    
     task['customer'] = parse_customer_info_from_notes(notes)
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
-    
     settings = get_app_settings()
     technician_list = settings.get('technician_list', [])
     equipment_catalog = settings.get('equipment_catalog', [])
-
     all_attachments = []
     if task['tech_reports_history']:
         for report in task['tech_reports_history']:
             if report.get('attachments'):
                 all_attachments.extend(report['attachments'])
-
-    return render_template('update_task_details.html',
-                           task=task,
-                           technician_list=technician_list,
-                           all_attachments=all_attachments,
-                           progress_report_snippets=TEXT_SNIPPETS['progress_reports'],
-                           equipment_catalog=equipment_catalog,
-                           LIFF_ID_TO_USE=LIFF_ID_FORM)
+    return render_template('update_task_details.html', task=task, technician_list=technician_list, all_attachments=all_attachments, progress_report_snippets=TEXT_SNIPPETS['progress_reports'], equipment_catalog=equipment_catalog, LIFF_ID_TO_USE=LIFF_ID_FORM)
 
 @liff_bp.route('/customer_problem_form/<task_id>')
 def customer_problem_form(task_id):
-    """Hiển thị form để khách hàng báo cáo vấn đề."""
     task = get_single_task(task_id)
     if not task:
         abort(404)
@@ -326,36 +258,24 @@ def customer_problem_form(task_id):
 
 @liff_bp.route('/generate_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
-    """Tạo mã QR để khách hàng thêm bạn LINE."""
     task = get_single_task(task_id)
     if not task:
         abort(404)
-    
     settings = get_app_settings()
     line_oa_id = settings.get('shop_info', {}).get('line_id', '@YOUR_LINE_OA_ID').replace('@','')
     line_add_friend_url = f"https://line.me/R/ti/p/@{line_oa_id}?referral={task_id}"
-    
     qr_code_b64 = generate_qr_code_base64(line_add_friend_url)
     customer = parse_customer_info_from_notes(task.get('notes', ''))
-    
-    return render_template('generate_onboarding_qr.html',
-                           qr_code_base64=qr_code_b64,
-                           liff_url=line_add_friend_url,
-                           task=task,
-                           customer_info=customer,
-                           now=datetime.datetime.now(THAILAND_TZ))
+    return render_template('generate_onboarding_qr.html', qr_code_base64=qr_code_b64, liff_url=line_add_friend_url, task=task, customer_info=customer, now=datetime.datetime.now(THAILAND_TZ))
 
 @liff_bp.route('/liff_notification_popup')
 def liff_notification_popup():
-    """Hiển thị cửa sổ LIFF để thông báo."""
     return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM)
 
 @liff_bp.route('/open_in_line')
 def open_in_line():
-    """Trang thông báo người dùng mở trong LINE."""
     return render_template('open_in_line.html')
 
 @liff_bp.route('/technician/update_location')
 def technician_location_update_page():
-    """Hiển thị trang LIFF để kỹ thuật viên cập nhật vị trí."""
     return render_template('technician_location_update.html', LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
