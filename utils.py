@@ -6,12 +6,8 @@ import json
 import pytz
 from datetime import datetime
 from dateutil.parser import parse as date_parse
+from config import SETTINGS_FILE, THAILAND_TZ, LOCATIONS_FILE
 
-# 1. Import ค่าคงที่และ Default Settings จาก config.py
-# (ตรวจสอบให้แน่ใจว่าคุณได้สร้างไฟล์ config.py และย้ายตัวแปรเหล่านี้ไปแล้ว)
-from config import SETTINGS_FILE, THAILAND_TZ
-
-# 2. ย้าย Default Settings มาไว้ที่นี่ด้วย เพื่อให้ get_app_settings ทำงานได้
 _DEFAULT_APP_SETTINGS_STORE = {
     'report_times': {
         'appointment_reminder_hour_thai': 7,
@@ -44,9 +40,6 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'daily_reminder_task_line': "..."
     }
 }
-
-
-# --- ฟังก์ชันที่ย้ายมาจาก app.py ---
 
 def load_settings_from_file():
     if os.path.exists(SETTINGS_FILE):
