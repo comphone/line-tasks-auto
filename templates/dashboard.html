@@ -4,6 +4,14 @@
 
 {% block head_extra %}
     <style>
+        /* --- ✏️ START: เพิ่มโค้ด CSS ส่วนนี้ --- */
+        /* ทำให้ช่องค้นหามีขอบสีน้ำเงินเมื่อถูกเลือก */
+        .search-box-prominent .form-control:focus {
+            border-color: #86b7fe;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        /* --- ✏️ END: สิ้นสุดโค้d CSS --- */
+
         .search-highlight {
             background-color: #ffc107;
             padding: 0.1em;
@@ -158,15 +166,18 @@
     <div class="card-body">
         <div class="tab-content" id="dashboardTabContent">
             <div class="tab-pane fade show active" id="task-list-pane" role="tabpanel" aria-labelledby="task-list-tab" tabindex="0">
-                <form class="mb-3" onsubmit="return false;">
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="พิมพ์เพื่อค้นหาทันที..." value="{{ search_query or '' }}">
-                        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-secondary" title="จัดการงานซ้ำซ้อน">
-                            <i class="fas fa-ellipsis-h"></i>
-                        </a>
-                        <a href="{{ url_for('summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
-                    </div>
-                </form>
+				<form class="mb-3" onsubmit="return false;">
+					<div class="input-group input-group-lg search-box-prominent">
+						<span class="input-group-text"><i class="fas fa-search"></i></span>
+						<input type="text" class="form-control" id="searchInput" name="search_query" placeholder="พิมพ์เพื่อค้นหาทันที..." value="{{ search_query or '' }}">
+						<a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-secondary" title="จัดการงานซ้ำซ้อน">
+							<i class="fas fa-copy"></i>
+						</a>
+						<a href="{{ url_for('liff.summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary" title="พิมพ์รายการนี้">
+							<i class="fas fa-print"></i>
+						</a>
+					</div>
+				</form>
 
                 <div id="table-loading-spinner" class="text-center p-5">
                     <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">

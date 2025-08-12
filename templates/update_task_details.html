@@ -514,15 +514,29 @@
 
         container.innerHTML = '';
         technicianList.forEach(tech => {
-            const techName = typeof tech === 'object' ? tech.name : tech;
+            const techName = tech.name;
+            const techId = `tech-modal-${techName.replace(/\s+/g, '-')}`;
             const isChecked = selectedValues.includes(techName);
-            container.innerHTML += `
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}>
-                    <label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}">${techName}</label>
+            
+            // สร้าง URL ของ Avatar
+            const initial = techName ? techName.trim().charAt(0).toUpperCase() : '?';
+            const avatarUrl = tech.avatar_id 
+                ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` 
+                : `https://via.placeholder.com/40/6c757d/ffffff?text=${initial}`;
+
+            // สร้าง HTML ของแต่ละรายการ พร้อมรูป Avatar
+            const techItemHtml = `
+                <div class="form-check d-flex align-items-center mb-2">
+                    <input class="form-check-input me-3" type="checkbox" value="${techName}" id="${techId}" ${isChecked ? 'checked' : ''} style="width: 1.5em; height: 1.5em;">
+                    <label class="form-check-label d-flex align-items-center w-100" for="${techId}">
+                        <img src="${avatarUrl}" class="rounded-circle me-2" width="40" height="40" alt="${techName}">
+                        <span class="fw-bold">${techName}</span>
+                    </label>
                 </div>
             `;
+            container.insertAdjacentHTML('beforeend', techItemHtml);
         });
+
         technicianSelectionModal.show();
     };
 
