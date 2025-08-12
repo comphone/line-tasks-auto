@@ -1,9 +1,6 @@
+# File: app.py (ช่วงบนที่แก้ไขแล้ว)
+
 import os
-from utils import (
-    get_app_settings, get_single_task, parse_google_task_dates,
-    parse_customer_info_from_notes, parse_tech_report_from_notes,
-    load_technician_locations
-)
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import sys
@@ -70,7 +67,26 @@ from flask_cors import CORS
 # 1. Import จากไฟล์ config.py
 from config import (
     LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, UPLOAD_FOLDER, THAILAND_TZ,
-    GOOGLE_TASKS_LIST_ID, GOOGLE_DRIVE_FOLDER_ID, LINE_RATE_LIMIT_PER_MINUTE, SCOPES
+    GOOGLE_TASKS_LIST_ID, GOOGLE_DRIVE_FOLDER_ID, LINE_RATE_LIMIT_PER_MINUTE, SCOPES,
+    MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB # <-- เพิ่ม 2 ตัวนี้
+)
+
+# 2. Import จากไฟล์ utils.py (รวมไว้ที่เดียว)
+from utils import (
+    get_app_settings, get_single_task, parse_google_task_dates,
+    parse_customer_info_from_notes, parse_tech_report_from_notes,
+    save_technician_locations, load_technician_locations,
+    safe_execute, create_task_flex_message, # <-- เพิ่ม 2 ตัวนี้
+    save_app_settings, find_or_create_drive_folder, sanitize_filename,
+    get_customer_database, get_google_tasks_for_report,
+    create_google_task, update_google_task, delete_google_task,
+    parse_customer_feedback_from_notes, allowed_file,
+    _parse_equipment_string, generate_qr_code_base64,
+    _create_backup_zip, backup_settings_to_drive,
+    load_settings_from_drive_on_startup,
+    send_new_task_notification, send_completion_notification,
+    send_update_notification, _send_popup_notification,
+    _create_customer_follow_up_flex_message, render_template_message
 )
 
 # 3. Import Blueprint จาก liff_views.py
@@ -93,7 +109,7 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_devel
 csrf = CSRFProtect(app)
 
 # --- [แก้ไข] ตั้งค่า Config โดยใช้ตัวแปรที่ Import มา ---
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE_BYTES
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.jinja_env.filters['dateutil_parse'] = date_parse
 
