@@ -1723,7 +1723,7 @@ def scheduled_appointment_reminder_job():
             for recipient_id in [admin_group_id, technician_group_id]:
                 if recipient_id and recipient_id not in sent_to:
                         if not liff_base_url:
-                            message_queue.add_message(recipient_id, TextMessage(text=message_text + f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}"))
+                            message_queue.add_message(recipient_id, TextMessage(text=message_text + f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('liff.task_details', task_id=task.get('id'), _external=True)}"))
                         else:
                             payload = {
                                 'recipient_line_id': recipient_id,
@@ -2533,7 +2533,7 @@ def delete_task(task_id):
         cache.clear()
     else:
         flash('เกิดข้อผิดพลาดในการลบงาน', 'danger')
-    return redirect(url_for('summary'))
+    return redirect(url_for('liff.summary'))
 
 @app.route('/api/delete_task/<task_id>', methods=['POST'])
 def api_delete_task(task_id):
@@ -3230,7 +3230,7 @@ def handle_text_message(event):
             "- *งานพรุ่งนี้*: ดูสรุปงานที่นัดหมายสำหรับพรุ่งนี้\n"
             "- *สร้างงานใหม่*: เปิดฟอร์มสำหรับสร้างงานใหม่\n"
             "- *ดูงาน [ชื่อลูกค้า]*: ค้นหางานตามชื่อลูกค้า\n\n"
-            f"ดูข้อมูลทั้งหมด: {url_for('summary', _external=True)}"
+            f"ดูข้อมูลทั้งหมด: {url_for('liff.summary', _external=True)}"
         )
         messages = [TextMessage(text=help_text)]
     
