@@ -16,12 +16,14 @@ from utils import (
     parse_customer_feedback_from_notes, _get_technician_report_data, get_customer_database
 )
 
-# Import ส่วนที่ยังจำเป็นต้องใช้จาก app.py
-from app import (
-    get_app_settings, TEXT_SNIPPETS, generate_qr_code_base64,
-    update_google_task, cache,
-    LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION
-)
+# ใน liff_views.py
+from flask import current_app
+
+# ใช้แทนการ import ตรงๆ
+def some_function():
+    settings = current_app.config['get_app_settings']()
+    cache = current_app.config['cache']
+    LIFF_ID_FORM = current_app.config.get('LIFF_ID_FORM')
 
 liff_bp = Blueprint('liff', __name__)
 
@@ -30,7 +32,7 @@ THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 @liff_bp.route('/')
 @liff_bp.route('/summary')
 def summary():
-    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    tasks_raw = utils.get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
     today_thai = datetime.date.today()
@@ -85,7 +87,7 @@ def summary():
 
 @liff_bp.route('/summary/print')
 def summary_print():
-    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    tasks_raw = utils.get_google_tasks_for_report(show_completed=True) or []
     search_query = str(request.args.get('search_query', '')).strip().lower()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
     today_thai = datetime.date.today()
