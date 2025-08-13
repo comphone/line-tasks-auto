@@ -468,7 +468,7 @@
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
-                const mapUrl = `http://googleusercontent.com/maps/google.com/4${latitude},${longitude}`;
+                const mapUrl = `http://googleusercontent.com/maps/google.com/9${latitude},${longitude}`;
                 
                 try {
                     const response = await fetch(`/api/task/${taskId}/update_location`, {

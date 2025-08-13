@@ -145,11 +145,6 @@
                 const response = await fetch("{{ url_for('api_customers') }}");
                 if (response.ok) {
                     customerDatabase = await response.json();
-                    console.log(`✅ Loaded ${customerDatabase.length} customers`);
-                    
-                    if (customerDatabase.length === 0) {
-                        console.warn("⚠️ Customer database is empty");
-                    }
                     
                     const tributeCustomer = new Tribute({
                         values: customerDatabase,
@@ -176,13 +171,10 @@
                         document.getElementById('latitude_longitude').value = selectedCustomer.map_url || '';
                     });
                 } else {
-                    // เพิ่ม error handling
-                    console.error(`❌ API Error: ${response.status} ${response.statusText}`);
+                    console.error(`API Error: ${response.status} ${response.statusText}`);
                 }
             } catch (error) {
-                console.error("❌ Error fetching customer database:", error);
-                // แจ้งเตือนผู้ใช้
-                console.warn("ไม่สามารถโหลดรายชื่อลูกค้าได้");
+                console.error("Error fetching customer database:", error);
             }
             
             flatpickr(".datetimepicker", {
@@ -213,15 +205,14 @@
             if (shareBtn) {
                 shareBtn.addEventListener('click', function() {
                     statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
-                    statusText.classList.remove('text-success', 'text-danger'); // ล้าง class เก่า
+                    statusText.classList.remove('text-success', 'text-danger');
                     
                     navigator.geolocation.getCurrentPosition(
                         (position) => {
                             const lat = position.coords.latitude;
                             const lon = position.coords.longitude;
                             
-                            // ✅ แก้ไข: ใช้ format ที่ถูกต้อง
-                            locationInput.value = `https://www.google.com/maps?q=${lat},${lon}`;
+                            locationInput.value = `http://googleusercontent.com/maps/google.com/2${lat},${lon}`;
                             
                             statusText.textContent = `✅ ใส่ตำแหน่งปัจจุบันสำเร็จ! (${lat.toFixed(6)}, ${lon.toFixed(6)})`;
                             statusText.classList.add('text-success');
