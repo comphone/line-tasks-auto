@@ -64,6 +64,7 @@
             {% endif %}
         {% endwith %}
 
+        <!-- ปุ่มสำหรับล็อกอินด้วย LINE -->
         <button id="line-login-button" class="btn btn-line-login" style="display: none;">
             <i class="fab fa-line"></i> ล็อกอินด้วย LINE
         </button>
@@ -71,9 +72,12 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- ==================== เริ่มต้นโค้ดที่ต้องเพิ่ม/แก้ไข ==================== -->
+    <!-- เพิ่ม LINE LIFF SDK -->
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
-        const liffId = "{{ LIFF_ID_FORM }}"; 
+        // LIFF ID ของแอปพลิเคชัน LIFF ที่คุณใช้สำหรับหน้านี้
+        const liffId = "{{ LIFF_ID_FORM }}"; // ใช้ LIFF_ID_FORM ที่ส่งมาจาก Flask
 
         document.addEventListener('DOMContentLoaded', function() {
             const loginButton = document.getElementById('line-login-button');
@@ -84,24 +88,28 @@
                 loadingMessage.style.display = 'none';
                 loginButton.style.display = 'block';
                 loginButton.onclick = function() {
-                    window.location.href = "{{ line_login_url }}"; 
+                    window.location.href = "{{ line_login_url }}"; // Fallback to Flask-generated URL
                 };
                 loginButton.textContent = "ล็อกอินด้วย LINE (Fallback)";
-                return;
+                return; // หยุดการทำงานของ LIFF SDK
             }
 
             liff.init({ liffId: liffId })
                 .then(() => {
                     console.log('LIFF init success');
-                    loadingMessage.style.display = 'none'; 
+                    loadingMessage.style.display = 'none'; // ซ่อนข้อความโหลด
                     if (liff.isLoggedIn()) {
                         console.log('User is already logged in via LIFF. Redirecting to summary...');
-                        // ✅ แก้ไข: เพิ่ม 'liff.' เข้าไปใน url_for
-                        window.location.href = "{{ url_for('liff.summary') }}"; 
+                        // หากผู้ใช้ล็อกอินผ่าน LIFF อยู่แล้ว ให้ Redirect ไปยังหน้า summary
+                        // หรือหน้าที่ต้องการ (ใช้ window.location.pathname เพื่อคง path เดิม)
+                        window.location.href = "{{ url_for('summary') }}"; // Redirect ไปหน้าหลัก
                     } else {
                         console.log('User is not logged in via LIFF. Show login button.');
-                        loginButton.style.display = 'block'; 
+                        loginButton.style.display = 'block'; // แสดงปุ่มล็อกอิน
                         loginButton.addEventListener('click', function() {
+                            // liff.login() จะ Redirect ไปยังหน้า LINE Login และกลับมาที่ LIFF Endpoint URL
+                            // ซึ่งควรเป็น Root URL ของแอปพลิเคชัน Flask ของคุณ
+                            // และจะส่ง code และ liff.state กลับมา
                             liff.login(); 
                         });
                     }
@@ -109,13 +117,16 @@
                 .catch((err) => {
                     console.error('LIFF init failed', err);
                     loadingMessage.style.display = 'none';
+                    // หาก LIFF init ล้มเหลว (เช่น LIFF ID ไม่ถูกต้อง)
+                    // ให้แสดงปุ่มล็อกอินแบบเดิม (Flask-generated URL) เป็น fallback
                     loginButton.style.display = 'block';
                     loginButton.onclick = function() {
-                        window.location.href = "{{ line_login_url }}"; 
+                        window.location.href = "{{ line_login_url }}"; // Fallback to Flask-generated URL
                     };
                     loginButton.textContent = "ล็อกอินด้วย LINE (LIFF Error)";
                 });
         });
     </script>
+    <!-- ===================== สิ้นสุดโค้ดที่ต้องเพิ่ม/แก้ไข ===================== -->
 </body>
 </html>

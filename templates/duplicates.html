@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการข้อมูลซ้ำซ้อน{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2">จัดการข้อมูลซ้ำซ้อน</h1>
+    <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-copy me-2"></i>รายการที่อาจซ้ำซ้อน
+    </div>
+    <div class="card-body">
+        {% if duplicates %}
+            <form action="{{ url_for('delete_duplicates_batch') }}" method="POST" id="deleteForm">
+                <p class="text-muted">
+                    ระบบพบกลุ่มข้อมูลที่อาจซ้ำกัน {{ duplicates|length }} กลุ่ม (ตรวจสอบจากชื่องานและชื่อลูกค้าที่ตรงกัน)
+                    โปรด **เลือกรายการที่ต้องการลบ** และรายการที่ **ไม่ถูกเลือก** จะถูกเก็บไว้
+                </p>
+                
+                {% for group_key, tasks in duplicates.items() %}
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-light">
+                        <strong>ชื่องาน:</strong> {{ tasks[0].title }} <br>
+                        <strong>ลูกค้า:</strong> {{ group_key[1]|title }}
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {% for task in tasks %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="task_ids" value="{{ task.id }}" id="task-{{ task.id }}" {% if loop.index > 1 %}checked{% endif %}>
+                                    <label class="form-check-label" for="task-{{ task.id }}">
+                                        <strong>ID:</strong> {{ task.id }} <br>
+                                        <small class="text-muted">
+                                            สร้างเมื่อ: {{ task.created_formatted }} | 
+                                            สถานะ: <span class="badge bg-{{ 'success' if task.status == 'completed' else 'warning' }}">{{ task.status }}</span> |
+                                            นัดหมาย: {{ task.due_formatted or '-' }}
+                                        </small>
+                                        {% if loop.index == 1 %}
+                                            <span class="badge bg-info ms-2">รายการล่าสุด (แนะนำให้เก็บ)</span>
+                                        {% endif %}
+                                    </label>
+                                </div>
+                            </div>
+                            {# --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ --- #}
+                            <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                <i class="fas fa-eye"></i> ดูรายละเอียด
+                            </a>
+                            {# --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ --- #}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-danger btn-lg w-100"><i class="fas fa-trash-alt me-2"></i>ลบรายการที่เลือก</button>
+            </form>
+        {% else %}
+            <div class="text-center p-5">
+                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                <h4>ไม่พบข้อมูลซ้ำซ้อน</h4>
+                <p class="text-muted">ระบบไม่พบงานที่มีชื่องานและชื่อลูกค้าตรงกัน</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.getElementById('deleteForm').addEventListener('submit', function(e) {
+    const checkedCheckboxes = document.querySelectorAll('#deleteForm input[name="task_ids"]:checked');
+    if (checkedCheckboxes.length === 0) {
+        alert('กรุณาเลือกอย่างน้อยหนึ่งรายการที่ต้องการลบ');
+        e.preventDefault();
+        return;
+    }
+    if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการที่เลือก? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+        e.preventDefault();
+    }
+});
+</script>
+{% endblock %}

@@ -53,7 +53,7 @@
             </div>
             </div>
         <div class="card-footer">
-            <a href="{{ url_for('liff.task_details', task_id=task.id, _v=now.timestamp()|int) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
+            <a href="{{ url_for('task_details', task_id=task.id, _v=now.timestamp()|int) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
         </div>
     </div>
 </div>

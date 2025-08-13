@@ -141,41 +141,37 @@
         let customerDatabase = [];
 
         document.addEventListener('DOMContentLoaded', async function() {
-            try {
-                const response = await fetch("{{ url_for('api_customers') }}");
-                if (response.ok) {
-                    customerDatabase = await response.json();
-                    
-                    const tributeCustomer = new Tribute({
-                        values: customerDatabase,
-                        menuShowMinLength: 2,
-                        lookup: item => `${item.name} ${item.organization || ''} ${item.phone || ''}`,
-                        fillAttr: 'name', 
-                        menuItemTemplate: function (item) {
-                            let orgPart = item.original.organization ? ` <small class="text-muted">(${item.original.organization})</small>` : '';
-                            let phonePart = item.original.phone ? `<br><small style="color: #6c757d;">📞 ${item.original.phone}</small>` : '';
-                            return `<div class="p-2">${item.original.name}${orgPart}${phonePart}</div>`;
-                        },
-                        noMatchTemplate: function () { 
-                            return '<li class="p-2 text-muted">ไม่พบลูกค้า (พิมพ์เพื่อสร้างใหม่ได้)</li>'; 
-                        },
-                    });
+			try {
+				const response = await fetch("{{ url_for('api_customers') }}");
+				if (response.ok) {
+					customerDatabase = await response.json();
+					
+					const tributeCustomer = new Tribute({
+						values: customerDatabase,
+						menuShowMinLength: 2,
+						lookup: item => `${item.name} ${item.organization || ''} ${item.phone || ''}`,
+						fillAttr: 'name', 
+						menuItemTemplate: function (item) {
+							let orgPart = item.original.organization ? ` <small class="text-muted">(${item.original.organization})</small>` : '';
+							let phonePart = item.original.phone ? `<br><small style="color: #6c757d;">📞 ${item.original.phone}</small>` : '';
+							return `<div class="p-2">${item.original.name}${orgPart}${phonePart}</div>`;
+						},
+						noMatchTemplate: function () { return '<li class="p-2 text-muted">ไม่พบลูกค้า (พิมพ์เพื่อสร้างใหม่ได้)</li>'; },
+					});
 
-                    tributeCustomer.attach(document.getElementById("customer"));
+					tributeCustomer.attach(document.getElementById("customer"));
 
-                    document.getElementById('customer').addEventListener('tribute-replaced', function (e) {
-                        const selectedCustomer = e.detail.item.original;
-                        document.getElementById('organization_name').value = selectedCustomer.organization || '';
-                        document.getElementById('phone').value = selectedCustomer.phone || '';
-                        document.getElementById('address').value = selectedCustomer.address || '';
-                        document.getElementById('latitude_longitude').value = selectedCustomer.map_url || '';
-                    });
-                } else {
-                    console.error(`API Error: ${response.status} ${response.statusText}`);
-                }
-            } catch (error) {
-                console.error("Error fetching customer database:", error);
-            }
+					document.getElementById('customer').addEventListener('tribute-replaced', function (e) {
+						const selectedCustomer = e.detail.item.original;
+						document.getElementById('organization_name').value = selectedCustomer.organization || '';
+						document.getElementById('phone').value = selectedCustomer.phone || '';
+						document.getElementById('address').value = selectedCustomer.address || '';
+						document.getElementById('latitude_longitude').value = selectedCustomer.map_url || '';
+					});
+				}
+			} catch (error) {
+				console.error("Error fetching customer database:", error);
+			}
             
             flatpickr(".datetimepicker", {
                 enableTime: true,
@@ -205,40 +201,17 @@
             if (shareBtn) {
                 shareBtn.addEventListener('click', function() {
                     statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
-                    statusText.classList.remove('text-success', 'text-danger');
-                    
                     navigator.geolocation.getCurrentPosition(
                         (position) => {
                             const lat = position.coords.latitude;
                             const lon = position.coords.longitude;
-                            
-                            locationInput.value = `http://googleusercontent.com/maps/google.com/2${lat},${lon}`;
-                            
-                            statusText.textContent = `✅ ใส่ตำแหน่งปัจจุบันสำเร็จ! (${lat.toFixed(6)}, ${lon.toFixed(6)})`;
+                            locationInput.value = `http://googleusercontent.com/maps/google.com/0{lat},${lon}`;
+                            statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
                             statusText.classList.add('text-success');
                         },
                         (error) => {
-                            let errorMsg = 'ไม่สามารถดึงตำแหน่งได้: ';
-                            switch(error.code) {
-                                case error.PERMISSION_DENIED:
-                                    errorMsg += "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง";
-                                    break;
-                                case error.POSITION_UNAVAILABLE:
-                                    errorMsg += "ไม่สามารถระบุตำแหน่งได้";
-                                    break;
-                                case error.TIMEOUT:
-                                    errorMsg += "หมดเวลาในการค้นหาตำแหน่ง";
-                                    break;
-                                default:
-                                    errorMsg += error.message;
-                            }
-                            statusText.textContent = errorMsg;
+                            statusText.textContent = 'ไม่สามารถดึงตำแหน่งได้: ' + error.message;
                             statusText.classList.add('text-danger');
-                        },
-                        {
-                            enableHighAccuracy: true,
-                            timeout: 10000,
-                            maximumAge: 0
                         }
                     );
                 });

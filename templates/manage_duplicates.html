@@ -65,8 +65,7 @@
                                 <tbody>
                                     {% for task in tasks %}
                                     <tr id="task-row-{{ task.id }}">
-                                        {# ✅ แก้ไข: เพิ่ม 'liff.' เข้าไปใน url_for #}
-                                        <td><a href="{{ url_for('liff.task_details', task_id=task.id) }}" target="_blank">{{ task.customer.name or '-' }}</a></td>
+                                        <td><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank">{{ task.customer.name or '-' }}</a></td>
                                         <td>{{ task.due_formatted or '-' }}</td>
                                         <td>
                                             {% if task.status == 'completed' %}
