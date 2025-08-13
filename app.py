@@ -2054,7 +2054,7 @@ def summary_print():
 @app.route('/api/calendar_tasks')
 def api_calendar_tasks():
     try:
-        tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+        tasks_raw = utils.get_google_tasks_for_report(show_completed=True) or []
         events = []
         today_thai = datetime.datetime.now(THAILAND_TZ).date()
 
