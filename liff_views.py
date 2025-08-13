@@ -9,21 +9,20 @@ from flask import (
 )
 from dateutil.parser import parse as date_parse
 
-# ✏️ เปลี่ยนการ import ทั้งหมดมาที่ utils
+# ✏️ เปลี่ยนการ import ให้เรียกจาก utils.py
 from utils import (
     get_google_tasks_for_report, get_single_task, parse_google_task_dates,
     parse_customer_info_from_notes, parse_tech_report_from_notes,
-    parse_customer_feedback_from_notes, _get_technician_report_data
+    parse_customer_feedback_from_notes, _get_technician_report_data, get_customer_database
 )
 
-# Import ส่วนที่เหลือที่ยังต้องใช้จาก app
+# Import ส่วนที่ยังจำเป็นต้องใช้จาก app.py
 from app import (
     get_app_settings, TEXT_SNIPPETS, generate_qr_code_base64,
     update_google_task, cache,
     LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION
 )
 
-# สร้าง Blueprint
 liff_bp = Blueprint('liff', __name__)
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -32,7 +31,7 @@ THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 @liff_bp.route('/summary')
 def summary():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
-    search_query = str(request.args.get('search_query', '')).strip().lower()
+    search_query = str(request.args.get('search_query', '')).strip()
     status_filter = str(request.args.get('status_filter', 'all')).strip()
     today_thai = datetime.date.today()
     summary_stats = {'total': 0, 'needsAction': 0, 'completed': 0, 'overdue': 0, 'today': 0, 'external': 0}
@@ -68,7 +67,7 @@ def summary():
         if task_passes_filter:
             customer_info = parse_customer_info_from_notes(task.get('notes', ''))
             searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
-            if not search_query or search_query in searchable_text:
+            if not search_query or search_query.lower() in searchable_text:
                 parsed_task = parse_google_task_dates(task)
                 parsed_task.update({'customer': customer_info, 'is_overdue': is_overdue, 'is_today': is_today})
                 final_tasks.append(parsed_task)

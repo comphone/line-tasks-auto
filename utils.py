@@ -46,7 +46,7 @@ def parse_customer_info_from_notes(notes):
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}"
+            info['map_url'] = f"http://googleusercontent.com/maps/google.com/8{coords_or_url}"
         else:
             info['map_url'] = coords_or_url
     return info
