@@ -1,4 +1,3 @@
-# liff_views.py
 import os
 import datetime
 import pytz

@@ -71,6 +71,8 @@ import atexit
 
 from flask_cors import CORS
 
+import utils
+
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -930,45 +932,6 @@ def find_or_create_drive_folder(name, parent_id):
         app.logger.error(f"Error finding or creating folder '{name}': {e}")
         return None
 
-@cached(cache)
-def get_customer_database():
-    app.logger.info("Building customer database from Google Tasks...")
-    all_tasks = get_google_tasks_for_report(show_completed=True)
-    if not all_tasks:
-        app.logger.error("No tasks found for customer database") # เพิ่ม log
-        return []
-
-    customers_dict = {}
-    all_tasks.sort(key=lambda x: x.get('created', '0'), reverse=True)
-
-    for task in all_tasks:
-        notes = task.get('notes', '')
-        if not notes:
-            continue
-        
-        _, base_notes = parse_tech_report_from_notes(notes)
-        customer_info = parse_customer_info_from_notes(base_notes)
-
-        name = customer_info.get('name', '').strip()
-        phone = customer_info.get('phone', '').strip()
-
-        if not name:
-            continue
-
-        customer_key = (name.lower(), phone)
-        
-        if customer_key not in customers_dict:
-            customers_dict[customer_key] = {
-                'name': name,
-                'phone': phone,
-                'organization': customer_info.get('organization', '').strip(),
-                'address': customer_info.get('address', '').strip(),
-                'map_url': customer_info.get('map_url', '')
-            }
-    
-    app.logger.info(f"Customer database built with {len(customers_dict)} unique customers.")
-    return list(customers_dict.values())
-
 def load_settings_from_drive_on_startup():
     settings_backup_folder_id = find_or_create_drive_folder("Settings_Backups", GOOGLE_DRIVE_FOLDER_ID)
     if not settings_backup_folder_id:
@@ -1050,31 +1013,10 @@ def backup_settings_to_drive():
         app.logger.error(f"Failed to backup settings to Google Drive: {e}", exc_info=True)
         return False
 
-@cached(cache)
-def get_google_tasks_for_report(show_completed=True):
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        results = _execute_google_api_call_with_retry(service.tasks().list, tasklist=GOOGLE_TASKS_LIST_ID, showCompleted=show_completed, maxResults=100)
-        return results.get('items', [])
-    except HttpError as err:
-        app.logger.error(f"API Error getting tasks: {err}")
-        return None
-
 @app.route('/api/customers')
 def api_customers():
     customer_list = get_customer_database()
     return jsonify(customer_list)
-
-def get_single_task(task_id):
-    if not task_id: return None
-    service = get_google_tasks_service()
-    if not service: return None
-    try:
-        return _execute_google_api_call_with_retry(service.tasks().get, tasklist=GOOGLE_TASKS_LIST_ID, task=task_id)
-    except HttpError as err:
-        app.logger.error(f"Error getting single task {task_id}: {err}")
-        return None
 
 def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
     service = get_google_drive_service()
@@ -1186,30 +1128,6 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
         app.logger.error(f"Failed to update task {task_id}: {e}")
         return None
 
-def parse_customer_info_from_notes(notes):
-    info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
-    if not notes: return info
-
-    org_match = re.search(r"หน่วยงาน:\s*(.*)", notes, re.IGNORECASE)
-    name_match = re.search(r"ลูกค้า:\s*(.*)", notes, re.IGNORECASE)
-    phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
-    address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
-    map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
-
-    if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
-    if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
-    if phone_match: info['phone'] = phone_match.group(1).strip().split(':')[-1].strip()
-    if address_match: info['address'] = address_match.group(1).strip().split(':')[-1].strip()
-    
-    if map_url_match:
-        coords_or_url = map_url_match.group(1).strip()
-        if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"https://maps.google.com/maps?q={coords_or_url}" 
-        else:
-            info['map_url'] = coords_or_url
-    
-    return info
-
 def parse_customer_feedback_from_notes(notes):
     feedback_data = {}
     if not notes: return feedback_data
@@ -1221,83 +1139,7 @@ def parse_customer_feedback_from_notes(notes):
         except json.JSONDecodeError:
             app.logger.warning("Failed to decode customer feedback JSON from notes.")
     return feedback_data
-
-def parse_google_task_dates(task_item):
-    parsed = task_item.copy()
-    for key in ['created', 'due', 'completed']:
-        if parsed.get(key):
-            try:
-                dt_utc = date_parse(parsed[key])
-                parsed[f'{key}_formatted'] = dt_utc.astimezone(THAILAND_TZ).strftime("%d/%m/%y %H:%M")
-                if key == 'due':
-                    parsed['due_for_input'] = dt_utc.astimezone(THAILAND_TZ).strftime("%Y-%m-%dT%H:%M")
-            except (ValueError, TypeError) as e:
-                app.logger.warning(f"Could not parse date '{parsed[key]}' for key '{key}': {e}")
-                parsed[f'{key}_formatted'] = ''
-                if key == 'due': parsed['due_for_input'] = ''
-        else:
-            parsed[f'{key}_formatted'] = ''
-            if key == 'due': parsed['due_for_input'] = ''
-    return parsed
-
-def parse_tech_report_from_notes(notes):
-    # ✅ DEBUG: แสดง 200 ตัวอักษรแรกของ notes ที่ได้รับ
-    app.logger.debug(f"Parsing notes: {notes[:200]}...") 
-    if not notes:
-        # ✅ DEBUG: แจ้งเมื่อ notes ว่างเปล่า
-        app.logger.debug("Notes is empty, returning empty history.")
-        return [], ""
-
-    # ใช้ re.split เพื่อแยกส่วนข้อมูลลูกค้าและส่วนรายงานออกจากกันอย่างชัดเจน
-    parts = re.split(r'\n\s*--- TECH_REPORT_START ---', notes)
-    base_notes_with_feedback = parts[0]
-    history = []
-
-    # วนลูปเฉพาะส่วนที่เป็นรายงานเท่านั้น
-    for part in parts[1:]:
-        # หา JSON และส่วนท้ายของบล็อก
-        end_match = re.search(r'(.*?)\n\s*--- TECH_REPORT_END ---', part, re.DOTALL)
-        if end_match:
-            json_str = end_match.group(1).strip()
-            try:
-                report_data = json.loads(json_str)
-                
-                # --- โค้ดประมวลผล report_data (เหมือนเดิม) ---
-                if 'attachments' in report_data:
-                    pass
-                elif 'attachment_urls' in report_data and isinstance(report_data['attachment_urls'], list):
-                    report_data['attachments'] = []
-                    for url in report_data['attachment_urls']:
-                        if isinstance(url, str):
-                            match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
-                            file_id = match.group(1) if match else None
-                            report_data['attachments'].append({'id': file_id, 'url': url})
-                    report_data.pop('attachment_urls', None)
-                
-                if isinstance(report_data.get('equipment_used'), str):
-                    report_data['equipment_used_display'] = report_data['equipment_used'].replace('\n', '<br>')
-                else:
-                    report_data['equipment_used_display'] = _format_equipment_list(report_data.get('equipment_used', []))
-                
-                if 'type' not in report_data:
-                    report_data['type'] = 'report'
-
-                history.append(report_data)
-                # --- สิ้นสุดโค้ดประมวลผล ---
-
-            except json.JSONDecodeError:
-                # ✅ DEBUG: แจ้งเมื่อไม่สามารถ Parse JSON ของรายงานได้
-                app.logger.warning(f"Failed to decode tech report JSON: {json_str[:100]}...")
-
-    # ทำความสะอาด base notes เพื่อให้เหลือแค่ข้อมูลลูกค้าจริงๆ
-    base_notes_text = re.sub(r"--- CUSTOMER_FEEDBACK_START ---.*?--- CUSTOMER_FEEDBACK_END ---", "", base_notes_with_feedback, flags=re.DOTALL).strip()
-
-    history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
-    # ✅ DEBUG: แสดงผลลัพธ์ของ history และ base_notes_text
-    app.logger.debug(f"Parsed history: {history}")
-    app.logger.debug(f"Base notes text: {base_notes_text[:200]}...")
-    return history, base_notes_text
-              
+            
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -2843,52 +2685,6 @@ def preview_backup_file():
     except Exception as e:
         return jsonify({"status": "error", "message": f"เกิดข้อผิดพลาด: {e}"}), 500
 
-def _get_technician_report_data(year, month):
-    """
-    ฟังก์ชันกลางสำหรับดึงและประมวลผลข้อมูลรายงานของช่าง
-    รับปีและเดือนเป็น input และคืนค่า report_data และ technician_list
-    """
-    app_settings = get_app_settings()
-    technician_list = app_settings.get('technician_list', [])
-    # --- IMPROVEMENT: Create a set of official technician names for fast checking ---
-    official_tech_names = {tech.get('name', '').strip() for tech in technician_list if tech.get('name')}
-
-    tasks = get_google_tasks_for_report(show_completed=True) or []
-    report = defaultdict(lambda: {'count': 0, 'tasks': []})
-
-    for task in tasks:
-        if task.get('status') == 'completed' and task.get('completed'):
-            try:
-                completed_dt = date_parse(task['completed']).astimezone(THAILAND_TZ)
-                if completed_dt.year == year and completed_dt.month == month:
-                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
-                    task_techs = set()
-                    for r in history:
-                        for t_name in r.get('technicians', []):
-                            if isinstance(t_name, str):
-                                task_techs.add(t_name.strip())
-
-                    for tech_name in sorted(list(task_techs)):
-                        # --- IMPROVEMENT: Only include technicians from the official list ---
-                        if tech_name in official_tech_names:
-                            report[tech_name]['count'] += 1
-                            customer_name = parse_customer_info_from_notes(task.get('notes', '')).get('name', 'N/A')
-                            report[tech_name]['tasks'].append({
-                                'id': task.get('id'),
-                                'title': task.get('title'),
-                                'customer_name': customer_name,
-                                'completed_formatted': completed_dt.strftime("%d/%m/%Y")
-                            })
-            except Exception as e:
-                app.logger.error(f"Error processing task {task.get('id')} for technician report: {e}")
-                continue
-
-    for tech_name in report:
-        report[tech_name]['tasks'].sort(key=lambda x: x['completed_formatted'])
-
-    # คืนค่าเป็น dict ที่เรียงลำดับตามชื่อช่าง และรายชื่อช่างทั้งหมด
-    return dict(sorted(report.items())), technician_list
-
 @app.route('/manage_duplicates', methods=['GET'])
 def manage_duplicates():
     tasks = get_google_tasks_for_report(show_completed=True) or []
@@ -3449,6 +3245,11 @@ def callback_line():
     # For LIFF apps, often no server-side action is needed here
     # as the LIFF SDK handles the token on the client-side.
     return "OK", 200
+
+app.config['get_google_tasks_service'] = get_google_tasks_service
+app.config['_execute_google_api_call_with_retry'] = _execute_google_api_call_with_retry
+app.config['GOOGLE_TASKS_LIST_ID'] = GOOGLE_TASKS_LIST_ID
+app.config['get_app_settings'] = get_app_settings
 
 from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')
