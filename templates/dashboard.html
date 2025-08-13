@@ -297,7 +297,7 @@
                                 <td colspan="7"> <div class="details-content-wrapper">
                                         <strong>ข้อมูลเพิ่มเติม:</strong>
                                         <ul>
-                                            <li><strong>ผู้สร้างงาน:</strong> {{ task.creator.name or 'ไม่มีข้อมูล' }}</li>
+                                            <li><strong>ผู้สร้างงาน:</strong> {{ task['creator']['name'] if 'creator' in task and task['creator'] else 'ไม่มีข้อมูล' }}</li>
                                             <li><strong>วันที่สร้าง:</strong> {{ task.created_at_formatted or 'ไม่มีข้อมูล' }}</li>
                                             <li><strong>หมายเหตุ:</strong> {{ task.notes or 'ไม่มีหมายเหตุ' }}</li>
                                         </ul>
