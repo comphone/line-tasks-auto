@@ -4,18 +4,13 @@ import pytz
 from dateutil.parser import parse as date_parse
 from cachetools import cached, TTLCache
 from collections import defaultdict
-
-# เนื่องจากฟังก์ชันเหล่านี้ถูกย้ายมาที่นี่ จึงต้อง import app เพื่อเข้าถึง service
-# เราจะใช้ current_app context เพื่อหลีกเลี่ยง circular import ตอนเริ่มต้น
 from flask import current_app
 
 # สร้าง Cache สำหรับไฟล์นี้โดยเฉพาะ
 util_cache = TTLCache(maxsize=100, ttl=60)
 
-# --- ย้ายฟังก์ชันที่เกี่ยวข้องกับ Google Tasks มาที่นี่ ---
-
+# --- ฟังก์ชันที่เกี่ยวข้องกับ Google Tasks ---
 def get_google_tasks_for_report(show_completed=True):
-    # ใช้ current_app.logger และฟังก์ชัน get_google_tasks_service จาก app
     service = current_app.config['get_google_tasks_service']()
     if not service: return None
     try:
@@ -35,8 +30,7 @@ def get_single_task(task_id):
         current_app.logger.error(f"Error getting single task {task_id} in utils: {err}")
         return None
 
-# --- ย้ายฟังก์ชันประมวลผลข้อมูล (Parsers) มาที่นี่ ---
-
+# --- ฟังก์ชันประมวลผลข้อมูล (Parsers) ---
 def parse_customer_info_from_notes(notes):
     info = {'name': '', 'phone': '', 'address': '', 'map_url': None, 'organization': ''}
     if not notes: return info
@@ -45,14 +39,14 @@ def parse_customer_info_from_notes(notes):
     phone_match = re.search(r"เบอร์โทรศัพท์:\s*(.*)", notes, re.IGNORECASE)
     address_match = re.search(r"ที่อยู่:\s*(.*)", notes, re.IGNORECASE)
     map_url_match = re.search(r"(https?:\/\/[^\s]+|(?:\-?\d+\.\d+,\s*\-?\d+\.\d+))", notes)
-    if org_match: info['organization'] = org_match.group(1).strip().split(':')[-1].strip()
-    if name_match: info['name'] = name_match.group(1).strip().split(':')[-1].strip()
-    if phone_match: info['phone'] = phone_match.group(1).strip().split(':')[-1].strip()
-    if address_match: info['address'] = address_match.group(1).strip().split(':')[-1].strip()
+    if org_match: info['organization'] = org_match.group(1).strip()
+    if name_match: info['name'] = name_match.group(1).strip()
+    if phone_match: info['phone'] = phone_match.group(1).strip()
+    if address_match: info['address'] = address_match.group(1).strip()
     if map_url_match:
         coords_or_url = map_url_match.group(1).strip()
         if re.match(r"^\-?\d+\.\d+,\s*\-?\d+\.\d+$", coords_or_url):
-            info['map_url'] = f"http://maps.google.com/maps?q={coords_or_url}"
+            info['map_url'] = f"https://www.google.com/maps/search/?api=1&query={coords_or_url}"
         else:
             info['map_url'] = coords_or_url
     return info

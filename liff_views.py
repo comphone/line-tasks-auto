@@ -9,12 +9,17 @@ from flask import (
 )
 from dateutil.parser import parse as date_parse
 
-# Import ฟังก์ชันที่จำเป็นจาก app.py
-from app import (
+# ✏️ เปลี่ยนการ import ทั้งหมดมาที่ utils
+from utils import (
     get_google_tasks_for_report, get_single_task, parse_google_task_dates,
-    parse_customer_info_from_notes, parse_tech_report_from_notes, parse_customer_feedback_from_notes,
+    parse_customer_info_from_notes, parse_tech_report_from_notes,
+    parse_customer_feedback_from_notes, _get_technician_report_data
+)
+
+# Import ส่วนที่เหลือที่ยังต้องใช้จาก app
+from app import (
     get_app_settings, TEXT_SNIPPETS, generate_qr_code_base64,
-    update_google_task, cache, _get_technician_report_data,
+    update_google_task, cache,
     LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION
 )
 
