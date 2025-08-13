@@ -1015,7 +1015,8 @@ def backup_settings_to_drive():
 
 @app.route('/api/customers')
 def api_customers():
-    customer_list = get_customer_database()
+    # ✏️ แก้ไขบรรทัดนี้ ให้เรียกใช้ฟังก์ชันจาก utils
+    customer_list = utils.get_customer_database()
     return jsonify(customer_list)
 
 def _perform_drive_upload(media_body, file_name, mime_type, folder_id):
