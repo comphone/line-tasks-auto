@@ -601,7 +601,7 @@ def api_create_external_task():
 def api_update_task(task_id):
     """API สำหรับอัปเดตข้อมูลงาน (เพิ่มรายงาน, ปิดงาน, เลื่อนนัด)"""
     try:
-        task_raw = get_single_task(task_id)
+        task_raw = utils.get_single_task(task_id)
         if not task_raw:
             return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
         
@@ -609,8 +609,8 @@ def api_update_task(task_id):
         update_payload = {}
         flash_message = None
         
-        history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        history, base_notes_text = utils.parse_tech_report_from_notes(task_raw.get('notes', ''))
+        feedback_data = utils.parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
         new_attachments_from_ajax_json = request.form.get('uploaded_attachments_json')
         new_attachments = []
@@ -774,8 +774,8 @@ def api_edit_task_main(task_id):
         
         new_base_notes = "\n".join(filter(None, notes_lines))
 
-        tech_reports, _ = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        tech_reports, _ = utils.parse_tech_report_from_notes(task_raw.get('notes', ''))
+        feedback_data = utils.parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         
         all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in tech_reports])
         
@@ -2845,15 +2845,12 @@ def create_full_summary_message(title, tasks):
 
 @handler.add(FollowEvent)
 def handle_follow_event(event):
-    # 1. ดึง User ID ของลูกค้าที่เพิ่งแอดเรามา
     user_id = event.source.user_id
-    
-    # 2. ตรวจสอบว่ามี Referral Code (รหัสงาน) แนบมาด้วยหรือไม่
+
     if hasattr(event, 'follow') and hasattr(event.follow, 'referral'):
         task_id = event.follow.referral
         app.logger.info(f"User {user_id} followed via referral link for task: {task_id}")
 
-        # 3. บันทึก User ID ลงใน Google Task (เหมือนที่ save_customer_line_id เคยทำ)
         task = get_single_task(task_id)
         if task:
             notes = task.get('notes', '')
@@ -2862,7 +2859,7 @@ def handle_follow_event(event):
             feedback['customer_line_user_id'] = user_id
             feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
 
-            reports_history, base = parse_tech_report_from_notes(notes)
+            reports_history, base = utils.parse_tech_report_from_notes(notes)
             reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in reports_history])
             final_notes = f"{base.strip()}"
             if reports_text: final_notes += reports_text
@@ -2912,7 +2909,7 @@ def handle_text_message(event):
             messages.append(TextMessage(text=reply_text))
    
     elif text == 'งานวันนี้':
-        tasks = [t for t in (get_google_tasks_for_report(False) or []) 
+        tasks = [t for t in (utils.get_google_tasks_for_report(False) or []) 
                 if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == datetime.datetime.now(THAILAND_TZ).date() 
                 and t.get('status') == 'needsAction']
         
@@ -3021,7 +3018,7 @@ def handle_postback(event):
 
         # --- บันทึก Feedback ลงใน Task Notes (เหมือนเดิม) ---
         notes = task.get('notes', '')
-        feedback = parse_customer_feedback_from_notes(notes)
+        feedback = utils.parse_customer_feedback_from_notes(notes)
         feedback.update({
             'feedback_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
             'feedback_type': feedback_type,
