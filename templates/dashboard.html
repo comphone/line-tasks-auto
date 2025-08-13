@@ -4,18 +4,31 @@
 
 {% block head_extra %}
     <style>
-        /* --- START: โค้ดสำหรับปรับปรุง Dashboard (อัปเดตล่าสุด) --- */
-        /* การจัดสีแถวตามสถานะ */
-        .table > tbody > tr.row-completed { --bs-table-bg: #d1e7dd; border-left: 5px solid #198754; }
-        .table > tbody > tr.row-overdue { --bs-table-bg: #f8d7da; border-left: 5px solid #dc3545; }
-        .table > tbody > tr.row-today { --bs-table-bg: #cff4fc; border-left: 5px solid #0dcaf0; }
-        .table > tbody > tr.row-needsaction { --bs-table-bg: #fff3cd; border-left: 5px solid #ffc107; }
+        /* --- START: โค้ดสำหรับปรับปรุง Dashboard ที่เพิ่มเข้าไป --- */
+        
+        /* 1. ทำให้คอลัมน์ของตารางปรับขนาดได้ */
+        .table thead th {
+            position: relative;
+            resize: horizontal; /* ทำให้ปรับขนาดแนวนอนได้ */
+            overflow: auto;     /* มี scrollbar เมื่อเนื้อหาล้น */
+        }
+        
+        /* 2. ทำให้เส้นขอบตารางเข้มและชัดเจนขึ้น */
+        .table-bordered th,
+        .table-bordered td {
+            border: 1px solid #999 !important; /* !important เพื่อให้แสดงผลทับ Bootstrap */
+        }
 
-        /* การปรับปรุง Font และ Layout */
+        /* 3. ปรับปรุงการแสดงผลในเซลล์ต่างๆ */
+        .table {
+            table-layout: fixed; /* ล็อกความกว้างเริ่มต้นของตาราง */
+        }
+
         .customer-cell { 
-            font-size: 1.05rem; 
-            line-height: 1.4; 
+            font-size: 1rem; 
+            line-height: 1.5; 
             font-weight: 500;
+            word-wrap: break-word; /* ตัดคำเมื่อล้น */
         }
         .customer-cell small { 
             font-size: 0.9em; 
@@ -23,12 +36,15 @@
         }
         .task-title-cell { 
             font-size: 1rem; 
+            line-height: 1.6; /* เพิ่มระยะห่างบรรทัดให้อ่านง่าย */
             vertical-align: middle;
+            white-space: normal; /* ทำให้ข้อความขึ้นบรรทัดใหม่ได้ */
+            word-wrap: break-word; /* ตัดคำเมื่อล้น */
         }
         .status-cell {
             text-align: center;
             vertical-align: middle;
-            width: 150px;
+            width: 150px; /* กำหนดความกว้างเริ่มต้น */
         }
         .status-cell .due-date-in-status {
             font-size: 0.85em;
@@ -37,13 +53,20 @@
             display: block;
         }
 
-        /* เพิ่มขนาดช่องค้นหา */
+        /* --- END: สิ้นสุดโค้ดที่เพิ่มเข้าไป --- */
+
+
+        /* --- โค้ดเดิมของคุณ (คงไว้ทั้งหมด) --- */
+        .table > tbody > tr.row-completed { --bs-table-bg: #d1e7dd; border-left: 5px solid #198754; }
+        .table > tbody > tr.row-overdue { --bs-table-bg: #f8d7da; border-left: 5px solid #dc3545; }
+        .table > tbody > tr.row-today { --bs-table-bg: #cff4fc; border-left: 5px solid #0dcaf0; }
+        .table > tbody > tr.row-needsaction { --bs-table-bg: #fff3cd; border-left: 5px solid #ffc107; }
+
         #searchInput.form-control {
             height: auto;
             padding: 0.75rem 1.1rem;
             font-size: 1.1rem;
         }
-        /* --- END: โค้ดสำหรับปรับปรุง Dashboard --- */
 		
 		.search-highlight {
             background-color: #ffc107;
@@ -76,8 +99,7 @@
             -webkit-overflow-scrolling: touch;
         }
         .table { min-width: 700px; }
-        .task-title-cell { max-width: 220px; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
-
+        
         .nav-tabs .nav-link { color: #495057; }
         .nav-tabs .nav-link.active { color: #0d6efd; background-color: #fff; border-color: #dee2e6 #dee2e6 #fff; font-weight: 600; }
 
@@ -217,13 +239,13 @@
 					<table class="table table-hover table-bordered align-middle">
 						<thead class="table-light">
 							<tr>
-								<th class="checkbox-col">
+								<th class="checkbox-col" style="width: 5%;">
 									<input class="form-check-input task-checkbox" type="checkbox" id="select-all-tasks" title="เลือกทั้งหมด">
 								</th>
-								<th>หน่วยงาน / ลูกค้า</th>
-								<th>รายละเอียดงาน</th>
-								<th class="text-center">สถานะ</th>
-								<th class="text-center">จัดการ</th>
+								<th style="width: 25%;">หน่วยงาน / ลูกค้า</th>
+								<th style="width: 40%;">รายละเอียดงาน</th>
+								<th style="width: 15%;">สถานะ</th>
+								<th style="width: 15%;">จัดการ</th>
 							</tr>
 						</thead>
 						<tbody>

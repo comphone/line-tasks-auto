@@ -3,7 +3,7 @@ import hashlib
 import base64
 
 # --- กรุณากรอก Channel Secret ของคุณในบรรทัดนี้ ---
-channel_secret = 'f751d652be8ac45fde8b514887c39714'
+channel_secret = 'a7ecc4dfbe87894dad36542c5d91c135'
 
 # --- ข้อมูลที่ได้มาจาก Webhook.site ---
 request_body = '{"destination":"U6d3be9943bf8d1d8a98006c10d79fa35","events":[]}'
