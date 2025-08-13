@@ -30,8 +30,6 @@ from cachetools import cached, TTLCache
 from geopy.distance import geodesic # สำหรับคำนวณระยะทาง
 from urllib.parse import urlparse, parse_qs, unquote, quote_plus
 
-from .models import Customer, db
-
 import qrcode
 import base64
 from urllib.parse import quote_plus # สำหรับเข้ารหัส URL parameters
@@ -1981,46 +1979,37 @@ def api_customers():
 @app.route('/api/search-customers')
 def api_search_customers():
     """
-    API Endpoint สำหรับค้นหาลูกค้าแบบ Real-time (Autocomplete) จากหน้าฟอร์ม
+    API Endpoint สำหรับค้นหาลูกค้าแบบ Real-time
+    โดยดึงข้อมูลจาก get_customer_database() ที่มีอยู่แล้ว
     """
     try:
-        # 1. รับคำค้นหาจาก URL (เช่น /api/search-customers?q=บริษัท)
-        query = request.args.get('q', '').strip()
+        query = request.args.get('q', '').strip().lower()
         
-        # 2. ไม่ต้องค้นหาถ้าคำค้นหาสั้นกว่า 2 ตัวอักษร
         if len(query) < 2:
             return jsonify([])
 
-        # 3. สร้าง term สำหรับการค้นหาแบบ 'contains' (ilike คือ case-insensitive)
-        search_term = f"%{query}%"
-        
-        # 4. ค้นหาลูกค้าจากฐานข้อมูล (ตัวอย่างการ Query ด้วย SQLAlchemy)
-        # ให้แน่ใจว่า Model Customer ของคุณมี field organization และ name
-        customers = Customer.query.filter(
-            db.or_(
-                Customer.organization.ilike(search_term),
-                Customer.name.ilike(search_term)
-            )
-        ).limit(10).all() # จำกัดผลลัพธ์แค่ 10 รายการเพื่อประสิทธิภาพ
+        # ดึงฐานข้อมูลลูกค้าทั้งหมด (จาก Cache หรือ Google Tasks)
+        # ฟังก์ชันนี้คุณมีอยู่แล้วใน app.py
+        all_customers = get_customer_database()
 
-        # 5. แปลงข้อมูลเป็น JSON ในรูปแบบที่ Frontend ต้องการ
-        # **สำคัญ:** ต้องมีข้อมูลครบทุก field ที่ JavaScript ในหน้าฟอร์มต้องการใช้
-        results = [
-            {
-                "id": customer.id,
-                "name": customer.name,
-                "organization": customer.organization,
-                "phone": customer.phone,
-                "address": customer.address,
-                "map_url": customer.map_url
-            }
-            for customer in customers
-        ]
+        # ทำการค้นหาในหน่วยความจำ (In-memory search)
+        results = []
+        for customer in all_customers:
+            # สร้างข้อความสำหรับค้นหาจากชื่อและหน่วยงาน
+            customer_name = customer.get('name', '') or ''
+            customer_org = customer.get('organization', '') or ''
+            searchable_text = f"{customer_name} {customer_org}".lower()
+            
+            if query in searchable_text:
+                results.append(customer)
+            
+            # จำกัดผลลัพธ์เพื่อไม่ให้แสดงผลมากเกินไป
+            if len(results) >= 10:
+                break
         
         return jsonify(results)
     
     except Exception as e:
-        # สำหรับ Debugging เมื่อเกิดข้อผิดพลาด
         app.logger.error(f"Error in api_search_customers: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
