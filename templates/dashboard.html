@@ -4,64 +4,131 @@
 
 {% block head_extra %}
     <style>
-        /* --- สไตล์สำหรับระบบย่อยุบแถว (Collapsible Row) --- */
-        .details-row {
-            display: none; 
+        /* --- START: โค้ดสำหรับปรับปรุง Dashboard ที่เพิ่มเข้าไป --- */
+        
+        /* 1. ทำให้คอลัมน์ของตารางปรับขนาดได้ */
+        .table thead th {
+            position: relative;
+            resize: horizontal; /* ทำให้ปรับขนาดแนวนอนได้ */
+            overflow: auto;     /* มี scrollbar เมื่อเนื้อหาล้น */
         }
-        .toggle-details-btn {
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .toggle-details-btn:hover {
-            background-color: #f0f0f0;
-        }
-        .details-content-wrapper {
-            padding: 1rem 1.5rem;
-            background-color: #f8f9fa;
-            border-left: 5px solid #0d6efd;
-            box-shadow: inset 0 4px 8px rgba(0,0,0,0.05);
-        }
-        .details-content-wrapper ul {
-            list-style-type: none;
-            padding-left: 0;
-            margin-top: 0.5rem;
-            margin-bottom: 0;
-        }
-        .details-content-wrapper li {
-            margin-bottom: 0.5rem;
+        
+        /* 2. ทำให้เส้นขอบตารางเข้มและชัดเจนขึ้น */
+        .table-bordered th,
+        .table-bordered td {
+            border: 1px solid #999 !important; /* !important เพื่อให้แสดงผลทับ Bootstrap */
         }
 
-        /* --- ซ่อนเมนูจัดการรายการที่เลือกไว้เป็นค่าเริ่มต้น --- */
-        #batch-actions-dropdown {
-            display: none;
+        /* 3. ปรับปรุงการแสดงผลในเซลล์ต่างๆ */
+        .table {
+            table-layout: fixed; /* ล็อกความกว้างเริ่มต้นของตาราง */
         }
 
-        /* --- สไตล์อื่นๆ (ของเดิม) --- */
+        .customer-cell { 
+            font-size: 1rem; 
+            line-height: 1.5; 
+            font-weight: 500;
+            word-wrap: break-word; /* ตัดคำเมื่อล้น */
+        }
+        .customer-cell small { 
+            font-size: 0.9em; 
+            font-weight: 400;
+        }
+        .task-title-cell { 
+            font-size: 1rem; 
+            line-height: 1.6; /* เพิ่มระยะห่างบรรทัดให้อ่านง่าย */
+            vertical-align: middle;
+            white-space: normal; /* ทำให้ข้อความขึ้นบรรทัดใหม่ได้ */
+            word-wrap: break-word; /* ตัดคำเมื่อล้น */
+        }
+        .status-cell {
+            text-align: center;
+            vertical-align: middle;
+            width: 150px; /* กำหนดความกว้างเริ่มต้น */
+        }
+        .status-cell .due-date-in-status {
+            font-size: 0.85em;
+            color: #6c757d;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+
+        /* --- END: สิ้นสุดโค้ดที่เพิ่มเข้าไป --- */
+
+
+        /* --- โค้ดเดิมของคุณ (คงไว้ทั้งหมด) --- */
         .table > tbody > tr.row-completed { --bs-table-bg: #d1e7dd; border-left: 5px solid #198754; }
         .table > tbody > tr.row-overdue { --bs-table-bg: #f8d7da; border-left: 5px solid #dc3545; }
         .table > tbody > tr.row-today { --bs-table-bg: #cff4fc; border-left: 5px solid #0dcaf0; }
         .table > tbody > tr.row-needsaction { --bs-table-bg: #fff3cd; border-left: 5px solid #ffc107; }
-        .customer-cell { font-size: 1.05rem; line-height: 1.4; font-weight: 500; }
-        .customer-cell small { font-size: 0.9em; font-weight: 400; }
-        .task-title-cell { font-size: 1rem; vertical-align: middle; white-space: normal; }
-        .status-cell { text-align: center; vertical-align: middle; width: 150px; }
-        .status-cell .due-date-in-status { font-size: 0.85em; color: #6c757d; margin-bottom: 0.25rem; display: block; }
-        #searchInput.form-control { height: auto; padding: 0.75rem 1.1rem; font-size: 1.1rem; }
-		.search-highlight { background-color: #ffc107; padding: 0.1em; border-radius: 3px; }
+
+        #searchInput.form-control {
+            height: auto;
+            padding: 0.75rem 1.1rem;
+            font-size: 1.1rem;
+        }
+		
+		.search-highlight {
+            background-color: #ffc107;
+            padding: 0.1em;
+            border-radius: 3px;
+        }
         .summary-card-link { text-decoration: none; }
-        .summary-card { color: white; border-radius: .75rem; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; align-items: center; padding: 0.75rem 1rem; }
-        .summary-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.15); }
+        .summary-card {
+            color: white;
+            border-radius: .75rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+        }
+        .summary-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+        }
         .summary-card .icon { font-size: 1.5rem; }
         .summary-card .text-content { margin-left: 1rem; }
         .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
         .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
+        
         .badge { font-size: 0.9em; padding: .5em .75em; }
-        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
         .table { min-width: 700px; }
+        
         .nav-tabs .nav-link { color: #495057; }
         .nav-tabs .nav-link.active { color: #0d6efd; background-color: #fff; border-color: #dee2e6 #dee2e6 #fff; font-weight: 600; }
-        .form-check-input.task-checkbox { width: 1.25em; height: 1.25em; }
-        .table th.checkbox-col, .table td.checkbox-col { text-align: center; vertical-align: middle; }
+
+        .batch-actions-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #212529;
+            color: white;
+            padding: 1rem;
+            z-index: 1040;
+            transform: translateY(100%);
+            transition: transform 0.3s ease-in-out;
+            border-top: 1px solid #444;
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+        }
+        .batch-actions-bar.active {
+            transform: translateY(0);
+        }
+        .form-check-input.task-checkbox {
+            width: 1.25em;
+            height: 1.25em;
+        }
+        .table th.checkbox-col, .table td.checkbox-col {
+            width: 3%;
+            text-align: center;
+            vertical-align: middle;
+        }
     </style>
 {% endblock %}
 
@@ -158,19 +225,6 @@
                             <i class="fas fa-ellipsis-h"></i>
                         </a>
                         <a href="{{ url_for('summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
-                        
-                        <div class="dropdown" id="batch-actions-dropdown">
-                            <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                จัดการรายการที่เลือก
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <button class="dropdown-item text-danger" type="button" id="delete-selected-btn">
-                                        <i class="fas fa-trash-alt me-2"></i>ลบรายการที่เลือก
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
                     </div>
                 </form>
 
@@ -185,7 +239,6 @@
 					<table class="table table-hover table-bordered align-middle">
 						<thead class="table-light">
 							<tr>
-								<th style="width: 5%;" class="text-center"></th> 
 								<th class="checkbox-col" style="width: 5%;">
 									<input class="form-check-input task-checkbox" type="checkbox" id="select-all-tasks" title="เลือกทั้งหมด">
 								</th>
@@ -205,9 +258,6 @@
 								{% endif %}"
 								data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
 								
-                                <td class="text-center toggle-details-btn" title="ดูรายละเอียดเพิ่มเติม">
-                                    <i class="fas fa-plus-circle text-primary"></i>
-                                </td>
 								<td class="checkbox-col">
 									<input class="form-check-input task-checkbox" type="checkbox" data-task-id="{{ task.id }}">
 								</td>
@@ -245,21 +295,9 @@
 									</a>
 								</td>
 							</tr>
-                            <tr class="details-row">
-                                <td colspan="7">
-                                    <div class="details-content-wrapper">
-                                        <strong>ข้อมูลเพิ่มเติม:</strong>
-                                        <ul>
-                                            <li><strong>ผู้สร้างงาน:</strong> {{ task.creator.name if task.creator else 'ไม่มีข้อมูล' }}</li>
-                                            <li><strong>วันที่สร้าง:</strong> {{ task.created_at_formatted or 'ไม่มีข้อมูล' }}</li>
-                                            <li><strong>หมายเหตุ:</strong> {{ task.notes or 'ไม่มีหมายเหตุ' }}</li>
-                                        </ul>
-                                    </div>
-                                </td>
-                            </tr>
 							{% else %}
 							<tr>
-								<td colspan="7" class="text-center p-4">
+								<td colspan="5" class="text-center p-4">
 									<h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
 									<p>ลอง<a href="{{ url_for('liff.form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
 								</td>
@@ -277,90 +315,138 @@
         </div>
     </div>
 </div>
+
+<div class="batch-actions-bar" id="batch-actions-bar">
+    <div class="container d-flex justify-content-between align-items-center">
+        <span id="selection-counter">เลือก 0 รายการ</span>
+		<div class="dropdown" id="batch-actions-dropdown">
+			<button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+				จัดการรายการที่เลือก
+			</button>
+			<ul class="dropdown-menu dropdown-menu-end">
+				<li>
+					<button class="dropdown-item text-danger" type="button" id="delete-selected-btn">
+						<i class="fas fa-trash-alt me-2"></i>ลบรายการที่เลือก
+					</button>
+				</li>
+				</ul>
+		</div>
+    </div>
+</div>
 {% endblock %}
 
 {% block body_extra %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // ข้อสำคัญ: หน้านี้ต้องมีการโหลด Bootstrap JS เพื่อให้ Dropdown ทำงานได้ (ซึ่งปกติจะอยู่ในไฟล์ base.html)
     document.addEventListener('DOMContentLoaded', function() {
-        // --- จัดการการเปิด/ปิด รายละเอียดเพิ่มเติม ---
-        document.querySelectorAll('.toggle-details-btn').forEach(button => {
-            button.addEventListener('click', function(event) {
-                event.stopPropagation(); 
-                const mainRow = this.parentElement;
-                const detailsRow = mainRow.nextElementSibling;
-                const icon = this.querySelector('i');
-                if (detailsRow.style.display === 'table-row') {
-                    detailsRow.style.display = 'none';
-                    icon.classList.remove('fa-minus-circle', 'text-danger');
-                    icon.classList.add('fa-plus-circle', 'text-primary');
-                } else {
-                    detailsRow.style.display = 'table-row';
-                    icon.classList.remove('fa-plus-circle', 'text-primary');
-                    icon.classList.add('fa-minus-circle', 'text-danger');
-                }
-            });
-        });
-
-        // --- จัดการให้ทั้งแถวคลิกได้ ---
+        // ✅ START: โค้ดใหม่สำหรับทำให้ทั้งแถวคลิกได้
         document.querySelectorAll('.clickable-row').forEach(row => {
             row.addEventListener('click', function(event) {
-                const ignoredElements = 'input, button, a, i, .toggle-details-btn';
+                // ตรวจสอบว่าไม่ได้คลิกที่ checkbox, ปุ่ม, หรือลิงก์ภายในแถว
+                const ignoredElements = 'input, button, a, i';
                 if (event.target.matches(ignoredElements) || event.target.closest(ignoredElements)) {
                     return;
                 }
+                
                 const href = this.dataset.href;
                 if (href) {
                     window.location.href = href;
                 }
             });
         });
+
+        // เปลี่ยน CSS cursor สำหรับแถวที่คลิกได้
         const style = document.createElement('style');
         style.innerHTML = `.clickable-row { cursor: pointer; }`;
         document.head.appendChild(style);
+        // ✅ END: สิ้นสุดโค้ดใหม่
 
-        // --- ส่วนของ Chart ---
+        // --- ส่วนของ Chart (เหมือนเดิม) ---
         const monthlyCtx = document.getElementById('monthlyTasksChart');
+        let myChart;
+
         if (monthlyCtx) {
-            // ... (โค้ดส่วน Chart ไม่มีการเปลี่ยนแปลง) ...
-            const chartData = { labels: {{ chart_data['labels'] | tojson | safe }}, datasets: [{ label: 'จำนวนงานที่เสร็จ', data: {{ chart_data['values'] | tojson | safe }}, backgroundColor: 'rgba(25, 135, 84, 0.6)', borderColor: 'rgba(25, 135, 84, 1)', borderWidth: 1 }]};
-            const chartOptions = { scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } }, responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
-            const myChart = new Chart(monthlyCtx, { type: 'bar', data: chartData, options: chartOptions });
+            const chartData = {
+                labels: {{ chart_data['labels'] | tojson | safe }},
+                datasets: [{
+                    label: 'จำนวนงานที่เสร็จ',
+                    data: {{ chart_data['values'] | tojson | safe }},
+                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                    borderColor: 'rgba(25, 135, 84, 1)',
+                    borderWidth: 1
+                }]
+            };
+            const chartOptions = {
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } },
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            };
+            myChart = new Chart(monthlyCtx, { type: 'bar', data: chartData, options: chartOptions });
+            
             document.getElementById('chart-tab')?.addEventListener('shown.bs.tab', () => myChart?.update());
         }
 
-        // --- แสดงตาราง ---
+        // --- ส่วนแสดงตาราง (เหมือนเดิม) ---
         document.getElementById('task-table-container').style.display = 'block';
         document.getElementById('table-loading-spinner').style.display = 'none';
 		
-        // --- Live Search ---
+        // --- โค้ด Live Search ที่ปรับปรุงใหม่ (เหมือนเดิม) ---
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            function clearHighlights(container) { const highlighted = container.querySelectorAll('.search-highlight'); highlighted.forEach(el => { el.outerHTML = el.innerHTML; }); }
-            function applyHighlights(container, filter) { if (!filter) return; const regex = new RegExp(filter.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi'); const walker = document.createTreeWalker(container, Node.TEXT_NODE, null, false); let node; const nodesToReplace = []; while (node = walker.nextNode()) { if (node.textContent.match(regex)) { nodesToReplace.push(node); } } nodesToReplace.forEach(node => { const newNode = document.createElement('span'); newNode.innerHTML = node.textContent.replace(regex, match => `<mark class="search-highlight">${match}</mark>`); node.parentNode.replaceChild(newNode, node); }); }
-            searchInput.addEventListener('keyup', function() { const filter = searchInput.value.toLowerCase(); const rows = document.querySelectorAll('.task-row, .details-row'); for (let i = 0; i < rows.length; i += 2) { const mainRow = rows[i]; const detailsRow = rows[i+1]; clearHighlights(mainRow); const text = mainRow.textContent || mainRow.innerText; if (text.toLowerCase().indexOf(filter) > -1) { mainRow.style.display = ""; if(detailsRow) detailsRow.style.display = "none"; const icon = mainRow.querySelector('.toggle-details-btn i'); if (icon) { icon.classList.remove('fa-minus-circle', 'text-danger'); icon.classList.add('fa-plus-circle', 'text-primary'); } applyHighlights(mainRow, filter); } else { mainRow.style.display = "none"; if(detailsRow) detailsRow.style.display = "none"; } } });
+            function clearHighlights(container) {
+                const highlighted = container.querySelectorAll('.search-highlight');
+                highlighted.forEach(el => {
+                    el.outerHTML = el.innerHTML;
+                });
+            }
+            function applyHighlights(container, filter) {
+                if (!filter) return;
+                const regex = new RegExp(filter.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+                const walker = document.createTreeWalker(container, Node.TEXT_NODE, null, false);
+                let node;
+                const nodesToReplace = [];
+                while (node = walker.nextNode()) {
+                    if (node.textContent.match(regex)) {
+                        nodesToReplace.push(node);
+                    }
+                }
+                nodesToReplace.forEach(node => {
+                    const newNode = document.createElement('span');
+                    newNode.innerHTML = node.textContent.replace(regex, match => `<mark class="search-highlight">${match}</mark>`);
+                    node.parentNode.replaceChild(newNode, node);
+                });
+            }
+            searchInput.addEventListener('keyup', function() {
+                const filter = searchInput.value.toLowerCase();
+                const rows = document.querySelectorAll('.task-row');
+                rows.forEach(row => {
+                    clearHighlights(row);
+                    const text = row.textContent || row.innerText;
+                    if (text.toLowerCase().indexOf(filter) > -1) {
+                        row.style.display = "";
+                        applyHighlights(row, filter);
+                    } else {
+                        row.style.display = "none";
+                    }
+                });
+            });
         }
 
-        // --- จัดการ Batch Actions ---
+        // --- ส่วนใหม่: จัดการ Batch Actions (เหมือนเดิม) ---
         const selectAllCheckbox = document.getElementById('select-all-tasks');
         const taskCheckboxes = document.querySelectorAll('.task-checkbox:not(#select-all-tasks)');
+        const batchActionBar = document.getElementById('batch-actions-bar');
+        const selectionCounter = document.getElementById('selection-counter');
         const deleteSelectedBtn = document.getElementById('delete-selected-btn');
         const csrfToken = document.getElementById('csrf_token').value;
 
         function updateSelectionState() {
-            const actionsDropdown = document.getElementById('batch-actions-dropdown');
-            if (!actionsDropdown) return;
-            const dropdownToggleBtn = actionsDropdown.querySelector('.dropdown-toggle');
-            const deleteBtnInsideMenu = document.getElementById('delete-selected-btn');
             const selectedCount = document.querySelectorAll('.task-checkbox:not(#select-all-tasks):checked').length;
-            
             if (selectedCount > 0) {
-                actionsDropdown.style.display = 'inline-block';
-                dropdownToggleBtn.innerHTML = `จัดการ ${selectedCount} รายการ`;
-                deleteBtnInsideMenu.innerHTML = `<i class="fas fa-trash-alt me-2"></i>ลบ ${selectedCount} รายการ`;
+                batchActionBar.classList.add('active');
+                selectionCounter.textContent = `เลือก ${selectedCount} รายการ`;
             } else {
-                actionsDropdown.style.display = 'none';
+                batchActionBar.classList.remove('active');
             }
             selectAllCheckbox.checked = selectedCount > 0 && selectedCount === taskCheckboxes.length;
             selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < taskCheckboxes.length;
@@ -368,7 +454,9 @@
 
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', function() {
-                taskCheckboxes.forEach(checkbox => checkbox.checked = this.checked);
+                taskCheckboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                });
                 updateSelectionState();
             });
         }
@@ -389,14 +477,19 @@
                     try {
                         const response = await fetch("{{ url_for('api_delete_tasks_batch') }}", {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken
+                            },
                             body: JSON.stringify({ task_ids: taskIds })
                         });
                         const result = await response.json();
                         if (response.ok) {
                             alert(result.message);
                             window.location.reload();
-                        } else { throw new Error(result.message || 'เกิดข้อผิดพลาดในการลบข้อมูล'); }
+                        } else {
+                            throw new Error(result.message || 'เกิดข้อผิดพลาดในการลบข้อมูล');
+                        }
                     } catch (error) {
                         console.error('Batch delete error:', error);
                         alert('เกิดข้อผิดพลาด: ' + error.message);
