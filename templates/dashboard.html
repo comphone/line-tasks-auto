@@ -4,12 +4,12 @@
 
 {% block head_extra %}
     <style>
-        /* --- สไตล์สำหรับระบบย่อยุบ (Collapsible) --- */
+        /* --- สไตล์สำหรับระบบย่อยุบแถว (Collapsible Row) --- */
         .details-row {
-            display: none; /* ซ่อนแถวรายละเอียดไว้เป็นค่าเริ่มต้น */
+            display: none; 
         }
         .toggle-details-btn {
-            cursor: pointer; /* ทำให้เมาส์เป็นรูปมือเมื่อชี้ */
+            cursor: pointer;
             transition: background-color 0.2s;
         }
         .toggle-details-btn:hover {
@@ -31,12 +31,12 @@
             margin-bottom: 0.5rem;
         }
 
-        /* ซ่อนเมนูจัดการรายการที่เลือกไว้ก่อน */
+        /* --- ซ่อนเมนูจัดการรายการที่เลือกไว้เป็นค่าเริ่มต้น --- */
         #batch-actions-dropdown {
             display: none;
         }
 
-        /* --- โค้ดสไตล์เดิม --- */
+        /* --- สไตล์อื่นๆ (ของเดิม) --- */
         .table > tbody > tr.row-completed { --bs-table-bg: #d1e7dd; border-left: 5px solid #198754; }
         .table > tbody > tr.row-overdue { --bs-table-bg: #f8d7da; border-left: 5px solid #dc3545; }
         .table > tbody > tr.row-today { --bs-table-bg: #cff4fc; border-left: 5px solid #0dcaf0; }
@@ -277,14 +277,12 @@
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block body_extra %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // ข้อสำคัญ: หน้านี้ต้องมีการโหลด Bootstrap JS เพื่อให้ Dropdown ทำงานได้
-    // ซึ่งปกติจะอยู่ในไฟล์ base.html
+    // ข้อสำคัญ: หน้านี้ต้องมีการโหลด Bootstrap JS เพื่อให้ Dropdown ทำงานได้ (ซึ่งปกติจะอยู่ในไฟล์ base.html)
     document.addEventListener('DOMContentLoaded', function() {
         // --- จัดการการเปิด/ปิด รายละเอียดเพิ่มเติม ---
         document.querySelectorAll('.toggle-details-btn').forEach(button => {
@@ -305,7 +303,7 @@
             });
         });
 
-        // --- จัดการให้ทั้งแถวคลิกได้ (ยกเว้นส่วนที่ระบุ) ---
+        // --- จัดการให้ทั้งแถวคลิกได้ ---
         document.querySelectorAll('.clickable-row').forEach(row => {
             row.addEventListener('click', function(event) {
                 const ignoredElements = 'input, button, a, i, .toggle-details-btn';
@@ -325,36 +323,23 @@
         // --- ส่วนของ Chart ---
         const monthlyCtx = document.getElementById('monthlyTasksChart');
         if (monthlyCtx) {
-            const chartData = {
-                labels: {{ chart_data['labels'] | tojson | safe }},
-                datasets: [{
-                    label: 'จำนวนงานที่เสร็จ',
-                    data: {{ chart_data['values'] | tojson | safe }},
-                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
-                    borderColor: 'rgba(25, 135, 84, 1)',
-                    borderWidth: 1
-                }]
-            };
-            const chartOptions = {
-                scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } },
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } }
-            };
+            // ... (โค้ดส่วน Chart ไม่มีการเปลี่ยนแปลง) ...
+            const chartData = { labels: {{ chart_data['labels'] | tojson | safe }}, datasets: [{ label: 'จำนวนงานที่เสร็จ', data: {{ chart_data['values'] | tojson | safe }}, backgroundColor: 'rgba(25, 135, 84, 0.6)', borderColor: 'rgba(25, 135, 84, 1)', borderWidth: 1 }]};
+            const chartOptions = { scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } }, responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
             const myChart = new Chart(monthlyCtx, { type: 'bar', data: chartData, options: chartOptions });
             document.getElementById('chart-tab')?.addEventListener('shown.bs.tab', () => myChart?.update());
         }
 
-        // --- แสดงตารางหลังโหลดเสร็จ ---
+        // --- แสดงตาราง ---
         document.getElementById('task-table-container').style.display = 'block';
         document.getElementById('table-loading-spinner').style.display = 'none';
 		
         // --- Live Search ---
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            // ... (โค้ด Live search ไม่มีการเปลี่ยนแปลง) ...
-            function clearHighlights(container) { /* ... */ }
-            function applyHighlights(container, filter) { /* ... */ }
-            searchInput.addEventListener('keyup', function() { /* ... */ });
+            function clearHighlights(container) { const highlighted = container.querySelectorAll('.search-highlight'); highlighted.forEach(el => { el.outerHTML = el.innerHTML; }); }
+            function applyHighlights(container, filter) { if (!filter) return; const regex = new RegExp(filter.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi'); const walker = document.createTreeWalker(container, Node.TEXT_NODE, null, false); let node; const nodesToReplace = []; while (node = walker.nextNode()) { if (node.textContent.match(regex)) { nodesToReplace.push(node); } } nodesToReplace.forEach(node => { const newNode = document.createElement('span'); newNode.innerHTML = node.textContent.replace(regex, match => `<mark class="search-highlight">${match}</mark>`); node.parentNode.replaceChild(newNode, node); }); }
+            searchInput.addEventListener('keyup', function() { const filter = searchInput.value.toLowerCase(); const rows = document.querySelectorAll('.task-row, .details-row'); for (let i = 0; i < rows.length; i += 2) { const mainRow = rows[i]; const detailsRow = rows[i+1]; clearHighlights(mainRow); const text = mainRow.textContent || mainRow.innerText; if (text.toLowerCase().indexOf(filter) > -1) { mainRow.style.display = ""; if(detailsRow) detailsRow.style.display = "none"; const icon = mainRow.querySelector('.toggle-details-btn i'); if (icon) { icon.classList.remove('fa-minus-circle', 'text-danger'); icon.classList.add('fa-plus-circle', 'text-primary'); } applyHighlights(mainRow, filter); } else { mainRow.style.display = "none"; if(detailsRow) detailsRow.style.display = "none"; } } });
         }
 
         // --- จัดการ Batch Actions ---
@@ -377,7 +362,6 @@
             } else {
                 actionsDropdown.style.display = 'none';
             }
-
             selectAllCheckbox.checked = selectedCount > 0 && selectedCount === taskCheckboxes.length;
             selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < taskCheckboxes.length;
         }
