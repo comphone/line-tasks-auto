@@ -349,8 +349,8 @@ def render_template_message(template_key, task):
         return f"ไม่พบ Template สำหรับ '{template_key}'"
 
     # ดึงข้อมูลที่ต้องใช้บ่อยๆ
-    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-    parsed_dates = parse_google_task_dates(task)
+    customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
+    parsed_dates = utils.parse_google_task_dates(task)
     shop_info = settings.get('shop_info', {})
     task_url = url_for('liff.task_details', task_id=task.get('id'), _external=True)
 
@@ -1396,8 +1396,8 @@ def send_new_task_notification(task):
     
     if not admin_group_id: return
 
-    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-    parsed_dates = parse_google_task_dates(task)
+    customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
+    parsed_dates = utils.parse_google_task_dates(task)
     
     message_text = (
         f"✨ มีงานใหม่เข้า!\n\n"
@@ -1422,11 +1422,11 @@ def send_completion_notification(task, technicians):
     recipients = settings.get('line_recipients', {})
     admin_group_id = recipients.get('admin_group_id')
     tech_group_id = recipients.get('technician_group_id')
-    customer_line_id_from_feedback = parse_customer_feedback_from_notes(task.get('notes', '')).get('customer_line_user_id')
+    customer_line_id_from_feedback = utils.parse_customer_feedback_from_notes(task.get('notes', '')).get('customer_line_user_id')
 
     if not admin_group_id and not tech_group_id and not customer_line_id_from_feedback: return
 
-    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
     technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
     public_report_url = url_for('public_task_report', task_id=task.get('id'), _external=True)
 
@@ -1467,7 +1467,7 @@ def send_update_notification(task, new_due_date_str, reason, technicians, is_tod
     admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
     if not admin_group_id: return
 
-    customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+    customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
     technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
     
     if is_today:
@@ -1535,7 +1535,7 @@ def scheduled_appointment_reminder_job():
             app.logger.info("No LINE admin or technician group ID set for appointment reminders. Skipping.")
             return
 
-        tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+        tasks_raw = utils.get_google_tasks_for_report(show_completed=False) or []
         today_thai = datetime.date.today()
         upcoming_appointments = []
 
@@ -1556,8 +1556,8 @@ def scheduled_appointment_reminder_job():
         upcoming_appointments.sort(key=lambda x: date_parse(x['due']) if x.get('due') else datetime.datetime.max.replace(tzinfo=pytz.utc))
 
         for task in upcoming_appointments:
-            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-            parsed_dates = parse_google_task_dates(task)
+            customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
+            parsed_dates = utils.parse_google_task_dates(task)
             
             settings = get_app_settings()
             header_template = settings.get('message_templates', {}).get('daily_reminder_header', '')
@@ -1633,7 +1633,7 @@ def scheduled_customer_follow_up_job():
         settings = get_app_settings()
         admin_group_id = settings.get('line_recipients', {}).get('admin_group_id')
 
-        tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+        tasks_raw = utils.get_google_tasks_for_report(show_completed=True) or []
         now_utc = datetime.datetime.now(pytz.utc)
         # ตรวจสอบงานที่เสร็จสิ้นในช่วง 24-48 ชั่วโมงที่ผ่านมา
         two_days_ago_utc = now_utc - datetime.timedelta(days=2)
@@ -1646,12 +1646,12 @@ def scheduled_customer_follow_up_job():
 
                     if two_days_ago_utc <= completed_dt_utc < one_day_ago_utc:
                         notes = task.get('notes', '')
-                        feedback_data = parse_customer_feedback_from_notes(notes)
+                        feedback_data = utils.parse_customer_feedback_from_notes(notes)
 
                         if 'follow_up_sent_date' in feedback_data:
                             continue # ข้ามถ้าเคยส่งไปแล้ว
 
-                        customer_info = parse_customer_info_from_notes(notes)
+                        customer_info = utils.parse_customer_info_from_notes(notes)
                         customer_line_id = feedback_data.get('customer_line_user_id')
                         
                         if not customer_line_id:
@@ -1667,7 +1667,7 @@ def scheduled_customer_follow_up_job():
                             
                             # อัปเดต notes ใน task เพื่อบันทึกว่าได้ส่ง follow-up ไปแล้ว
                             feedback_data['follow_up_sent_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
-                            history_reports, base = parse_tech_report_from_notes(notes)
+                            history_reports, base = utils.parse_tech_report_from_notes(notes)
                             
                             tech_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
                             
@@ -1715,7 +1715,7 @@ def scheduled_nearby_job_alert_job():
                 tech['last_known_lon'] = tech_location.get('lon')
                 active_technicians.append(tech)
 
-        tasks_raw = get_google_tasks_for_report(show_completed=False) or []
+        tasks_raw = utils.get_google_tasks_for_report(show_completed=False) or []
         pending_tasks = [
             t for t in tasks_raw
             if t.get('status') == 'needsAction' and t.get('notes')
@@ -1724,7 +1724,7 @@ def scheduled_nearby_job_alert_job():
         for technician in active_technicians:
             tech_coords = (technician['last_known_lat'], technician['last_known_lon'])
             for task in pending_tasks:
-                customer_info = parse_customer_info_from_notes(task.get('notes', ''))
+                customer_info = utils.parse_customer_info_from_notes(task.get('notes', ''))
                 customer_map_url = customer_info.get('map_url')
                 
                 task_notes = task.get('notes', '')
@@ -2822,8 +2822,8 @@ def create_task_list_message(title, tasks, limit=5):
     message = f"📋 {title}\n\n"
     tasks.sort(key=lambda x: date_parse(x['due']) if x.get('due') else datetime.datetime.max.replace(tzinfo=pytz.utc))
     for i, task in enumerate(tasks[:limit]):
-        customer = parse_customer_info_from_notes(task.get('notes', ''))
-        due = parse_google_task_dates(task).get('due_formatted', 'ไม่มีกำหนด')
+        customer = utils.parse_customer_info_from_notes(task.get('notes', ''))
+        due = utils.parse_google_task_dates(task).get('due_formatted', 'ไม่มีกำหนด')
         message += f"{i+1}. {task.get('title')}\n   - ลูกค้า: {customer.get('name', 'N/A')}\n   - นัดหมาย: {due}\n\n"
     if len(tasks) > limit: message += f"... และอีก {len(tasks) - limit} รายการ"
     return TextMessage(text=message)
@@ -2833,8 +2833,8 @@ def create_full_summary_message(title, tasks):
     tasks.sort(key=lambda x: date_parse(x.get('due')) if x.get('due') else date_parse(x.get('created', '9999-12-31T23:59:59Z')))
     lines = [f"📋 {title} (ทั้งหมด {len(tasks)} งาน)\n"]
     for i, task in enumerate(tasks):
-        customer = parse_customer_info_from_notes(task.get('notes', ''))
-        due = parse_google_task_dates(task).get('due_formatted', 'ยังไม่ระบุ')
+        customer = utils.parse_customer_info_from_notes(task.get('notes', ''))
+        due = utils.parse_google_task_dates(task).get('due_formatted', 'ยังไม่ระบุ')
         line = f"{i+1}. {task.get('title', 'N/A')}"
         if customer.get('name'): line += f"\n   - 👤 {customer.get('name')}"
         line += f"\n   - 🗓️ {due}"
@@ -2851,10 +2851,10 @@ def handle_follow_event(event):
         task_id = event.follow.referral
         app.logger.info(f"User {user_id} followed via referral link for task: {task_id}")
 
-        task = get_single_task(task_id)
+        task = utils.get_single_task(task_id)
         if task:
             notes = task.get('notes', '')
-            feedback = parse_customer_feedback_from_notes(notes)
+            feedback = utils.parse_customer_feedback_from_notes(notes)
             
             feedback['customer_line_user_id'] = user_id
             feedback['id_saved_date'] = datetime.datetime.now(THAILAND_TZ).isoformat()
@@ -2909,7 +2909,7 @@ def handle_text_message(event):
             messages.append(TextMessage(text=reply_text))
    
     elif text == 'งานวันนี้':
-        tasks = [t for t in (utils.get_google_tasks_for_report(False) or []) 
+        tasks = [t for t in (utils.get_google_tasks_for_report(False) or []) ... ]
                 if t.get('due') and date_parse(t['due']).astimezone(THAILAND_TZ).date() == datetime.datetime.now(THAILAND_TZ).date() 
                 and t.get('status') == 'needsAction']
         
@@ -2918,7 +2918,7 @@ def handle_text_message(event):
         else:
             tasks.sort(key=lambda x: date_parse(x['due']))
             for task in tasks[:5]:
-                customer, dates = parse_customer_info_from_notes(task.get('notes', '')), parse_google_task_dates(task)
+                customer, dates = utils.parse_customer_info_from_notes(task.get('notes', '')), utils.parse_google_task_dates(task)
                 loc = f"พิกัด: {customer.get('map_url')}" if customer.get('map_url') else "พิกัด: - (ไม่มีข้อมูล)"
                 msg_text = (f"🔔 งานสำหรับวันนี้\n\n"
                            f"ชื่องาน: {task.get('title', '-')}\n"
@@ -3012,7 +3012,7 @@ def handle_postback(event):
     feedback_type = data.get('feedback') # รับค่า feedback (ok หรือ problem)
 
     if action == 'customer_feedback':
-        task = get_single_task(task_id)
+        task = utils.get_single_task(task_id)
         if not task:
             return
 
@@ -3024,7 +3024,7 @@ def handle_postback(event):
             'feedback_type': feedback_type,
             'customer_line_user_id': event.source.user_id
         })
-        history_reports, base = parse_tech_report_from_notes(notes)
+        history_reports, base = utils.parse_tech_report_from_notes(notes)
         reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history_reports])
         final_notes = f"{base.strip()}"
         if reports_text: final_notes += reports_text
