@@ -11,8 +11,7 @@
             <h5 class="mb-0">งาน: {{ task.title }} (ลูกค้า: {{ customer_info.name or '-' }})</h5>
         </div>
         <div class="card-body">
-            <p class="lead">ให้ลูกค้าสแกน QR Code นี้เพื่อรับข้อความต้อนรับและติดตามงานซ่อมผ่าน LINE Official Account</p>
-            
+            <p>ให้ลูกค้าสแกน QR Code นี้เพื่อรับข้อความต้อนรับและติดตามงานซ่อมผ่าน LINE Official Account</p>
             {% if qr_code_base64 %}
                 <img src="{{ qr_code_base64 }}" alt="QR Code for Customer Onboarding" class="img-fluid border border-dark rounded qr-code-img">
             {% else %}
@@ -22,7 +21,6 @@
             <div class="mt-4">
                 <h6>ลิงก์สำหรับเพิ่มเพื่อน (ตรงกับใน QR Code):</h6>
                 <div class="input-group mb-3">
-                    {# ✅ แก้ไข: แสดงตัวแปร liff_url ที่เป็นลิงก์เพิ่มเพื่อนที่ถูกต้อง #}
                     <input type="text" class="form-control"
                            value="{{ liff_url }}"
                            readonly id="liffUrl">
@@ -32,17 +30,9 @@
                 </div>
                 <div class="form-text text-muted">เมื่อสแกนหรือกดลิงก์ ลูกค้าจะไปที่หน้าเพิ่มเพื่อน LINE OA พร้อมเชื่อมโยงกับงานนี้โดยอัตโนมัติ</div>
                 
-                {# 🔍 ปรับปรุง Debug Info ให้แสดงข้อมูลที่ถูกต้อง #}
-                <div class="alert alert-info mt-3" style="font-size: 0.85em; text-align: left;">
-                    <strong>🔧 ข้อมูลสำหรับตรวจสอบ (Debug Info):</strong><br>
-                    <strong>Task ID:</strong> {{ task.id }}<br>
-                    <strong>Referral URL:</strong> <code style="word-break: break-all;">{{ liff_url }}</code><br>
-                    <strong>Generated at:</strong> {{ now.strftime('%Y-%m-%d %H:%M:%S') }}
                 </div>
-            </div>
         </div>
         <div class="card-footer">
-            {# ✅ แก้ไข: ชี้ไปยัง Route ที่ถูกต้องใน Blueprint 'liff' #}
             <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน
             </a>
