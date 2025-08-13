@@ -3131,7 +3131,7 @@ def handle_text_message(event):
                            f"📞 โทร: {customer.get('phone', '-')}\n"
                            f"🗓️ นัดหมาย: {dates.get('due_formatted', '-')}\n"
                            f"📍 {loc}\n\n"
-                           f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('task_details', task_id=task.get('id'), _external=True)}")
+                           f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('liff.task_details', task_id=task.get('id'), _external=True)}")
                 messages.append(TextMessage(text=msg_text))
 
     elif text == 'งานค้าง':

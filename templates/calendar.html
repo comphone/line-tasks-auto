@@ -173,7 +173,7 @@
         } else if (arg.event.extendedProps.is_today) {
             iconHtml = '<i class="fas fa-star event-status-icon"></i>';
         }
-        return { html: `<b>${iconHtml}${arg.timeText}</b> ${arg.event.title}` };
+        return { html: `<b>${arg.event.title}</b><br><small>${iconHtml}${arg.timeText}</small>` };
       },
       eventClassNames: function(arg) {
         if (arg.event.extendedProps.is_completed) {
