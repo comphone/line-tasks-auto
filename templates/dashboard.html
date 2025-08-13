@@ -4,7 +4,39 @@
 
 {% block head_extra %}
     <style>
-        .search-highlight {
+		.table > tbody > tr.row-completed { background-color: #d1e7dd; border-left: 5px solid #198754; }
+		.table > tbody > tr.row-overdue { background-color: #f8d7da; border-left: 5px solid #dc3545; }
+		.table > tbody > tr.row-today { background-color: #cff4fc; border-left: 5px solid #0dcaf0; }
+		.table > tbody > tr.row-needsaction { background-color: #fff3cd; border-left: 5px solid #ffc107; }
+
+		/* การปรับปรุง Font และ Layout */
+		.customer-cell { 
+			font-size: 1.05rem; 
+			line-height: 1.4; 
+			font-weight: 500;
+		}
+		.customer-cell small { 
+			font-size: 0.9em; 
+			font-weight: 400;
+		}
+		.task-title-cell { 
+			font-size: 1rem; 
+			vertical-align: middle;
+		}
+		.status-cell {
+			text-align: center;
+			vertical-align: middle;
+			width: 150px;
+		}
+		.status-cell .due-date-in-status {
+			font-size: 0.85em;
+			color: #6c757d;
+			margin-bottom: 0.25rem;
+			display: block;
+		}
+		/* --- END: โค้ดสำหรับปรับปรุง Dashboard --- */
+		
+		.search-highlight {
             background-color: #ffc107;
             padding: 0.1em;
             border-radius: 3px;
@@ -176,45 +208,56 @@
                 </div>
 
                 <div class="table-responsive" id="task-table-container" style="display:none;">
-                    <table class="table table-hover table-bordered align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th class="checkbox-col">
-                                    <input class="form-check-input task-checkbox" type="checkbox" id="select-all-tasks" title="เลือกทั้งหมด">
-                                </th>
-                                <th>หน่วยงาน / ลูกค้า</th>
-                                <th>รายละเอียดงาน</th>
-                                <th>วันเวลานัดหมาย</th>
-                                <th class="text-center">สถานะ</th>
-                                <th class="text-center">จัดการ</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for task in tasks %}
-                            <tr class="task-row clickable-row {{ 'table-light text-muted' if task.status == 'completed' else '' }} {{ 'table-danger' if task.is_overdue and task.status != 'completed' else '' }}"
-                                data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
-                                <td class="checkbox-col">
-                                    <input class="form-check-input task-checkbox" type="checkbox" data-task-id="{{ task.id }}">
-                                </td>
-                                <td> {% if task.customer.organization %}
-                                        <strong>{{ task.customer.organization }}</strong>
-                                        <br><small class="text-muted">{{ task.customer.name or '-' }}</small>
-                                    {% else %}
-                                        <strong>{{ task.customer.name or '-' }}</strong>
-                                    {% endif %}
-                                </td>
-                                <td class="task-title-cell" title="{{ task.title }}"> {{ task.title | replace('\n', '<br>') | safe }}
-                                </td>
-                                <td>{{ task.due_formatted or '-' }}</td> <td class="text-center"> {% if task.status == 'completed' %}
-                                        <span class="badge bg-success">เสร็จเรียบร้อย</span>
-                                    {% elif task.is_today %}
-                                        <span class="badge bg-info">งานวันนี้</span>
-                                    {% elif task.is_overdue %}
-                                        <span class="badge bg-danger">เลยกำหนด</span>
-                                    {% else %}
-                                        <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
-                                    {% endif %}
-                                </td>
+					<table class="table table-hover align-middle">
+						<thead class="table-light">
+							<tr>
+								<th class="checkbox-col">
+									<input class="form-check-input task-checkbox" type="checkbox" id="select-all-tasks" title="เลือกทั้งหมด">
+								</th>
+								<th>หน่วยงาน / ลูกค้า</th>
+								<th>รายละเอียดงาน</th>
+								<th class="text-center">สถานะ</th>
+								<th class="text-center">จัดการ</th>
+							</tr>
+						</thead>
+						<tbody>
+							{% for task in tasks %}
+							<tr class="task-row clickable-row 
+								{% if task.status == 'completed' %}row-completed
+								{% elif task.is_overdue and task.status != 'completed' %}row-overdue
+								{% elif task.is_today and task.status != 'completed' %}row-today
+								{% else %}row-needsaction
+								{% endif %}"
+								data-href="{{ url_for('liff.task_details', task_id=task.id) }}">
+								
+								<td class="checkbox-col">
+									<input class="form-check-input task-checkbox" type="checkbox" data-task-id="{{ task.id }}">
+								</td>
+								<td class="customer-cell">
+									{% if task.customer.organization %}
+										<strong>{{ task.customer.organization }}</strong>
+										<br><small class="text-muted">{{ task.customer.name or '-' }}</small>
+									{% else %}
+										<strong>{{ task.customer.name or '-' }}</strong>
+									{% endif %}
+								</td>
+								<td class="task-title-cell" title="{{ task.title }}">
+									{{ task.title | replace('\n', '<br>') | safe }}
+								</td>
+								<td class="status-cell">
+									<span class="due-date-in-status">{{ task.due_formatted or '-' }}</span>
+									<div>
+										{% if task.status == 'completed' %}
+											<span class="badge bg-success">เสร็จเรียบร้อย</span>
+										{% elif task.is_today %}
+											<span class="badge bg-info text-dark">งานวันนี้</span>
+										{% elif task.is_overdue %}
+											<span class="badge bg-danger">เลยกำหนด</span>
+										{% else %}
+											<span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+										{% endif %}
+									</div>
+								</td>
 								<td class="text-center">
 									<a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
 										<i class="fas fa-edit"></i>
@@ -223,17 +266,17 @@
 										<i class="fas fa-file-alt"></i>
 									</a>
 								</td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="6" class="text-center p-4">
-                                    <h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
-                                    <p>ลอง<a href="{{ url_for('liff.form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+							</tr>
+							{% else %}
+							<tr>
+								<td colspan="5" class="text-center p-4">
+									<h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
+									<p>ลอง<a href="{{ url_for('liff.form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
+								</td>
+							</tr>
+							{% endfor %}
+						</tbody>
+					</table>
                 </div>
             </div>
             <div class="tab-pane fade" id="chart-pane" role="tabpanel" aria-labelledby="chart-tab" tabindex="0">
