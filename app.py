@@ -1579,7 +1579,7 @@ def send_completion_notification(task, technicians):
 
     customer_info = parse_customer_info_from_notes(task.get('notes', ''))
     technician_str = ", ".join(technicians) if technicians else "ไม่ได้ระบุ"
-    public_report_url = url_for('public_task_report', task_id=task.get('id'), _external=True)
+    public_report_url = url_for('liff.public_task_report', task_id=task.get('id'), _external=True)
 
     message_text_admin_tech = (
         f"✅ ปิดงานเรียบร้อย\n\n"
