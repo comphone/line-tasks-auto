@@ -4,37 +4,46 @@
 
 {% block head_extra %}
     <style>
-		.table > tbody > tr.row-completed { background-color: #d1e7dd; border-left: 5px solid #198754; }
-		.table > tbody > tr.row-overdue { background-color: #f8d7da; border-left: 5px solid #dc3545; }
-		.table > tbody > tr.row-today { background-color: #cff4fc; border-left: 5px solid #0dcaf0; }
-		.table > tbody > tr.row-needsaction { background-color: #fff3cd; border-left: 5px solid #ffc107; }
+        /* --- START: โค้ดสำหรับปรับปรุง Dashboard (อัปเดตล่าสุด) --- */
+        /* การจัดสีแถวตามสถานะ */
+        .table > tbody > tr.row-completed { --bs-table-bg: #d1e7dd; border-left: 5px solid #198754; }
+        .table > tbody > tr.row-overdue { --bs-table-bg: #f8d7da; border-left: 5px solid #dc3545; }
+        .table > tbody > tr.row-today { --bs-table-bg: #cff4fc; border-left: 5px solid #0dcaf0; }
+        .table > tbody > tr.row-needsaction { --bs-table-bg: #fff3cd; border-left: 5px solid #ffc107; }
 
-		/* การปรับปรุง Font และ Layout */
-		.customer-cell { 
-			font-size: 1.05rem; 
-			line-height: 1.4; 
-			font-weight: 500;
-		}
-		.customer-cell small { 
-			font-size: 0.9em; 
-			font-weight: 400;
-		}
-		.task-title-cell { 
-			font-size: 1rem; 
-			vertical-align: middle;
-		}
-		.status-cell {
-			text-align: center;
-			vertical-align: middle;
-			width: 150px;
-		}
-		.status-cell .due-date-in-status {
-			font-size: 0.85em;
-			color: #6c757d;
-			margin-bottom: 0.25rem;
-			display: block;
-		}
-		/* --- END: โค้ดสำหรับปรับปรุง Dashboard --- */
+        /* การปรับปรุง Font และ Layout */
+        .customer-cell { 
+            font-size: 1.05rem; 
+            line-height: 1.4; 
+            font-weight: 500;
+        }
+        .customer-cell small { 
+            font-size: 0.9em; 
+            font-weight: 400;
+        }
+        .task-title-cell { 
+            font-size: 1rem; 
+            vertical-align: middle;
+        }
+        .status-cell {
+            text-align: center;
+            vertical-align: middle;
+            width: 150px;
+        }
+        .status-cell .due-date-in-status {
+            font-size: 0.85em;
+            color: #6c757d;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+
+        /* เพิ่มขนาดช่องค้นหา */
+        #searchInput.form-control {
+            height: auto;
+            padding: 0.75rem 1.1rem;
+            font-size: 1.1rem;
+        }
+        /* --- END: โค้ดสำหรับปรับปรุง Dashboard --- */
 		
 		.search-highlight {
             background-color: #ffc107;
@@ -60,7 +69,6 @@
         .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
         .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
         
-        .table-hover tbody tr:hover { background-color: #f1f1f1; }
         .badge { font-size: 0.9em; padding: .5em .75em; }
 
         .table-responsive {
@@ -107,7 +115,6 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="mb-0">แดชบอร์ด</h1>
-    {# ✅✅✅ แก้ไข: เพิ่ม 'liff.' เข้าไปหน้า 'form_page' ✅✅✅ #}
     <a href="{{ url_for('liff.form_page') }}" class="btn btn-success btn-lg">
         <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
     </a>
@@ -158,7 +165,6 @@
             </div>
         </a>
     </div>
-    {# ✅✅✅ เพิ่ม Card ใหม่สำหรับงานภายนอก ✅✅✅ #}
     <div class="col-lg-3 col-6 mb-4">
         <a href="{{ url_for('liff.summary', status_filter='external') }}#task-list-section" class="summary-card-link">
             <div class="summary-card bg-dark h-100">
@@ -208,7 +214,7 @@
                 </div>
 
                 <div class="table-responsive" id="task-table-container" style="display:none;">
-					<table class="table table-hover align-middle">
+					<table class="table table-hover table-bordered align-middle">
 						<thead class="table-light">
 							<tr>
 								<th class="checkbox-col">
