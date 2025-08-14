@@ -72,30 +72,6 @@ import atexit
 
 from flask_cors import CORS
 
-# --- START: เพิ่ม Model ใหม่สำหรับรายการอุปกรณ์ ---
-class JobItem(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    task_google_id = db.Column(db.String(100), nullable=False, index=True)
-    item_name = db.Column(db.String(255), nullable=False)
-    quantity = db.Column(db.Float, nullable=False, default=1)
-    unit_price = db.Column(db.Float, nullable=False, default=0)
-    status = db.Column(db.String(50), nullable=False, default='pending') # สถานะ: pending, approved, billed
-    added_by = db.Column(db.String(100)) # ชื่อช่างที่เพิ่ม
-    added_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'task_google_id': self.task_google_id,
-            'item_name': self.item_name,
-            'quantity': self.quantity,
-            'unit_price': self.unit_price,
-            'status': self.status,
-            'added_by': self.added_by,
-            'added_at': self.added_at.isoformat()
-        }
-# --- END: เพิ่ม Model ใหม่ ---
-
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -129,6 +105,30 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # --- END: ตั้งค่า Database ---
 # สร้างอ็อบเจ็กต์ SQLAlchemy และผูกกับ Flask app
 db = SQLAlchemy(app)
+# --- START: เพิ่ม Model ใหม่สำหรับรายการอุปกรณ์ ---
+class JobItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    task_google_id = db.Column(db.String(100), nullable=False, index=True)
+    item_name = db.Column(db.String(255), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=1)
+    unit_price = db.Column(db.Float, nullable=False, default=0)
+    status = db.Column(db.String(50), nullable=False, default='pending') # สถานะ: pending, approved, billed
+    added_by = db.Column(db.String(100)) # ชื่อช่างที่เพิ่ม
+    added_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'task_google_id': self.task_google_id,
+            'item_name': self.item_name,
+            'quantity': self.quantity,
+            'unit_price': self.unit_price,
+            'status': self.status,
+            'added_by': self.added_by,
+            'added_at': self.added_at.isoformat()
+        }
+# --- END: เพิ่ม Model ใหม่ ---
+
 CORS(app) # --- เพิ่มบรรทัดนี้เพื่อเปิดใช้งาน CORS ---
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
