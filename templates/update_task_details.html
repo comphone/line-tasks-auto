@@ -6,10 +6,6 @@
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
 <style>
-	/* New styles for equipment modal search results */
-	#item-search-results .list-group-item { cursor: pointer; }
-	#item-search-results .list-group-item:hover { background-color: #e9ecef; }
-
     /* ซ่อนเนื้อหาหลักไว้ก่อน รอ LIFF โหลดเสร็จ */
     #main-content { display: none; }
     #liff-status-container {
@@ -145,23 +141,7 @@
             </div>
         </div>
     </div>
-    <div class="card shadow-sm mb-4">
-		<div class="card-header d-flex justify-content-between align-items-center">
-			<h5 class="mb-0"><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h5>
-			<strong id="grand-total-display">รวม: 0.00 บาท</strong>
-		</div>
-		<div class="card-body p-2">
-			<div id="item-summary-list">
-				<p class="text-muted text-center p-3">กำลังโหลดรายการ...</p>
-			</div>
-		</div>
-		<div class="card-footer p-2">
-			<button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#addItemModal">
-				<i class="fas fa-plus me-2"></i>เพิ่มรายการอุปกรณ์/ค่าใช้จ่าย
-			</button>
-		</div>
-	</div>
-	<div class="card shadow-sm mb-4" id="chooseActionCard">
+    <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
         </div>
@@ -214,6 +194,14 @@
                     <input type="hidden" id="technicians_final" name="technicians_report" required>
                 </div>
                 
+                <div class="mb-3">
+                    <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
+                    <div id="selected-equipment-final" class="mb-2"></div>
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('final')">
+                        <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
+                    </button>
+                </div>
+
                 <div class="mb-3">
                     <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
@@ -304,6 +292,14 @@
                     </div>
 
                     <div class="mb-3">
+                        <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
+                        <div id="selected-equipment-progress" class="mb-2"></div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('progress')">
+                            <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
+                        </button>
+                    </div>
+
+                    <div class="mb-3">
                         <label for="files_progress" class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
                         <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
                     </div>
@@ -347,57 +343,11 @@
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
     <div id="lightboxCaption" class="lightbox-caption"></div>
+    
     <div class="lightbox-nav-container">
         <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
         <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
     </div>
-</div>
-
-<div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <form id="editReportForm" method="POST" action="" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <div class="modal-header">
-          <h5 class="modal-title" id="editReportModalLabel">แก้ไขรูปภาพในรายงาน</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <h6><i class="fas fa-images me-2"></i>รูปภาพปัจจุบัน</h6>
-          <p class="text-muted small">เอาเครื่องหมาย ✔ ออกเพื่อลบรูปภาพออกจากรายงานนี้</p>
-          <div id="current-attachments-container" class="image-gallery-grid mb-3"></div>
-          <hr>
-          <h6><i class="fas fa-plus-circle me-2"></i>เพิ่มรูปภาพ/ไฟล์อื่นๆ</h6>
-          <input type="file" class="form-control" name="new_files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <form id="editReportTextForm">
-        <div class="modal-header">
-          <h5 class="modal-title" id="editReportTextModalLabel">แก้ไขข้อความสรุป</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-            <label for="editTextarea" class="form-label">ข้อความสรุป</label>
-            <textarea class="form-control" id="editTextarea" rows="5" required></textarea>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
-        </div>
-      </form>
-    </div>
-  </div>
 </div>
 
 <div class="modal fade" id="technicianSelectionModal" tabindex="-1">
@@ -408,8 +358,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div id="technician-list-container">
-                    </div>
+                <div id="technician-list-container"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
@@ -466,39 +415,7 @@
   </div>
 </div>
 
-<div class="modal fade" id="addItemModal" tabindex="-1">
-    <div class="modal-dialog modal-fullscreen-sm-down">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addItemModalLabel">เพิ่ม/แก้ไขรายการ</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="edit-item-index">
-                <div class="mb-3 position-relative">
-                    <label for="item-name-input" class="form-label">ชื่อรายการ</label>
-                    <input type="text" class="form-control form-control-lg" id="item-name-input" placeholder="ค้นหาหรือพิมพ์ชื่อรายการ..." autocomplete="off">
-                    <div id="item-search-results" class="list-group mt-1 position-absolute w-100" style="z-index: 1056;"></div>
-                </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label for="item-quantity-input" class="form-label">จำนวน</label>
-                        <input type="number" class="form-control form-control-lg" id="item-quantity-input" value="1">
-                    </div>
-                    <div class="col-6 mb-3">
-                        <label for="item-price-input" class="form-label">ราคา/หน่วย</label>
-                        <input type="number" class="form-control form-control-lg" id="item-price-input" placeholder="0.00">
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                <button type="button" class="btn btn-primary" id="save-item-modal-btn">บันทึกรายการ</button>
-            </div>
-        </div>
-    </div>
-</div>
-
+{% include 'modals/equipment_catalog_modal.html' %}
 {% endblock %}
 
 {% block body_extra %}
@@ -509,10 +426,13 @@
     const technicianList = {{ technician_list | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
+    const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
     const LIFF_ID_TO_USE = "{{ LIFF_ID_TO_USE }}";
     
+    let technicianSelectionModal, editReportModal, editReportTextModal, equipmentCatalogModal;
+    let currentTechnicianTargetId, currentEquipmentTargetPrefix, slideIndex = 0;
     let technicianLineUserId = null;
     let currentLightboxImages = [];
 
@@ -623,6 +543,90 @@
         const technicianInput = document.getElementById('technicians_progress');
         if (progressBtn && technicianInput) {
             progressBtn.disabled = !technicianInput.value;
+        }
+    }
+
+    window.openEquipmentModal = (targetPrefix) => {
+        currentEquipmentTargetPrefix = targetPrefix;
+        const hiddenInput = document.getElementById(`equipment_used_${targetPrefix}`);
+        let currentSelection = [];
+        try {
+            if (hiddenInput && hiddenInput.value) {
+                currentSelection = JSON.parse(hiddenInput.value);
+            }
+        } catch (e) { console.error("Could not parse current equipment selection", e); }
+        
+        renderEquipmentList(equipmentCatalog, currentSelection);
+        equipmentCatalogModal.show();
+    };
+    
+    function renderEquipmentList(items, selection) {
+        const container = document.getElementById('equipment-catalog-list');
+        container.innerHTML = '';
+        if (items.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลในแคตตาล็อกอุปกรณ์</p>';
+            return;
+        }
+
+        items.forEach((item, index) => {
+            const selectedItem = selection.find(s => s.item === item.item_name);
+            const isChecked = !!selectedItem;
+            const quantity = selectedItem ? selectedItem.quantity : 1;
+            
+            const itemHtml = `
+                <div class="equipment-item" data-item-name="${item.item_name.toLowerCase()}">
+                    <div class="equipment-info">
+                        <input class="form-check-input me-3" type="checkbox" id="equip-check-${index}" data-item-name="${item.item_name}" ${isChecked ? 'checked' : ''}>
+                        <label class="form-check-label" for="equip-check-${index}">
+                            <strong>${item.item_name}</strong>
+                            <br><small class="text-muted">ราคา: ${item.price} บาท / ${item.unit}</small>
+                        </label>
+                    </div>
+                    <div class="equipment-quantity">
+                        <input type="number" class="form-control form-control-sm" id="equip-qty-${index}" value="${quantity}" min="0" step="any" ${!isChecked ? 'disabled' : ''}>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', itemHtml);
+        });
+
+        container.querySelectorAll('.form-check-input').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const qtyInput = e.target.closest('.equipment-item').querySelector('.form-control');
+                qtyInput.disabled = !e.target.checked;
+            });
+        });
+    }
+
+    window.confirmEquipmentSelection = () => {
+        const selectedItems = [];
+        document.querySelectorAll('#equipment-catalog-list .equipment-item').forEach((item, index) => {
+            const checkbox = item.querySelector(`#equip-check-${index}`);
+            if (checkbox.checked) {
+                const qtyInput = item.querySelector(`#equip-qty-${index}`);
+                selectedItems.push({
+                    item: checkbox.dataset.itemName,
+                    quantity: parseFloat(qtyInput.value) || 0
+                });
+            }
+        });
+        
+        const hiddenInput = document.getElementById(`equipment_used_${currentEquipmentTargetPrefix}`);
+        hiddenInput.value = JSON.stringify(selectedItems);
+        
+        renderSelectedEquipmentSummary(currentEquipmentTargetPrefix, selectedItems);
+        equipmentCatalogModal.hide();
+    };
+
+    function renderSelectedEquipmentSummary(targetPrefix, items) {
+        const container = document.getElementById(`selected-equipment-${targetPrefix}`);
+        if (!container) return;
+
+        if (items.length === 0) {
+            container.innerHTML = '<p class="text-muted small">ยังไม่ได้เลือกอุปกรณ์</p>';
+        } else {
+            const listHtml = items.map(item => `<li>${item.item} (จำนวน: ${item.quantity})</li>`).join('');
+            container.innerHTML = `<ul class="list-unstyled small">${listHtml}</ul>`;
         }
     }
 
@@ -981,148 +985,25 @@
         );
     }
 
-document.addEventListener('DOMContentLoaded', function() {
-    // --- START: LIFF Initialization DISABLED ---
-    // ปิดการใช้งาน LIFF ชั่วคราวตามที่คุณต้องการ
-    const mainContent = document.getElementById('main-content');
-    const statusContainer = document.getElementById('liff-status-container');
-    
-    mainContent.style.display = 'block';
-    if (statusContainer) statusContainer.style.display = 'none';
-    initializePageFunctions(); // เรียกใช้ฟังก์ชันหลักของหน้าเว็บโดยตรง
-    // --- END: LIFF Initialization DISABLED ---
-
-    function initializePageFunctions() {
-        // Modal Init (ลบ equipmentCatalogModal ออกไปแล้ว)
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE !== 'None' && LIFF_ID_TO_USE.trim() !== '') {
+            liff.init({ liffId: LIFF_ID_TO_USE })
+                .then(() => liff.isLoggedIn() ? liff.getProfile() : null)
+                .then(profile => { 
+                    if (profile) {
+                        technicianLineUserId = profile.userId;
+                        const techIdInput = document.getElementById('technician_line_user_id');
+                        if(techIdInput) techIdInput.value = technicianLineUserId;
+                    }
+                })
+                .catch(err => console.error("LIFF initialization failed", err));
+        }
+        
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
+        equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
 
-        // ================================================================
-        // START: โค้ด JavaScript สำหรับจัดการอุปกรณ์ (Logic ใหม่)
-        // ================================================================
-        let jobItems = [];
-        const addItemModalEl = document.getElementById('addItemModal');
-        const addItemModal = new bootstrap.Modal(addItemModalEl);
-        const itemNameInput = document.getElementById('item-name-input');
-        const itemQtyInput = document.getElementById('item-quantity-input');
-        const itemPriceInput = document.getElementById('item-price-input');
-        const itemSearchResults = document.getElementById('item-search-results');
-        const saveItemModalBtn = document.getElementById('save-item-modal-btn');
-        const editItemIndexInput = document.getElementById('edit-item-index');
-        
-        function renderSummaryList() {
-            const listContainer = document.getElementById('item-summary-list');
-            const grandTotalDisplay = document.getElementById('grand-total-display');
-            let grandTotal = 0;
-            if (jobItems.length === 0) {
-                listContainer.innerHTML = '<p class="text-muted text-center p-3">ยังไม่มีรายการ</p>';
-                grandTotalDisplay.textContent = 'รวม: 0.00 บาท';
-                return;
-            }
-            listContainer.innerHTML = '';
-            jobItems.forEach((item, index) => {
-                const itemTotal = (item.quantity || 0) * (item.unit_price || 0);
-                grandTotal += itemTotal;
-                const itemElement = document.createElement('div');
-                itemElement.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
-                itemElement.innerHTML = `<div><strong>${item.item_name}</strong><br><small class="text-muted">${item.quantity} x ${item.unit_price.toFixed(2)} บาท</small></div><div><strong>${itemTotal.toFixed(2)}</strong><button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2 edit-item-btn" data-index="${index}" data-bs-toggle="modal" data-bs-target="#addItemModal"><i class="fas fa-pen"></i></button></div>`;
-                listContainer.appendChild(itemElement);
-            });
-            grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
-        }
-        async function loadInitialItems() {
-            try {
-                const response = await fetch(`/api/task/${taskId}/items`);
-                if (!response.ok) throw new Error('Failed to fetch');
-                jobItems = await response.json();
-                renderSummaryList();
-            } catch (error) { 
-                console.error('Failed to load initial items:', error);
-                renderSummaryList();
-            }
-        }
-        let itemSearchDebounce;
-        itemNameInput.addEventListener('input', () => {
-            clearTimeout(itemSearchDebounce);
-            itemSearchDebounce = setTimeout(async () => {
-                const query = itemNameInput.value;
-                if (query.length < 2) { itemSearchResults.innerHTML = ''; return; }
-                try {
-                    const response = await fetch(`/api/search-equipment-catalog?q=${encodeURIComponent(query)}`);
-                    const results = await response.json();
-                    itemSearchResults.innerHTML = '';
-                    results.forEach(result => {
-                        const resultEl = document.createElement('a');
-                        resultEl.className = 'list-group-item list-group-item-action';
-                        resultEl.innerHTML = `<strong>${result.item_name}</strong> <small class="text-muted">(${result.price} บาท)</small>`;
-                        resultEl.onclick = () => {
-                            itemNameInput.value = result.item_name;
-                            itemPriceInput.value = result.price;
-                            itemSearchResults.innerHTML = '';
-                            itemQtyInput.focus();
-                        };
-                        itemSearchResults.appendChild(resultEl);
-                    });
-                } catch (e) { console.error(e); }
-            }, 300);
-        });
-        saveItemModalBtn.addEventListener('click', () => {
-            const newItem = {
-                item_name: itemNameInput.value.trim(),
-                quantity: parseFloat(itemQtyInput.value) || 1,
-                unit_price: parseFloat(itemPriceInput.value) || 0,
-            };
-            if (!newItem.item_name) { alert('กรุณาใส่ชื่อรายการ'); return; }
-            const editIndex = editItemIndexInput.value;
-            if (editIndex !== '') {
-                jobItems[parseInt(editIndex)] = newItem; 
-            } else {
-                jobItems.push(newItem);
-            }
-            saveAllItemsToDb();
-            renderSummaryList();
-            addItemModal.hide();
-        });
-        addItemModalEl.addEventListener('show.bs.modal', (event) => {
-            editItemIndexInput.value = ''; itemNameInput.value = '';
-            itemQtyInput.value = 1; itemPriceInput.value = '';
-            itemSearchResults.innerHTML = '';
-            const button = event.relatedTarget;
-            if (button && button.classList.contains('edit-item-btn')) {
-                const index = parseInt(button.dataset.index);
-                const item = jobItems[index];
-                editItemIndexInput.value = index;
-                itemNameInput.value = item.item_name;
-                itemQtyInput.value = item.quantity;
-                itemPriceInput.value = item.unit_price;
-                document.getElementById('addItemModalLabel').textContent = 'แก้ไขรายการ';
-            } else {
-                document.getElementById('addItemModalLabel').textContent = 'เพิ่มรายการใหม่';
-            }
-        });
-        async function saveAllItemsToDb() {
-             try {
-                const response = await fetch(`/api/task/${taskId}/items`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify({items: jobItems})
-                });
-                if (!response.ok) throw new Error('Server responded with an error');
-                window.flashMessage('บันทึกรายการอุปกรณ์เรียบร้อยแล้ว!', 'success');
-            } catch (error) {
-                console.error('Failed to save all items:', error);
-                window.flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงเซิร์ฟเวอร์', 'danger');
-            }
-        }
-        // เรียกใช้ฟังก์ชันเพื่อโหลดข้อมูลทันทีที่หน้าพร้อมใช้งาน
-        loadInitialItems();
-        // ================================================================
-        // END: โค้ด JavaScript สำหรับจัดการอุปกรณ์
-        // ================================================================
-
-        // --- Event Listeners and Final Calls (Originals) ---
-        // ส่วนนี้คือโค้ดเดิมของคุณที่ยังทำงานได้ปกติ
         const updateLocationBtnFinal = document.getElementById('updateLocationBtn_final');
         if (updateLocationBtnFinal) {
             updateLocationBtnFinal.addEventListener('click', handleLocationUpdate);
@@ -1177,15 +1058,28 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         updateSubmitButtonState();
-        
-        const progressCollapseElement = document.getElementById('progressReportCollapse');
-        if (progressCollapseElement) {
-            progressCollapseElement.addEventListener('shown.bs.collapse', event => {
-                document.getElementById('work_summary_progress').focus();
-                progressCollapseElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        renderSelectedEquipmentSummary('progress', []);
+        renderSelectedEquipmentSummary('final', []);
+
+        const searchInput = document.getElementById('equipment-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('keyup', (e) => {
+                const filter = e.target.value.toLowerCase();
+                document.querySelectorAll('.equipment-item').forEach(item => {
+                    if (item.dataset.itemName.includes(filter)) {
+                        item.style.display = 'flex';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
             });
         }
-    }
-});
+        
+        const progressCollapseElement = document.getElementById('progressReportCollapse');
+        progressCollapseElement.addEventListener('shown.bs.collapse', event => {
+            document.getElementById('work_summary_progress').focus();
+            progressCollapseElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
 </script>
 {% endblock %}
