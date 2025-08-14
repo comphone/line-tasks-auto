@@ -6,7 +6,20 @@
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
 <style>
-    /* Styles from your original file are preserved */
+    /* ซ่อนเนื้อหาหลักไว้ก่อน รอ LIFF โหลดเสร็จ */
+    #main-content { display: none; }
+    #liff-status-container {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+    }
+    .liff-error-card {
+        max-width: 500px;
+        border-left: 5px solid #dc3545;
+    }
+    
     .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 2rem; background-color: #f8f9fa; }
     .info-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
     @media (min-width: 768px) { .info-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -15,9 +28,13 @@
     .info-label { display: flex; align-items: center; font-size: 0.8rem; font-weight: 600; color: #6c757d; margin-bottom: 0.35rem; }
     .info-label i { width: 20px; text-align: center; margin-right: 0.5rem; color: #adb5bd; }
     .info-value { font-weight: 500; color: #343a40; word-break: break-word; margin-bottom: 0; }
+    
+    /* --- START: [แก้ไข] CSS Classes สำหรับปรับขนาด Font --- */
     .info-value.value-large { font-size: 1.25em; font-weight: 700; }
     .info-value.value-medium { font-size: 1.2em; font-weight: 600; }
     .info-value.value-small { font-size: 0.9em; }
+    /* --- END: [แก้ไข] CSS Classes --- */
+
     .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
     .history-entry-subheader { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
@@ -34,13 +51,41 @@
     .next { right: 15px; }
     .tribute-container ul { list-style: none; margin: 0; padding: 0; }
     .tribute-container li.highlight { background-color: #0d6efd; color: white; }
-    .action-button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-    .action-btn { display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; font-size: 1rem; font-weight: 500; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: all 0.2s ease-in-out; text-decoration: none; color: white; }
-    .action-btn:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); color: white; }
+    
+    .action-button-grid { 
+        display: grid; 
+        grid-template-columns: 1fr 1fr; 
+        gap: 0.75rem; 
+    }
+    .action-btn { 
+        display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; 
+        font-size: 1rem; font-weight: 500; border-radius: 0.5rem; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: all 0.2s ease-in-out; 
+        text-decoration: none; color: white;
+    }
+    .action-btn:hover { 
+        transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); color: white;
+    }
     .action-btn i { margin-right: 0.5rem; }
-    /* New styles for equipment modal search results */
-    #item-search-results .list-group-item { cursor: pointer; }
-    #item-search-results .list-group-item:hover { background-color: #e9ecef; }
+    
+    .equipment-item {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 0.5rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .equipment-item:last-child {
+        border-bottom: none;
+    }
+    .equipment-info {
+        flex-grow: 1;
+        display: flex;
+        align-items: center;
+    }
+    .equipment-quantity {
+        width: 120px;
+        flex-shrink: 0;
+    }
 </style>
 {% endblock %}
 
@@ -55,10 +100,11 @@
     </div>
 
     <div class="summary-container">
-	    <div class="d-flex justify-content-between align-items-center mb-3">
-		    <h5 class="mb-0">ข้อมูลสรุป</h5>
-		    <a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
-	    </div>
+	<div class="d-flex justify-content-between align-items-center mb-3">
+		<h5 class="mb-0">ข้อมูลสรุป</h5>
+		<a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
+	</div>
+
         <div class="info-grid">
              <div class="info-card">
                  <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
@@ -95,23 +141,6 @@
             </div>
         </div>
     </div>
-    
-    <div class="card shadow-sm mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h5>
-            <strong id="grand-total-display">รวม: 0.00 บาท</strong>
-        </div>
-        <div class="card-body p-2">
-            <div id="item-summary-list">
-                <p class="text-muted text-center p-3">กำลังโหลดรายการ...</p>
-            </div>
-        </div>
-        <div class="card-footer p-2">
-            <button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#addItemModal">
-                <i class="fas fa-plus me-2"></i>เพิ่มรายการอุปกรณ์/ค่าใช้จ่าย
-            </button>
-        </div>
-    </div>
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
@@ -144,6 +173,8 @@
             <form id="completeTaskForm" onsubmit="window.handleFormSubmission(event, this, 'complete-upload-status')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="complete_task">
+                <input type="hidden" id="equipment_used_final" name="equipment_used" value="[]">
+                
                 <input type="hidden" id="current_latitude" name="current_latitude">
                 <input type="hidden" id="current_longitude" name="current_longitude">
                 <input type="hidden" id="technician_line_user_id" name="technician_line_user_id">
@@ -163,6 +194,14 @@
                     <input type="hidden" id="technicians_final" name="technicians_report" required>
                 </div>
                 
+                <div class="mb-3">
+                    <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
+                    <div id="selected-equipment-final" class="mb-2"></div>
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('final')">
+                        <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
+                    </button>
+                </div>
+
                 <div class="mb-3">
                     <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
                     <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
@@ -232,6 +271,8 @@
                 <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="save_report">
+                    <input type="hidden" id="equipment_used_progress" name="equipment_used" value="[]">
+
                     <div class="mb-3">
                         <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
                         <div class="input-group">
@@ -249,6 +290,15 @@
                         </div>
                         <input type="hidden" id="technicians_progress" name="technicians_report" required>
                     </div>
+
+                    <div class="mb-3">
+                        <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
+                        <div id="selected-equipment-progress" class="mb-2"></div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('progress')">
+                            <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
+                        </button>
+                    </div>
+
                     <div class="mb-3">
                         <label for="files_progress" class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
                         <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
@@ -279,7 +329,7 @@
     <div class="collapse" id="dangerZoneCollapse">
         <div class="card card-body border-danger mt-2">
             <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
-            <form method="POST" action="{{ url_for('liff.delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+            <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-danger w-100">
                     <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
@@ -289,43 +339,11 @@
     </div>
 </div>
 
-<div class="modal fade" id="addItemModal" tabindex="-1">
-    <div class="modal-dialog modal-fullscreen-sm-down">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addItemModalLabel">เพิ่ม/แก้ไขรายการ</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="edit-item-index">
-                <div class="mb-3 position-relative">
-                    <label for="item-name-input" class="form-label">ชื่อรายการ</label>
-                    <input type="text" class="form-control form-control-lg" id="item-name-input" placeholder="ค้นหาหรือพิมพ์ชื่อรายการ..." autocomplete="off">
-                    <div id="item-search-results" class="list-group mt-1 position-absolute w-100" style="z-index: 1056;"></div>
-                </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label for="item-quantity-input" class="form-label">จำนวน</label>
-                        <input type="number" class="form-control form-control-lg" id="item-quantity-input" value="1">
-                    </div>
-                    <div class="col-6 mb-3">
-                        <label for="item-price-input" class="form-label">ราคา/หน่วย</label>
-                        <input type="number" class="form-control form-control-lg" id="item-price-input" placeholder="0.00">
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                <button type="button" class="btn btn-primary" id="save-item-modal-btn">บันทึกรายการ</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
     <div id="lightboxCaption" class="lightbox-caption"></div>
+    
     <div class="lightbox-nav-container">
         <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
         <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
@@ -397,6 +415,7 @@
   </div>
 </div>
 
+{% include 'modals/equipment_catalog_modal.html' %}
 {% endblock %}
 
 {% block body_extra %}
@@ -405,72 +424,218 @@
     // --- Global Variables and Constants ---
     const allAttachments = {{ all_attachments | tojson | safe if all_attachments else [] }};
     const technicianList = {{ technician_list | tojson | safe }};
-    const techReportsHistory = {{ task.tech_reports_history | tojson | safe if task.tech_reports_history else [] }};
+    const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
+    const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
     const LIFF_ID_TO_USE = "{{ LIFF_ID_TO_USE }}";
     
-    let technicianSelectionModal, editReportModal, editReportTextModal;
-    let currentTechnicianTargetId, slideIndex = 0;
+    let technicianSelectionModal, editReportModal, editReportTextModal, equipmentCatalogModal;
+    let currentTechnicianTargetId, currentEquipmentTargetPrefix, slideIndex = 0;
     let technicianLineUserId = null;
     let currentLightboxImages = [];
 
-    // --- START: FULL IMPLEMENTATION OF HELPER FUNCTIONS ---
+    // --- Helper Functions (attached to window for global access) ---
+
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
         const alertId = `flash-${Date.now()}`;
-        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+        const alertHtml = `
+            <div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
         container.insertAdjacentHTML('beforeend', alertHtml);
         setTimeout(() => {
             const alertElement = document.getElementById(alertId);
             if (alertElement) {
                 const alertInstance = bootstrap.Alert.getInstance(alertElement);
-                if (alertInstance) alertInstance.close(); else alertElement.remove();
+                if (alertInstance) alertInstance.close();
+                else alertElement.remove();
             }
         }, 5000);
     };
+
+    window.updateLocationAndNotify = () => {
+        window.flashMessage('กำลังค้นหาตำแหน่งของคุณ...', 'info');
+        if (!navigator.geolocation) {
+            window.flashMessage('เบราว์เซอร์ของคุณไม่รองรับ Geolocation', 'danger');
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                const mapUrl = `http://googleusercontent.com/maps/google.com/4${latitude},${longitude}`;
+                
+                try {
+                    const response = await fetch(`/api/task/${taskId}/update_location`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                        body: JSON.stringify({ map_url: mapUrl })
+                    });
+                    const result = await response.json();
+                    if (response.ok && result.status === 'success') {
+                        window.flashMessage('อัปเดตพิกัดสำเร็จ! กำลังรีเฟรชหน้า...', 'success');
+                        setTimeout(() => window.location.reload(), 2000);
+                    } else {
+                        throw new Error(result.message || 'เกิดข้อผิดพลาดในการบันทึกพิกัด');
+                    }
+                } catch (error) {
+                    window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                }
+            },
+            (error) => {
+                window.flashMessage(`ไม่สามารถดึงตำแหน่งได้: ${error.message}`, 'danger');
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    };
+
     window.showActionCard = (cardIdToShow) => {
         document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
         document.getElementById('chooseActionCard').style.display = 'none';
+        
         const cardToShow = document.getElementById(cardIdToShow);
-        if (cardToShow) { cardToShow.style.display = 'block'; } 
-        else { document.getElementById('chooseActionCard').style.display = 'block'; }
+        if (cardToShow) {
+            cardToShow.style.display = 'block';
+        } else {
+            document.getElementById('chooseActionCard').style.display = 'block';
+        }
     };
+    
     window.openTechnicianModal = (targetId) => {
         currentTechnicianTargetId = targetId;
         const container = document.getElementById('technician-list-container');
         const hiddenInput = document.getElementById(targetId);
         const selectedValues = hiddenInput ? hiddenInput.value.split(',').filter(Boolean) : [];
+
         container.innerHTML = '';
         technicianList.forEach(tech => {
             const techName = typeof tech === 'object' ? tech.name : tech;
             const isChecked = selectedValues.includes(techName);
-            container.innerHTML += `<div class="form-check"><input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}><label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}">${techName}</label></div>`;
+            container.innerHTML += `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}>
+                    <label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}">${techName}</label>
+                </div>
+            `;
         });
         technicianSelectionModal.show();
     };
+
     window.confirmTechnicianSelection = () => {
         const selectedNames = Array.from(document.querySelectorAll('#technician-list-container .form-check-input:checked')).map(cb => cb.value);
         const displayInput = document.getElementById(`${currentTechnicianTargetId}_display`);
         const hiddenInput = document.getElementById(currentTechnicianTargetId);
+
         if (displayInput) displayInput.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
         if (hiddenInput) hiddenInput.value = selectedNames.join(',');
+        
         updateSubmitButtonState();
         technicianSelectionModal.hide();
     };
+
     function updateSubmitButtonState() {
         const progressBtn = document.getElementById('saveProgressBtn');
         const technicianInput = document.getElementById('technicians_progress');
-        if (progressBtn && technicianInput) { progressBtn.disabled = !technicianInput.value; }
+        if (progressBtn && technicianInput) {
+            progressBtn.disabled = !technicianInput.value;
+        }
     }
+
+    window.openEquipmentModal = (targetPrefix) => {
+        currentEquipmentTargetPrefix = targetPrefix;
+        const hiddenInput = document.getElementById(`equipment_used_${targetPrefix}`);
+        let currentSelection = [];
+        try {
+            if (hiddenInput && hiddenInput.value) {
+                currentSelection = JSON.parse(hiddenInput.value);
+            }
+        } catch (e) { console.error("Could not parse current equipment selection", e); }
+        
+        renderEquipmentList(equipmentCatalog, currentSelection);
+        equipmentCatalogModal.show();
+    };
+    
+    function renderEquipmentList(items, selection) {
+        const container = document.getElementById('equipment-catalog-list');
+        container.innerHTML = '';
+        if (items.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลในแคตตาล็อกอุปกรณ์</p>';
+            return;
+        }
+
+        items.forEach((item, index) => {
+            const selectedItem = selection.find(s => s.item === item.item_name);
+            const isChecked = !!selectedItem;
+            const quantity = selectedItem ? selectedItem.quantity : 1;
+            
+            const itemHtml = `
+                <div class="equipment-item" data-item-name="${item.item_name.toLowerCase()}">
+                    <div class="equipment-info">
+                        <input class="form-check-input me-3" type="checkbox" id="equip-check-${index}" data-item-name="${item.item_name}" ${isChecked ? 'checked' : ''}>
+                        <label class="form-check-label" for="equip-check-${index}">
+                            <strong>${item.item_name}</strong>
+                            <br><small class="text-muted">ราคา: ${item.price} บาท / ${item.unit}</small>
+                        </label>
+                    </div>
+                    <div class="equipment-quantity">
+                        <input type="number" class="form-control form-control-sm" id="equip-qty-${index}" value="${quantity}" min="0" step="any" ${!isChecked ? 'disabled' : ''}>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', itemHtml);
+        });
+
+        container.querySelectorAll('.form-check-input').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const qtyInput = e.target.closest('.equipment-item').querySelector('.form-control');
+                qtyInput.disabled = !e.target.checked;
+            });
+        });
+    }
+
+    window.confirmEquipmentSelection = () => {
+        const selectedItems = [];
+        document.querySelectorAll('#equipment-catalog-list .equipment-item').forEach((item, index) => {
+            const checkbox = item.querySelector(`#equip-check-${index}`);
+            if (checkbox.checked) {
+                const qtyInput = item.querySelector(`#equip-qty-${index}`);
+                selectedItems.push({
+                    item: checkbox.dataset.itemName,
+                    quantity: parseFloat(qtyInput.value) || 0
+                });
+            }
+        });
+        
+        const hiddenInput = document.getElementById(`equipment_used_${currentEquipmentTargetPrefix}`);
+        hiddenInput.value = JSON.stringify(selectedItems);
+        
+        renderSelectedEquipmentSummary(currentEquipmentTargetPrefix, selectedItems);
+        equipmentCatalogModal.hide();
+    };
+
+    function renderSelectedEquipmentSummary(targetPrefix, items) {
+        const container = document.getElementById(`selected-equipment-${targetPrefix}`);
+        if (!container) return;
+
+        if (items.length === 0) {
+            container.innerHTML = '<p class="text-muted small">ยังไม่ได้เลือกอุปกรณ์</p>';
+        } else {
+            const listHtml = items.map(item => `<li>${item.item} (จำนวน: ${item.quantity})</li>`).join('');
+            container.innerHTML = `<ul class="list-unstyled small">${listHtml}</ul>`;
+        }
+    }
+
     window.openLightboxById = (fileId) => {
         currentLightboxImages = [];
         techReportsHistory.forEach(report => {
-            if (report.attachments && Array.isArray(report.attachments)) {
+            if (report.attachments) {
                 report.attachments.forEach(att => {
-                    if (att && att.id && att.name) {
+                    if (att.id && att.name) {
                         currentLightboxImages.push({
                             id: att.id,
                             url: `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`,
@@ -480,89 +645,152 @@
                 });
             }
         });
+        
         slideIndex = currentLightboxImages.findIndex(img => img.id === fileId);
         if (slideIndex === -1) slideIndex = 0;
+        
         if (currentLightboxImages.length > 0) {
             showLightboxImage();
             document.getElementById('lightboxModal').style.display = "block";
         }
     };
+
     function showLightboxImage() {
         if (currentLightboxImages.length === 0) return;
+        
         const img = document.getElementById('lightboxImg');
         const caption = document.getElementById('lightboxCaption');
         const currentImage = currentLightboxImages[slideIndex];
+        
         img.src = currentImage.url;
         if (caption) caption.textContent = `${currentImage.name} (${slideIndex + 1}/${currentLightboxImages.length})`;
+        
         const navContainer = document.querySelector('.lightbox-nav-container');
-        if (navContainer) { navContainer.style.display = currentLightboxImages.length > 1 ? 'block' : 'none'; }
+        if (navContainer) {
+            navContainer.style.display = currentLightboxImages.length > 1 ? 'block' : 'none';
+        }
     }
+
     window.changeSlide = (direction) => {
         slideIndex += direction;
         if (slideIndex >= currentLightboxImages.length) slideIndex = 0;
         if (slideIndex < 0) slideIndex = currentLightboxImages.length - 1;
         showLightboxImage();
     };
-    window.closeLightbox = () => { document.getElementById('lightboxModal').style.display = "none"; };
+
+    window.closeLightbox = () => {
+        document.getElementById('lightboxModal').style.display = "none";
+    };
+
     window.openEditTextModal = (reportIndex) => {
         if (!techReportsHistory[reportIndex]) return;
+        
         const report = techReportsHistory[reportIndex];
-        document.getElementById('editTextarea').value = report.work_summary || '';
+        const textarea = document.getElementById('editTextarea');
+        textarea.value = report.work_summary || '';
+        
         document.getElementById('editReportTextForm').dataset.reportIndex = reportIndex;
         editReportTextModal.show();
     };
+
     window.openEditAttachmentsModal = (reportIndex) => {
         if (!techReportsHistory[reportIndex]) return;
+        
         const report = techReportsHistory[reportIndex];
         const container = document.getElementById('current-attachments-container');
         const form = document.getElementById('editReportForm');
+        
         form.action = `/task/${taskId}/edit_report/${reportIndex}`;
         container.innerHTML = '';
         if (report.attachments && report.attachments.length > 0) {
             report.attachments.forEach(att => {
-                container.innerHTML += `<div class="form-check"><input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="keep-${att.id}" checked><label class="form-check-label" for="keep-${att.id}"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="me-2" style="width: 50px; height: 50px; object-fit: cover;">${att.name || 'ไฟล์แนบ'}</label></div>`;
+                container.innerHTML += `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="keep-${att.id}" checked>
+                        <label class="form-check-label" for="keep-${att.id}">
+                            <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w100-h100" class="me-2" style="width: 50px; height: 50px; object-fit: cover;">
+                            ${att.name || 'ไฟล์แนบ'}
+                        </label>
+                    </div>
+                `;
             });
-        } else { container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีไฟล์แนบ</p>'; }
+        } else {
+            container.innerHTML = '<p class="text-muted">รายงานนี้ไม่มีไฟล์แนบ</p>';
+        }
+        
         editReportModal.show();
     };
+
     window.deleteReport = async (reportIndex) => {
-        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้?')) return;
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+            return;
+        }
+        
         try {
             const response = await fetch(`/api/task/${taskId}/delete_report/${reportIndex}`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                }
             });
+            
             const result = await response.json();
             if (response.ok && result.status === 'success') {
                 window.flashMessage(result.message, 'success');
                 setTimeout(() => window.location.reload(), 1500);
-            } else { throw new Error(result.message || 'เกิดข้อผิดพลาด'); }
-        } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger'); }
+            } else {
+                throw new Error(result.message || 'เกิดข้อผิดพลาดในการลบรายงาน');
+            }
+        } catch (error) {
+            window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        }
     };
+
     window.handleFormSubmission = async (event, form, statusElementId) => {
         event.preventDefault();
-        if (!form.checkValidity()) { form.classList.add('was-validated'); window.flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning'); return; }
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            window.flashMessage('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน', 'warning');
+            return;
+        }
+
         const submitButton = form.querySelector('button[type="submit"]');
         const originalButtonHtml = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
         const uploadStatusBox = document.getElementById(statusElementId);
-        if (uploadStatusBox) { uploadStatusBox.style.display = 'inline-block'; uploadStatusBox.innerHTML = ''; }
+        if (uploadStatusBox) {
+            uploadStatusBox.style.display = 'inline-block';
+            uploadStatusBox.innerHTML = '';
+        }
+
         const formData = new FormData(form);
         const filesInput = form.querySelector('input[type="file"][name="files[]"]');
         const files = filesInput ? Array.from(filesInput.files) : [];
         let uploadedAttachments = [];
+
         if (files.length > 0) {
             for (let i = 0; i < files.length; i++) {
                 if (uploadStatusBox) uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
+                
                 const fileFormData = new FormData();
                 fileFormData.append('file', files[i]);
                 fileFormData.append('task_id', taskId);
+                
                 try {
-                    const response = await fetch("{{ url_for('api_upload_attachment') }}", { method: 'POST', body: fileFormData, headers: { 'X-CSRFToken': csrfToken }});
+                    const response = await fetch("{{ url_for('api_upload_attachment') }}", {
+                        method: 'POST',
+                        body: fileFormData,
+                        headers: { 'X-CSRFToken': csrfToken }
+                    });
                     const result = await response.json();
-                    if (response.ok && result.status === 'success') { uploadedAttachments.push(result.file_info); } 
-                    else { throw new Error(result.message); }
+                    if (response.ok && result.status === 'success') {
+                        uploadedAttachments.push(result.file_info);
+                    } else {
+                        throw new Error(result.message);
+                    }
                 } catch (error) {
                     window.flashMessage(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`, 'danger');
                     submitButton.disabled = false;
@@ -572,17 +800,30 @@
                 }
             }
         }
+        
         formData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
         if (filesInput) formData.delete('files[]');
+
         if (uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังประมวลผล...';
+
         try {
-            const response = await fetch(`/api/task/${taskId}/update`, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+            const response = await fetch(`/api/task/${taskId}/update`, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            
             const result = await response.json();
             if (response.ok && result.status === 'success') {
                 window.flashMessage(result.message, 'success');
-                if (result.redirect_url) { setTimeout(() => window.location.href = result.redirect_url, 1500); } 
-                else { setTimeout(() => window.location.reload(), 1500); }
-            } else { throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก'); }
+                if (result.redirect_url) {
+                    setTimeout(() => window.location.href = result.redirect_url, 1500);
+                } else {
+                    setTimeout(() => window.location.reload(), 1500);
+                }
+            } else {
+                throw new Error(result.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก');
+            }
         } catch (error) {
             window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
             submitButton.disabled = false;
@@ -590,234 +831,200 @@
             if (uploadStatusBox) uploadStatusBox.style.display = 'none';
         }
     };
-    function handleLocationUpdate() {
-        if (!confirm("คุณอยู่ที่หน้างานของลูกค้าใช่หรือไม่?")) return;
-        const updateBtn = document.getElementById('updateLocationBtn_final');
-        const statusText = document.getElementById('location-status-text-final');
-        const latInput = document.getElementById('current_latitude');
-        const lonInput = document.getElementById('current_longitude');
-        const originalBtnHtml = updateBtn.innerHTML;
-        updateBtn.disabled = true;
-        updateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...';
-        statusText.textContent = 'กำลังค้นหาตำแหน่งของคุณ...';
-        if (!navigator.geolocation) {
-            statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
-            updateBtn.disabled = false; updateBtn.innerHTML = originalBtnHtml; return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                latInput.value = position.coords.latitude;
-                lonInput.value = position.coords.longitude;
-                if (technicianLineUserId) document.getElementById('technician_line_user_id').value = technicianLineUserId;
-                updateBtn.innerHTML = '<i class="fas fa-check-circle me-2"></i>ดึงพิกัดสำเร็จ!';
-                updateBtn.classList.replace('btn-info', 'btn-success');
-                statusText.textContent = `พิกัดล่าสุด: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
-                statusText.classList.add('text-success');
-                updateBtn.disabled = false;
-            },
-            (error) => {
-                let msg = `ไม่สามารถดึงตำแหน่งได้: ${error.message}`;
-                statusText.textContent = msg;
-                statusText.classList.add('text-danger');
-                updateBtn.disabled = false; updateBtn.innerHTML = originalBtnHtml;
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        );
-    }
+    
+    // --- START: [แก้ไข] ฟังก์ชัน renderHistorySection พร้อม Layout ที่ปรับปรุงใหม่ ---
     function renderHistorySection() {
         const historyContainer = document.getElementById('history-section-body');
-        if (!historyContainer) { console.error('History container not found'); return; }
-        if (techReportsHistory && Array.isArray(techReportsHistory) && techReportsHistory.length > 0) {
+        
+        if (!historyContainer) {
+            console.error('❌ History container not found');
+            return;
+        }
+        
+        if (techReportsHistory && techReportsHistory.length > 0) {
             const historyHtml = techReportsHistory.map((report, index) => {
-                if (typeof report !== 'object' || report === null) { return '<div class="history-entry border-danger"><p class="text-danger">พบข้อมูลรายงานที่ไม่ถูกต้อง</p></div>';}
                 let attachmentsHtml = '';
-                if (Array.isArray(report.attachments) && report.attachments.length > 0) {
-                    attachmentsHtml = `<div class="image-gallery-grid">${report.attachments.map(att => {
-                        if (typeof att === 'object' && att && att.id) {
-                            return `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')" title="${att.name || 'ไฟล์แนบ'}"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="${att.name || 'attachment'}" loading="lazy" onerror="this.parentElement.innerHTML = '<div class=\\'text-muted small text-center p-2\\'>โหลดรูปไม่ได้</div>';"></div>`;
-                        } return ''; }).join('')}</div>`;
+                if (report.attachments && report.attachments.length > 0) {
+                    attachmentsHtml = `
+                        <div class="image-gallery-grid">
+                            ${report.attachments.map(att => `
+                                <div class="thumbnail" onclick="window.openLightboxById('${att.id}')" title="${att.name || 'ไฟล์แนบ'}">
+                                    <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" 
+                                         alt="${att.name || 'attachment'}" 
+                                         loading="lazy"
+                                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkZpbGU8L3RleHQ+PC9zdmc+'">
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
                 }
+                
                 let editMenuHtml = '';
                 if (report.type === 'report') {
-                     editMenuHtml = `<div class="dropdown"><button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" data-bs-toggle="dropdown"><i class="fas fa-ellipsis-v"></i></button><ul class="dropdown-menu dropdown-menu-end"><li><a class="dropdown-item" href="#" onclick="window.openEditTextModal(${index})"><i class="fas fa-pen fa-fw me-2"></i>แก้ไขข้อความ</a></li><li><a class="dropdown-item" href="#" onclick="window.openEditAttachmentsModal(${index})"><i class="fas fa-images fa-fw me-2"></i>จัดการรูปภาพ</a></li><li><hr class="dropdown-divider"></li><li><a class="dropdown-item text-danger" href="#" onclick="window.deleteReport(${index})"><i class="fas fa-trash-alt fa-fw me-2"></i>ลบรายงานนี้</a></li></ul></div>`;
+                     editMenuHtml = `
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="line-height: 1;">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" onclick="window.openEditTextModal(${index})"><i class="fas fa-pen fa-fw me-2"></i>แก้ไขข้อความ</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="window.openEditAttachmentsModal(${index})"><i class="fas fa-images fa-fw me-2"></i>จัดการรูปภาพ</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" onclick="window.deleteReport(${index})"><i class="fas fa-trash-alt fa-fw me-2"></i>ลบรายงานนี้</a></li>
+                            </ul>
+                        </div>
+                    `;
                 }
+                
                 let formattedDate = 'ไม่ทราบวันที่';
-                if (report.summary_date) { try { formattedDate = new Date(report.summary_date).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) {} }
-                const techniciansText = (Array.isArray(report.technicians) && report.technicians.length > 0) ? report.technicians.join(', ') : '-';
+                if (report.summary_date) {
+                    try {
+                        formattedDate = new Date(report.summary_date).toLocaleString('th-TH', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        console.error('❌ Error formatting date:', e);
+                    }
+                }
+
+                const techniciansText = report.technicians ? report.technicians.join(', ') : '-';
                 const titleText = report.type === 'reschedule' ? '📅 เลื่อนนัดหมาย' : '🔧 รายงานการปฏิบัติงาน';
-                return `<div class="history-entry ${report.type === 'reschedule' ? 'border-warning' : 'border-primary'}"><div class="history-entry-header"><span class="history-entry-title">${titleText}</span>${editMenuHtml}</div><div class="history-entry-subheader text-muted small mb-2"><span><i class="fas fa-calendar-alt fa-fw me-1"></i>${formattedDate}</span><span class="ms-3"><i class="fas fa-user-cog fa-fw me-1"></i>ช่าง: ${techniciansText}</span></div><div class="history-entry-body pt-2">${report.type === 'reschedule' ? `<p class="mb-1"><strong>เหตุผล:</strong> ${report.reason || '-'}</p><p><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</p>` : `<p>${(report.work_summary || '-').replace(/\n/g, '<br>')}</p>`}</div>${attachmentsHtml ? `<div class="mt-3">${attachmentsHtml}</div>` : ''}</div>`;
+                
+                return `
+                    <div class="history-entry ${report.type === 'reschedule' ? 'border-warning' : 'border-primary'}">
+                        <div class="history-entry-header">
+                            <span class="history-entry-title">${titleText}</span>
+                            ${editMenuHtml}
+                        </div>
+                        <div class="history-entry-subheader text-muted small mb-2">
+                             <span><i class="fas fa-calendar-alt fa-fw me-1"></i>${formattedDate}</span>
+                             <span class="ms-3"><i class="fas fa-user-cog fa-fw me-1"></i>ช่าง: ${techniciansText}</span>
+                        </div>
+                        <div class="history-entry-body pt-2">
+                            ${report.type === 'reschedule' 
+                                ? `<p class="mb-1"><strong>เหตุผล:</strong> ${report.reason || '-'}</p><p><strong>นัดหมายใหม่:</strong> ${report.new_due_date || '-'}</p>` 
+                                : `<p>${(report.work_summary || '-').replace(/\n/g, '<br>')}</p>`
+                            }
+                        </div>
+                        ${attachmentsHtml ? `<div class="mt-3">${attachmentsHtml}</div>` : ''}
+                    </div>
+                `;
             }).join('');
+            
             historyContainer.innerHTML = historyHtml;
+            
         } else {
             historyContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการดำเนินงาน</p>';
         }
     }
-    // --- END: FULL IMPLEMENTATION OF HELPER FUNCTIONS ---
-    
-    // --- MAIN SCRIPT LOGIC ---
-    document.addEventListener('DOMContentLoaded', function() {
-        const mainContent = document.getElementById('main-content');
-        const statusContainer = document.getElementById('liff-status-container');
+    // --- END: [แก้ไข] ฟังก์ชัน renderHistorySection ---
 
-        // --- START: LIFF Initialization DISABLED ---
-        /*
-        if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE.trim() !== '') {
-            liff.init({ liffId: LIFF_ID_TO_USE })
-                .then(() => {
-                    // This block will run inside the LINE app
-                    mainContent.style.display = 'block';
-                    if (statusContainer) statusContainer.style.display = 'none';
-                    initializePageFunctions();
-                })
-                .catch(err => {
-                    // This block will run outside the LINE app
-                    mainContent.style.display = 'none';
-                    if (statusContainer) {
-                        statusContainer.style.display = 'flex';
-                        statusContainer.innerHTML = `<div class="card liff-error-card p-4 text-center"><h5 class="card-title text-danger">ไม่สามารถโหลดแอปได้</h5><p class="card-text">กรุณาเปิดหน้านี้ผ่านแอปพลิเคชัน LINE</p><i class="fab fa-line fa-3x text-success mt-2"></i></div>`;
-                    }
-                });
-        } else {
-             // Run functions directly if LIFF is not configured
-             mainContent.style.display = 'block';
-             if (statusContainer) statusContainer.style.display = 'none';
-             initializePageFunctions();
+    function handleLocationUpdate() {
+        if (!confirm("คุณอยู่ที่หน้างานของลูกค้าใช่หรือไม่? การกด 'ตกลง' จะเป็นการบันทึกพิกัดปัจจุบันของคุณ")) {
+            return;
         }
-        */
-        // For now, we will always run the main functions to bypass LIFF issues
-        mainContent.style.display = 'block';
-        if (statusContainer) statusContainer.style.display = 'none';
-        initializePageFunctions();
-        // --- END: LIFF Initialization DISABLED ---
+        
+        const updateBtn = document.getElementById('updateLocationBtn_final');
+        const statusText = document.getElementById('location-status-text-final');
+        const latInput = document.getElementById('current_latitude');
+        const lonInput = document.getElementById('current_longitude');
+        const techIdInput = document.getElementById('technician_line_user_id');
 
-        function initializePageFunctions() {
-            // Modal Init
-            technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-            editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
-            editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
+        const originalBtnHtml = updateBtn.innerHTML;
+        updateBtn.disabled = true;
+        updateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังค้นหา...';
+        statusText.textContent = 'กำลังค้นหาตำแหน่งของคุณ...';
+        statusText.className = 'form-text mt-2 text-center text-primary';
 
-            // --- Mobile-friendly Equipment UI Logic ---
-            let jobItems = [];
-            const addItemModalEl = document.getElementById('addItemModal');
-            const addItemModal = new bootstrap.Modal(addItemModalEl);
-            const itemNameInput = document.getElementById('item-name-input');
-            const itemQtyInput = document.getElementById('item-quantity-input');
-            const itemPriceInput = document.getElementById('item-price-input');
-            const itemSearchResults = document.getElementById('item-search-results');
-            const saveItemModalBtn = document.getElementById('save-item-modal-btn');
-            const editItemIndexInput = document.getElementById('edit-item-index');
-            
-            function renderSummaryList() {
-                const listContainer = document.getElementById('item-summary-list');
-                const grandTotalDisplay = document.getElementById('grand-total-display');
-                let grandTotal = 0;
-                if (jobItems.length === 0) {
-                    listContainer.innerHTML = '<p class="text-muted text-center p-3">ยังไม่มีรายการ</p>';
-                    grandTotalDisplay.textContent = 'รวม: 0.00 บาท';
-                    return;
+        if (!navigator.geolocation) {
+            statusText.textContent = 'เบราว์เซอร์ของคุณไม่รองรับ Geolocation';
+            statusText.className = 'form-text mt-2 text-center text-danger';
+            updateBtn.disabled = false;
+            updateBtn.innerHTML = originalBtnHtml;
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                latInput.value = lat;
+                lonInput.value = lon;
+                if (technicianLineUserId) {
+                    techIdInput.value = technicianLineUserId;
                 }
-                listContainer.innerHTML = '';
-                jobItems.forEach((item, index) => {
-                    const itemTotal = (item.quantity || 0) * (item.unit_price || 0);
-                    grandTotal += itemTotal;
-                    const itemElement = document.createElement('div');
-                    itemElement.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
-                    itemElement.innerHTML = `<div><strong>${item.item_name}</strong><br><small class="text-muted">${item.quantity} x ${item.unit_price.toFixed(2)} บาท</small></div><div><strong>${itemTotal.toFixed(2)}</strong><button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2 edit-item-btn" data-index="${index}" data-bs-toggle="modal" data-bs-target="#addItemModal"><i class="fas fa-pen"></i></button></div>`;
-                    listContainer.appendChild(itemElement);
-                });
-                grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
-            }
-            async function loadInitialItems() {
-                try {
-                    const response = await fetch(`/api/task/${taskId}/items`);
-                    if (!response.ok) throw new Error('Failed to fetch');
-                    jobItems = await response.json();
-                    renderSummaryList();
-                } catch (error) { 
-                    console.error('Failed to load initial items:', error);
-                    renderSummaryList(); // Render empty state on failure
+
+                updateBtn.innerHTML = '<i class="fas fa-check-circle me-2"></i>ดึงพิกัดสำเร็จ!';
+                updateBtn.classList.remove('btn-info');
+                updateBtn.classList.add('btn-success');
+                statusText.textContent = `พิกัดล่าสุด: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                statusText.className = 'form-text mt-2 text-center text-success';
+                updateBtn.disabled = false;
+            },
+            (error) => {
+                let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMessage = "โปรดอนุญาตให้เข้าถึงตำแหน่ง"; break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMessage = "สัญญาณ GPS อ่อน"; break;
+                    case error.TIMEOUT:
+                        errorMessage = "หมดเวลาค้นหาตำแหน่ง"; break;
                 }
-            }
-            let itemSearchDebounce;
-            itemNameInput.addEventListener('input', () => {
-                clearTimeout(itemSearchDebounce);
-                itemSearchDebounce = setTimeout(async () => {
-                    const query = itemNameInput.value;
-                    if (query.length < 2) { itemSearchResults.innerHTML = ''; return; }
-                    try {
-                        const response = await fetch(`/api/search-equipment-catalog?q=${encodeURIComponent(query)}`);
-                        const results = await response.json();
-                        itemSearchResults.innerHTML = '';
-                        results.forEach(result => {
-                            const resultEl = document.createElement('a');
-                            resultEl.className = 'list-group-item list-group-item-action';
-                            resultEl.innerHTML = `<strong>${result.item_name}</strong> <small class="text-muted">(${result.price} บาท)</small>`;
-                            resultEl.onclick = () => {
-                                itemNameInput.value = result.item_name;
-                                itemPriceInput.value = result.price;
-                                itemSearchResults.innerHTML = '';
-                                itemQtyInput.focus();
-                            };
-                            itemSearchResults.appendChild(resultEl);
-                        });
-                    } catch (e) { console.error(e); }
-                }, 300);
-            });
-            saveItemModalBtn.addEventListener('click', () => {
-                const newItem = {
-                    item_name: itemNameInput.value.trim(),
-                    quantity: parseFloat(itemQtyInput.value) || 1,
-                    unit_price: parseFloat(itemPriceInput.value) || 0,
-                };
-                if (!newItem.item_name) { alert('กรุณาใส่ชื่อรายการ'); return; }
-                const editIndex = editItemIndexInput.value;
-                if (editIndex !== '') { jobItems[parseInt(editIndex)] = newItem; } 
-                else { jobItems.push(newItem); }
-                saveAllItemsToDb();
-                renderSummaryList();
-                addItemModal.hide();
-            });
-            addItemModalEl.addEventListener('show.bs.modal', (event) => {
-                editItemIndexInput.value = ''; itemNameInput.value = '';
-                itemQtyInput.value = 1; itemPriceInput.value = '';
-                itemSearchResults.innerHTML = '';
-                const button = event.relatedTarget;
-                if (button && button.classList.contains('edit-item-btn')) {
-                    const index = parseInt(button.dataset.index);
-                    const item = jobItems[index];
-                    editItemIndexInput.value = index;
-                    itemNameInput.value = item.item_name;
-                    itemQtyInput.value = item.quantity;
-                    itemPriceInput.value = item.unit_price;
-                    document.getElementById('addItemModalLabel').textContent = 'แก้ไขรายการ';
-                } else {
-                    document.getElementById('addItemModalLabel').textContent = 'เพิ่มรายการใหม่';
-                }
-            });
-            async function saveAllItemsToDb() {
-                 try {
-                    const response = await fetch(`/api/task/${taskId}/items`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                        body: JSON.stringify({items: jobItems})
-                    });
-                    if (!response.ok) throw new Error('Server responded with an error');
-                    window.flashMessage('บันทึกรายการอุปกรณ์เรียบร้อยแล้ว!', 'success');
-                } catch (error) {
-                    console.error('Failed to save all items:', error);
-                    window.flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงเซิร์ฟเวอร์', 'danger');
-                }
-            }
-            loadInitialItems();
-            
-            // --- Event Listeners and Final Calls (Originals) ---
-            document.getElementById('updateLocationBtn_final')?.addEventListener('click', handleLocationUpdate);
-            document.querySelectorAll('#technician-list-container, #technicians_progress, #technicians_final, #technicians_reschedule').forEach(el => el.addEventListener('change', updateSubmitButtonState));
-            document.getElementById('editReportTextForm')?.addEventListener('submit', async function(e){
+                statusText.textContent = errorMessage;
+                statusText.className = 'form-text mt-2 text-center text-danger';
+                updateBtn.disabled = false;
+                updateBtn.innerHTML = originalBtnHtml;
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE !== 'None' && LIFF_ID_TO_USE.trim() !== '') {
+            liff.init({ liffId: LIFF_ID_TO_USE })
+                .then(() => liff.isLoggedIn() ? liff.getProfile() : null)
+                .then(profile => { 
+                    if (profile) {
+                        technicianLineUserId = profile.userId;
+                        const techIdInput = document.getElementById('technician_line_user_id');
+                        if(techIdInput) techIdInput.value = technicianLineUserId;
+                    }
+                })
+                .catch(err => console.error("LIFF initialization failed", err));
+        }
+        
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
+        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
+        equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
+
+        const updateLocationBtnFinal = document.getElementById('updateLocationBtn_final');
+        if (updateLocationBtnFinal) {
+            updateLocationBtnFinal.addEventListener('click', handleLocationUpdate);
+        }
+
+        const technicianInputs = ['technicians_progress', 'technicians_final', 'technicians_reschedule'];
+        technicianInputs.forEach(inputId => {
+            const input = document.getElementById(inputId);
+            if (input) input.addEventListener('change', updateSubmitButtonState);
+        });
+
+        const editTextForm = document.getElementById('editReportTextForm');
+        if (editTextForm) {
+            editTextForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const reportIndex = this.dataset.reportIndex;
                 const newSummary = document.getElementById('editTextarea').value.trim();
-                if (!newSummary) { window.flashMessage('กรุณากรอกข้อความสรุป', 'warning'); return; }
+                if (!newSummary) {
+                    window.flashMessage('กรุณากรอกข้อความสรุป', 'warning');
+                    return;
+                }
                 try {
                     const response = await fetch(`/api/task/${taskId}/edit_report_text/${reportIndex}`, {
                         method: 'POST',
@@ -829,25 +1036,50 @@
                         window.flashMessage(result.message, 'success');
                         editReportTextModal.hide();
                         setTimeout(() => window.location.reload(), 1500);
-                    } else { throw new Error(result.message || 'เกิดข้อผิดพลาด'); }
-                } catch (error) { window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');}
+                    } else {
+                        throw new Error(result.message || 'เกิดข้อผิดพลาดในการแก้ไขข้อความ');
+                    }
+                } catch (error) {
+                    window.flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                }
             });
-            
-            renderHistorySection();
-            
-            if (typeof Tribute !== 'undefined' && progressReportSnippets && progressReportSnippets.length > 0) {
-                const tribute = new Tribute({
-                    values: progressReportSnippets,
-                    trigger: '/',
-                    selectTemplate: item => item.original.value,
-                    menuItemTemplate: item => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`
-                });
-                document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
-            }
-            
-            updateSubmitButtonState();
-            document.getElementById('progressReportCollapse')?.addEventListener('shown.bs.collapse', e => e.target.scrollIntoView({ behavior: 'smooth', block: 'start' }));
         }
+
+        renderHistorySection();
+        
+        if (typeof Tribute !== 'undefined' && progressReportSnippets && progressReportSnippets.length > 0) {
+            const tribute = new Tribute({
+                values: progressReportSnippets,
+                trigger: '/',
+                selectTemplate: item => item.original.value,
+                menuItemTemplate: item => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`
+            });
+            document.querySelectorAll('textarea').forEach(textarea => tribute.attach(textarea));
+        }
+        
+        updateSubmitButtonState();
+        renderSelectedEquipmentSummary('progress', []);
+        renderSelectedEquipmentSummary('final', []);
+
+        const searchInput = document.getElementById('equipment-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('keyup', (e) => {
+                const filter = e.target.value.toLowerCase();
+                document.querySelectorAll('.equipment-item').forEach(item => {
+                    if (item.dataset.itemName.includes(filter)) {
+                        item.style.display = 'flex';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+            });
+        }
+        
+        const progressCollapseElement = document.getElementById('progressReportCollapse');
+        progressCollapseElement.addEventListener('shown.bs.collapse', event => {
+            document.getElementById('work_summary_progress').focus();
+            progressCollapseElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
     });
 </script>
 {% endblock %}
