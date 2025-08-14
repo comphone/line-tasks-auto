@@ -6,6 +6,7 @@
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
 <style>
+    /* ซ่อนเนื้อหาหลักไว้ก่อน รอ JS ทำงาน */
     #main-content { display: none; }
     #liff-status-container { min-height: 80vh; display: flex; align-items: center; justify-content: center; flex-direction: column; }
     .liff-error-card { max-width: 500px; border-left: 5px solid #dc3545; }
@@ -60,7 +61,46 @@
         </div>
 
         <div class="summary-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">ข้อมูลสรุป</h5>
+                <a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
             </div>
+            <div class="info-grid">
+                <div class="info-card">
+                    <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
+                    <p class="info-value value-large text-primary">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+                </div>
+                <div class="info-card">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
+                            <p class="info-value value-medium">{{ task.customer.phone or '-' }}</p>
+                        </div>
+                        <div class="text-end">
+                            <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                            <p class="info-value value-small {% if task.is_today and task.status != 'completed' %}text-primary fw-bold{% elif task.is_overdue and task.status != 'completed' %}text-danger fw-bold{% endif %}">{{ task.due_formatted or '-' }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-card full-width-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+                            <p class="info-value">{{ task.customer.address or '-' }}</p>
+                        </div>
+                        {% if task.customer.map_url %}
+                            <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
+                                <i class="fas fa-map-marked-alt text-danger"></i>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="info-card full-width-card">
+                    <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
+                    <p class="info-value value-large">{{ task.title | replace('\n', '<br>') | safe }}</p>
+                </div>
+            </div>
+        </div>
         
         <div class="card shadow-sm mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -79,17 +119,41 @@
             </div>
         </div>
         <div class="card shadow-sm mb-4" id="chooseActionCard">
-             </div>
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
+            </div>
+            <div class="card-body">
+                <div class="action-button-grid">
+                    <button type="button" class="btn btn-primary action-btn" data-bs-toggle="collapse" data-bs-target="#progressReportCollapse" aria-expanded="false" aria-controls="progressReportCollapse">
+                        <i class="fas fa-edit"></i> เพิ่มรายงาน
+                    </button>
+                    <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
+                        <i class="fas fa-calendar-alt"></i> เลื่อนนัด
+                    </button>
+                    <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
+                        <i class="fas fa-qrcode"></i> QR Code ลูกค้า
+                    </a>
+                    <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
+                        <i class="fas fa-check-circle"></i> ปิดงาน
+                    </button>
+                    {% if task.status == 'completed' %}
+                    <a href="{{ url_for('liff.generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn action-btn" style="grid-column: 1 / -1; background-color: #5c6bc0; border-color: #5c6bc0;">
+                        <i class="fas fa-file-alt"></i> QR Code รายงานสรุปสาธารณะ
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
 
         <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
-            </div>
+             </div>
 
         <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
             </div>
 
         <div class="collapse" id="progressReportCollapse">
             <div class="card shadow-sm mb-4">
-                </div>
+                 </div>
         </div>
 
         <div class="card shadow-sm mb-4">
@@ -104,7 +168,9 @@
         <hr class="my-5">
 
         <div class="danger-zone-header" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse">
-            </div>
+             <h6><i class="fas fa-exclamation-triangle text-warning me-2"></i>การจัดการขั้นสูง</h6>
+             <i class="fas fa-chevron-down icon"></i>
+        </div>
         <div class="collapse" id="dangerZoneCollapse">
              <div class="card card-body border-danger mt-2">
                 <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
@@ -120,7 +186,37 @@
 </div>
 
 <div class="modal fade" id="addItemModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addItemModalLabel">เพิ่ม/แก้ไขรายการ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-item-index">
+                <div class="mb-3 position-relative">
+                    <label for="item-name-input" class="form-label">ชื่อรายการ</label>
+                    <input type="text" class="form-control form-control-lg" id="item-name-input" placeholder="ค้นหาหรือพิมพ์ชื่อรายการ..." autocomplete="off">
+                    <div id="item-search-results" class="list-group mt-1 position-absolute w-100" style="z-index: 1056;"></div>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label for="item-quantity-input" class="form-label">จำนวน</label>
+                        <input type="number" class="form-control form-control-lg" id="item-quantity-input" value="1">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label for="item-price-input" class="form-label">ราคา/หน่วย</label>
+                        <input type="number" class="form-control form-control-lg" id="item-price-input" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-item-modal-btn">บันทึกรายการ</button>
+            </div>
+        </div>
     </div>
+</div>
 
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
@@ -132,11 +228,11 @@
     </div>
 </div>
 <div class="modal fade" id="technicianSelectionModal" tabindex="-1">
-    </div>
+     </div>
 <div class="modal fade" id="editReportModal" tabindex="-1">
-    </div>
+     </div>
 <div class="modal fade" id="editReportTextModal" tabindex="-1">
-    </div>
+     </div>
 
 {% endblock %}
 
@@ -157,7 +253,7 @@
     let technicianLineUserId = null;
     let currentLightboxImages = [];
 
-    // --- START: คืนค่าฟังก์ชัน Helper ทั้งหมด (ฉบับเต็ม) ---
+    // --- START: FULL IMPLEMENTATION OF HELPER FUNCTIONS ---
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -423,7 +519,6 @@
         }
         */
         
-        // Bypassing LIFF for now
         mainContent.style.display = 'block';
         if (statusContainer) statusContainer.style.display = 'none';
         initializePageFunctions();
