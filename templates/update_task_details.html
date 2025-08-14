@@ -946,13 +946,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- END: LIFF Initialization DISABLED ---
 
     function initializePageFunctions() {
-        // Modal Init (ส่วนนี้เหมือนเดิม)
+        // Modal Init (ลบ equipmentCatalogModal ออกไปแล้ว)
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
 
         // ================================================================
-        // START: โค้ด JavaScript สำหรับจัดการอุปกรณ์ (Logic ใหม่) ทั้งหมดจะอยู่ตรงนี้
+        // START: โค้ด JavaScript สำหรับจัดการอุปกรณ์ (Logic ใหม่)
         // ================================================================
         let jobItems = [];
         const addItemModalEl = document.getElementById('addItemModal');
@@ -992,7 +992,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 renderSummaryList();
             } catch (error) { 
                 console.error('Failed to load initial items:', error);
-                renderSummaryList(); // แสดงผลเป็นค่าว่างหากโหลดไม่ได้
+                renderSummaryList();
             }
         }
         let itemSearchDebounce;
