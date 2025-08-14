@@ -10,13 +10,13 @@ from flask import (
 )
 from dateutil.parser import parse as date_parse
 
-# Import các hàm cần thiết từ app.py
 from app import (
     get_google_tasks_for_report,
     get_single_task,
     parse_google_task_dates,
     parse_customer_info_from_notes,
     parse_tech_report_from_notes,
+    parse_customer_feedback_from_notes, # <-- ฟังก์ชันที่ต้องเพิ่มเข้ามา
     get_app_settings,
     TEXT_SNIPPETS,
     generate_qr_code_base64,
@@ -26,8 +26,6 @@ from app import (
     LIFF_ID_FORM,
     LIFF_ID_TECHNICIAN_LOCATION
 )
-
-# Tạo Blueprint
 liff_bp = Blueprint('liff', __name__)
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
