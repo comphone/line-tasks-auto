@@ -605,7 +605,63 @@ def api_create_task():
     except Exception as e:
         app.logger.error(f"Error in api_create_task: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
+        
+@app.route('/api/external_tasks/create', methods=['POST'])
+def api_create_external_task():
+    """API สำหรับสร้างงานภายนอก/งานเคลม จากฟอร์ม"""
+    try:
+        # ดึงข้อมูลจากฟอร์ม
+        task_title_raw = str(request.form.get('task_title', '')).strip()
+        customer_name = str(request.form.get('customer_name', '')).strip() # <-- ใช้ 'customer_name' ให้ตรงกับฟอร์ม
+        organization_name = str(request.form.get('organization_name', '')).strip()
+        external_partner = str(request.form.get('external_partner', '')).strip()
 
+        if not task_title_raw or not customer_name:
+            return jsonify({'status': 'error', 'message': 'กรุณากรอกชื่อผู้ติดต่อและรายละเอียดงาน'}), 400
+
+        # เพิ่ม Prefix [งานภายนอก] เข้าไปในหัวข้องาน
+        task_title = f"[งานภายนอก] {task_title_raw}"
+
+        # สร้างส่วน Notes สำหรับบันทึกลง Google Tasks
+        notes_lines = []
+        if organization_name:
+            notes_lines.append(f"หน่วยงาน: {organization_name}")
+            
+        notes_lines.extend([
+            f"ลูกค้า: {customer_name}",
+            f"ผู้รับผิดชอบภายนอก: {external_partner}",
+            f"เบอร์โทรศัพท์: {str(request.form.get('phone', '')).strip()}",
+            f"ที่อยู่: {str(request.form.get('address', '')).strip()}",
+        ])
+        notes = "\n".join(filter(None, notes_lines))
+
+        # จัดการวันนัดหมาย (ถ้ามี)
+        due_date_gmt = None
+        return_date_str = str(request.form.get('return_date', '')).strip()
+        if return_date_str:
+            try:
+                # ตั้งเวลาเป็น 9 โมงเช้าของวันที่เลือก
+                dt_local = THAILAND_TZ.localize(date_parse(f"{return_date_str}T09:00:00"))
+                due_date_gmt = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            except ValueError:
+                return jsonify({'status': 'error', 'message': 'รูปแบบวันกำหนดส่งกลับไม่ถูกต้อง'}), 400
+
+        # สร้างงานใน Google Tasks
+        new_task = create_google_task(task_title, notes=notes, due=due_date_gmt)
+        if new_task:
+            cache.clear() # ล้างแคชเพื่อให้ข้อมูลอัปเดต
+            # สามารถเพิ่มการแจ้งเตือนสำหรับงานภายนอกที่นี่ได้
+            return jsonify({
+                'status': 'success', 
+                'message': 'สร้างงานภายนอกเรียบร้อยแล้ว!', 
+                'redirect_url': url_for('liff.task_details', task_id=new_task['id'])
+            })
+        else:
+            return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการสร้างงานใน Google Tasks'}), 500
+    except Exception as e:
+        app.logger.error(f"Error in api_create_external_task: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
+    
 @app.route('/api/external_tasks/create', methods=['POST'])
 def api_create_external_task():
     try:
