@@ -176,7 +176,6 @@
             <form id="completeTaskForm" onsubmit="window.handleFormSubmission(event, this, 'complete-upload-status')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="complete_task">
-                <input type="hidden" id="equipment_used_final" name="equipment_used" value="[]">
                 
                 <input type="hidden" id="current_latitude" name="current_latitude">
                 <input type="hidden" id="current_longitude" name="current_longitude">
@@ -194,14 +193,6 @@
                         <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_final')">เลือก</button>
                     </div>
                     <input type="hidden" id="technicians_final" name="technicians_report" required>
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
-                    <div id="selected-equipment-final" class="mb-2"></div>
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('final')">
-                        <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
-                    </button>
                 </div>
 
                 <div class="mb-3">
@@ -273,7 +264,6 @@
                 <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="save_report">
-                    <input type="hidden" id="equipment_used_progress" name="equipment_used" value="[]">
 
                     <div class="mb-3">
                         <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
@@ -291,14 +281,6 @@
                             <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
                         </div>
                         <input type="hidden" id="technicians_progress" name="technicians_report" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label"><strong>อุปกรณ์ที่ใช้</strong></label>
-                        <div id="selected-equipment-progress" class="mb-2"></div>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.openEquipmentModal('progress')">
-                            <i class="fas fa-plus-circle me-1"></i> เลือก/แก้ไขอุปกรณ์
-                        </button>
                     </div>
 
                     <div class="mb-3">
@@ -361,8 +343,10 @@
                 <h5 class="modal-title">เลือกช่างผู้รับผิดชอบ</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <div id="technician-list-container"></div>
+            <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+                <div id="technician-list-container">
+                    <!-- Technician list will be populated here -->
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
@@ -640,11 +624,17 @@
         container.innerHTML = '';
         technicianList.forEach(tech => {
             const techName = typeof tech === 'object' ? tech.name : tech;
+            const techAvatar = typeof tech === 'object' ? tech.avatar || tech.profile_picture || '/static/default-avatar.png' : '/static/default-avatar.png';
             const isChecked = selectedValues.includes(techName);
+            
             container.innerHTML += `
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}>
-                    <label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}">${techName}</label>
+                <div class="form-check d-flex align-items-center py-2">
+                    <input class="form-check-input me-3" type="checkbox" value="${techName}" id="tech-${techName.replace(/\s+/g, '-')}" ${isChecked ? 'checked' : ''}>
+                    <img src="${techAvatar}" alt="${techName}" class="rounded-circle me-3" style="width: 40px; height: 40px; object-fit: cover;" 
+                         onerror="this.src='/static/default-avatar.png'">
+                    <label class="form-check-label" for="tech-${techName.replace(/\s+/g, '-')}" style="cursor: pointer;">
+                        <strong>${techName}</strong>
+                    </label>
                 </div>
             `;
         });
@@ -1265,8 +1255,9 @@
         }
         
         updateSubmitButtonState();
-        renderSelectedEquipmentSummary('progress', []);
-        renderSelectedEquipmentSummary('final', []);
+        // Remove equipment summary rendering since we removed equipment selection
+        // renderSelectedEquipmentSummary('progress', []);
+        // renderSelectedEquipmentSummary('final', []);
 
         // Equipment search functionality
         const searchInput = document.getElementById('equipment-search-input');
