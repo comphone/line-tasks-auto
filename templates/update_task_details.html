@@ -3,22 +3,11 @@
 {% block title %}จัดการงาน: {{ task.title }}{% endblock %}
 
 {% block head_extra %}
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
 <style>
-    /* ซ่อนเนื้อหาหลักไว้ก่อน รอ LIFF โหลดเสร็จ */
-    #main-content { display: none; }
-    #liff-status-container {
-        min-height: 80vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-    }
-    .liff-error-card {
-        max-width: 500px;
-        border-left: 5px solid #dc3545;
-    }
+	/* New styles for equipment modal search results */
+	#item-search-results .list-group-item { cursor: pointer; }
+	#item-search-results .list-group-item:hover { background-color: #e9ecef; }
     
     .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 2rem; background-color: #f8f9fa; }
     .info-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
@@ -29,11 +18,10 @@
     .info-label i { width: 20px; text-align: center; margin-right: 0.5rem; color: #adb5bd; }
     .info-value { font-weight: 500; color: #343a40; word-break: break-word; margin-bottom: 0; }
     
-    /* --- START: [แก้ไข] CSS Classes สำหรับปรับขนาด Font --- */
+    /* CSS Classes สำหรับปรับขนาด Font */
     .info-value.value-large { font-size: 1.25em; font-weight: 700; }
     .info-value.value-medium { font-size: 1.2em; font-weight: 600; }
     .info-value.value-small { font-size: 0.9em; }
-    /* --- END: [แก้ไข] CSS Classes --- */
 
     .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
@@ -90,12 +78,12 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4 mb-5">
+<div class="container mt-4 mb-5" id="main-content">
     
     <div id="js-flash-message-container"></div>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2 mb-0">📝 จัดการงาน</h1>
+        <h1 class="h2 mb-0">📋 จัดการงาน</h1>
         <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
     </div>
 
@@ -141,6 +129,25 @@
             </div>
         </div>
     </div>
+
+    <!-- Equipment and Cost Management Card -->
+    <div class="card shadow-sm mb-4">
+		<div class="card-header d-flex justify-content-between align-items-center">
+			<h5 class="mb-0"><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h5>
+			<strong id="grand-total-display">รวม: 0.00 บาท</strong>
+		</div>
+		<div class="card-body p-2">
+			<div id="item-summary-list">
+				<p class="text-muted text-center p-3">กำลังโหลดรายการ...</p>
+			</div>
+		</div>
+		<div class="card-footer p-2">
+			<button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#addItemModal">
+				<i class="fas fa-plus me-2"></i>เพิ่มรายการอุปกรณ์/ค่าใช้จ่าย
+			</button>
+		</div>
+	</div>
+
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
@@ -159,14 +166,10 @@
                 <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
                     <i class="fas fa-check-circle"></i> ปิดงาน
                 </button>
-				{% if task.status == 'completed' %}
-				<a href="{{ url_for('liff.generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn action-btn" style="grid-column: 1 / -1; background-color: #5c6bc0; border-color: #5c6bc0;">
-					<i class="fas fa-file-alt"></i> QR Code รายงานสรุปสาธารณะ
-				</a>
-				{% endif %}
-                </div>
+            </div>
         </div>
     </div>
+    
     <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
         <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
         <div class="card-body">
@@ -177,7 +180,6 @@
                 
                 <input type="hidden" id="current_latitude" name="current_latitude">
                 <input type="hidden" id="current_longitude" name="current_longitude">
-                <input type="hidden" id="technician_line_user_id" name="technician_line_user_id">
 
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
@@ -311,6 +313,7 @@
             </div>
         </div>
     </div>
+    
     <div class="card shadow-sm mb-4">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
@@ -339,17 +342,18 @@
     </div>
 </div>
 
+<!-- Lightbox Modal -->
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
     <div id="lightboxCaption" class="lightbox-caption"></div>
-    
     <div class="lightbox-nav-container">
         <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
         <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
     </div>
 </div>
 
+<!-- Technician Selection Modal -->
 <div class="modal fade" id="technicianSelectionModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -368,6 +372,7 @@
     </div>
 </div>
 
+<!-- Edit Report Modal -->
 <div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
@@ -379,7 +384,7 @@
         </div>
         <div class="modal-body">
           <h6><i class="fas fa-images me-2"></i>รูปภาพปัจจุบัน</h6>
-          <p class="text-muted small">เอาเครื่องหมาย ✔ ออกเพื่อลบรูปภาพออกจากรายงานนี้</p>
+          <p class="text-muted small">เอาเครื่องหมาย ✓ ออกเพื่อลบรูปภาพออกจากรายงานนี้</p>
           <div id="current-attachments-container" class="image-gallery-grid mb-3"></div>
           <hr>
           <h6><i class="fas fa-plus-circle me-2"></i>เพิ่มรูปภาพ/ไฟล์อื่นๆ</h6>
@@ -394,6 +399,7 @@
   </div>
 </div>
 
+<!-- Edit Report Text Modal -->
 <div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -415,7 +421,63 @@
   </div>
 </div>
 
-{% include 'modals/equipment_catalog_modal.html' %}
+<!-- Equipment Catalog Modal -->
+<div class="modal fade" id="equipmentCatalogModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">เลือกอุปกรณ์</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="equipment-search-input" placeholder="ค้นหาอุปกรณ์...">
+                </div>
+                <div id="equipment-catalog-list" style="max-height: 400px; overflow-y: auto;">
+                    <p class="text-muted text-center p-3">กำลังโหลด...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" onclick="window.confirmEquipmentSelection()">ตกลง</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Item Management Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addItemModalLabel">เพิ่ม/แก้ไขรายการ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-item-index">
+                <div class="mb-3 position-relative">
+                    <label for="item-name-input" class="form-label">ชื่อรายการ</label>
+                    <input type="text" class="form-control form-control-lg" id="item-name-input" placeholder="ค้นหาหรือพิมพ์ชื่อรายการ..." autocomplete="off">
+                    <div id="item-search-results" class="list-group mt-1 position-absolute w-100" style="z-index: 1056;"></div>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label for="item-quantity-input" class="form-label">จำนวน</label>
+                        <input type="number" class="form-control form-control-lg" id="item-quantity-input" value="1">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label for="item-price-input" class="form-label">ราคา/หน่วย</label>
+                        <input type="number" class="form-control form-control-lg" id="item-price-input" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-item-modal-btn">บันทึกรายการ</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block body_extra %}
@@ -429,15 +491,15 @@
     const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
-    const LIFF_ID_TO_USE = "{{ LIFF_ID_TO_USE }}";
     
     let technicianSelectionModal, editReportModal, editReportTextModal, equipmentCatalogModal;
     let currentTechnicianTargetId, currentEquipmentTargetPrefix, slideIndex = 0;
-    let technicianLineUserId = null;
     let currentLightboxImages = [];
 
-    // --- Helper Functions (attached to window for global access) ---
+    // === Item/Equipment Management Variables ===
+    let jobItems = [];
 
+    // === Helper Functions ===
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -458,6 +520,69 @@
             }
         }, 5000);
     };
+
+    // === Equipment/Item Management Functions ===
+    function renderSummaryList() {
+        const listContainer = document.getElementById('item-summary-list');
+        const grandTotalDisplay = document.getElementById('grand-total-display');
+        let grandTotal = 0;
+        
+        if (jobItems.length === 0) {
+            listContainer.innerHTML = '<p class="text-muted text-center p-3">ยังไม่มีรายการ</p>';
+            grandTotalDisplay.textContent = 'รวม: 0.00 บาท';
+            return;
+        }
+        
+        listContainer.innerHTML = '';
+        jobItems.forEach((item, index) => {
+            const itemTotal = (item.quantity || 0) * (item.unit_price || 0);
+            grandTotal += itemTotal;
+            const itemElement = document.createElement('div');
+            itemElement.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
+            itemElement.innerHTML = `
+                <div>
+                    <strong>${item.item_name}</strong><br>
+                    <small class="text-muted">${item.quantity} x ${item.unit_price.toFixed(2)} บาท</small>
+                </div>
+                <div>
+                    <strong>${itemTotal.toFixed(2)}</strong>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2 edit-item-btn" 
+                            data-index="${index}" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                </div>
+            `;
+            listContainer.appendChild(itemElement);
+        });
+        grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
+    }
+
+    async function loadInitialItems() {
+        try {
+            const response = await fetch(`/api/task/${taskId}/items`);
+            if (!response.ok) throw new Error('Failed to fetch');
+            jobItems = await response.json();
+            renderSummaryList();
+        } catch (error) { 
+            console.error('Failed to load initial items:', error);
+            renderSummaryList();
+        }
+    }
+
+    async function saveAllItemsToDb() {
+        try {
+            const response = await fetch(`/api/task/${taskId}/items`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({items: jobItems})
+            });
+            if (!response.ok) throw new Error('Server responded with an error');
+            window.flashMessage('บันทึกรายการอุปกรณ์เรียบร้อยแล้ว!', 'success');
+        } catch (error) {
+            console.error('Failed to save all items:', error);
+            window.flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงเซิร์ฟเวอร์', 'danger');
+        }
+    }
 
     window.updateLocationAndNotify = () => {
         window.flashMessage('กำลังค้นหาตำแหน่งของคุณ...', 'info');
@@ -546,6 +671,7 @@
         }
     }
 
+    // === Equipment Catalog Functions ===
     window.openEquipmentModal = (targetPrefix) => {
         currentEquipmentTargetPrefix = targetPrefix;
         const hiddenInput = document.getElementById(`equipment_used_${targetPrefix}`);
@@ -832,12 +958,11 @@
         }
     };
     
-    // --- START: [แก้ไข] ฟังก์ชัน renderHistorySection พร้อม Layout ที่ปรับปรุงใหม่ ---
     function renderHistorySection() {
         const historyContainer = document.getElementById('history-section-body');
         
         if (!historyContainer) {
-            console.error('❌ History container not found');
+            console.error('⌐ History container not found');
             return;
         }
         
@@ -887,7 +1012,7 @@
                             minute: '2-digit'
                         });
                     } catch (e) {
-                        console.error('❌ Error formatting date:', e);
+                        console.error('⌐ Error formatting date:', e);
                     }
                 }
 
@@ -921,7 +1046,6 @@
             historyContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการดำเนินงาน</p>';
         }
     }
-    // --- END: [แก้ไข] ฟังก์ชัน renderHistorySection ---
 
     function handleLocationUpdate() {
         if (!confirm("คุณอยู่ที่หน้างานของลูกค้าใช่หรือไม่? การกด 'ตกลง' จะเป็นการบันทึกพิกัดปัจจุบันของคุณ")) {
@@ -932,7 +1056,6 @@
         const statusText = document.getElementById('location-status-text-final');
         const latInput = document.getElementById('current_latitude');
         const lonInput = document.getElementById('current_longitude');
-        const techIdInput = document.getElementById('technician_line_user_id');
 
         const originalBtnHtml = updateBtn.innerHTML;
         updateBtn.disabled = true;
@@ -955,9 +1078,6 @@
                 
                 latInput.value = lat;
                 lonInput.value = lon;
-                if (technicianLineUserId) {
-                    techIdInput.value = technicianLineUserId;
-                }
 
                 updateBtn.innerHTML = '<i class="fas fa-check-circle me-2"></i>ดึงพิกัดสำเร็จ!';
                 updateBtn.classList.remove('btn-info');
@@ -986,24 +1106,110 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE !== 'None' && LIFF_ID_TO_USE.trim() !== '') {
-            liff.init({ liffId: LIFF_ID_TO_USE })
-                .then(() => liff.isLoggedIn() ? liff.getProfile() : null)
-                .then(profile => { 
-                    if (profile) {
-                        technicianLineUserId = profile.userId;
-                        const techIdInput = document.getElementById('technician_line_user_id');
-                        if(techIdInput) techIdInput.value = technicianLineUserId;
-                    }
-                })
-                .catch(err => console.error("LIFF initialization failed", err));
-        }
+        // Show main content immediately (no LIFF dependency)
+        document.getElementById('main-content').style.display = 'block';
         
+        // Initialize modals
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
 
+        // === Item Management Modal Setup ===
+        const addItemModalEl = document.getElementById('addItemModal');
+        const addItemModal = new bootstrap.Modal(addItemModalEl);
+        const itemNameInput = document.getElementById('item-name-input');
+        const itemQtyInput = document.getElementById('item-quantity-input');
+        const itemPriceInput = document.getElementById('item-price-input');
+        const itemSearchResults = document.getElementById('item-search-results');
+        const saveItemModalBtn = document.getElementById('save-item-modal-btn');
+        const editItemIndexInput = document.getElementById('edit-item-index');
+        
+        // Search functionality for equipment catalog in item input
+        let itemSearchDebounce;
+        itemNameInput.addEventListener('input', () => {
+            clearTimeout(itemSearchDebounce);
+            itemSearchDebounce = setTimeout(async () => {
+                const query = itemNameInput.value;
+                if (query.length < 2) { 
+                    itemSearchResults.innerHTML = ''; 
+                    return; 
+                }
+                try {
+                    const response = await fetch(`/api/search-equipment-catalog?q=${encodeURIComponent(query)}`);
+                    const results = await response.json();
+                    itemSearchResults.innerHTML = '';
+                    results.forEach(result => {
+                        const resultEl = document.createElement('a');
+                        resultEl.className = 'list-group-item list-group-item-action';
+                        resultEl.innerHTML = `<strong>${result.item_name}</strong> <small class="text-muted">(${result.price} บาท)</small>`;
+                        resultEl.onclick = () => {
+                            itemNameInput.value = result.item_name;
+                            itemPriceInput.value = result.price;
+                            itemSearchResults.innerHTML = '';
+                            itemQtyInput.focus();
+                        };
+                        itemSearchResults.appendChild(resultEl);
+                    });
+                } catch (e) { 
+                    console.error(e); 
+                }
+            }, 300);
+        });
+
+        // Save item functionality
+        saveItemModalBtn.addEventListener('click', () => {
+            const newItem = {
+                item_name: itemNameInput.value.trim(),
+                quantity: parseFloat(itemQtyInput.value) || 1,
+                unit_price: parseFloat(itemPriceInput.value) || 0,
+            };
+            if (!newItem.item_name) { 
+                alert('กรุณาใส่ชื่อรายการ'); 
+                return; 
+            }
+            
+            const editIndex = editItemIndexInput.value;
+            if (editIndex !== '') {
+                jobItems[parseInt(editIndex)] = newItem; 
+            } else {
+                jobItems.push(newItem);
+            }
+            
+            saveAllItemsToDb();
+            renderSummaryList();
+            addItemModal.hide();
+        });
+
+        // Modal show event handling
+        addItemModalEl.addEventListener('show.bs.modal', (event) => {
+            // Reset form
+            editItemIndexInput.value = ''; 
+            itemNameInput.value = '';
+            itemQtyInput.value = 1; 
+            itemPriceInput.value = '';
+            itemSearchResults.innerHTML = '';
+            
+            const button = event.relatedTarget;
+            if (button && button.classList.contains('edit-item-btn')) {
+                // Edit mode
+                const index = parseInt(button.dataset.index);
+                const item = jobItems[index];
+                editItemIndexInput.value = index;
+                itemNameInput.value = item.item_name;
+                itemQtyInput.value = item.quantity;
+                itemPriceInput.value = item.unit_price;
+                document.getElementById('addItemModalLabel').textContent = 'แก้ไขรายการ';
+            } else {
+                // Add mode
+                document.getElementById('addItemModalLabel').textContent = 'เพิ่มรายการใหม่';
+            }
+        });
+
+        // Load initial items
+        loadInitialItems();
+
+        // === Event Listeners ===
         const updateLocationBtnFinal = document.getElementById('updateLocationBtn_final');
         if (updateLocationBtnFinal) {
             updateLocationBtnFinal.addEventListener('click', handleLocationUpdate);
@@ -1047,6 +1253,7 @@
 
         renderHistorySection();
         
+        // Initialize Tribute.js for text snippets
         if (typeof Tribute !== 'undefined' && progressReportSnippets && progressReportSnippets.length > 0) {
             const tribute = new Tribute({
                 values: progressReportSnippets,
@@ -1061,12 +1268,13 @@
         renderSelectedEquipmentSummary('progress', []);
         renderSelectedEquipmentSummary('final', []);
 
+        // Equipment search functionality
         const searchInput = document.getElementById('equipment-search-input');
         if (searchInput) {
             searchInput.addEventListener('keyup', (e) => {
                 const filter = e.target.value.toLowerCase();
                 document.querySelectorAll('.equipment-item').forEach(item => {
-                    if (item.dataset.itemName.includes(filter)) {
+                    if (item.dataset.itemName && item.dataset.itemName.includes(filter)) {
                         item.style.display = 'flex';
                     } else {
                         item.style.display = 'none';
@@ -1076,10 +1284,12 @@
         }
         
         const progressCollapseElement = document.getElementById('progressReportCollapse');
-        progressCollapseElement.addEventListener('shown.bs.collapse', event => {
-            document.getElementById('work_summary_progress').focus();
-            progressCollapseElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
+        if (progressCollapseElement) {
+            progressCollapseElement.addEventListener('shown.bs.collapse', event => {
+                document.getElementById('work_summary_progress').focus();
+                progressCollapseElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
     });
 </script>
 {% endblock %}

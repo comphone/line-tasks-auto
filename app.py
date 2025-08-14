@@ -2595,7 +2595,7 @@ def edit_report_attachments(task_id, report_index):
     else:
         flash('เกิดข้อผิดพลาดในการบันทึกการเปลี่ยนแปลงรูปภาพ', 'danger')
 
-    return redirect(url_for('task_details', task_id=task_id))
+    return redirect(url_for('liff.task_details', task_id=task_id))
 
 @app.route('/api/task/<task_id>/delete_report/<int:report_index>', methods=['POST'])
 def delete_task_report(task_id, report_index):
