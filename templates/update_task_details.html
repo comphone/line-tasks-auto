@@ -347,11 +347,57 @@
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
     <img class="lightbox-content" id="lightboxImg">
     <div id="lightboxCaption" class="lightbox-caption"></div>
-    
     <div class="lightbox-nav-container">
         <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
         <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
     </div>
+</div>
+
+<div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editReportForm" method="POST" action="" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="modal-header">
+          <h5 class="modal-title" id="editReportModalLabel">แก้ไขรูปภาพในรายงาน</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <h6><i class="fas fa-images me-2"></i>รูปภาพปัจจุบัน</h6>
+          <p class="text-muted small">เอาเครื่องหมาย ✔ ออกเพื่อลบรูปภาพออกจากรายงานนี้</p>
+          <div id="current-attachments-container" class="image-gallery-grid mb-3"></div>
+          <hr>
+          <h6><i class="fas fa-plus-circle me-2"></i>เพิ่มรูปภาพ/ไฟล์อื่นๆ</h6>
+          <input type="file" class="form-control" name="new_files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editReportTextForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editReportTextModalLabel">แก้ไขข้อความสรุป</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <label for="editTextarea" class="form-label">ข้อความสรุป</label>
+            <textarea class="form-control" id="editTextarea" rows="5" required></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <div class="modal fade" id="technicianSelectionModal" tabindex="-1">
@@ -362,7 +408,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div id="technician-list-container"></div>
+                <div id="technician-list-container">
+                    </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
