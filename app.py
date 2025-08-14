@@ -1,4 +1,5 @@
 import os
+from flask_sqlalchemy import SQLAlchemy
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import sys
@@ -122,6 +123,12 @@ if SENTRY_DSN:
     )
 
 app = Flask(__name__, static_folder='static')
+# ตั้งค่าตำแหน่งของไฟล์ฐานข้อมูล (จะถูกสร้างขึ้นในชื่อ data.sqlite)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///data.sqlite')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# --- END: ตั้งค่า Database ---
+# สร้างอ็อบเจ็กต์ SQLAlchemy และผูกกับ Flask app
+db = SQLAlchemy(app)
 CORS(app) # --- เพิ่มบรรทัดนี้เพื่อเปิดใช้งาน CORS ---
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
