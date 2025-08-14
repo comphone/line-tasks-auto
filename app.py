@@ -71,6 +71,30 @@ import atexit
 
 from flask_cors import CORS
 
+# --- START: เพิ่ม Model ใหม่สำหรับรายการอุปกรณ์ ---
+class JobItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    task_google_id = db.Column(db.String(100), nullable=False, index=True)
+    item_name = db.Column(db.String(255), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=1)
+    unit_price = db.Column(db.Float, nullable=False, default=0)
+    status = db.Column(db.String(50), nullable=False, default='pending') # สถานะ: pending, approved, billed
+    added_by = db.Column(db.String(100)) # ชื่อช่างที่เพิ่ม
+    added_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'task_google_id': self.task_google_id,
+            'item_name': self.item_name,
+            'quantity': self.quantity,
+            'unit_price': self.unit_price,
+            'status': self.status,
+            'added_by': self.added_by,
+            'added_at': self.added_at.isoformat()
+        }
+# --- END: เพิ่ม Model ใหม่ ---
+
 TEXT_SNIPPETS = {
     'task_details': [
         {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
@@ -2012,6 +2036,46 @@ def api_search_customers():
     except Exception as e:
         app.logger.error(f"Error in api_search_customers: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
+# --- START: เพิ่ม API สำหรับจัดการรายการอุปกรณ์ ---
+
+@app.route('/api/task/<task_id>/items', methods=['GET'])
+def get_task_items(task_id):
+    """API สำหรับดึงรายการอุปกรณ์ทั้งหมดของงานนั้นๆ"""
+    items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
+    return jsonify([item.to_dict() for item in items])
+
+@app.route('/api/task/<task_id>/items', methods=['POST'])
+def add_task_items(task_id):
+    """API สำหรับบันทึกรายการอุปกรณ์ใหม่"""
+    data = request.json
+    items_data = data.get('items', [])
+    
+    if not items_data:
+        return jsonify({'message': 'No items provided'}), 400
+
+    # ควรจะมีการดึงชื่อช่างที่ login อยู่ ณ ตอนนั้นมาใส่ใน added_by
+    technician_name = "ช่างทดสอบ" # Placeholder - ควรเปลี่ยนเป็นชื่อช่างจริง
+
+    try:
+        for item_data in items_data:
+            new_item = JobItem(
+                task_google_id=task_id,
+                item_name=item_data['item_name'],
+                quantity=float(item_data['quantity']),
+                unit_price=float(item_data['unit_price']),
+                added_by=technician_name
+            )
+            db.session.add(new_item)
+        
+        db.session.commit()
+        return jsonify({'message': 'Items saved successfully'}), 201
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error saving job items for task {task_id}: {e}")
+        return jsonify({'message': 'Failed to save items'}), 500
+
+# --- END: เพิ่ม API สำหรับจัดการรายการอุปกรณ์ ---
 
 @app.route('/api/equipment_catalog')
 def api_equipment_catalog():
