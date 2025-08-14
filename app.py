@@ -563,7 +563,7 @@ def api_create_task():
     """API สำหรับสร้างงานใหม่จากฟอร์ม"""
     try:
         task_title = str(request.form.get('task_title', '')).strip()
-        customer_name = str(request.form.get('customer', '')).strip()
+        customer_name = str(request.form.get('customer_name', '')).strip()
         organization_name = str(request.form.get('organization_name', '')).strip()
 
         if not task_title or not customer_name:
