@@ -540,6 +540,24 @@ def get_google_service(api_name, api_version):
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
 
+@app.route('/api/search-equipment-catalog')
+def api_search_equipment_catalog():
+    """API สำหรับค้นหาอุปกรณ์จาก Catalog (Autocomplete)"""
+    query = request.args.get('q', '').strip().lower()
+    if len(query) < 2:
+        return jsonify([])
+    
+    settings = get_app_settings()
+    catalog = settings.get('equipment_catalog', [])
+    
+    # ค้นหา item ที่มีชื่อตรงกับ query
+    results = [
+        item for item in catalog 
+        if query in item.get('item_name', '').lower()
+    ][:10] # แสดงผลสูงสุด 10 รายการ
+    
+    return jsonify(results)
+
 @app.route('/api/tasks/create', methods=['POST'])
 def api_create_task():
     """API สำหรับสร้างงานใหม่จากฟอร์ม"""
