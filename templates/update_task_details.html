@@ -6,7 +6,9 @@
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
 <style>
-    /* Styles from your original file are preserved */
+    #main-content { display: none; }
+    #liff-status-container { min-height: 80vh; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+    .liff-error-card { max-width: 500px; border-left: 5px solid #dc3545; }
     .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 2rem; background-color: #f8f9fa; }
     .info-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
     @media (min-width: 768px) { .info-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -38,7 +40,6 @@
     .action-btn { display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; font-size: 1rem; font-weight: 500; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: all 0.2s ease-in-out; text-decoration: none; color: white; }
     .action-btn:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); color: white; }
     .action-btn i { margin-right: 0.5rem; }
-    /* New styles for equipment modal search results */
     #item-search-results .list-group-item { cursor: pointer; }
     #item-search-results .list-group-item:hover { background-color: #e9ecef; }
 </style>
@@ -47,280 +48,79 @@
 {% block content %}
 <div class="container mt-4 mb-5">
     
-    <div id="js-flash-message-container"></div>
-
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2 mb-0">📝 จัดการงาน</h1>
-        <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
-    </div>
-
-    <div class="summary-container">
-	    <div class="d-flex justify-content-between align-items-center mb-3">
-		    <h5 class="mb-0">ข้อมูลสรุป</h5>
-		    <a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
-	    </div>
-        <div class="info-grid">
-             <div class="info-card">
-                 <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
-                <p class="info-value value-large text-primary">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
-            </div>
-             <div class="info-card">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
-                        <p class="info-value value-medium">{{ task.customer.phone or '-' }}</p>
-                    </div>
-                    <div class="text-end">
-                        <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
-                        <p class="info-value value-small {% if task.is_today and task.status != 'completed' %}text-primary fw-bold{% elif task.is_overdue and task.status != 'completed' %}text-danger fw-bold{% endif %}">{{ task.due_formatted or '-' }}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="info-card full-width-card">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
-                        <p class="info-value">{{ task.customer.address or '-' }}</p>
-                    </div>
-                    {% if task.customer.map_url %}
-                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
-                            <i class="fas fa-map-marked-alt text-danger"></i>
-                        </a>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="info-card full-width-card">
-                <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
-                <p class="info-value value-large">{{ task.title | replace('\n', '<br>') | safe }}</p>
-            </div>
+    <div id="liff-status-container" style="display: none;">
         </div>
-    </div>
     
-    <div class="card shadow-sm mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h5>
-            <strong id="grand-total-display">รวม: 0.00 บาท</strong>
+    <div id="main-content">
+        <div id="js-flash-message-container"></div>
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h2 mb-0">📝 จัดการงาน</h1>
+            <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
         </div>
-        <div class="card-body p-2">
-            <div id="item-summary-list">
-                <p class="text-muted text-center p-3">กำลังโหลดรายการ...</p>
+
+        <div class="summary-container">
             </div>
-        </div>
-        <div class="card-footer p-2">
-            <button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#addItemModal">
-                <i class="fas fa-plus me-2"></i>เพิ่มรายการอุปกรณ์/ค่าใช้จ่าย
-            </button>
-        </div>
-    </div>
-    <div class="card shadow-sm mb-4" id="chooseActionCard">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
-        </div>
-        <div class="card-body">
-            <div class="action-button-grid">
-                <button type="button" class="btn btn-primary action-btn" data-bs-toggle="collapse" data-bs-target="#progressReportCollapse" aria-expanded="false" aria-controls="progressReportCollapse">
-                    <i class="fas fa-edit"></i> เพิ่มรายงาน
-                </button>
-                <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
-                    <i class="fas fa-calendar-alt"></i> เลื่อนนัด
-                </button>
-                <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
-                    <i class="fas fa-qrcode"></i> QR Code ลูกค้า
-                </a>
-                <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
-                    <i class="fas fa-check-circle"></i> ปิดงาน
-                </button>
-				{% if task.status == 'completed' %}
-				<a href="{{ url_for('liff.generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn action-btn" style="grid-column: 1 / -1; background-color: #5c6bc0; border-color: #5c6bc0;">
-					<i class="fas fa-file-alt"></i> QR Code รายงานสรุปสาธารณะ
-				</a>
-				{% endif %}
-                </div>
-        </div>
-    </div>
-    <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
-        <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
-        <div class="card-body">
-            <form id="completeTaskForm" onsubmit="window.handleFormSubmission(event, this, 'complete-upload-status')">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <input type="hidden" name="action" value="complete_task">
-                <input type="hidden" id="current_latitude" name="current_latitude">
-                <input type="hidden" id="current_longitude" name="current_longitude">
-                <input type="hidden" id="technician_line_user_id" name="technician_line_user_id">
-
-                <div class="mb-3">
-                    <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
-                    <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
-                    <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
-                </div>
-                 <div class="mb-3">
-                    <label for="technicians_final_display" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
-                        <input type="text" id="technicians_final_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_final')">
-                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_final')">เลือก</button>
-                    </div>
-                    <input type="hidden" id="technicians_final" name="technicians_report" required>
-                </div>
-                
-                <div class="mb-3">
-                    <label for="files_final" class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
-                    <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label"><strong><i class="fas fa-map-marker-alt me-1"></i>พิกัดปิดงาน</strong></label>
-                    <div id="location-status-container">
-                        <button type="button" class="btn btn-info w-100" id="updateLocationBtn_final">
-                            <i class="fas fa-location-arrow me-2"></i>อัปเดตพิกัดปัจจุบัน
-                        </button>
-                        <div id="location-status-text-final" class="form-text mt-2 text-center"></div>
-                    </div>
-                </div>
-
-                <hr>
-                <div class="d-flex align-items-center">
-                    <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
-                    <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
-                    <div id="complete-upload-status" class="ms-3" style="display:none;"></div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
-        <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
-        <div class="card-body">
-            <form id="rescheduleTaskForm" onsubmit="window.handleFormSubmission(event, this, 'reschedule-upload-status')">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <input type="hidden" name="action" value="reschedule_task">
-                <div class="mb-3">
-                    <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
-                        <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
-                    <textarea class="form-control" id="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
-                     <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
-                </div>
-                <div class="mb-3">
-                    <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
-                        <input type="text" id="technicians_reschedule_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_reschedule')">
-                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_reschedule')">เลือก</button>
-                    </div>
-                    <input type="hidden" id="technicians_reschedule" name="technicians_reschedule" required>
-                </div>
-                <hr>
-                <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
-                <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
-                <div id="reschedule-upload-status" class="ms-3" style="display:none;"></div>
-            </form>
-        </div>
-    </div>
-
-    <div class="collapse" id="progressReportCollapse">
+        
         <div class="card shadow-sm mb-4">
-            <div class="card-header bg-light">
-                <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h5>
+                <strong id="grand-total-display">รวม: 0.00 บาท</strong>
             </div>
-            <div class="card-body">
-                <form id="progressReportForm" onsubmit="window.handleFormSubmission(event, this, 'report-upload-status')">
+            <div class="card-body p-2">
+                <div id="item-summary-list">
+                    <p class="text-muted text-center p-3">กำลังโหลดรายการ...</p>
+                </div>
+            </div>
+            <div class="card-footer p-2">
+                <button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                    <i class="fas fa-plus me-2"></i>เพิ่มรายการอุปกรณ์/ค่าใช้จ่าย
+                </button>
+            </div>
+        </div>
+        <div class="card shadow-sm mb-4" id="chooseActionCard">
+             </div>
+
+        <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
+            </div>
+
+        <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
+            </div>
+
+        <div class="collapse" id="progressReportCollapse">
+            <div class="card shadow-sm mb-4">
+                </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
+            </div>
+            <div class="card-body" id="history-section-body">
+                <p class="text-muted text-center mt-3">กำลังโหลดประวัติงาน...</p>
+            </div>
+        </div>
+        
+        <hr class="my-5">
+
+        <div class="danger-zone-header" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse">
+            </div>
+        <div class="collapse" id="dangerZoneCollapse">
+             <div class="card card-body border-danger mt-2">
+                <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
+                <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <input type="hidden" name="action" value="save_report">
-                    <div class="mb-3">
-                        <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
-                            <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
-                        </div>
-                        <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
-                    </div>
-                    <div class="mb-3">
-                        <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
-                            <input type="text" id="technicians_progress_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
-                            <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
-                        </div>
-                        <input type="hidden" id="technicians_progress" name="technicians_report" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="files_progress" class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
-                        <input class="form-control" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <button type="submit" id="saveProgressBtn" class="btn btn-primary" disabled><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
-                        <div id="report-upload-status" class="ms-3" style="display:none;"></div>
-                    </div>
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
+                    </button>
                 </form>
             </div>
-        </div>
-    </div>
-    <div class="card shadow-sm mb-4">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
-        </div>
-        <div class="card-body" id="history-section-body">
-            <p class="text-muted text-center mt-3">กำลังโหลดประวัติงาน...</p>
-        </div>
-    </div>
-    
-    <hr class="my-5">
-
-    <div class="danger-zone-header" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse" aria-expanded="false" aria-controls="dangerZoneCollapse">
-        <h6><i class="fas fa-exclamation-triangle text-warning me-2"></i>การจัดการขั้นสูง</h6>
-        <i class="fas fa-chevron-down icon"></i>
-    </div>
-    <div class="collapse" id="dangerZoneCollapse">
-        <div class="card card-body border-danger mt-2">
-            <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
-            <form method="POST" action="{{ url_for('delete_task', task_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <button type="submit" class="btn btn-danger w-100">
-                    <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
-                </button>
-            </form>
         </div>
     </div>
 </div>
 
 <div class="modal fade" id="addItemModal" tabindex="-1">
-    <div class="modal-dialog modal-fullscreen-sm-down">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addItemModalLabel">เพิ่ม/แก้ไขรายการ</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="edit-item-index">
-                <div class="mb-3 position-relative">
-                    <label for="item-name-input" class="form-label">ชื่อรายการ</label>
-                    <input type="text" class="form-control form-control-lg" id="item-name-input" placeholder="ค้นหาหรือพิมพ์ชื่อรายการ..." autocomplete="off">
-                    <div id="item-search-results" class="list-group mt-1 position-absolute w-100" style="z-index: 1056;"></div>
-                </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label for="item-quantity-input" class="form-label">จำนวน</label>
-                        <input type="number" class="form-control form-control-lg" id="item-quantity-input" value="1">
-                    </div>
-                    <div class="col-6 mb-3">
-                        <label for="item-price-input" class="form-label">ราคา/หน่วย</label>
-                        <input type="number" class="form-control form-control-lg" id="item-price-input" placeholder="0.00">
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                <button type="button" class="btn btn-primary" id="save-item-modal-btn">บันทึกรายการ</button>
-            </div>
-        </div>
     </div>
-</div>
 
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
@@ -331,71 +131,12 @@
         <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
     </div>
 </div>
-
 <div class="modal fade" id="technicianSelectionModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">เลือกช่างผู้รับผิดชอบ</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="technician-list-container"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                <button type="button" class="btn btn-primary" onclick="window.confirmTechnicianSelection()">ตกลง</button>
-            </div>
-        </div>
     </div>
-</div>
-
-<div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <form id="editReportForm" method="POST" action="" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <div class="modal-header">
-          <h5 class="modal-title" id="editReportModalLabel">แก้ไขรูปภาพในรายงาน</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <h6><i class="fas fa-images me-2"></i>รูปภาพปัจจุบัน</h6>
-          <p class="text-muted small">เอาเครื่องหมาย ✔ ออกเพื่อลบรูปภาพออกจากรายงานนี้</p>
-          <div id="current-attachments-container" class="image-gallery-grid mb-3"></div>
-          <hr>
-          <h6><i class="fas fa-plus-circle me-2"></i>เพิ่มรูปภาพ/ไฟล์อื่นๆ</h6>
-          <input type="file" class="form-control" name="new_files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
-        </div>
-      </form>
+<div class="modal fade" id="editReportModal" tabindex="-1">
     </div>
-  </div>
-</div>
-
-<div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <form id="editReportTextForm">
-        <div class="modal-header">
-          <h5 class="modal-title" id="editReportTextModalLabel">แก้ไขข้อความสรุป</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-            <label for="editTextarea" class="form-label">ข้อความสรุป</label>
-            <textarea class="form-control" id="editTextarea" rows="5" required></textarea>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
-        </div>
-      </form>
+<div class="modal fade" id="editReportTextModal" tabindex="-1">
     </div>
-  </div>
-</div>
 
 {% endblock %}
 
@@ -416,7 +157,7 @@
     let technicianLineUserId = null;
     let currentLightboxImages = [];
 
-    // --- START: FULL IMPLEMENTATION OF HELPER FUNCTIONS ---
+    // --- START: คืนค่าฟังก์ชัน Helper ทั้งหมด (ฉบับเต็ม) ---
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -661,30 +402,28 @@
 
         // --- START: LIFF Initialization DISABLED ---
         /*
-        if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE.trim() !== '') {
+        if (typeof liff !== 'undefined' && LIFF_ID_TO_USE && LIFF_ID_TO_USE.trim() !== '' && liff.isInClient()) {
             liff.init({ liffId: LIFF_ID_TO_USE })
                 .then(() => {
-                    // This block will run inside the LINE app
                     mainContent.style.display = 'block';
                     if (statusContainer) statusContainer.style.display = 'none';
                     initializePageFunctions();
                 })
                 .catch(err => {
-                    // This block will run outside the LINE app
                     mainContent.style.display = 'none';
                     if (statusContainer) {
                         statusContainer.style.display = 'flex';
-                        statusContainer.innerHTML = `<div class="card liff-error-card p-4 text-center"><h5 class="card-title text-danger">ไม่สามารถโหลดแอปได้</h5><p class="card-text">กรุณาเปิดหน้านี้ผ่านแอปพลิเคชัน LINE</p><i class="fab fa-line fa-3x text-success mt-2"></i></div>`;
+                        statusContainer.innerHTML = `<div class="card liff-error-card p-4 text-center"><h5 class="card-title text-danger">LIFF Error</h5><p class="card-text">${err.message}</p><p class="card-text text-muted">กรุณาเปิดในแอป LINE</p></div>`;
                     }
                 });
         } else {
-             // Run functions directly if LIFF is not configured
              mainContent.style.display = 'block';
              if (statusContainer) statusContainer.style.display = 'none';
              initializePageFunctions();
         }
         */
-        // For now, we will always run the main functions to bypass LIFF issues
+        
+        // Bypassing LIFF for now
         mainContent.style.display = 'block';
         if (statusContainer) statusContainer.style.display = 'none';
         initializePageFunctions();
@@ -696,7 +435,7 @@
             editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
             editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
 
-            // --- Mobile-friendly Equipment UI Logic ---
+            // Mobile-friendly Equipment UI Logic
             let jobItems = [];
             const addItemModalEl = document.getElementById('addItemModal');
             const addItemModal = new bootstrap.Modal(addItemModalEl);
@@ -735,7 +474,7 @@
                     renderSummaryList();
                 } catch (error) { 
                     console.error('Failed to load initial items:', error);
-                    renderSummaryList(); // Render empty state on failure
+                    renderSummaryList();
                 }
             }
             let itemSearchDebounce;
