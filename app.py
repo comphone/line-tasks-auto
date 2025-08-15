@@ -700,22 +700,6 @@ def api_update_task(task_id):
             except json.JSONDecodeError:
                 app.logger.error("Failed to decode uploaded_attachments_json from request.")
 
-        # --- ✅✅✅ START: ส่วนที่แก้ไขสำหรับ Equipment Catalog ✅✅✅ ---
-        equipment_used_json = request.form.get('equipment_used', '[]')
-        equipment_used_data = []
-        try:
-            # ตรวจสอบว่าข้อมูลที่ส่งมาเป็น JSON Array หรือไม่
-            parsed_equipment = json.loads(equipment_used_json)
-            if isinstance(parsed_equipment, list):
-                equipment_used_data = parsed_equipment
-            else:
-                 # ถ้าไม่ใช่ JSON Array (อาจเป็น string จากการกรอกแบบเก่า) ให้ใช้ _parse_equipment_string
-                equipment_used_data = _parse_equipment_string(equipment_used_json)
-        except (json.JSONDecodeError, TypeError):
-             # ถ้า Decode ไม่ได้ ให้ถือว่าเป็น String ธรรมดา
-            equipment_used_data = _parse_equipment_string(equipment_used_json)
-        # --- ✅✅✅ END: ส่วนที่แก้ไขสำหรับ Equipment Catalog ✅✅✅ ---
-
         if action == 'save_report':
             work_summary = str(request.form.get('work_summary', '')).strip()
             selected_technicians = request.form.get('technicians_report', '').split(',')
@@ -729,7 +713,6 @@ def api_update_task(task_id):
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'work_summary': work_summary,
-                'equipment_used': equipment_used_data, # <-- ✅ ใช้ข้อมูลใหม่
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
@@ -794,7 +777,6 @@ def api_update_task(task_id):
             history.append({
                 'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
                 'work_summary': work_summary,
-                'equipment_used': equipment_used_data, # <-- ✅ ใช้ข้อมูลใหม่
                 'attachments': new_attachments,
                 'technicians': selected_technicians
             })
@@ -2914,6 +2896,14 @@ def settings_page():
             if 'text_snippets' in data:
                 templates_data = data.get('text_snippets', {})
                 # Basic validation to ensure we're getting the expected structure
+                if isinstance(templates_data, dict) and 'task_details' in templates_data and 'progress_reports' in templates_data:
+                    current_settings['technician_templates'] = templates_data
+                else:
+                     return jsonify({'status': 'error', 'message': 'รูปแบบข้อมูลเทมเพลตไม่ถูกต้อง'}), 400
+
+            if 'technician_templates' in data:
+                templates_data = data.get('technician_templates', {})
+                # ตรวจสอบโครงสร้างข้อมูลเบื้องต้น
                 if isinstance(templates_data, dict) and 'task_details' in templates_data and 'progress_reports' in templates_data:
                     current_settings['technician_templates'] = templates_data
                 else:
