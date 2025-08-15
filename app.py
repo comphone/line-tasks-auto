@@ -2102,6 +2102,96 @@ def api_search_customers():
 
 # --- START: เพิ่ม API สำหรับจัดการรายการอุปกรณ์ ---
 
+# --- START: เพิ่ม API ใหม่สำหรับจัดการแคตตาล็อกสินค้า ---
+
+@app.route('/api/products', methods=['POST'])
+def api_add_product():
+    """API สำหรับเพิ่มสินค้าใหม่ลงในแคตตาล็อก"""
+    data = request.json
+    item_name = data.get('item_name', '').strip()
+    
+    if not item_name:
+        return jsonify({'status': 'error', 'message': 'กรุณากรอกชื่อสินค้า'}), 400
+
+    try:
+        settings = get_app_settings()
+        catalog = settings.get('equipment_catalog', [])
+        
+        # ตรวจสอบว่ามีสินค้านี้อยู่แล้วหรือไม่
+        if any(item.get('item_name', '').lower() == item_name.lower() for item in catalog):
+            return jsonify({'status': 'error', 'message': 'มีสินค้านี้ในระบบแล้ว'}), 409 # 409 Conflict
+
+        new_item = {
+            'item_name': item_name,
+            'unit': data.get('unit', ''),
+            'price': float(data.get('price', 0)),
+            'stock_quantity': int(data.get('stock_quantity', 0)),
+            'image_url': '' # เริ่มต้นรูปภาพเป็นค่าว่าง
+        }
+        catalog.append(new_item)
+        
+        if save_app_settings({'equipment_catalog': catalog}):
+            return jsonify({'status': 'success', 'message': 'เพิ่มสินค้าใหม่สำเร็จ', 'item': new_item}), 201
+        else:
+            raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
+            
+    except (ValueError, TypeError):
+        return jsonify({'status': 'error', 'message': 'ราคาและสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
+    except Exception as e:
+        app.logger.error(f"Error in api_add_product: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
+
+@app.route('/api/products/<int:item_index>', methods=['PUT'])
+def api_update_product(item_index):
+    """API สำหรับแก้ไขข้อมูลสินค้า"""
+    data = request.json
+    try:
+        settings = get_app_settings()
+        catalog = settings.get('equipment_catalog', [])
+
+        if not (0 <= item_index < len(catalog)):
+            return jsonify({'status': 'error', 'message': 'ไม่พบสินค้าที่ต้องการแก้ไข'}), 404
+
+        # อัปเดตข้อมูล
+        catalog[item_index]['item_name'] = data.get('item_name', catalog[item_index]['item_name']).strip()
+        catalog[item_index]['unit'] = data.get('unit', catalog[item_index]['unit']).strip()
+        catalog[item_index]['price'] = float(data.get('price', catalog[item_index]['price']))
+        catalog[item_index]['stock_quantity'] = int(data.get('stock_quantity', catalog[item_index]['stock_quantity']))
+        
+        if save_app_settings({'equipment_catalog': catalog}):
+            return jsonify({'status': 'success', 'message': 'อัปเดตข้อมูลสินค้าสำเร็จ', 'item': catalog[item_index]})
+        else:
+            raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
+
+    except (ValueError, TypeError):
+        return jsonify({'status': 'error', 'message': 'ราคาและสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
+    except Exception as e:
+        app.logger.error(f"Error in api_update_product: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
+
+@app.route('/api/products/<int:item_index>', methods=['DELETE'])
+def api_delete_product(item_index):
+    """API สำหรับลบสินค้าออกจากแคตตาล็อก"""
+    try:
+        settings = get_app_settings()
+        catalog = settings.get('equipment_catalog', [])
+
+        if not (0 <= item_index < len(catalog)):
+            return jsonify({'status': 'error', 'message': 'ไม่พบสินค้าที่ต้องการลบ'}), 404
+
+        deleted_item = catalog.pop(item_index)
+        
+        if save_app_settings({'equipment_catalog': catalog}):
+            return jsonify({'status': 'success', 'message': f"ลบสินค้า '{deleted_item['item_name']}' สำเร็จ"})
+        else:
+            raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
+            
+    except Exception as e:
+        app.logger.error(f"Error in api_delete_product: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
+
+# --- END: API สำหรับจัดการแคตตาล็อกสินค้า ---
+
 @app.route('/api/task/<task_id>/items', methods=['GET'])
 def get_task_items(task_id):
     """API สำหรับดึงรายการอุปกรณ์ทั้งหมดของงานนั้นๆ"""

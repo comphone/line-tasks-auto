@@ -4,6 +4,8 @@
 
 {% block content %}
 <div class="container mt-4">
+    <div id="js-flash-message-container"></div>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">📦 จัดการข้อมูลสินค้า</h1>
         <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary">
@@ -24,7 +26,7 @@
         </div>
         <div class="card-body">
             <form id="add-equipment-form" class="row g-3 align-items-end">
-                <div class="col-sm-5">
+                <div class="col-sm-4">
                     <label for="new-item-name" class="form-label">ชื่อรายการ</label>
                     <input type="text" class="form-control" id="new-item-name" required>
                 </div>
@@ -32,9 +34,13 @@
                     <label for="new-item-unit" class="form-label">หน่วย</label>
                     <input type="text" class="form-control" id="new-item-unit" placeholder="เช่น ชิ้น, เมตร">
                 </div>
-                <div class="col-sm-3">
+                <div class="col-sm-2">
                     <label for="new-item-price" class="form-label">ราคา</label>
                     <input type="number" class="form-control" id="new-item-price" step="any" min="0" required>
+                </div>
+                 <div class="col-sm-2">
+                    <label for="new-item-stock" class="form-label">จำนวนสต็อก</label>
+                    <input type="number" class="form-control" id="new-item-stock" min="0" value="0">
                 </div>
                 <div class="col-sm-2">
                     <button type="submit" class="btn btn-primary w-100">
@@ -54,26 +60,32 @@
                 <table class="table table-hover" id="equipment-table">
                     <thead class="table-light">
                         <tr>
+                            <th style="width: 10%;">รูปภาพ</th>
                             <th>ชื่อรายการ</th>
                             <th>หน่วย</th>
                             <th class="text-end">ราคา (บาท)</th>
+                            <th class="text-end">สต็อก</th>
                             <th class="text-center">จัดการ</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in equipment_catalog %}
-                        <tr>
+                        <tr data-index="{{ loop.index0 }}">
+                            <td>
+                                <img src="{{ item.image_url or url_for('static', filename='placeholder.png') }}" class="img-thumbnail" style="width: 50px; height: 50px; object-fit: cover;">
+                            </td>
                             <td>{{ item.item_name }}</td>
                             <td>{{ item.unit or '-' }}</td>
                             <td class="text-end">{{ "%.2f"|format(item.price) }}</td>
+                            <td class="text-end">{{ item.stock_quantity or 0 }}</td>
                             <td class="text-center">
-                                <button class="btn btn-sm btn-outline-warning"><i class="fas fa-pen"></i></button>
-                                <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                <button class="btn btn-sm btn-outline-warning edit-btn"><i class="fas fa-pen"></i></button>
+                                <button class="btn btn-sm btn-outline-danger delete-btn"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="4" class="text-center text-muted">ยังไม่มีข้อมูลสินค้าในแคตตาล็อก</td>
+                        <tr id="no-items-row">
+                            <td colspan="6" class="text-center text-muted">ยังไม่มีข้อมูลสินค้าในแคตตาล็อก</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -86,7 +98,89 @@
 
 {% block body_extra %}
 <script>
-    // เพิ่ม JavaScript สำหรับจัดการการเพิ่ม, แก้ไข, ลบ ข้อมูลในหน้านี้
-    // โดยเรียกใช้ API ที่เราได้สร้างไว้ใน app.py
+    // --- START: เพิ่ม JavaScript ทั้งหมดนี้เข้าไป ---
+
+    // ฟังก์ชันสำหรับสร้างแถบแจ้งเตือน (เหมือนในหน้าฟอร์ม)
+    function flashMessage(message, category = 'info') {
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+        container.insertAdjacentHTML('beforeend', alertHtml);
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement) {
+                const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                if (alertInstance) alertInstance.close(); else alertElement.remove();
+            }
+        }, 5000);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('add-equipment-form');
+        const tableBody = document.querySelector('#equipment-table tbody');
+
+        // --- Logic สำหรับการ "เพิ่ม" สินค้าใหม่ ---
+        form.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const newItem = {
+                item_name: document.getElementById('new-item-name').value,
+                unit: document.getElementById('new-item-unit').value,
+                price: document.getElementById('new-item-price').value,
+                stock_quantity: document.getElementById('new-item-stock').value
+            };
+
+            try {
+                const response = await fetch("{{ url_for('api_add_product') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': "{{ csrf_token() }}"
+                    },
+                    body: JSON.stringify(newItem)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    flashMessage('เพิ่มรายการใหม่สำเร็จ!', 'success');
+                    // โหลดหน้าใหม่เพื่อให้เห็นข้อมูลล่าสุด
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            }
+        });
+
+        // --- Logic สำหรับการ "ลบ" สินค้า ---
+        tableBody.addEventListener('click', async function(event) {
+            const deleteButton = event.target.closest('.delete-btn');
+            if (deleteButton) {
+                const row = deleteButton.closest('tr');
+                const itemIndex = row.dataset.index;
+                const itemName = row.cells[1].textContent;
+
+                if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ "${itemName}"?`)) {
+                    try {
+                        const response = await fetch(`/api/products/${itemIndex}`, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRFToken': "{{ csrf_token() }}" }
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            flashMessage(result.message, 'success');
+                            row.remove(); // ลบแถวออกจากตารางทันที
+                        } else {
+                            throw new Error(result.message);
+                        }
+                    } catch (error) {
+                        flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                    }
+                }
+            }
+        });
+    });
+    // --- END: สิ้นสุด JavaScript ---
 </script>
 {% endblock %}
