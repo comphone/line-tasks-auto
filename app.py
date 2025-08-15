@@ -2844,21 +2844,7 @@ def api_update_tasks_status_batch():
         'updated_count': updated_count,
         'failed_count': failed_count
     })
-
-@app.route('/api/delete_tasks_batch', methods=['POST'])
-def api_delete_tasks_batch():
-    data = request.json
-    task_ids = data.get('task_ids', [])
-    if not isinstance(task_ids, list):
-        return jsonify({'status': 'error', 'message': 'Invalid input format.'}), 400
     
-    deleted, failed = 0, 0
-    for task_id in task_ids:
-        if delete_google_task(task_id): deleted += 1
-        else: failed += 1
-    if deleted > 0: cache.clear()
-    return jsonify({ 'status': 'success', 'message': f'Deleted {deleted} tasks, {failed} failed.'})
-
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     if request.method == 'POST':
@@ -3798,6 +3784,9 @@ def callback_line():
 
 from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')
+
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
