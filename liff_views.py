@@ -10,7 +10,6 @@ from flask import (
 )
 from dateutil.parser import parse as date_parse
 
-# VVVV --- แก้ไขส่วน Import ตรงนี้ --- VVVV
 from app import (
     get_google_tasks_for_report,
     get_single_task,
@@ -19,7 +18,6 @@ from app import (
     parse_tech_report_from_notes,
     parse_customer_feedback_from_notes,
     get_app_settings,
-    # TEXT_SNIPPETS ถูกลบออกไปจากตรงนี้แล้ว
     generate_qr_code_base64,
     update_google_task,
     cache,
@@ -27,7 +25,6 @@ from app import (
     LIFF_ID_FORM,
     LIFF_ID_TECHNICIAN_LOCATION
 )
-# ^^^^ --- สิ้นสุดการแก้ไข --- ^^^^
 
 liff_bp = Blueprint('liff', __name__)
 
@@ -49,20 +46,20 @@ def summary():
     
     final_tasks = []
     
-    for task in tasks_raw:
+    for task_item in tasks_raw:
         summary_stats['total'] += 1
-        task_status = task.get('status', 'needsAction')
+        task_status = task_item.get('status', 'needsAction')
         
-        if task.get('title', '').lower().startswith('[งานภายนอก]'):
+        if task_item.get('title', '').lower().startswith('[งานภายนอก]'):
             summary_stats['external'] += 1
 
         is_overdue = False
         is_today = False
         if task_status == 'needsAction':
             summary_stats['needsAction'] += 1
-            if task.get('due'):
+            if task_item.get('due'):
                 try:
-                    due_dt_utc = datetime.datetime.fromisoformat(task['due'].replace('Z', '+00:00'))
+                    due_dt_utc = datetime.datetime.fromisoformat(task_item['due'].replace('Z', '+00:00'))
                     due_dt_local = due_dt_utc.astimezone(THAILAND_TZ)
                     if due_dt_local.date() < today_thai:
                         is_overdue = True
@@ -81,13 +78,13 @@ def summary():
         elif status_filter == 'needsAction' and task_status == 'needsAction': task_passes_filter = True
         elif status_filter == 'overdue' and is_overdue: task_passes_filter = True
         elif status_filter == 'today' and is_today: task_passes_filter = True
-        elif status_filter == 'external' and task.get('title', '').lower().startswith('[งานภายนอก]'): task_passes_filter = True
+        elif status_filter == 'external' and task_item.get('title', '').lower().startswith('[งานภายนอก]'): task_passes_filter = True
 
         if task_passes_filter:
-            customer_info = parse_customer_info_from_notes(task.get('notes', ''))
-            searchable_text = f"{task.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
+            customer_info = parse_customer_info_from_notes(task_item.get('notes', ''))
+            searchable_text = f"{task_item.get('title', '')} {customer_info.get('name', '')} {customer_info.get('organization', '')} {customer_info.get('phone', '')}".lower()
             if not search_query or search_query in searchable_text:
-                parsed_task = parse_google_task_dates(task)
+                parsed_task = parse_google_task_dates(task_item)
                 parsed_task['customer'] = customer_info
                 parsed_task['is_overdue'] = is_overdue
                 parsed_task['is_today'] = is_today
@@ -95,16 +92,15 @@ def summary():
 
     final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, datetime.datetime.fromisoformat(x.get('due', '9999-12-31T23:59:59Z').replace('Z', '+00:00'))))
 
-    # Tính toán dữ liệu biểu đồ
     monthly_completed = {}
     for i in range(12, -1, -1):
         dt = datetime.datetime.now(THAILAND_TZ) - datetime.timedelta(days=i*30)
         monthly_completed[dt.strftime('%Y-%m')] = 0
 
-    for task in tasks_raw:
-        if task.get('status') == 'completed' and task.get('completed'):
+    for task_item in tasks_raw:
+        if task_item.get('status') == 'completed' and task_item.get('completed'):
             try:
-                completed_dt = datetime.datetime.fromisoformat(task['completed'].replace('Z', '+00:00')).astimezone(THAILAND_TZ)
+                completed_dt = datetime.datetime.fromisoformat(task_item['completed'].replace('Z', '+00:00')).astimezone(THAILAND_TZ)
                 key = completed_dt.strftime('%Y-%m')
                 if key in monthly_completed:
                     monthly_completed[key] += 1
@@ -283,11 +279,8 @@ def technician_report_print():
 
 @liff_bp.route('/products')
 def product_management():
-    """แสดงหน้าสำหรับจัดการแคตตาล็อกสินค้าทั้งหมด"""
     settings = get_app_settings()
     equipment_catalog = settings.get('equipment_catalog', [])
-
-    # ส่งข้อมูล catalog ทั้งหมดไปให้ template ใหม่
     return render_template('product_management.html', 
                            equipment_catalog=equipment_catalog)
 
@@ -330,20 +323,16 @@ def generate_public_report_qr(task_id):
                            public_report_url=public_report_url,
                            LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION,
                            now=datetime.datetime.now(THAILAND_TZ))
-# ➕ END: Các hàm được thêm vào lại
 
 @liff_bp.route('/form')
 def form_page():
-    """Hiển thị form để tạo công việc mới."""
     settings = get_app_settings()
-    # เปลี่ยนเป็นการดึงค่าจาก settings
     technician_templates = settings.get('technician_templates', {})
     return render_template('form.html', 
                            task_detail_snippets=technician_templates.get('task_details', []))
 
 @liff_bp.route('/external_job_form')
 def external_job_form_page():
-    """Hiển thị form để tạo công việc bên ngoài/công việc yêu cầu bồi thường."""
     from_task_id = request.args.get('from_task_id')
     original_task_data = None
     if from_task_id:
@@ -357,12 +346,19 @@ def external_job_form_page():
 
 @liff_bp.route('/task/<task_id>')
 def task_details(task_id):
-    # ... (โค้ดเดิมด้านบน) ...
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        abort(404)
+
+    task = parse_google_task_dates(task_raw)
+    notes = task.get('notes', '')
+    
+    task['customer'] = parse_customer_info_from_notes(notes)
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
     
     settings = get_app_settings()
     technician_list = settings.get('technician_list', [])
     equipment_catalog = settings.get('equipment_catalog', [])
-    # เพิ่มการดึง technician_templates จาก settings
     technician_templates = settings.get('technician_templates', {})
 
     all_attachments = []
@@ -375,14 +371,12 @@ def task_details(task_id):
                            task=task,
                            technician_list=technician_list,
                            all_attachments=all_attachments,
-                           # เปลี่ยนเป็นการดึงค่าจาก settings
                            progress_report_snippets=technician_templates.get('progress_reports', []),
                            equipment_catalog=equipment_catalog,
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 
 @liff_bp.route('/customer_problem_form/<task_id>')
 def customer_problem_form(task_id):
-    """Hiển thị form để khách hàng báo cáo vấn đề."""
     task = get_single_task(task_id)
     if not task:
         abort(404)
@@ -391,7 +385,6 @@ def customer_problem_form(task_id):
 
 @liff_bp.route('/generate_onboarding_qr/<task_id>')
 def generate_customer_onboarding_qr(task_id):
-    """Tạo mã QR để khách hàng thêm bạn LINE."""
     task = get_single_task(task_id)
     if not task:
         abort(404)
@@ -412,15 +405,12 @@ def generate_customer_onboarding_qr(task_id):
 
 @liff_bp.route('/liff_notification_popup')
 def liff_notification_popup():
-    """Hiển thị cửa sổ LIFF để thông báo."""
     return render_template('liff_notification_popup.html', LIFF_ID_FORM=LIFF_ID_FORM)
 
 @liff_bp.route('/open_in_line')
 def open_in_line():
-    """Trang thông báo người dùng mở trong LINE."""
     return render_template('open_in_line.html')
 
 @liff_bp.route('/technician/update_location')
 def technician_location_update_page():
-    """Hiển thị trang LIFF để kỹ thuật viên cập nhật vị trí."""
     return render_template('technician_location_update.html', LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
