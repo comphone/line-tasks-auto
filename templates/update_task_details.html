@@ -389,7 +389,7 @@
 </div>
 
 <div class="modal fade" id="technician-action-sheet" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">เลือกช่างผู้รับผิดชอบ</h5>
@@ -514,15 +514,67 @@
 
     // === Equipment/Item Management Functions ===
     function renderSummaryList() {
-        // ... (renderSummaryList function code is unchanged)
+        const listContainer = document.getElementById('item-summary-list');
+        const grandTotalDisplay = document.getElementById('grand-total-display');
+        let grandTotal = 0;
+        
+        if (jobItems.length === 0) {
+            listContainer.innerHTML = '<p class="text-muted text-center p-3">ยังไม่มีรายการ</p>';
+            grandTotalDisplay.textContent = 'รวม: 0.00 บาท';
+        } else {
+            listContainer.innerHTML = '';
+            jobItems.forEach((item, index) => {
+                const itemTotal = (item.quantity || 0) * (item.unit_price || 0);
+                grandTotal += itemTotal;
+                const itemElement = document.createElement('div');
+                itemElement.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
+                itemElement.innerHTML = `
+                    <div>
+                        <strong>${item.item_name}</strong><br>
+                        <small class="text-muted">${item.quantity} x ${item.unit_price.toFixed(2)} บาท</small>
+                    </div>
+                    <div>
+                        <strong>${itemTotal.toFixed(2)}</strong>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2 edit-item-btn" 
+                                data-index="${index}" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                    </div>
+                `;
+                listContainer.appendChild(itemElement);
+            });
+            grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
+        }
+        // After updating the list, also update the summaries in the forms
+        renderEquipmentSummaryInForms();
     }
 
+
     async function loadInitialItems() {
-        // ... (loadInitialItems function code is unchanged)
+        try {
+            const response = await fetch(`/api/task/${taskId}/items`);
+            if (!response.ok) throw new Error('Failed to fetch');
+            jobItems = await response.json();
+            renderSummaryList();
+        } catch (error) { 
+            console.error('Failed to load initial items:', error);
+            renderSummaryList();
+        }
     }
 
     async function saveAllItemsToDb() {
-       // ... (saveAllItemsToDb function code is unchanged)
+       try {
+            const response = await fetch(`/api/task/${taskId}/items`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({items: jobItems})
+            });
+            if (!response.ok) throw new Error('Server responded with an error');
+            window.flashMessage('บันทึกรายการอุปกรณ์เรียบร้อยแล้ว!', 'success');
+        } catch (error) {
+            console.error('Failed to save all items:', error);
+            window.flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงเซิร์ฟเวอร์', 'danger');
+        }
     }
     
     // === NEW/UPDATED Functions ===
@@ -617,9 +669,9 @@
         summaryFinal.innerHTML = summaryHtml;
     }
 
-    // === All other existing functions remain here ===
-    // ... (window.updateLocationAndNotify, window.showActionCard, etc.)
-    // ... (All lightbox functions, modal functions, form submission handlers)
+    // --- All other existing functions are placed here, unchanged ---
+    // window.updateLocationAndNotify, window.showActionCard, etc.
+    // All lightbox functions, other modal functions, form submission handlers...
     // ...
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -630,10 +682,13 @@
         editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
 
+        // Item Management Modal Setup
+        const addItemModalEl = document.getElementById('addItemModal');
+        const addItemModal = new bootstrap.Modal(addItemModalEl);
+        // ... (rest of the item management setup is unchanged)
+
         // Initial render of equipment summaries when page loads
-        loadInitialItems().then(() => {
-            renderEquipmentSummaryInForms();
-        });
+        loadInitialItems(); // This will now also call renderEquipmentSummaryInForms
         
         // ... (the rest of your DOMContentLoaded event listener, no changes needed)
     });

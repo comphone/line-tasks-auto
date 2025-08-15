@@ -2794,7 +2794,7 @@ def api_delete_task(task_id):
         return jsonify({'status': 'success', 'message': 'Task deleted successfully.'})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to delete task.'}), 500
-        
+
 @app.route('/api/delete_tasks_batch', methods=['POST'])
 def api_delete_tasks_batch():
     data = request.json
@@ -2817,9 +2817,9 @@ def api_delete_tasks_batch():
         'message': f'ลบงานสำเร็จ: {deleted_count} รายการ, ล้มเหลว: {failed_count} รายการ.',
         'deleted_count': deleted_count,
         'failed_count': failed_count
-    }) 
+    })
 
- @app.route('/api/update_tasks_status_batch', methods=['POST'])
+@app.route('/api/update_tasks_status_batch', methods=['POST'])
 def api_update_tasks_status_batch():
     data = request.json
     task_ids = data.get('task_ids', [])
@@ -2843,7 +2843,7 @@ def api_update_tasks_status_batch():
         'message': f'อัปเดตสถานะสำเร็จ: {updated_count} รายการ, ล้มเหลว: {failed_count} รายการ.',
         'updated_count': updated_count,
         'failed_count': failed_count
-    })   
+    })
 
 @app.route('/api/delete_tasks_batch', methods=['POST'])
 def api_delete_tasks_batch():
