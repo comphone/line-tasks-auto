@@ -60,8 +60,47 @@
         </div>
 
         <div class="summary-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">ข้อมูลสรุป</h5>
+                <a href="{{ url_for('liff.edit_task', task_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
             </div>
-
+            <div class="info-grid">
+                <div class="info-card">
+                    <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
+                    <p class="info-value value-large text-primary">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+                </div>
+                <div class="info-card">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
+                            <p class="info-value value-medium">{{ task.customer.phone or '-' }}</p>
+                        </div>
+                        <div class="text-end">
+                            <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                            <p class="info-value value-small {% if task.is_today and task.status != 'completed' %}text-primary fw-bold{% elif task.is_overdue and task.status != 'completed' %}text-danger fw-bold{% endif %}">{{ task.due_formatted or '-' }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-card full-width-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+                            <p class="info-value">{{ task.customer.address or '-' }}</p>
+                        </div>
+                        {% if task.customer.map_url %}
+                            <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
+                                <i class="fas fa-map-marked-alt text-danger"></i>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="info-card full-width-card">
+                    <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
+                    <p class="info-value value-large">{{ task.title | replace('\n', '<br>') | safe }}</p>
+                </div>
+            </div>
+        </div>
+        
         <div class="card shadow-sm mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h5>
@@ -80,7 +119,31 @@
         </div>
         
         <div class="card shadow-sm mb-4" id="chooseActionCard">
-             </div>
+             <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
+            </div>
+            <div class="card-body">
+                <div class="action-button-grid">
+                    <button type="button" class="btn btn-primary action-btn" data-bs-toggle="collapse" data-bs-target="#progressReportCollapse" aria-expanded="false" aria-controls="progressReportCollapse">
+                        <i class="fas fa-edit"></i> เพิ่มรายงาน
+                    </button>
+                    <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
+                        <i class="fas fa-calendar-alt"></i> เลื่อนนัด
+                    </button>
+                    <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
+                        <i class="fas fa-qrcode"></i> QR Code ลูกค้า
+                    </a>
+                    <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
+                        <i class="fas fa-check-circle"></i> ปิดงาน
+                    </button>
+                    {% if task.status == 'completed' %}
+                    <a href="{{ url_for('liff.generate_public_report_qr', task_id=task.id) }}" target="_blank" class="btn action-btn" style="grid-column: 1 / -1; background-color: #5c6bc0; border-color: #5c6bc0;">
+                        <i class="fas fa-file-alt"></i> QR Code รายงานสรุปสาธารณะ
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
 
         <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
             </div>
