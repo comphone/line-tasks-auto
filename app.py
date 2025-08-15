@@ -72,21 +72,6 @@ import atexit
 
 from flask_cors import CORS
 
-TEXT_SNIPPETS = {
-    'task_details': [
-        {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
-        {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
-        {'key': 'ซ่อมตู้เย็น', 'value': 'ซ่อมตู้เย็น [ยี่ห้อ/รุ่น] อาการไม่เย็น, ตรวจสอบคอมเพรสเซอร์และน้ำยา'},
-        {'key': 'ตรวจเช็ค', 'value': 'เข้าตรวจเช็คอาการเสียเบื้องต้นตามที่ลูกค้าแจ้ง'}
-    ],
-    'progress_reports': [
-        {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
-        {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
-        {'key': 'เข้าพื้นที่ไม่ได้', 'value': 'ไม่สามารถเข้าพื้นที่ได้เนื่องจาก [เหตุผล] ได้โทรแจ้งลูกค้าแล้ว'},
-        {'key': 'เสร็จบางส่วน', 'value': 'ดำเนินการเสร็จสิ้นบางส่วน เหลือ [สิ่งที่ต้องทำต่อ] จะเข้ามาดำเนินการต่อในวันถัดไป'}
-    ]
-}
-
 SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if SENTRY_DSN:
     sentry_sdk.init(
@@ -318,7 +303,17 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'message_nearby_template': 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?',
         'liff_popup_base_url': 'https://liff.line.me/2007690244-zBNe26ZO'
     },
-    # --- เพิ่มส่วนนี้เข้าไปทั้งหมด ---
+        'technician_templates': {
+        'task_details': [
+            {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
+            {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
+        ],
+        'progress_reports': [
+            {'key': 'ลูกค้าเลื่อนนัด', 'value': 'ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก'},
+            {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
+        ]
+    },
+    
     'message_templates': {
         'welcome_customer': "เรียน คุณ[customer_name],\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: [shop_phone]\nLINE ID: [shop_line_id]",
     'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\n\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\n\n🔗 ดูรายละเอียดงาน:\n[task_url]",
@@ -2799,6 +2794,56 @@ def api_delete_task(task_id):
         return jsonify({'status': 'success', 'message': 'Task deleted successfully.'})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to delete task.'}), 500
+        
+@app.route('/api/delete_tasks_batch', methods=['POST'])
+def api_delete_tasks_batch():
+    data = request.json
+    task_ids = data.get('task_ids', [])
+    if not isinstance(task_ids, list):
+        return jsonify({'status': 'error', 'message': 'Invalid input format.'}), 400
+    
+    deleted_count, failed_count = 0, 0
+    for task_id in task_ids:
+        if delete_google_task(task_id):
+            deleted_count += 1
+        else:
+            failed_count += 1
+            
+    if deleted_count > 0:
+        cache.clear()
+        
+    return jsonify({
+        'status': 'success',
+        'message': f'ลบงานสำเร็จ: {deleted_count} รายการ, ล้มเหลว: {failed_count} รายการ.',
+        'deleted_count': deleted_count,
+        'failed_count': failed_count
+    }) 
+
+ @app.route('/api/update_tasks_status_batch', methods=['POST'])
+def api_update_tasks_status_batch():
+    data = request.json
+    task_ids = data.get('task_ids', [])
+    new_status = data.get('status')
+
+    if not all([isinstance(task_ids, list), new_status in ['needsAction', 'completed']]):
+        return jsonify({'status': 'error', 'message': 'Invalid input data.'}), 400
+        
+    updated_count, failed_count = 0, 0
+    for task_id in task_ids:
+        if update_google_task(task_id, status=new_status):
+            updated_count += 1
+        else:
+            failed_count += 1
+            
+    if updated_count > 0:
+        cache.clear()
+
+    return jsonify({
+        'status': 'success',
+        'message': f'อัปเดตสถานะสำเร็จ: {updated_count} รายการ, ล้มเหลว: {failed_count} รายการ.',
+        'updated_count': updated_count,
+        'failed_count': failed_count
+    })   
 
 @app.route('/api/delete_tasks_batch', methods=['POST'])
 def api_delete_tasks_batch():
@@ -2879,6 +2924,14 @@ def settings_page():
             
             if 'auto_backup' in data:
                 current_settings['auto_backup'].update(data['auto_backup'])
+
+            if 'text_snippets' in data:
+                templates_data = data.get('text_snippets', {})
+                # Basic validation to ensure we're getting the expected structure
+                if isinstance(templates_data, dict) and 'task_details' in templates_data and 'progress_reports' in templates_data:
+                    current_settings['technician_templates'] = templates_data
+                else:
+                     return jsonify({'status': 'error', 'message': 'รูปแบบข้อมูลเทมเพลตไม่ถูกต้อง'}), 400
 
             # บันทึกการตั้งค่าที่อัปเดตแล้ว
             if save_app_settings(current_settings):
