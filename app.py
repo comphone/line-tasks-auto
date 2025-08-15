@@ -403,18 +403,38 @@ def render_template_message(template_key, task):
     return template_str    
 
 def save_app_settings(settings_data):
+    """
+    ฟังก์ชันกลางสำหรับบันทึกการตั้งค่าทั้งหมด
+    มีการตรวจสอบข้อมูล Catalog ก่อนบันทึกเสมอ
+    """
     current_settings = get_app_settings()
-    
+
     for key, value in settings_data.items():
-        if isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
+        if key == 'equipment_catalog' and isinstance(value, list):
+            # ตรวจสอบและกรองข้อมูล Catalog ที่ส่งมาใหม่
+            validated_catalog = []
+            for item in value:
+                if isinstance(item, dict) and item.get('item_name'):
+                    try:
+                        new_item = {
+                            'item_name': str(item['item_name']).strip(),
+                            'unit': str(item.get('unit', '')).strip(),
+                            'price': float(item.get('price', 0)),
+                            # เพิ่มฟิลด์ใหม่ พร้อมค่าเริ่มต้น
+                            'stock_quantity': int(item.get('stock_quantity', 0)),
+                            'image_url': str(item.get('image_url', '')).strip()
+                        }
+                        validated_catalog.append(new_item)
+                    except (ValueError, TypeError):
+                        app.logger.warning(f"Skipping invalid equipment item: {item}")
+                        continue
+            current_settings['equipment_catalog'] = validated_catalog
+        elif isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
             current_settings[key].update(value)
         else:
             current_settings[key] = value
-            
-    return save_settings_to_file(current_settings)
 
-# --- เพิ่ม 2 ฟังก์ชันนี้เข้าไป ---
-LOCATIONS_FILE = 'technician_locations.json'
+    return save_settings_to_file(current_settings)
 
 def load_technician_locations():
     if not os.path.exists(LOCATIONS_FILE):
@@ -2119,6 +2139,46 @@ def add_task_items(task_id):
         return jsonify({'message': 'Failed to save items'}), 500
 
 # --- END: เพิ่ม API สำหรับจัดการรายการอุปกรณ์ ---
+
+# --- START: เพิ่ม API ใหม่สำหรับตัดสต็อก ---
+@app.route('/api/items/use', methods=['POST'])
+def api_use_items():
+    """
+    API สำหรับรับรายการเบิกใช้จากช่าง และทำการตัดสต็อก
+    """
+    data = request.json
+    items_used = data.get('items', []) # รับรายการที่ใช้ไป
+    if not items_used:
+        return jsonify({'status': 'error', 'message': 'No items provided'}), 400
+
+    try:
+        settings = get_app_settings()
+        catalog = settings.get('equipment_catalog', [])
+
+        # สร้าง Dictionary เพื่อง่ายต่อการค้นหาและอัปเดต
+        catalog_dict = {item['item_name']: item for item in catalog}
+
+        # วนลูปตัดสต็อก
+        for used_item in items_used:
+            item_name = used_item.get('item_name')
+            quantity_used = used_item.get('quantity', 0)
+
+            if item_name in catalog_dict:
+                # ลบจำนวนออกจากสต็อก (ป้องกันไม่ให้ติดลบ)
+                current_stock = catalog_dict[item_name].get('stock_quantity', 0)
+                catalog_dict[item_name]['stock_quantity'] = max(0, current_stock - quantity_used)
+
+        # แปลง Dictionary กลับเป็น List แล้วบันทึก
+        updated_catalog = list(catalog_dict.values())
+        if save_app_settings({'equipment_catalog': updated_catalog}):
+            return jsonify({'status': 'success', 'message': 'ตัดสต็อกเรียบร้อยแล้ว'})
+        else:
+            raise Exception("Failed to save updated catalog")
+
+    except Exception as e:
+        app.logger.error(f"Error processing stock deduction: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการตัดสต็อก'}), 500
+# --- END: เพิ่ม API ใหม่ ---
 
 @app.route('/api/equipment_catalog')
 def api_equipment_catalog():

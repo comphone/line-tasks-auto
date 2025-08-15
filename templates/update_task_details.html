@@ -405,30 +405,6 @@
   </div>
 </div>
 
-<!-- Equipment Catalog Modal -->
-<div class="modal fade" id="equipmentCatalogModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">เลือกอุปกรณ์</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <input type="text" class="form-control" id="equipment-search-input" placeholder="ค้นหาอุปกรณ์...">
-                </div>
-                <div id="equipment-catalog-list" style="max-height: 400px; overflow-y: auto;">
-                    <p class="text-muted text-center p-3">กำลังโหลด...</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                <button type="button" class="btn btn-primary" onclick="window.confirmEquipmentSelection()">ตกลง</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Item Management Modal -->
 <div class="modal fade" id="addItemModal" tabindex="-1">
     <div class="modal-dialog modal-fullscreen-sm-down">
@@ -472,12 +448,11 @@
     const technicianList = {{ technician_list | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
-    const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
     
-    let technicianSelectionModal, editReportModal, editReportTextModal, equipmentCatalogModal;
-    let currentTechnicianTargetId, currentEquipmentTargetPrefix, slideIndex = 0;
+    let technicianSelectionModal, editReportModal, editReportTextModal;
+    let currentTechnicianTargetId, slideIndex = 0;
     let currentLightboxImages = [];
 
     // === Item/Equipment Management Variables ===
@@ -660,30 +635,7 @@
             progressBtn.disabled = !technicianInput.value;
         }
     }
-
-    // === Equipment Catalog Functions ===
-    window.openEquipmentModal = (targetPrefix) => {
-        currentEquipmentTargetPrefix = targetPrefix;
-        const hiddenInput = document.getElementById(`equipment_used_${targetPrefix}`);
-        let currentSelection = [];
-        try {
-            if (hiddenInput && hiddenInput.value) {
-                currentSelection = JSON.parse(hiddenInput.value);
-            }
-        } catch (e) { console.error("Could not parse current equipment selection", e); }
-        
-        renderEquipmentList(equipmentCatalog, currentSelection);
-        equipmentCatalogModal.show();
-    };
-    
-    function renderEquipmentList(items, selection) {
-        const container = document.getElementById('equipment-catalog-list');
-        container.innerHTML = '';
-        if (items.length === 0) {
-            container.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลในแคตตาล็อกอุปกรณ์</p>';
-            return;
-        }
-
+   
         items.forEach((item, index) => {
             const selectedItem = selection.find(s => s.item === item.item_name);
             const isChecked = !!selectedItem;
@@ -713,38 +665,12 @@
             });
         });
     }
-
-    window.confirmEquipmentSelection = () => {
-        const selectedItems = [];
-        document.querySelectorAll('#equipment-catalog-list .equipment-item').forEach((item, index) => {
-            const checkbox = item.querySelector(`#equip-check-${index}`);
-            if (checkbox.checked) {
-                const qtyInput = item.querySelector(`#equip-qty-${index}`);
-                selectedItems.push({
-                    item: checkbox.dataset.itemName,
-                    quantity: parseFloat(qtyInput.value) || 0
-                });
-            }
-        });
-        
+       
         const hiddenInput = document.getElementById(`equipment_used_${currentEquipmentTargetPrefix}`);
         hiddenInput.value = JSON.stringify(selectedItems);
         
-        renderSelectedEquipmentSummary(currentEquipmentTargetPrefix, selectedItems);
-        equipmentCatalogModal.hide();
+        renderSelectedEquipmentSummary(currentEquipmentTargetPrefix, selectedItems); 
     };
-
-    function renderSelectedEquipmentSummary(targetPrefix, items) {
-        const container = document.getElementById(`selected-equipment-${targetPrefix}`);
-        if (!container) return;
-
-        if (items.length === 0) {
-            container.innerHTML = '<p class="text-muted small">ยังไม่ได้เลือกอุปกรณ์</p>';
-        } else {
-            const listHtml = items.map(item => `<li>${item.item} (จำนวน: ${item.quantity})</li>`).join('');
-            container.innerHTML = `<ul class="list-unstyled small">${listHtml}</ul>`;
-        }
-    }
 
     window.openLightboxById = (fileId) => {
         currentLightboxImages = [];
@@ -1095,58 +1021,6 @@
         );
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-        // Show main content immediately (no LIFF dependency)
-        document.getElementById('main-content').style.display = 'block';
-        
-        // Initialize modals
-        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technicianSelectionModal'));
-        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
-        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
-        equipmentCatalogModal = new bootstrap.Modal(document.getElementById('equipmentCatalogModal'));
-
-        // === Item Management Modal Setup ===
-        const addItemModalEl = document.getElementById('addItemModal');
-        const addItemModal = new bootstrap.Modal(addItemModalEl);
-        const itemNameInput = document.getElementById('item-name-input');
-        const itemQtyInput = document.getElementById('item-quantity-input');
-        const itemPriceInput = document.getElementById('item-price-input');
-        const itemSearchResults = document.getElementById('item-search-results');
-        const saveItemModalBtn = document.getElementById('save-item-modal-btn');
-        const editItemIndexInput = document.getElementById('edit-item-index');
-        
-        // Search functionality for equipment catalog in item input
-        let itemSearchDebounce;
-        itemNameInput.addEventListener('input', () => {
-            clearTimeout(itemSearchDebounce);
-            itemSearchDebounce = setTimeout(async () => {
-                const query = itemNameInput.value;
-                if (query.length < 2) { 
-                    itemSearchResults.innerHTML = ''; 
-                    return; 
-                }
-                try {
-                    const response = await fetch(`/api/search-equipment-catalog?q=${encodeURIComponent(query)}`);
-                    const results = await response.json();
-                    itemSearchResults.innerHTML = '';
-                    results.forEach(result => {
-                        const resultEl = document.createElement('a');
-                        resultEl.className = 'list-group-item list-group-item-action';
-                        resultEl.innerHTML = `<strong>${result.item_name}</strong> <small class="text-muted">(${result.price} บาท)</small>`;
-                        resultEl.onclick = () => {
-                            itemNameInput.value = result.item_name;
-                            itemPriceInput.value = result.price;
-                            itemSearchResults.innerHTML = '';
-                            itemQtyInput.focus();
-                        };
-                        itemSearchResults.appendChild(resultEl);
-                    });
-                } catch (e) { 
-                    console.error(e); 
-                }
-            }, 300);
-        });
-
         // Save item functionality
         saveItemModalBtn.addEventListener('click', () => {
             const newItem = {
@@ -1256,24 +1130,11 @@
         
         updateSubmitButtonState();
         // Remove equipment summary rendering since we removed equipment selection
-        // renderSelectedEquipmentSummary('progress', []);
         // renderSelectedEquipmentSummary('final', []);
 
         // Equipment search functionality
         const searchInput = document.getElementById('equipment-search-input');
-        if (searchInput) {
-            searchInput.addEventListener('keyup', (e) => {
-                const filter = e.target.value.toLowerCase();
-                document.querySelectorAll('.equipment-item').forEach(item => {
-                    if (item.dataset.itemName && item.dataset.itemName.includes(filter)) {
-                        item.style.display = 'flex';
-                    } else {
-                        item.style.display = 'none';
-                    }
-                });
-            });
-        }
-        
+                
         const progressCollapseElement = document.getElementById('progressReportCollapse');
         if (progressCollapseElement) {
             progressCollapseElement.addEventListener('shown.bs.collapse', event => {

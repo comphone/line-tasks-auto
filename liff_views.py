@@ -121,7 +121,6 @@ def summary():
                            status_filter=status_filter,
                            chart_data=chart_data)
 
-# ➕ START: Các hàm đã được thêm vào lại
 @liff_bp.route('/summary/print')
 def summary_print():
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
@@ -278,6 +277,16 @@ def technician_report_print():
                         selected_month=month,
                         now=datetime.datetime.now(THAILAND_TZ),
                         technician_list=technician_list)
+
+@liff_bp.route('/products')
+def product_management():
+    """แสดงหน้าสำหรับจัดการแคตตาล็อกสินค้าทั้งหมด"""
+    settings = get_app_settings()
+    equipment_catalog = settings.get('equipment_catalog', [])
+
+    # ส่งข้อมูล catalog ทั้งหมดไปให้ template ใหม่
+    return render_template('product_management.html', 
+                           equipment_catalog=equipment_catalog)
 
 @liff_bp.route('/public/report/<task_id>')
 def public_task_report(task_id):

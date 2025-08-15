@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการข้อมูลสินค้า{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2 mb-0">📦 จัดการข้อมูลสินค้า</h1>
+        <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป
+        </a>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body d-flex justify-content-end gap-2">
+            <button class="btn btn-outline-success"><i class="fas fa-file-excel me-2"></i>นำเข้าจาก Excel</button>
+            <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-primary"><i class="fas fa-file-export me-2"></i>ส่งออกเป็น Excel</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">เพิ่มรายการในแคตตาล็อก</h5>
+        </div>
+        <div class="card-body">
+            <form id="add-equipment-form" class="row g-3 align-items-end">
+                <div class="col-sm-5">
+                    <label for="new-item-name" class="form-label">ชื่อรายการ</label>
+                    <input type="text" class="form-control" id="new-item-name" required>
+                </div>
+                <div class="col-sm-2">
+                    <label for="new-item-unit" class="form-label">หน่วย</label>
+                    <input type="text" class="form-control" id="new-item-unit" placeholder="เช่น ชิ้น, เมตร">
+                </div>
+                <div class="col-sm-3">
+                    <label for="new-item-price" class="form-label">ราคา</label>
+                    <input type="number" class="form-control" id="new-item-price" step="any" min="0" required>
+                </div>
+                <div class="col-sm-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-plus me-1"></i> เพิ่ม
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <h5 class="mb-0">รายการสินค้าทั้งหมดในระบบ</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="equipment-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ชื่อรายการ</th>
+                            <th>หน่วย</th>
+                            <th class="text-end">ราคา (บาท)</th>
+                            <th class="text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in equipment_catalog %}
+                        <tr>
+                            <td>{{ item.item_name }}</td>
+                            <td>{{ item.unit or '-' }}</td>
+                            <td class="text-end">{{ "%.2f"|format(item.price) }}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-warning"><i class="fas fa-pen"></i></button>
+                                <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">ยังไม่มีข้อมูลสินค้าในแคตตาล็อก</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    // เพิ่ม JavaScript สำหรับจัดการการเพิ่ม, แก้ไข, ลบ ข้อมูลในหน้านี้
+    // โดยเรียกใช้ API ที่เราได้สร้างไว้ใน app.py
+</script>
+{% endblock %}
