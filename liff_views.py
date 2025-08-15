@@ -10,15 +10,16 @@ from flask import (
 )
 from dateutil.parser import parse as date_parse
 
+# VVVV --- แก้ไขส่วน Import ตรงนี้ --- VVVV
 from app import (
     get_google_tasks_for_report,
     get_single_task,
     parse_google_task_dates,
     parse_customer_info_from_notes,
     parse_tech_report_from_notes,
-    parse_customer_feedback_from_notes, # <-- ฟังก์ชันที่ต้องเพิ่มเข้ามา
+    parse_customer_feedback_from_notes,
     get_app_settings,
-    TEXT_SNIPPETS,
+    # TEXT_SNIPPETS ถูกลบออกไปจากตรงนี้แล้ว
     generate_qr_code_base64,
     update_google_task,
     cache,
@@ -26,6 +27,8 @@ from app import (
     LIFF_ID_FORM,
     LIFF_ID_TECHNICIAN_LOCATION
 )
+# ^^^^ --- สิ้นสุดการแก้ไข --- ^^^^
+
 liff_bp = Blueprint('liff', __name__)
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
@@ -329,12 +332,10 @@ def generate_public_report_qr(task_id):
                            now=datetime.datetime.now(THAILAND_TZ))
 # ➕ END: Các hàm được thêm vào lại
 
-# ใน liff_views.py
 @liff_bp.route('/form')
 def form_page():
     """Hiển thị form để tạo công việc mới."""
     settings = get_app_settings()
-    # เปลี่ยนจาก TEXT_SNIPPETS เป็นการดึงค่าจาก settings
     technician_templates = settings.get('technician_templates', {})
     return render_template('form.html', 
                            task_detail_snippets=technician_templates.get('task_details', []))
@@ -353,26 +354,34 @@ def external_job_form_page():
             }
     return render_template('external_job_form.html', original_task_data=original_task_data)
 
-# ใน liff_views.py
 @liff_bp.route('/task/<task_id>')
 def task_details(task_id):
     """Hiển thị thông tin chi tiết của một công việc."""
-    # ... (โค้ดเดิมด้านบน) ...
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        abort(404)
+
+    task = parse_google_task_dates(task_raw)
+    notes = task.get('notes', '')
+    
+    task['customer'] = parse_customer_info_from_notes(notes)
+    task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
     
     settings = get_app_settings()
     technician_list = settings.get('technician_list', [])
     equipment_catalog = settings.get('equipment_catalog', [])
-    # เพิ่มการดึง technician_templates จาก settings
     technician_templates = settings.get('technician_templates', {})
 
     all_attachments = []
-    # ... (โค้ดเดิม) ...
+    if task['tech_reports_history']:
+        for report in task['tech_reports_history']:
+            if report.get('attachments'):
+                all_attachments.extend(report['attachments'])
 
     return render_template('update_task_details.html',
                            task=task,
                            technician_list=technician_list,
                            all_attachments=all_attachments,
-                           # เปลี่ยนจาก TEXT_SNIPPETS เป็นการดึงค่าจาก settings
                            progress_report_snippets=technician_templates.get('progress_reports', []),
                            equipment_catalog=equipment_catalog,
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
