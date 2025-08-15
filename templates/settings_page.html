@@ -571,10 +571,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // NEW: Technician Snippet Templates Management
     //======================================================================
     
-    // Data for technician templates, loaded from Flask
+    // Data for technician templates, loaded from Flask's settings object
     let technicianTemplates = {
-        task_details: {{ TEXT_SNIPPETS.task_details | tojson | safe }},
-        progress_reports: {{ TEXT_SNIPPETS.progress_reports | tojson | safe }}
+        task_details: {{ settings.technician_templates.task_details | tojson | safe }},
+        progress_reports: {{ settings.technician_templates.progress_reports | tojson | safe }}
     };
 
     // Function to render templates for a given category
@@ -627,6 +627,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderTechnicianList() {
         const container = document.getElementById('technician-management-list-container');
+        if (!container) return;
         container.innerHTML = '';
         if (technicians.length === 0) {
             container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
@@ -742,14 +743,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
         let data = {};
 
-        // Special handling for the new technician templates form
         if (formId === 'form_technician_templates') {
              data = {
-                text_snippets: technicianTemplates,
+                technician_templates: technicianTemplates,
                 csrf_token: form.querySelector('input[name="csrf_token"]').value
             };
         } else {
-            // Logic for other forms
             const formData = new FormData(form);
             form.querySelectorAll('input[type=checkbox]').forEach(checkbox => {
                 const parts = checkbox.name.match(/^(.*)\[(.*)\]$/);
@@ -787,7 +786,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             const response = await fetch(form.action, {
-                method: form.method,
+                method: 'POST',
                 body: JSON.stringify(data),
                 headers: {
                     'Content-Type': 'application/json',
@@ -809,7 +808,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Attach submit handlers to all forms
     document.getElementById('form_technician_templates').addEventListener('submit', (e) => handleFormSubmit(e, 'form_technician_templates'));
     document.getElementById('form_report_settings').addEventListener('submit', (e) => handleFormSubmit(e, 'form_report_settings'));
     document.getElementById('form_message_templates').addEventListener('submit', (e) => handleFormSubmit(e, 'form_message_templates'));
@@ -817,14 +815,75 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('form_line_bot_info').addEventListener('submit', (e) => handleFormSubmit(e, 'form_line_bot_info'));
     document.getElementById('form_shop_tech_info').addEventListener('submit', (e) => handleFormSubmit(e, 'form_shop_tech_info'));
 
-    // Initial render of all dynamic content
     renderTechnicianList();
     renderTemplates('task_details');
     renderTemplates('progress_reports');
 
-    // ... (The rest of your existing JavaScript for backup/restore, debug tools etc.)
     const backupFileInput = document.getElementById('backup_file_input');
-    // ... all the way to the end
+    const backupTypeSelect = document.getElementById('backup_type_select');
+    const previewBtn = document.getElementById('preview_backup_btn');
+    const importBtn = document.getElementById('import_backup_btn');
+    const previewArea = document.getElementById('backup_preview_area');
+    const previewContent = document.getElementById('preview_content');
+    const importStatus = document.getElementById('import_status');
+
+    if (previewBtn) {
+        previewBtn.addEventListener('click', async () => {
+            const file = backupFileInput.files[0];
+            if (!file) { alert('กรุณาเลือกไฟล์สำรองข้อมูล'); return; }
+            const formData = new FormData();
+            formData.append('backup_file', file);
+            formData.append('file_type', backupTypeSelect.value);
+            formData.append('csrf_token', csrfToken);
+            importStatus.innerHTML = '<span class="text-primary">กำลังตรวจสอบไฟล์...</span>';
+            previewArea.style.display = 'none';
+            try {
+                const response = await fetch("{{ url_for('preview_backup_file') }}", { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                    let previewHtml = '';
+                    if (result.type === 'tasks') {
+                        previewHtml = `<p><strong>ประเภท:</strong> ข้อมูลงาน</p><p><strong>จำนวน:</strong> ${result.task_count} รายการ</p><h6>ตัวอย่าง 5 รายการแรก:</h6><ul>`;
+                        result.example_tasks.forEach(t => { previewHtml += `<li>${t.title} (ลูกค้า: ${t.customer_name})</li>`; });
+                        previewHtml += '</ul>';
+                    } else if (result.type === 'settings') {
+                        previewHtml = `<p><strong>ประเภท:</strong> ข้อมูลการตั้งค่า</p>
+                                        <p><strong>Admin Group ID:</strong> ${result.preview_settings.admin_group_id}</p>
+                                        <p><strong>จำนวนช่าง:</strong> ${result.preview_settings.technician_list_count} คน</p>`;
+                    }
+                    previewContent.innerHTML = previewHtml;
+                    previewArea.style.display = 'block';
+                    importStatus.innerHTML = '';
+                } else { throw new Error(result.message); }
+            } catch (error) { importStatus.innerHTML = `<span class="text-danger">เกิดข้อผิดพลาด: ${error.message}</span>`; }
+        });
+    }
+
+    if (importBtn) {
+        importBtn.addEventListener('click', async () => {
+            if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการกู้คืนข้อมูลนี้? ข้อมูลปัจจุบันจะถูกเขียนทับ!')) { return; }
+            const file = backupFileInput.files[0];
+            if (!file) { alert('กรุณาเลือกไฟล์สำรองข้อมูล'); return; }
+            const formData = new FormData();
+            formData.append('backup_file', file);
+            formData.append('file_type', backupTypeSelect.value);
+            formData.append('csrf_token', csrfToken);
+            importStatus.innerHTML = '<span class="text-primary">กำลังนำเข้าข้อมูล... กรุณารอสักครู่</span>';
+            importBtn.disabled = true;
+            try {
+                const response = await fetch("{{ url_for('api_import_backup_file') }}", { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                    importStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                    alert('กู้คืนข้อมูลสำเร็จ! หน้าเว็บจะรีโหลด');
+                    window.location.reload();
+                } else { throw new Error(result.message); }
+            } catch (error) {
+                importStatus.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาด: ${error.message}</div>`;
+                importBtn.disabled = false;
+            }
+        });
+    }
 });
 
 function flashMessage(message, category) {
@@ -842,6 +901,6 @@ function flashMessage(message, category) {
     }, 5000);
 }
 
-// ... (All other existing global functions like checkLineBotStatus, parse_customer_info_from_notes, etc. should be here)
+// ... (All other existing global functions like checkLineBotStatus, etc. should be here)
 </script>
 {% endblock %}
