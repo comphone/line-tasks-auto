@@ -13,15 +13,12 @@
             width: 42px; /* Fixed width for icons */
             justify-content: center;
         }
-        /* START: ปรับปรุง CSS สำหรับช่องค้นหาใหม่ */
         #search_results .list-group-item { 
             cursor: pointer; 
         }
         #search_results .list-group-item:hover { 
             background-color: #e9ecef; 
         }
-        /* END: ปรับปรุง CSS */
-
         .tribute-container {
             border: 1px solid #dee2e6;
             border-radius: .375rem;
@@ -34,6 +31,23 @@
         .tribute-container li:last-child { border-bottom: none; }
         .tribute-container li.highlight { background-color: #0d6efd; color: white; }
         .tribute-container li.highlight small { color: #e9ecef; }
+        
+        /* --- NEW: File Upload Styles --- */
+        .file-drop-zone {
+            border: 2px dashed #adb5bd;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            color: #6c757d;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .file-drop-zone.drag-over {
+            background-color: #e9ecef;
+            border-color: #0d6efd;
+        }
+        .upload-progress-container {
+            display: none;
+        }
     </style>
 {% endblock %}
 
@@ -42,9 +56,8 @@
 <div class="row justify-content-center">
 	<div id="js-flash-message-container" class="col-lg-10 col-md-12"></div>
     <div class="col-lg-10 col-md-12">
-        <form id="createTaskForm" class="needs-validation" novalidate onsubmit="handleFormSubmission(event, this)">
+        <form id="createTaskForm" class="needs-validation" novalidate>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="uploaded_attachments_json" id="uploaded_attachments_json" value="[]">
 
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h1 class="h2 mb-0">📝 สร้างงานใหม่</h1>
@@ -130,15 +143,24 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="files" class="form-label">แนบรูปภาพ/ไฟล์อื่นๆ (PDF, KMZ)</label>
-                        <input class="form-control" type="file" id="files" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+                        <label class="form-label">แนบรูปภาพ/ไฟล์อื่นๆ (PDF, KMZ)</label>
+                        <div class="file-drop-zone" id="drop-zone-new">
+                            <i class="fas fa-cloud-upload-alt fs-2 mb-3"></i>
+                            <p class="mb-1">ลากไฟล์มาวางที่นี่ หรือ</p>
+                            <div class="btn-group">
+                                <label for="files_new" class="btn btn-outline-primary"><i class="fas fa-folder-open me-2"></i>เลือกไฟล์</label>
+                                <label for="camera_new" class="btn btn-outline-info"><i class="fas fa-camera me-2"></i>ถ่ายภาพ</label>
+                            </div>
+                            <input class="form-control d-none" type="file" id="files_new" multiple accept="image/*,application/pdf,.kmz,.kml">
+                            <input class="form-control d-none" type="file" id="camera_new" accept="image/*" capture="environment">
+                        </div>
+                        <div id="upload-progress-container-new" class="upload-progress-container mt-2"></div>
                     </div>
                 </div>
             </div>
 
             <div class="d-flex align-items-center">
                 <button type="submit" class="btn btn-primary btn-lg flex-grow-1"><i class="fas fa-save me-2"></i>บันทึกงาน</button>
-                <div id="upload-status" class="ms-3" style="display:none; font-weight: 500;"></div>
             </div>
         </form>
     </div>
@@ -150,6 +172,9 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
     <script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
     <script>
+        // --- Global Variables ---
+        let filesToUpload = [];
+
         function flashMessage(message, category = 'info') {
             const container = document.getElementById('js-flash-message-container');
             if (!container) return;
@@ -162,11 +187,137 @@
                     const alertInstance = bootstrap.Alert.getInstance(alertElement);
                     if (alertInstance) alertInstance.close(); else alertElement.remove();
                 }
-            }, 5000); // ให้ข้อความหายไปใน 5 วินาที
+            }, 5000);
         }
-        document.addEventListener('DOMContentLoaded', async function() {
+        
+        // --- NEW: File Upload Handling with Progress ---
+        function setupFileUpload() {
+            const dropZone = document.getElementById('drop-zone-new');
+            const fileInput = document.getElementById('files_new');
+            const cameraInput = document.getElementById('camera_new');
+            const progressContainer = document.getElementById('upload-progress-container-new');
+
+            const handleFiles = (newFiles) => {
+                filesToUpload = filesToUpload.concat(Array.from(newFiles));
+                renderPreviews();
+            };
+
+            const renderPreviews = () => {
+                progressContainer.innerHTML = '';
+                progressContainer.style.display = filesToUpload.length > 0 ? 'block' : 'none';
+                filesToUpload.forEach((file, index) => {
+                    const progressHtml = `
+                        <div class="d-flex align-items-center mb-2">
+                            <div class="flex-grow-1">
+                                <div class="fw-bold small">${file.name}</div>
+                                <div class="progress" style="height: 10px;">
+                                    <div id="progress-bar-new-${index}" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-close ms-2" onclick="removeFile(${index})"></button>
+                        </div>`;
+                    progressContainer.insertAdjacentHTML('beforeend', progressHtml);
+                });
+            };
             
-            // --- START: โค้ดสำหรับค้นหาลูกค้าแบบ Real-time (ชุดใหม่) ---
+            window.removeFile = (index) => {
+                filesToUpload.splice(index, 1);
+                renderPreviews();
+            };
+
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+            fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+            cameraInput.addEventListener('change', () => handleFiles(cameraInput.files));
+        }
+        
+        async function handleFormSubmission(event) {
+            event.preventDefault();
+            const form = event.target;
+            if (!form.checkValidity()) {
+                form.classList.add('was-validated');
+                return;
+            }
+
+            const submitButton = form.querySelector('button[type="submit"]');
+            const originalButtonHtml = submitButton.innerHTML;
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+            let uploadedAttachments = [];
+            if (filesToUpload.length > 0) {
+                for (let i = 0; i < filesToUpload.length; i++) {
+                    const file = filesToUpload[i];
+                    const progressBar = document.getElementById(`progress-bar-new-${i}`);
+                    const fileFormData = new FormData();
+                    fileFormData.append('file', file);
+                    fileFormData.append('task_id', 'new_task_placeholder');
+                    
+                    try {
+                        const response = await uploadFileWithProgress(fileFormData, progressBar);
+                        uploadedAttachments.push(response.file_info);
+                    } catch (error) {
+                        flashMessage(`อัปโหลดไฟล์ "${file.name}" ไม่สำเร็จ: ${error.message}`, 'danger');
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalButtonHtml;
+                        return;
+                    }
+                }
+            }
+            
+            const mainFormData = new FormData(form);
+            mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+
+            try {
+                const response = await fetch("{{ url_for('api_create_task') }}", {
+                    method: 'POST',
+                    body: mainFormData,
+                    headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
+                });
+                const result = await response.json();
+                if (response.ok) {
+                   flashMessage('สร้างงานใหม่เรียบร้อยแล้ว!', 'success');
+                   if(result.redirect_url) {
+                       setTimeout(() => { window.location.href = result.redirect_url; }, 1500);
+                   }
+                } else {
+                   throw new Error(result.message);
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonHtml;
+            }
+        }
+        
+        function uploadFileWithProgress(formData, progressBar) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', "{{ url_for('api_upload_attachment') }}", true);
+                xhr.setRequestHeader('X-CSRFToken', formData.get('csrf_token'));
+
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable && progressBar) {
+                        const percentComplete = (event.loaded / event.total) * 100;
+                        progressBar.style.width = percentComplete + '%';
+                    }
+                };
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(JSON.parse(xhr.responseText));
+                    } else {
+                        const errorMsg = JSON.parse(xhr.responseText).message || xhr.statusText;
+                        reject(new Error(errorMsg));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('Network error during upload.'));
+                xhr.send(formData);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- Customer Search Logic ---
             const searchInput = document.getElementById('customer_search');
             const resultsDiv = document.getElementById('search_results');
             const customerIdInput = document.getElementById('customer_id');
@@ -177,21 +328,13 @@
 
             let debounceTimer;
             searchInput.addEventListener('input', function() {
-                // ถ้าลบชื่อที่เลือกไปแล้ว ให้ล้าง ID ด้วย
-                if(this.value === ''){
-                    customerIdInput.value = '';
-                }
+                if(this.value === ''){ customerIdInput.value = ''; }
                 clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(() => {
-                    fetchCustomers(this.value);
-                }, 300); // หน่วงเวลา 300ms เพื่อลดการยิง API
+                debounceTimer = setTimeout(() => { fetchCustomers(this.value); }, 300);
             });
 
             async function fetchCustomers(query) {
-                if (query.length < 2) {
-                    resultsDiv.innerHTML = '';
-                    return;
-                }
+                if (query.length < 2) { resultsDiv.innerHTML = ''; return; }
                 try {
                     const response = await fetch(`{{ url_for('api_search_customers') }}?q=${encodeURIComponent(query)}`);
                     if (!response.ok) throw new Error('Network response was not ok');
@@ -217,13 +360,13 @@
                         `<strong>${customer.name}</strong>`;
                     item.innerHTML = displayText;
                     item.addEventListener('click', function() {
-                        searchInput.value = customer.name; // ใส่ชื่อผู้ติดต่อในช่องค้นหา
-                        customerIdInput.value = customer.id; // << สำคัญ: เก็บ ID
+                        searchInput.value = customer.name;
+                        customerIdInput.value = customer.id;
                         orgInput.value = customer.organization || '';
                         phoneInput.value = customer.phone || '';
                         addressInput.value = customer.address || '';
                         mapUrlInput.value = customer.map_url || '';
-                        resultsDiv.innerHTML = ''; // ซ่อนผลลัพธ์
+                        resultsDiv.innerHTML = '';
                     });
                     resultsDiv.appendChild(item);
                 });
@@ -233,27 +376,17 @@
                     resultsDiv.innerHTML = '';
                 }
             });
-            // --- END: โค้ดสำหรับค้นหาลูกค้าแบบ Real-time (ชุดใหม่) ---
 
-
-            // --- โค้ดเดิมที่ยังคงทำงานปกติ (ไม่มีการเปลี่ยนแปลง) ---
-            flatpickr(".datetimepicker", {
-                enableTime: true,
-                dateFormat: "Y-m-d H:i",
-                locale: "th"
-            });
+            // --- Other Initializations ---
+            flatpickr(".datetimepicker", { enableTime: true, dateFormat: "Y-m-d H:i", locale: "th" });
 
             const taskDetailSnippets = {{ task_detail_snippets | tojson | safe }};
             if (taskDetailSnippets && taskDetailSnippets.length > 0) {
                 const tributeTask = new Tribute({
                     values: taskDetailSnippets,
                     trigger: '/',
-                    selectTemplate: function (item) {
-                        return item.original.value;
-                    },
-                    menuItemTemplate: function(item) {
-                        return `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`;
-                    }
+                    selectTemplate: (item) => item.original.value,
+                    menuItemTemplate: (item) => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`
                 });
                 tributeTask.attach(document.getElementById('task_title'));
             }
@@ -280,80 +413,10 @@
                     );
                 });
             }
-        });
-        
-    async function handleFormSubmission(event, form) {
-        event.preventDefault();
-        if (!form.checkValidity()) {
-            form.classList.add('was-validated');
-            return;
-        }
-
-        const submitButton = form.querySelector('button[type="submit"]');
-        submitButton.disabled = true;
-        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
-
-        const uploadStatusBox = document.getElementById('upload-status');
-        const mainFormData = new FormData(form);
-        const files = Array.from(mainFormData.getAll('files[]'));
-        let uploadedAttachments = [];
-
-        if (files.length > 0 && files[0].size > 0) {
-            uploadStatusBox.style.display = 'inline-block';
-            for (let i = 0; i < files.length; i++) {
-                uploadStatusBox.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังอัปโหลด ${i + 1}/${files.length}`;
-                const fileFormData = new FormData();
-                fileFormData.append('file', files[i]);
-                fileFormData.append('task_id', 'new_task_placeholder');
-                
-                try {
-                    const response = await fetch("{{ url_for('api_upload_attachment') }}", { 
-                        method: 'POST', 
-                        body: fileFormData,
-                        headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
-                    });
-                    const result = await response.json();
-                    if (response.ok) {
-                        uploadedAttachments.push(result.file_info);
-                    } else {
-                        throw new Error(result.message);
-                    }
-                } catch (error) {
-                    alert(`อัปโหลดไฟล์ "${files[i].name}" ไม่สำเร็จ: ${error.message}`);
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
-                    uploadStatusBox.style.display = 'none';
-                    return;
-                }
-            }
-        }
-
-        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
-        if(uploadStatusBox) uploadStatusBox.innerHTML = 'กำลังสร้างงาน...';
-
-        try {
-            const response = await fetch("{{ url_for('api_create_task') }}", {
-                method: 'POST',
-                body: mainFormData
-            });
             
-            const result = await response.json();
-            if (response.ok) {
-               flashMessage('สร้างงานใหม่เรียบร้อยแล้ว!', 'success');
-               if(result.redirect_url) {
-				setTimeout(() => {	
-                   window.location.href = result.redirect_url;
-				}, 1500); // 1.5 วินาที   
-            }	
-        } else {
-           throw new Error(result.message);
-        }
-        } catch (error) {
-            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-            submitButton.disabled = false;
-            submitButton.innerHTML = `<i class="fas fa-save me-2"></i>บันทึกงาน`;
-            if (uploadStatusBox) uploadStatusBox.style.display = 'none';
-        }
-    }
-</script>
+            // --- Setup form and file uploads ---
+            setupFileUpload();
+            document.getElementById('createTaskForm').addEventListener('submit', handleFormSubmission);
+        });
+    </script>
 {% endblock %}
