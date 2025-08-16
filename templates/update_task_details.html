@@ -651,11 +651,23 @@
             window.flashMessage(`เกิดข้อผิดพลาดในการบันทึกอุปกรณ์: ${error.message}`, 'danger');
         }
     }
-
+    
+    // --- Form and Action Card Functions ---
+    window.showActionCard = (cardIdToShow) => {
+        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
+        document.getElementById('chooseActionCard').style.display = 'none';
+        const cardToShow = document.getElementById(cardIdToShow);
+        if (cardToShow) {
+            cardToShow.style.display = 'block';
+            cardToShow.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            document.getElementById('chooseActionCard').style.display = 'block';
+        }
+    };
+    
     // --- History & Image Lightbox Functions ---
     function renderHistorySection() {
         const container = document.getElementById('history-section-body');
-        if (!container) return;
         container.innerHTML = '';
         if (!techReportsHistory || techReportsHistory.length === 0) {
             container.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการทำงาน</p>';
