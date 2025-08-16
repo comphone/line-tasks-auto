@@ -462,11 +462,13 @@
     </div>
 </div>
 
+<!-- START: โค้ดที่แก้ไข -->
 <div id="scanner-container" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1080; flex-direction: column; justify-content: center; align-items: center;">
     <h5 class="text-white mb-3">กรุณาวางบาร์โค้ดให้อยู่ในกรอบ</h5>
     <div style="width: 90%; max-width: 500px; background: white; border-radius: 10px; overflow: hidden;"><div id="qr-reader"></div></div>
     <button id="close-scanner-btn" class="btn btn-danger mt-3">ปิดกล้อง</button>
 </div>
+<!-- END: โค้ดที่แก้ไข -->
 {% endblock %}
 
 {% block body_extra %}
@@ -622,7 +624,6 @@
             });
             grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
         }
-        // renderEquipmentSummaryInForms(); // This function is not defined, should be implemented if needed
     }
 
     function handleDeleteItem(index) {

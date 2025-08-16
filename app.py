@@ -2077,61 +2077,53 @@ def api_search_customers():
         app.logger.error(f"Error in api_search_customers: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
-# ⬇️⬇️⬇️ ค้นหาฟังก์ชัน 'api_add_product' แล้วแทนที่ด้วยโค้ดนี้ ⬇️⬇️⬇️
 @app.route('/api/products', methods=['POST'])
 def api_add_product():
-    """API สำหรับเพิ่มสินค้าใหม่ลงในแคตตาล็อก (เวอร์ชันปรับปรุง)"""
+    """API สำหรับเพิ่มสินค้าใหม่ลงในแคตตาล็อก (เพิ่ม category)"""
     data = request.json
     item_name = data.get('item_name', '').strip()
-    
     if not item_name:
         return jsonify({'status': 'error', 'message': 'กรุณากรอกชื่อสินค้า'}), 400
-
     try:
         settings = get_app_settings()
         catalog = settings.get('equipment_catalog', [])
-        
         if any(item.get('item_name', '').lower() == item_name.lower() for item in catalog):
             return jsonify({'status': 'error', 'message': 'มีสินค้านี้ในระบบแล้ว'}), 409
-
         new_item = {
             'item_name': item_name,
-            'product_code': data.get('product_code', ''), # <-- เพิ่มฟิลด์ใหม่
+            'category': data.get('category', 'ไม่มีหมวดหมู่'), # <-- เพิ่มฟิลด์ใหม่
+            'product_code': data.get('product_code', ''),
             'unit': data.get('unit', ''),
             'price': float(data.get('price', 0)),
-            'cost_price': float(data.get('cost_price', 0)), # <-- เพิ่มฟิลด์ใหม่
+            'cost_price': float(data.get('cost_price', 0)),
             'stock_quantity': int(data.get('stock_quantity', 0)),
-            'image_url': data.get('image_url', '') # <-- เพิ่มฟิลด์ใหม่
+            'image_url': data.get('image_url', '')
         }
         catalog.append(new_item)
-        
         if save_app_settings({'equipment_catalog': catalog}):
             return jsonify({'status': 'success', 'message': 'เพิ่มสินค้าใหม่สำเร็จ', 'item': new_item}), 201
         else:
             raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
-            
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'ราคา, ราคาทุน และสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
     except Exception as e:
         app.logger.error(f"Error in api_add_product: {e}")
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
 
-# ⬇️⬇️⬇️ ค้นหาฟังก์ชัน 'api_update_product' แล้วแทนที่ด้วยโค้ดนี้ ⬇️⬇️⬇️
 @app.route('/api/products/<int:item_index>', methods=['PUT'])
 def api_update_product(item_index):
-    """API สำหรับแก้ไขข้อมูลสินค้า (เวอร์ชันปรับปรุง)"""
+    """API สำหรับแก้ไขข้อมูลสินค้า (เพิ่ม category)"""
     data = request.json
     try:
         settings = get_app_settings()
         catalog = settings.get('equipment_catalog', [])
-
         if not (0 <= item_index < len(catalog)):
             return jsonify({'status': 'error', 'message': 'ไม่พบสินค้าที่ต้องการแก้ไข'}), 404
-
-        # อัปเดตข้อมูล
+        
         catalog[item_index]['item_name'] = data.get('item_name', catalog[item_index]['item_name']).strip()
+        catalog[item_index]['category'] = data.get('category', catalog[item_index].get('category', 'ไม่มีหมวดหมู่')) # <-- เพิ่มฟิลด์ใหม่
         catalog[item_index]['product_code'] = data.get('product_code', catalog[item_index].get('product_code', '')).strip()
-        catalog[item_index]['unit'] = data.get('unit', catalog[item_index]['unit']).strip()
+        catalog[item_index]['unit'] = data.get('unit', catalog[item_index].get('unit', '')).strip()
         catalog[item_index]['price'] = float(data.get('price', catalog[item_index]['price']))
         catalog[item_index]['cost_price'] = float(data.get('cost_price', catalog[item_index].get('cost_price', 0)))
         catalog[item_index]['stock_quantity'] = int(data.get('stock_quantity', catalog[item_index]['stock_quantity']))
@@ -2141,7 +2133,6 @@ def api_update_product(item_index):
             return jsonify({'status': 'success', 'message': 'อัปเดตข้อมูลสินค้าสำเร็จ', 'item': catalog[item_index]})
         else:
             raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
-
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'ราคา, ราคาทุน และสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
     except Exception as e:
@@ -2936,6 +2927,23 @@ def settings_page():
     settings = get_app_settings()
     return render_template('settings_page.html', settings=settings)
     
+@app.route('/api/settings/categories', methods=['GET', 'POST'])
+def api_manage_categories():
+    """API สำหรับจัดการหมวดหมู่สินค้า"""
+    settings = get_app_settings()
+    if request.method == 'GET':
+        return jsonify(settings.get('product_categories', []))
+    
+    if request.method == 'POST':
+        data = request.json
+        new_categories = data.get('categories', [])
+        if isinstance(new_categories, list):
+            # Sanitize input
+            settings['product_categories'] = sorted([str(cat).strip() for cat in new_categories if str(cat).strip()])
+            if save_app_settings(settings):
+                return jsonify({'status': 'success', 'message': 'บันทึกหมวดหมู่เรียบร้อยแล้ว'})
+        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ถูกต้อง'}), 400  
+   
 @app.route('/api/upload_avatar', methods=['POST'])
 def api_upload_avatar():
     if 'file' not in request.files:

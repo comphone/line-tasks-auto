@@ -8,6 +8,7 @@
     .stock-adjust-cell { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; }
     .stock-adjust-btn { width: 30px; height: 30px; border-radius: 50%; padding: 0; font-weight: bold; flex-shrink: 0; }
     .stock-value { min-width: 50px; text-align: center; font-size: 1.1em; font-weight: 500; }
+    .category-badge { font-size: 0.8em; }
 </style>
 {% endblock %}
 
@@ -17,16 +18,26 @@
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">📦 จัดการข้อมูลสินค้า</h1>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editProductModal" id="add-new-product-btn">
-            <i class="fas fa-plus me-2"></i>เพิ่มสินค้าใหม่
-        </button>
+        <div>
+            <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#categoriesModal"><i class="fas fa-tags me-2"></i>จัดการหมวดหมู่</button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editProductModal" id="add-new-product-btn">
+                <i class="fas fa-plus me-2"></i>เพิ่มสินค้าใหม่
+            </button>
+        </div>
     </div>
 
     <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="input-group">
-                <span class="input-group-text"><i class="fas fa-search"></i></span>
-                <input type="text" id="product-search-input" class="form-control" placeholder="ค้นหาจากรหัสสินค้า หรือ ชื่อรายการ...">
+        <div class="card-body row g-3">
+            <div class="col-md-8">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input type="text" id="product-search-input" class="form-control" placeholder="ค้นหาจากรหัสสินค้า หรือ ชื่อรายการ...">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <select id="category-filter" class="form-select">
+                    <option value="all">แสดงทุกหมวดหมู่</option>
+                </select>
             </div>
         </div>
     </div>
@@ -39,8 +50,8 @@
                     <thead class="table-light">
                         <tr>
                             <th style="width: 8%;">รูปภาพ</th>
-                            <th style="width: 15%;">รหัสสินค้า</th>
-                            <th>ชื่อรายการ</th>
+                            <th>ชื่อรายการ / รหัสสินค้า</th>
+                            <th style="width: 15%;">หมวดหมู่</th>
                             <th class="text-end">ราคาขาย</th>
                             <th class="text-end" style="width: 20%;">สต็อก</th>
                             <th class="text-center" style="width: 10%;">จัดการ</th>
@@ -48,10 +59,13 @@
                     </thead>
                     <tbody>
                         {% for item in equipment_catalog %}
-                        <tr data-index="{{ loop.index0 }}" data-item-info="{{ item|tojson|forceescape }}">
+                        <tr data-index="{{ loop.index0 }}" data-item-info="{{ item|tojson|forceescape }}" data-category="{{ item.category or 'ไม่มีหมวดหมู่' }}">
                             <td><img src="{{ item.image_url or url_for('static', filename='logo.png') }}" class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover;"></td>
-                            <td class="font-monospace">{{ item.product_code or '-' }}</td>
-                            <td>{{ item.item_name }}</td>
+                            <td>
+                                {{ item.item_name }}
+                                <br><small class="text-muted font-monospace">{{ item.product_code or '' }}</small>
+                            </td>
+                            <td><span class="badge rounded-pill bg-secondary category-badge">{{ item.category or 'ไม่มีหมวดหมู่' }}</span></td>
                             <td class="text-end">{{ "%.2f"|format(item.price|float) }}</td>
                             <td>
                                 <div class="stock-adjust-cell">
@@ -75,6 +89,7 @@
     </div>
 </div>
 
+<!-- Modal for Adding/Editing Product -->
 <div class="modal fade" id="editProductModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
@@ -93,9 +108,18 @@
                     <input type="hidden" id="edit-image-url">
                 </div>
                 <div class="col-md-8">
-                    <div class="mb-3"><label for="edit-item-name" class="form-label">ชื่อรายการ <span class="text-danger">*</span></label><input type="text" class="form-control" id="edit-item-name" required></div>
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label for="edit-item-name" class="form-label">ชื่อรายการ <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="edit-item-name" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="edit-item-category" class="form-label">หมวดหมู่</label>
+                            <select class="form-select" id="edit-item-category"></select>
+                        </div>
+                    </div>
                     <div class="mb-3">
-                        <label for="edit-product-code" class="form-label">รหัสสินค้า</label>
+                        <label for="edit-product-code" class="form-label">รหัสสินค้า/บาร์โค้ดหลัก</label>
                         <div class="input-group">
                             <input type="text" class="form-control" id="edit-product-code">
                             <button class="btn btn-outline-secondary" type="button" id="scan-barcode-btn"><i class="fas fa-barcode"></i></button>
@@ -121,6 +145,28 @@
   </div>
 </div>
 
+<!-- Modal for Categories -->
+<div class="modal fade" id="categoriesModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">จัดการหมวดหมู่</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">เพิ่ม, ลบ, หรือแก้ไขชื่อหมวดหมู่ที่นี่</p>
+                <div id="category-list" class="d-grid gap-2"></div>
+                <button class="btn btn-sm btn-outline-primary mt-3" id="add-category-btn"><i class="fas fa-plus"></i> เพิ่มหมวดหมู่ใหม่</button>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+                <button type="button" class="btn btn-primary" id="save-categories-btn">บันทึกหมวดหมู่</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Barcode Scanner Placeholder -->
 <div id="scanner-container" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1060; flex-direction: column; justify-content: center; align-items: center;">
     <h5 class="text-white mb-3">กรุณาวางบาร์โค้ดให้อยู่ในกรอบ</h5>
     <div style="width: 90%; max-width: 500px; background: white; border-radius: 10px; overflow: hidden;"><div id="qr-reader"></div></div>
