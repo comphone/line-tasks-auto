@@ -187,17 +187,6 @@
             </div>
         </a>
     </div>
-    <div class="col-lg-3 col-6 mb-4">
-        <a href="{{ url_for('liff.summary', status_filter='external') }}#task-list-section" class="summary-card-link">
-            <div class="summary-card bg-dark h-100">
-                <div class="icon"><i class="fas fa-box-open"></i></div>
-                <div class="text-content">
-                    <h5 class="card-title">งานภายนอก</h5>
-                    <p class="card-text mb-0">{{ summary.external or 0 }}</p>
-                </div>
-            </div>
-        </a>
-    </div>
 </div>
 
 <div class="card shadow-sm" id="task-list-section">

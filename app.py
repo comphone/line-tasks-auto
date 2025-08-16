@@ -2077,10 +2077,6 @@ def api_search_customers():
         app.logger.error(f"Error in api_search_customers: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
-# --- START: เพิ่ม API สำหรับจัดการรายการอุปกรณ์ ---
-
-# --- START: เพิ่ม API ใหม่สำหรับจัดการแคตตาล็อกสินค้า ---
-
 @app.route('/api/products', methods=['POST'])
 def api_add_product():
     """API สำหรับเพิ่มสินค้าใหม่ลงในแคตตาล็อก"""
@@ -2167,8 +2163,6 @@ def api_delete_product(item_index):
         app.logger.error(f"Error in api_delete_product: {e}")
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
 
-# --- END: API สำหรับจัดการแคตตาล็อกสินค้า ---
-
 @app.route('/api/task/<task_id>/items', methods=['GET'])
 def get_task_items(task_id):
     """API สำหรับดึงรายการอุปกรณ์ทั้งหมดของงานนั้นๆ"""
@@ -2176,22 +2170,21 @@ def get_task_items(task_id):
     return jsonify([item.to_dict() for item in items])
 
 @app.route('/api/task/<task_id>/items', methods=['POST'])
-@csrf.exempt # ใช้ csrf.exempt สำหรับ API endpoint ที่เรียกจาก JavaScript ภายใน
+@csrf.exempt # << เพิ่มบรรทัดนี้เข้ามาใหม่ وهو أمر مهم جدا
 def add_task_items(task_id):
     """API สำหรับบันทึกรายการอุปกรณ์ (แก้ไขให้ลบของเก่าก่อนเพิ่ม)"""
     data = request.json
     items_data = data.get('items', [])
     
-    # ดึงชื่อช่างจาก session หรือการยืนยันตัวตน (ถ้ามี)
-    # ในที่นี้ยังใช้ค่า placeholder ไปก่อน
+    # Placeholder - ควรเปลี่ยนเป็นชื่อช่างที่ Login จริงในอนาคต
     technician_name = "ช่างผู้บันทึก" 
 
     try:
-        # 1. ลบรายการเดิมทั้งหมดที่ผูกกับ task_id นี้
+        # 1. ลบรายการเดิมทั้งหมดของงานนี้ออกจากฐานข้อมูล
         JobItem.query.filter_by(task_google_id=task_id).delete()
         
-        # 2. เพิ่มรายการใหม่ทั้งหมดที่ส่งมา
-        if items_data: # ตรวจสอบว่ามีข้อมูลรายการใหม่ส่งมาหรือไม่
+        # 2. เพิ่มรายการใหม่ทั้งหมดที่ส่งมาเข้าไปในฐานข้อมูล
+        if items_data:
             for item_data in items_data:
                 new_item = JobItem(
                     task_google_id=task_id,
@@ -2202,7 +2195,7 @@ def add_task_items(task_id):
                 )
                 db.session.add(new_item)
         
-        # 3. ยืนยันการเปลี่ยนแปลง
+        # 3. ยืนยันการเปลี่ยนแปลงทั้งหมดลงฐานข้อมูล
         db.session.commit()
         return jsonify({'status': 'success', 'message': 'บันทึกรายการอุปกรณ์เรียบร้อยแล้ว'}), 200
     except Exception as e:
@@ -2210,9 +2203,6 @@ def add_task_items(task_id):
         app.logger.error(f"Error saving job items for task {task_id}: {e}")
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกรายการ'}), 500
 
-# --- END: เพิ่ม API สำหรับจัดการรายการอุปกรณ์ ---
-
-# --- START: เพิ่ม API ใหม่สำหรับตัดสต็อก ---
 @app.route('/api/items/use', methods=['POST'])
 def api_use_items():
     """
