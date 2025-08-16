@@ -924,22 +924,26 @@
         event.stopPropagation();
         const entry = document.getElementById(`history-entry-${reportIndex}`);
         const shareButton = document.getElementById(`share-btn-${reportIndex}`);
-        const isInSelectionMode = entry.classList.toggle('selection-mode');
+        const isInSelectionMode = entry.classList.contains('selection-mode');
 
         if (isInSelectionMode) {
-            shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์`;
-            shareButton.classList.remove('btn-outline-info');
-            shareButton.classList.add('btn-success');
-        } else {
+            // This is the second click, to confirm sharing
             const selectedThumbnails = entry.querySelectorAll('.thumbnail.selected');
             if (selectedThumbnails.length > 0) {
                 await shareSelectedImages(selectedThumbnails);
             }
-            // Reset state
+            // Reset state regardless of whether images were shared
+            entry.classList.remove('selection-mode');
             shareButton.innerHTML = `<i class="fas fa-share-alt me-1"></i>แชร์รูปภาพ`;
             shareButton.classList.remove('btn-success');
             shareButton.classList.add('btn-outline-info');
-            entry.querySelectorAll('.thumbnail.selected').forEach(t => t.classList.remove('selected'));
+            selectedThumbnails.forEach(t => t.classList.remove('selected'));
+        } else {
+            // This is the first click, to enter selection mode
+            entry.classList.add('selection-mode');
+            shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์`;
+            shareButton.classList.remove('btn-outline-info');
+            shareButton.classList.add('btn-success');
         }
     }
 
