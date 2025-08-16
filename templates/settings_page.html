@@ -452,37 +452,6 @@
         </div>
         <hr>
 
-        <h6 class="mb-3 mt-4">แคตตาล็อกอุปกรณ์</h6>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{{ url_for('export_equipment_catalog') }}" class="btn btn-outline-success"><i class="fas fa-file-excel me-2"></i>ส่งออกเป็น Excel</a>
-             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#importEquipmentModal"><i class="fas fa-file-import me-2"></i>นำเข้าจาก Excel</button>
-        </div>
-    </div>
-</div>
-
-<!-- Modals -->
-<div class="modal fade" id="importEquipmentModal" tabindex="-1" aria-labelledby="importEquipmentModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="importEquipmentModalLabel">นำเข้าแคตตาล็อกอุปกรณ์จาก Excel</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <form action="{{ url_for('import_equipment_catalog') }}" method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <div class="modal-body">
-          <p>เลือกไฟล์ Excel (.xlsx) ที่มีคอลัมน์ `item_name`, `unit`, และ `price` เพื่อนำเข้าข้อมูล</p>
-          <input class="form-control" type="file" name="excel_file" required accept=".xlsx, .xls">
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-          <button type="submit" class="btn btn-primary">นำเข้าข้อมูล</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">

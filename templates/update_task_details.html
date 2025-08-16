@@ -955,6 +955,25 @@
         editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
         itemAddModal = new bootstrap.Modal(document.getElementById('addItemModal'));
         
+        // Initialize Tribute.js for Quick Text Snippets
+        if (progressReportSnippets && progressReportSnippets.length > 0) {
+            const tributeOptions = {
+                values: progressReportSnippets,
+                trigger: '/',
+                selectTemplate: (item) => item.original.value,
+                menuItemTemplate: (item) => `<div class="p-2"><strong>${item.original.key}</strong><br><small class="text-muted">${item.original.value}</small></div>`
+            };
+
+            const tributeProgress = new Tribute(tributeOptions);
+            const tributeFinal = new Tribute(tributeOptions);
+            const tributeReschedule = new Tribute(tributeOptions);
+
+            // Attach to all relevant textareas
+            tributeProgress.attach(document.getElementById('work_summary_progress'));
+            tributeFinal.attach(document.getElementById('work_summary_final'));
+            tributeReschedule.attach(document.getElementById('reschedule_reason'));
+        }
+        
         loadInitialItems();
         renderHistorySection();
         setupFileUpload('progress');

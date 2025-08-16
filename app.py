@@ -2865,31 +2865,8 @@ def settings_page():
                 if isinstance(technician_list, list):
                     current_settings['technician_list'] = technician_list
                 else:
-                    return jsonify({'status': 'error', 'message': 'รูปแบบข้อมูลช่างไม่ถูกต้อง'}), 400
-            
-            # --- ส่วนที่แก้ไขและเพิ่มเข้ามา ---
-            if 'equipment_catalog' in data:
-                catalog_data = data.get('equipment_catalog', [])
-                if isinstance(catalog_data, list):
-                    validated_catalog = []
-                    for item in catalog_data:
-                        # ตรวจสอบข้อมูลก่อนบันทึก
-                        if isinstance(item, dict) and item.get('item_name'):
-                            try:
-                                new_item = {
-                                    'item_name': str(item['item_name']).strip(),
-                                    'unit': str(item.get('unit', '')).strip(),
-                                    'price': float(item.get('price', 0))
-                                }
-                                validated_catalog.append(new_item)
-                            except (ValueError, TypeError):
-                                app.logger.warning(f"Skipping invalid equipment item due to non-numeric price: {item}")
-                                continue
-                    current_settings['equipment_catalog'] = validated_catalog
-                else:
-                    return jsonify({'status': 'error', 'message': 'รูปแบบข้อมูลแคตตาล็อกอุปกรณ์ไม่ถูกต้อง'}), 400
-            # --- สิ้นสุดส่วนที่แก้ไข ---
-            
+                    return jsonify({'status': 'error', 'message': 'รูปแบบข้อมูลช่างไม่ถูกต้อง'}), 400           
+           
             if 'auto_backup' in data:
                 current_settings['auto_backup'].update(data['auto_backup'])
 
