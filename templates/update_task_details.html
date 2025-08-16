@@ -733,9 +733,70 @@
         }
     }
     
+    // --- ✅ START: โค้ดที่แก้ไขและสมบูรณ์แล้ว ---
     function renderHistorySection() {
-        // ... (This function remains unchanged, you can copy it from previous versions)
+        const container = document.getElementById('history-section-body');
+        if (!container) return;
+
+        container.innerHTML = ''; // Clear existing content
+
+        if (!techReportsHistory || techReportsHistory.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการทำงาน</p>';
+            return;
+        }
+
+        techReportsHistory.forEach((report, index) => {
+            const entry = document.createElement('div');
+            entry.className = 'history-entry';
+
+            // --- Build Image Gallery HTML ---
+            let imageGalleryHtml = '';
+            if (report.attachments && report.attachments.length > 0) {
+                imageGalleryHtml += '<div class="image-gallery-grid mt-3">';
+                report.attachments.forEach(att => {
+                    if (att.id) {
+                        imageGalleryHtml += `
+                            <div class="thumbnail" onclick="window.openLightboxById('${att.id}')">
+                                <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="${att.name || 'รูปภาพ'}">
+                            </div>`;
+                    }
+                });
+                imageGalleryHtml += '</div>';
+            }
+
+            // --- Build Main Entry HTML ---
+            entry.innerHTML = `
+                <div class="history-entry-header">
+                    <span class="history-entry-title">
+                        <i class="fas fa-wrench me-2"></i>
+                        ${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานความคืบหน้า'}
+                    </span>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-light" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#">แก้ไขข้อความ</a></li>
+                            <li><a class="dropdown-item" href="#">แก้ไขรูปภาพ</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#">ลบรายงานนี้</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="history-entry-subheader text-muted small">
+                    <span>${new Date(report.summary_date).toLocaleString('th-TH')}</span>
+                    <span>โดย: ${report.technicians ? report.technicians.join(', ') : 'N/A'}</span>
+                </div>
+                <hr class="my-2">
+                <div class="history-entry-body">
+                    <p>${report.work_summary || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                    ${imageGalleryHtml}
+                </div>
+            `;
+            container.appendChild(entry);
+        });
     }
+    // --- ✅ END: สิ้นสุดโค้ดที่แก้ไข ---
 
     // --- Main entry point ---
     document.addEventListener('DOMContentLoaded', function() {
