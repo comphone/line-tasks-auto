@@ -475,7 +475,6 @@
 <script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
 <script>
     // --- START: Full JavaScript for Update Task Page ---
-    // --- Global Variables and Constants ---
     const technicianList = {{ technician_list | tojson | safe }};
     const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
     const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
@@ -624,6 +623,7 @@
             });
             grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
         }
+        // renderEquipmentSummaryInForms(); // This function is not defined, should be implemented if needed
     }
 
     function handleDeleteItem(index) {
