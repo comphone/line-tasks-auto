@@ -99,12 +99,12 @@
     </div>
 </div>
 
-<div class="modal fade" id="editProductModal" tabindex="-1" aria-labelledby="editProductModalLabel" aria-hidden="true">
+<div class="modal fade" id="editProductModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="editProductModalLabel">ข้อมูลสินค้า</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <form id="edit-product-form">
@@ -113,16 +113,11 @@
                 <div class="col-md-4 text-center">
                     <img id="edit-image-preview" src="{{ url_for('static', filename='logo.png') }}" class="img-thumbnail mb-2" style="width: 150px; height: 150px; object-fit: cover;">
                     <input type="file" id="edit-image-upload" class="d-none" accept="image/*">
-                    <button type="button" class="btn btn-sm btn-outline-primary w-100" onclick="document.getElementById('edit-image-upload').click();">
-                        <i class="fas fa-camera me-1"></i> เปลี่ยนรูปภาพ
-                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100" onclick="document.getElementById('edit-image-upload').click();"><i class="fas fa-camera me-1"></i> เปลี่ยนรูปภาพ</button>
                     <input type="hidden" id="edit-image-url">
                 </div>
                 <div class="col-md-8">
-                    <div class="mb-3">
-                        <label for="edit-item-name" class="form-label">ชื่อรายการ <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="edit-item-name" required>
-                    </div>
+                    <div class="mb-3"><label for="edit-item-name" class="form-label">ชื่อรายการ <span class="text-danger">*</span></label><input type="text" class="form-control" id="edit-item-name" required></div>
                     <div class="mb-3">
                         <label for="edit-product-code" class="form-label">รหัสสินค้า</label>
                         <div class="input-group">
@@ -131,24 +126,12 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-6 mb-3">
-                            <label for="edit-item-unit" class="form-label">หน่วย</label>
-                            <input type="text" class="form-control" id="edit-item-unit" placeholder="เช่น ชิ้น, เมตร">
-                        </div>
-                         <div class="col-6 mb-3">
-                            <label for="edit-item-stock" class="form-label">จำนวนสต็อก</label>
-                            <input type="number" class="form-control" id="edit-item-stock" min="0" value="0">
-                        </div>
+                        <div class="col-6 mb-3"><label for="edit-item-unit" class="form-label">หน่วย</label><input type="text" class="form-control" id="edit-item-unit" placeholder="เช่น ชิ้น, เมตร"></div>
+                        <div class="col-6 mb-3"><label for="edit-item-stock" class="form-label">จำนวนสต็อก</label><input type="number" class="form-control" id="edit-item-stock" min="0" value="0"></div>
                     </div>
                     <div class="row">
-                        <div class="col-6 mb-3">
-                            <label for="edit-cost-price" class="form-label">ราคาทุน</label>
-                            <input type="number" class="form-control" id="edit-cost-price" step="any" min="0" placeholder="0.00">
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label for="edit-item-price" class="form-label">ราคาขาย <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control" id="edit-item-price" step="any" min="0" required placeholder="0.00">
-                        </div>
+                        <div class="col-6 mb-3"><label for="edit-cost-price" class="form-label">ราคาทุน</label><input type="number" class="form-control" id="edit-cost-price" step="any" min="0" placeholder="0.00"></div>
+                        <div class="col-6 mb-3"><label for="edit-item-price" class="form-label">ราคาขาย <span class="text-danger">*</span></label><input type="number" class="form-control" id="edit-item-price" step="any" min="0" required placeholder="0.00"></div>
                     </div>
                 </div>
             </div>
@@ -171,9 +154,6 @@
 
 {% block body_extra %}
 <script>
-    // --- START: Full JavaScript for Product Management Page ---
-
-    // Utility function for showing temporary messages
     function flashMessage(message, category = 'info') {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -189,9 +169,7 @@
         }, 5000);
     }
 
-    // Main execution after the page is loaded
     document.addEventListener('DOMContentLoaded', function() {
-        // --- Element References ---
         const tableBody = document.querySelector('#equipment-table tbody');
         const editModalEl = document.getElementById('editProductModal');
         const editModal = new bootstrap.Modal(editModalEl);
@@ -199,7 +177,6 @@
         const scannerContainer = document.getElementById('scanner-container');
         let html5QrCode = null;
 
-        // --- Live Search Functionality ---
         searchInput.addEventListener('keyup', () => {
             const filter = searchInput.value.toLowerCase();
             tableBody.querySelectorAll('tr').forEach(row => {
@@ -209,8 +186,7 @@
                 row.style.display = (productCode.includes(filter) || productName.includes(filter)) ? '' : 'none';
             });
         });
-        
-        // --- Modal Handling ---
+
         document.getElementById('add-new-product-btn').addEventListener('click', () => {
             document.getElementById('edit-product-form').reset();
             document.getElementById('edit-item-index').value = '';
@@ -219,7 +195,6 @@
             document.getElementById('edit-image-url').value = '';
         });
 
-        // --- Main Table Event Delegation ---
         tableBody.addEventListener('click', async (event) => {
             const target = event.target.closest('button');
             if (!target) return;
@@ -277,8 +252,7 @@
                 }
             }
         });
-        
-        // --- Image Upload Logic ---
+
         document.getElementById('edit-image-upload').addEventListener('change', async function(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -302,7 +276,6 @@
             }
         });
 
-        // --- Save Logic (for both Add and Edit) ---
         document.getElementById('save-edit-btn').addEventListener('click', async () => {
             const itemIndex = document.getElementById('edit-item-index').value;
             const isAdding = itemIndex === '';
@@ -334,7 +307,6 @@
             }
         });
 
-        // --- Barcode Scanner Logic ---
         const stopScanner = () => {
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
@@ -361,7 +333,7 @@
         });
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
-        editModalEl.addEventListener('hidden.bs.modal', stopScanner); // Fix scanner getting stuck
+        editModalEl.addEventListener('hidden.bs.modal', stopScanner);
     });
 </script>
 {% endblock %}
