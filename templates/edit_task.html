@@ -12,20 +12,18 @@
         justify-content: center;
         background-color: #f8f9fa;
     }
-    /* START: CSS สำหรับช่องค้นหาใหม่ */
     #search_results .list-group-item { 
         cursor: pointer; 
     }
     #search_results .list-group-item:hover { 
         background-color: #e9ecef; 
     }
-    /* END: CSS สำหรับช่องค้นหาใหม่ */
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h2">แก้ไขข้อมูลหลักของงาน</h1>
+    <h1 class="h2 mb-0">📝 แก้ไขข้อมูลหลักของงาน</h1>
     <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียด</a>
 </div>
 
@@ -33,34 +31,37 @@
     <div class="col-lg-10 col-md-12">
         <form method="POST" action="{{ url_for('liff.edit_task', task_id=task.id) }}" class="needs-validation" novalidate>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <div class="card shadow-sm">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="fas fa-edit me-2"></i>ฟอร์มแก้ไขข้อมูลหลัก</h5>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>ข้อมูลงานและนัดหมาย</h5>
                 </div>
-                <div class="card-body p-4 p-md-5">
-                    
-                    <h5 class="mb-3">ข้อมูลงานและนัดหมาย</h5>
+                <div class="card-body p-4">
                     <div class="mb-3">
-                        <label for="task_title" class="form-label">รายละเอียดงาน</label>
+                        <label for="task_title" class="form-label"><strong>รายละเอียดงาน</strong></label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
                             <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ task.title }}</textarea>
                         </div>
                     </div>
-                    <div class="mb-4">
-                        <label for="appointment_due" class="form-label">วันเวลานัดหมาย</label>
+                    <div class="mb-3">
+                        <label for="appointment_due" class="form-label"><strong>วันเวลานัดหมาย</strong></label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
                             <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <hr>
-
-                    <h5 class="my-3">ข้อมูลลูกค้า</h5>
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-tag me-2"></i>ข้อมูลลูกค้า</h5>
+                </div>
+                <div class="card-body p-4">
                     <div class="row">
                         <div class="col-md-6 mb-3 position-relative">
-                             <label for="customer_search" class="form-label">ชื่อผู้ติดต่อ</label>
+                             <label for="customer_search" class="form-label"><strong>ชื่อผู้ติดต่อ</strong></label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-user"></i></span>
                                 <input type="text" class="form-control" id="customer_search" name="customer_name" value="{{ task.customer.name }}" autocomplete="off">
@@ -103,13 +104,12 @@
                         </div>
                         <small class="form-text text-muted" id="shareLocationStatus"></small>
                     </div>
-                    
-                    <hr class="my-4">
-                    <div class="text-center">
-                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
-                        <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
-                    </div>
                 </div>
+            </div>
+            
+            <div class="text-center mt-4">
+                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
+                <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
             </div>
         </form>
     </div>
@@ -193,7 +193,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (shareBtn) {
         shareBtn.addEventListener('click', function() {
-            // ... (โค้ดส่วนนี้ไม่มีการเปลี่ยนแปลง) ...
             statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
