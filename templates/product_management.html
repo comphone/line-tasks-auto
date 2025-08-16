@@ -4,6 +4,30 @@
 
 {% block head_extra %}
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+<style>
+    /* START: CSS สำหรับปุ่มปรับสต็อกด่วน และฟีเจอร์ใหม่ๆ */
+    .stock-adjust-cell {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem; /* เพิ่มระยะห่างระหว่างปุ่ม */
+    }
+    .stock-adjust-btn {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        padding: 0;
+        font-weight: bold;
+        flex-shrink: 0; /* ป้องกันปุ่มถูกบีบ */
+    }
+    .stock-value {
+        min-width: 50px;
+        text-align: center;
+        font-size: 1.1em;
+        font-weight: 500;
+    }
+    /* END: CSS */
+</style>
 {% endblock %}
 
 {% block content %}
@@ -17,6 +41,14 @@
         </button>
     </div>
 
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                <input type="text" id="product-search-input" class="form-control" placeholder="ค้นหาจากรหัสสินค้า หรือ ชื่อรายการ...">
+            </div>
+        </div>
+    </div>
     <div class="card shadow-sm">
         <div class="card-header">
             <h5 class="mb-0">รายการสินค้าทั้งหมดในระบบ</h5>
@@ -29,9 +61,8 @@
                             <th style="width: 8%;">รูปภาพ</th>
                             <th style="width: 15%;">รหัสสินค้า</th>
                             <th>ชื่อรายการ</th>
-                            <th class="text-end">ราคาทุน</th>
                             <th class="text-end">ราคาขาย</th>
-                            <th class="text-end">สต็อก</th>
+                            <th class="text-end" style="width: 20%;">สต็อก</th>
                             <th class="text-center" style="width: 10%;">จัดการ</th>
                         </tr>
                     </thead>
@@ -43,9 +74,14 @@
                             </td>
                             <td class="font-monospace">{{ item.product_code or '-' }}</td>
                             <td>{{ item.item_name }}</td>
-                            <td class="text-end">{{ "%.2f"|format(item.cost_price|float) if item.cost_price is defined else '0.00' }}</td>
                             <td class="text-end">{{ "%.2f"|format(item.price|float) }}</td>
-                            <td class="text-end">{{ item.stock_quantity or 0 }} {{ item.unit or '' }}</td>
+                            <td>
+                                <div class="stock-adjust-cell">
+                                    <button class="btn btn-sm btn-outline-danger stock-adjust-btn" data-change="-1">-</button>
+                                    <span class="stock-value mx-1" id="stock-value-{{ loop.index0 }}">{{ item.stock_quantity or 0 }}</span>
+                                    <button class="btn btn-sm btn-outline-success stock-adjust-btn" data-change="1">+</button>
+                                </div>
+                                </td>
                             <td class="text-center">
                                 <button class="btn btn-sm btn-outline-warning edit-btn"><i class="fas fa-pen"></i></button>
                                 <button class="btn btn-sm btn-outline-danger delete-btn"><i class="fas fa-trash"></i></button>
@@ -53,7 +89,7 @@
                         </tr>
                         {% else %}
                         <tr id="no-items-row">
-                            <td colspan="7" class="text-center text-muted p-4">ยังไม่มีข้อมูลสินค้าในแคตตาล็อก</td>
+                            <td colspan="6" class="text-center text-muted p-4">ยังไม่มีข้อมูลสินค้าในแคตตาล็อก</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -165,12 +201,29 @@
         const scannerContainer = document.getElementById('scanner-container');
         const scanBarcodeBtn = document.getElementById('scan-barcode-btn');
         const closeScannerBtn = document.getElementById('close-scanner-btn');
+        const searchInput = document.getElementById('product-search-input');
 
         let html5QrCode; // Variable to hold the scanner instance
 
-        // --- Modal Handling ---
+        // --- Live Search Functionality ---
+        searchInput.addEventListener('keyup', function() {
+            const filter = searchInput.value.toLowerCase();
+            const rows = tableBody.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                if (row.id === 'no-items-row') return;
+                const productCode = row.cells[1].textContent.toLowerCase();
+                const productName = row.cells[2].textContent.toLowerCase();
+                
+                if (productCode.includes(filter) || productName.includes(filter)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
 
-        // Function to clear modal fields for adding a new product
+        // --- Modal Handling ---
         function clearEditModal() {
             document.getElementById('edit-product-form').reset();
             document.getElementById('edit-item-index').value = '';
@@ -181,7 +234,7 @@
 
         addNewBtn.addEventListener('click', clearEditModal);
 
-        // --- Main Table Event Delegation (for Edit and Delete buttons) ---
+        // --- Main Table Event Delegation ---
         tableBody.addEventListener('click', async function(event) {
             const target = event.target.closest('button');
             if (!target) return;
@@ -225,6 +278,33 @@
                     } catch (error) {
                         flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
                     }
+                }
+            }
+
+            // Handle Stock Adjustment Buttons
+            if (target.classList.contains('stock-adjust-btn')) {
+                const change = parseInt(target.dataset.change, 10);
+                target.disabled = true;
+
+                try {
+                    const response = await fetch(`/api/products/${itemIndex}/adjust_stock`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': "{{ csrf_token() }}"
+                        },
+                        body: JSON.stringify({ change: change })
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        document.getElementById(`stock-value-${itemIndex}`).textContent = result.new_stock;
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (error) {
+                    flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                } finally {
+                    target.disabled = false;
                 }
             }
         });

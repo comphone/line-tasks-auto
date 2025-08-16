@@ -2077,9 +2077,10 @@ def api_search_customers():
         app.logger.error(f"Error in api_search_customers: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
+# ⬇️⬇️⬇️ ค้นหาฟังก์ชัน 'api_add_product' แล้วแทนที่ด้วยโค้ดนี้ ⬇️⬇️⬇️
 @app.route('/api/products', methods=['POST'])
 def api_add_product():
-    """API สำหรับเพิ่มสินค้าใหม่ลงในแคตตาล็อก"""
+    """API สำหรับเพิ่มสินค้าใหม่ลงในแคตตาล็อก (เวอร์ชันปรับปรุง)"""
     data = request.json
     item_name = data.get('item_name', '').strip()
     
@@ -2090,16 +2091,17 @@ def api_add_product():
         settings = get_app_settings()
         catalog = settings.get('equipment_catalog', [])
         
-        # ตรวจสอบว่ามีสินค้านี้อยู่แล้วหรือไม่
         if any(item.get('item_name', '').lower() == item_name.lower() for item in catalog):
-            return jsonify({'status': 'error', 'message': 'มีสินค้านี้ในระบบแล้ว'}), 409 # 409 Conflict
+            return jsonify({'status': 'error', 'message': 'มีสินค้านี้ในระบบแล้ว'}), 409
 
         new_item = {
             'item_name': item_name,
+            'product_code': data.get('product_code', ''), # <-- เพิ่มฟิลด์ใหม่
             'unit': data.get('unit', ''),
             'price': float(data.get('price', 0)),
+            'cost_price': float(data.get('cost_price', 0)), # <-- เพิ่มฟิลด์ใหม่
             'stock_quantity': int(data.get('stock_quantity', 0)),
-            'image_url': '' # เริ่มต้นรูปภาพเป็นค่าว่าง
+            'image_url': data.get('image_url', '') # <-- เพิ่มฟิลด์ใหม่
         }
         catalog.append(new_item)
         
@@ -2109,14 +2111,15 @@ def api_add_product():
             raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
             
     except (ValueError, TypeError):
-        return jsonify({'status': 'error', 'message': 'ราคาและสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
+        return jsonify({'status': 'error', 'message': 'ราคา, ราคาทุน และสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
     except Exception as e:
         app.logger.error(f"Error in api_add_product: {e}")
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
 
+# ⬇️⬇️⬇️ ค้นหาฟังก์ชัน 'api_update_product' แล้วแทนที่ด้วยโค้ดนี้ ⬇️⬇️⬇️
 @app.route('/api/products/<int:item_index>', methods=['PUT'])
 def api_update_product(item_index):
-    """API สำหรับแก้ไขข้อมูลสินค้า (เวอร์ชันปรับปรุง เพิ่มรูปภาพ)"""
+    """API สำหรับแก้ไขข้อมูลสินค้า (เวอร์ชันปรับปรุง)"""
     data = request.json
     try:
         settings = get_app_settings()
@@ -2132,7 +2135,6 @@ def api_update_product(item_index):
         catalog[item_index]['price'] = float(data.get('price', catalog[item_index]['price']))
         catalog[item_index]['cost_price'] = float(data.get('cost_price', catalog[item_index].get('cost_price', 0)))
         catalog[item_index]['stock_quantity'] = int(data.get('stock_quantity', catalog[item_index]['stock_quantity']))
-        # เพิ่มการอัปเดต image_url
         catalog[item_index]['image_url'] = data.get('image_url', catalog[item_index].get('image_url', ''))
 
         if save_app_settings({'equipment_catalog': catalog}):
@@ -2141,9 +2143,38 @@ def api_update_product(item_index):
             raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
 
     except (ValueError, TypeError):
-        return jsonify({'status': 'error', 'message': 'ราคาและสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
+        return jsonify({'status': 'error', 'message': 'ราคา, ราคาทุน และสต็อกต้องเป็นตัวเลขเท่านั้น'}), 400
     except Exception as e:
         app.logger.error(f"Error in api_update_product: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
+
+@app.route('/api/products/<int:item_index>/adjust_stock', methods=['POST'])
+def api_adjust_stock(item_index):
+    """API สำหรับการปรับสต็อกด่วน (+/-)"""
+    data = request.json
+    change = data.get('change', 0) # รับค่า +1 หรือ -1
+
+    try:
+        settings = get_app_settings()
+        catalog = settings.get('equipment_catalog', [])
+
+        if not (0 <= item_index < len(catalog)):
+            return jsonify({'status': 'error', 'message': 'ไม่พบสินค้า'}), 404
+
+        # ปรับปรุงสต็อก (ป้องกันไม่ให้ติดลบ)
+        current_stock = int(catalog[item_index].get('stock_quantity', 0))
+        new_stock = max(0, current_stock + change)
+        catalog[item_index]['stock_quantity'] = new_stock
+
+        if save_app_settings({'equipment_catalog': catalog}):
+            # ส่วนนี้คือจุดที่จะเพิ่ม "การบันทึกประวัติ" ในอนาคต
+            # log_stock_movement(product_name=catalog[item_index]['item_name'], change=change, new_quantity=new_stock, user='admin')
+            return jsonify({'status': 'success', 'new_stock': new_stock})
+        else:
+            raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
+
+    except Exception as e:
+        app.logger.error(f"Error in api_adjust_stock: {e}")
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
 
 @app.route('/api/products/<int:item_index>', methods=['DELETE'])
