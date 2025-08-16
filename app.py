@@ -2229,6 +2229,37 @@ def add_task_items(task_id):
         app.logger.error(f"Error saving job items for task {task_id}: {e}")
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกรายการ'}), 500
 
+@app.route('/api/task/<task_id>/edit_report_text/<int:report_index>', methods=['POST'])
+def api_edit_report_text(task_id, report_index):
+    data = request.json
+    new_summary = data.get('summary', '').strip()
+
+    if not new_summary:
+        return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน'}), 400
+
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
+
+    history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+
+    if not (0 <= report_index < len(history)):
+        return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการแก้ไข'}), 404
+
+    history[report_index]['work_summary'] = new_summary
+
+    all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
+    final_notes = base_notes_text
+    if all_reports_text: final_notes += all_reports_text
+    if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
+
+    if update_google_task(task_id, notes=final_notes):
+        cache.clear()
+        return jsonify({'status': 'success', 'message': 'แก้ไขรายงานเรียบร้อยแล้ว'})
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข'}), 500
+
 @app.route('/api/items/use', methods=['POST'])
 def api_use_items():
     """
@@ -2753,10 +2784,11 @@ def delete_task_report(task_id, report_index):
 
     history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
     feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
-    
+
     if not (0 <= report_index < len(history)):
         return jsonify({'status': 'error', 'message': 'ไม่พบรายงานที่ต้องการลบ'}), 404
 
+    # --- ส่วนลบไฟล์ใน Google Drive ---
     report_to_delete = history[report_index]
     if report_to_delete.get('attachments'):
         drive_service = get_google_drive_service()
@@ -2768,13 +2800,14 @@ def delete_task_report(task_id, report_index):
                 except HttpError as e:
                     app.logger.error(f"Failed to delete attachment {att['id']} from Drive during report deletion: {e}")
 
-    history.pop(report_index)
+    history.pop(report_index) # ลบรายงานออกจาก list
 
+    # --- บันทึก Notes ที่อัปเดตแล้ว ---
     all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
     final_notes = base_notes_text
     if all_reports_text: final_notes += all_reports_text
     if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-    
+
     if update_google_task(task_id, notes=final_notes):
         cache.clear()
         return jsonify({'status': 'success', 'message': 'ลบรายงานเรียบร้อยแล้ว'})
