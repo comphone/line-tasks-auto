@@ -136,18 +136,41 @@
 
 {% block body_extra %}
 <script>
+    // --- START: Full JavaScript for Product Management Page ---
+
+    // Utility function for showing temporary messages
     function flashMessage(message, category = 'info') {
-        // ... (โค้ด flashMessage เหมือนเดิม) ...
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+        container.insertAdjacentHTML('beforeend', alertHtml);
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement) {
+                const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                if (alertInstance) alertInstance.close(); else alertElement.remove();
+            }
+        }, 5000);
     }
 
+    // Main execution after the page is loaded
     document.addEventListener('DOMContentLoaded', function() {
+        // --- Element References ---
         const tableBody = document.querySelector('#equipment-table tbody');
         const editModalEl = document.getElementById('editProductModal');
         const editModal = new bootstrap.Modal(editModalEl);
         const saveEditBtn = document.getElementById('save-edit-btn');
         const addNewBtn = document.getElementById('add-new-product-btn');
-        let html5QrCode;
+        const scannerContainer = document.getElementById('scanner-container');
+        const scanBarcodeBtn = document.getElementById('scan-barcode-btn');
+        const closeScannerBtn = document.getElementById('close-scanner-btn');
 
+        let html5QrCode; // Variable to hold the scanner instance
+
+        // --- Modal Handling ---
+
+        // Function to clear modal fields for adding a new product
         function clearEditModal() {
             document.getElementById('edit-product-form').reset();
             document.getElementById('edit-item-index').value = '';
@@ -158,15 +181,17 @@
 
         addNewBtn.addEventListener('click', clearEditModal);
 
+        // --- Main Table Event Delegation (for Edit and Delete buttons) ---
         tableBody.addEventListener('click', async function(event) {
             const target = event.target.closest('button');
             if (!target) return;
 
             const row = target.closest('tr');
             const itemIndex = row.dataset.index;
-            const itemInfo = JSON.parse(row.dataset.itemInfo.replace(/&quot;/g, '"'));
-
+            
+            // Handle Edit Button Click
             if (target.classList.contains('edit-btn')) {
+                const itemInfo = JSON.parse(row.dataset.itemInfo.replace(/&quot;/g, '"'));
                 clearEditModal();
                 document.getElementById('editProductModalLabel').textContent = 'แก้ไขข้อมูลสินค้า';
                 document.getElementById('edit-item-index').value = itemIndex;
@@ -181,11 +206,30 @@
                 editModal.show();
             }
 
+            // Handle Delete Button Click
             if (target.classList.contains('delete-btn')) {
-                // ... (โค้ดส่วน delete เหมือนเดิม) ...
+                const itemName = row.querySelector('td:nth-child(3)').textContent;
+                if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ "${itemName}"?`)) {
+                    try {
+                        const response = await fetch(`/api/products/${itemIndex}`, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRFToken': "{{ csrf_token() }}" }
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            flashMessage(result.message, 'success');
+                            setTimeout(() => window.location.reload(), 1000);
+                        } else {
+                            throw new Error(result.message);
+                        }
+                    } catch (error) {
+                        flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                    }
+                }
             }
         });
 
+        // --- Image Upload Logic ---
         document.getElementById('edit-image-upload').addEventListener('change', async function(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -211,6 +255,7 @@
             }
         });
 
+        // --- Save Logic (for both Add and Edit) ---
         saveEditBtn.addEventListener('click', async function() {
             const itemIndex = document.getElementById('edit-item-index').value;
             const isAdding = itemIndex === '';
@@ -249,37 +294,38 @@
         });
 
         // --- Barcode Scanner Logic ---
-        document.getElementById('scan-barcode-btn').addEventListener('click', () => {
-            const scannerContainer = document.getElementById('scanner-container');
-            scannerContainer.style.display = 'flex';
+        function onScanSuccess(decodedText, decodedResult) {
+            document.getElementById('edit-product-code').value = decodedText;
+            stopScanner();
+            flashMessage(`สแกนสำเร็จ: ${decodedText}`, 'success');
+        }
 
+        function startScanner() {
+            scannerContainer.style.display = 'flex';
             if (!html5QrCode) {
                 html5QrCode = new Html5Qrcode("qr-reader");
             }
-
-            const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-                document.getElementById('edit-product-code').value = decodedText;
-                stopScanner();
-                flashMessage(`สแกนสำเร็จ: ${decodedText}`, 'success');
-            };
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-            html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback).catch(err => {
-                console.error("Unable to start scanning.", err);
-                alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
-                stopScanner();
-            });
-        });
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .catch(err => {
+                    console.error("Unable to start scanning.", err);
+                    alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
+                    stopScanner();
+                });
+        }
 
         function stopScanner() {
             if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().then(() => {
-                    document.getElementById('scanner-container').style.display = 'none';
-                }).catch(err => console.error("Error stopping scanner", err));
+                html5QrCode.stop()
+                    .then(() => scannerContainer.style.display = 'none')
+                    .catch(err => console.error("Error stopping scanner", err));
             } else {
-                 document.getElementById('scanner-container').style.display = 'none';
+                scannerContainer.style.display = 'none';
             }
         }
-        document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
+
+        scanBarcodeBtn.addEventListener('click', startScanner);
+        closeScannerBtn.addEventListener('click', stopScanner);
     });
 </script>
 {% endblock %}
