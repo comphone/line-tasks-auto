@@ -2116,7 +2116,7 @@ def api_add_product():
 
 @app.route('/api/products/<int:item_index>', methods=['PUT'])
 def api_update_product(item_index):
-    """API สำหรับแก้ไขข้อมูลสินค้า"""
+    """API สำหรับแก้ไขข้อมูลสินค้า (เวอร์ชันปรับปรุง เพิ่มรูปภาพ)"""
     data = request.json
     try:
         settings = get_app_settings()
@@ -2127,10 +2127,14 @@ def api_update_product(item_index):
 
         # อัปเดตข้อมูล
         catalog[item_index]['item_name'] = data.get('item_name', catalog[item_index]['item_name']).strip()
+        catalog[item_index]['product_code'] = data.get('product_code', catalog[item_index].get('product_code', '')).strip()
         catalog[item_index]['unit'] = data.get('unit', catalog[item_index]['unit']).strip()
         catalog[item_index]['price'] = float(data.get('price', catalog[item_index]['price']))
+        catalog[item_index]['cost_price'] = float(data.get('cost_price', catalog[item_index].get('cost_price', 0)))
         catalog[item_index]['stock_quantity'] = int(data.get('stock_quantity', catalog[item_index]['stock_quantity']))
-        
+        # เพิ่มการอัปเดต image_url
+        catalog[item_index]['image_url'] = data.get('image_url', catalog[item_index].get('image_url', ''))
+
         if save_app_settings({'equipment_catalog': catalog}):
             return jsonify({'status': 'success', 'message': 'อัปเดตข้อมูลสินค้าสำเร็จ', 'item': catalog[item_index]})
         else:
@@ -2949,8 +2953,53 @@ def api_upload_avatar():
     else:
         return jsonify({'status': 'error', 'message': 'Failed to upload avatar to Google Drive'}), 500
 
+@app.route('/api/upload_product_image', methods=['POST'])
+def api_upload_product_image():
+    """API สำหรับอัปโหลดรูปภาพสินค้าโดยเฉพาะ"""
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
 
-# --- START of test_notification replacement ---
+    # ตรวจสอบว่าเป็นไฟล์รูปภาพและบีบอัดถ้าจำเป็น
+    if file.mimetype and file.mimetype.startswith('image/'):
+        try:
+            # บีบอัดรูปภาพให้มีคุณภาพเหมาะสมและขนาดไม่ใหญ่เกินไป
+            img = Image.open(file)
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            
+            output_buffer = BytesIO()
+            img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+            output_buffer.seek(0)
+            
+            file_to_upload = output_buffer
+            filename = os.path.splitext(secure_filename(file.filename))[0] + '.jpg'
+            mime_type = 'image/jpeg'
+            app.logger.info(f"Compressed product image '{file.filename}' successfully.")
+
+        except Exception as e:
+            app.logger.error(f"Could not process product image '{file.filename}': {e}")
+            return jsonify({'status': 'error', 'message': 'ไฟล์รูปภาพไม่ถูกต้อง'}), 400
+    else:
+        return jsonify({'status': 'error', 'message': 'รองรับเฉพาะไฟล์รูปภาพเท่านั้น'}), 400
+
+    # สร้างหรือค้นหาโฟลเดอร์สำหรับรูปภาพสินค้าใน Google Drive
+    product_images_folder_id = find_or_create_drive_folder("Product_Images", GOOGLE_DRIVE_FOLDER_ID)
+    if not product_images_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not create or find Product_Images folder in Drive'}), 500
+
+    # อัปโหลดไฟล์ขึ้น Drive
+    media_body = MediaIoBaseUpload(file_to_upload, mimetype=mime_type, resumable=True)
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, product_images_folder_id)
+    
+    if drive_file:
+        # ส่งคืน ID ของไฟล์ที่อัปโหลดสำเร็จ
+        return jsonify({'status': 'success', 'file_id': drive_file.get('id')})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to upload image to Google Drive'}), 500
+
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
     recipient_id = request.form.get('test_recipient')
