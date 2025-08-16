@@ -2176,34 +2176,39 @@ def get_task_items(task_id):
     return jsonify([item.to_dict() for item in items])
 
 @app.route('/api/task/<task_id>/items', methods=['POST'])
+@csrf.exempt # ใช้ csrf.exempt สำหรับ API endpoint ที่เรียกจาก JavaScript ภายใน
 def add_task_items(task_id):
-    """API สำหรับบันทึกรายการอุปกรณ์ใหม่"""
+    """API สำหรับบันทึกรายการอุปกรณ์ (แก้ไขให้ลบของเก่าก่อนเพิ่ม)"""
     data = request.json
     items_data = data.get('items', [])
     
-    if not items_data:
-        return jsonify({'message': 'No items provided'}), 400
-
-    # ควรจะมีการดึงชื่อช่างที่ login อยู่ ณ ตอนนั้นมาใส่ใน added_by
-    technician_name = "ช่างทดสอบ" # Placeholder - ควรเปลี่ยนเป็นชื่อช่างจริง
+    # ดึงชื่อช่างจาก session หรือการยืนยันตัวตน (ถ้ามี)
+    # ในที่นี้ยังใช้ค่า placeholder ไปก่อน
+    technician_name = "ช่างผู้บันทึก" 
 
     try:
-        for item_data in items_data:
-            new_item = JobItem(
-                task_google_id=task_id,
-                item_name=item_data['item_name'],
-                quantity=float(item_data['quantity']),
-                unit_price=float(item_data['unit_price']),
-                added_by=technician_name
-            )
-            db.session.add(new_item)
+        # 1. ลบรายการเดิมทั้งหมดที่ผูกกับ task_id นี้
+        JobItem.query.filter_by(task_google_id=task_id).delete()
         
+        # 2. เพิ่มรายการใหม่ทั้งหมดที่ส่งมา
+        if items_data: # ตรวจสอบว่ามีข้อมูลรายการใหม่ส่งมาหรือไม่
+            for item_data in items_data:
+                new_item = JobItem(
+                    task_google_id=task_id,
+                    item_name=item_data['item_name'],
+                    quantity=float(item_data['quantity']),
+                    unit_price=float(item_data['unit_price']),
+                    added_by=technician_name
+                )
+                db.session.add(new_item)
+        
+        # 3. ยืนยันการเปลี่ยนแปลง
         db.session.commit()
-        return jsonify({'message': 'Items saved successfully'}), 201
+        return jsonify({'status': 'success', 'message': 'บันทึกรายการอุปกรณ์เรียบร้อยแล้ว'}), 200
     except Exception as e:
         db.session.rollback()
         app.logger.error(f"Error saving job items for task {task_id}: {e}")
-        return jsonify({'message': 'Failed to save items'}), 500
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกรายการ'}), 500
 
 # --- END: เพิ่ม API สำหรับจัดการรายการอุปกรณ์ ---
 

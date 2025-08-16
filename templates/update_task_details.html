@@ -472,74 +472,67 @@
     let tempSelectedTechnicians = [];
     let jobItems = [];
     
-    // --- Speech Recognition Function ---
-    function setupSpeechRecognition(buttonId, textareaId) {
-        const button = document.getElementById(buttonId);
-        const textarea = document.getElementById(textareaId);
-        if (!button || !textarea) return;
+	// ในไฟล์ .html ทั้งสองไฟล์ (update_task_details.html และ form.html)
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            button.disabled = true;
-            button.title = "เบราว์เซอร์ไม่รองรับการแปลงเสียงเป็นข้อความ";
-            return;
-        }
+	function setupSpeechRecognition(buttonId, textareaId) {
+		const button = document.getElementById(buttonId);
+		const textarea = document.getElementById(textareaId);
+		if (!button || !textarea) return;
 
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'th-TH';
-        recognition.interimResults = true;
-        recognition.continuous = true;
+		const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+		if (!SpeechRecognition) {
+			button.disabled = true;
+			button.title = "เบราว์เซอร์ไม่รองรับการแปลงเสียงเป็นข้อความ";
+			return;
+		}
 
-        let isRecognizing = false;
+		const recognition = new SpeechRecognition();
+		recognition.lang = 'th-TH';
+		recognition.interimResults = false; // ไม่ต้องแสดงผลลัพธ์ระหว่างพูด
+		recognition.continuous = false;   // หยุดเมื่อพูดจบประโยค
 
-        recognition.onresult = (event) => {
-            let interimTranscript = '';
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    const finalTranscript = event.results[i][0].transcript.trim();
-                    if (finalTranscript) {
-                        textarea.value += (textarea.value ? '\n' : '') + '- ' + finalTranscript;
-                    }
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
-            }
-        };
-        
-        recognition.onend = () => {
-            if (isRecognizing) {
-                recognition.start();
-            }
-        };
+		let isRecognizing = false;
 
-        recognition.onerror = (event) => {
-             console.error("Speech recognition error", event.error);
-             isRecognizing = false;
-             button.innerHTML = '<i class="fas fa-microphone"></i>';
-             button.classList.remove('btn-danger');
-             button.classList.add('btn-outline-secondary');
-        }
+		recognition.onresult = (event) => {
+			const transcript = event.results[0][0].transcript.trim();
+			if (transcript) {
+				// ตรวจสอบว่า textarea มีข้อความอยู่แล้วหรือไม่ ถ้ามีให้ขึ้นบรรทัดใหม่
+				const existingText = textarea.value.trim();
+				textarea.value += (existingText ? '\n' : '') + '- ' + transcript;
+			}
+		};
 
-        button.addEventListener('click', () => {
-            if (isRecognizing) {
-                recognition.stop();
-                isRecognizing = false;
-                button.innerHTML = '<i class="fas fa-microphone"></i>';
-                button.classList.remove('btn-danger');
-                button.classList.add('btn-outline-secondary');
-            } else {
-                try {
-                    recognition.start();
-                    isRecognizing = true;
-                    button.innerHTML = '<i class="fas fa-stop-circle"></i>';
-                    button.classList.add('btn-danger');
-                    button.classList.remove('btn-outline-secondary');
-                } catch(e) {
-                    console.error("Could not start recognition", e);
-                }
-            }
-        });
-    }
+		recognition.onend = () => {
+			isRecognizing = false;
+			button.innerHTML = '<i class="fas fa-microphone"></i>';
+			button.classList.remove('btn-danger');
+			button.classList.add('btn-outline-secondary');
+		};
+		
+		recognition.onerror = (event) => {
+			 console.error("Speech recognition error", event.error);
+			 isRecognizing = false;
+			 button.innerHTML = '<i class="fas fa-microphone"></i>';
+			 button.classList.remove('btn-danger');
+			 button.classList.add('btn-outline-secondary');
+		}
+
+		button.addEventListener('click', () => {
+			if (isRecognizing) {
+				recognition.stop();
+			} else {
+				try {
+					recognition.start();
+					isRecognizing = true;
+					button.innerHTML = '<i class="fas fa-stop-circle"></i>';
+					button.classList.add('btn-danger');
+					button.classList.remove('btn-outline-secondary');
+				} catch(e) {
+					console.error("Could not start recognition", e);
+				}
+			}
+		});
+	}
 
     // --- All other functions ---
     window.flashMessage = (message, category = 'info') => {
