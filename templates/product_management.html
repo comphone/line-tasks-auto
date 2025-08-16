@@ -70,7 +70,7 @@
                     </thead>
                     <tbody>
                         {% for item in equipment_catalog %}
-                        <tr data-index="{{ loop.index0 }}">
+                        <tr data-index="{{ loop.index0 }}" data-item-name="{{ item.item_name }}" data-unit="{{ item.unit or '' }}" data-price="{{ item.price }}" data-stock="{{ item.stock_quantity or 0 }}">
                             <td>
                                 <img src="{{ item.image_url or url_for('static', filename='placeholder.png') }}" class="img-thumbnail" style="width: 50px; height: 50px; object-fit: cover;">
                             </td>
@@ -94,13 +94,47 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="editProductModal" tabindex="-1" aria-labelledby="editProductModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editProductModalLabel">แก้ไขข้อมูลสินค้า</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-product-form">
+            <input type="hidden" id="edit-item-index">
+            <div class="mb-3">
+                <label for="edit-item-name" class="form-label">ชื่อรายการ</label>
+                <input type="text" class="form-control" id="edit-item-name" required>
+            </div>
+            <div class="mb-3">
+                <label for="edit-item-unit" class="form-label">หน่วย</label>
+                <input type="text" class="form-control" id="edit-item-unit">
+            </div>
+            <div class="mb-3">
+                <label for="edit-item-price" class="form-label">ราคา</label>
+                <input type="number" class="form-control" id="edit-item-price" step="any" min="0" required>
+            </div>
+            <div class="mb-3">
+                <label for="edit-item-stock" class="form-label">จำนวนสต็อก</label>
+                <input type="number" class="form-control" id="edit-item-stock" min="0">
+            </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" id="save-edit-btn">บันทึกการเปลี่ยนแปลง</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block body_extra %}
 <script>
-    // --- START: เพิ่ม JavaScript ทั้งหมดนี้เข้าไป ---
-
-    // ฟังก์ชันสำหรับสร้างแถบแจ้งเตือน (เหมือนในหน้าฟอร์ม)
+    // ฟังก์ชันสำหรับสร้างแถบแจ้งเตือน (Flash Message)
     function flashMessage(message, category = 'info') {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -117,11 +151,13 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('add-equipment-form');
+        const addForm = document.getElementById('add-equipment-form');
         const tableBody = document.querySelector('#equipment-table tbody');
+        const editModal = new bootstrap.Modal(document.getElementById('editProductModal'));
+        const saveEditBtn = document.getElementById('save-edit-btn');
 
         // --- Logic สำหรับการ "เพิ่ม" สินค้าใหม่ ---
-        form.addEventListener('submit', async function(event) {
+        addForm.addEventListener('submit', async function(event) {
             event.preventDefault();
             
             const newItem = {
@@ -143,7 +179,6 @@
                 const result = await response.json();
                 if (response.ok) {
                     flashMessage('เพิ่มรายการใหม่สำเร็จ!', 'success');
-                    // โหลดหน้าใหม่เพื่อให้เห็นข้อมูลล่าสุด
                     setTimeout(() => window.location.reload(), 1000);
                 } else {
                     throw new Error(result.message);
@@ -153,14 +188,28 @@
             }
         });
 
-        // --- Logic สำหรับการ "ลบ" สินค้า ---
+        // --- Event Listener หลักสำหรับปุ่ม "แก้ไข" และ "ลบ" ---
         tableBody.addEventListener('click', async function(event) {
-            const deleteButton = event.target.closest('.delete-btn');
-            if (deleteButton) {
-                const row = deleteButton.closest('tr');
-                const itemIndex = row.dataset.index;
-                const itemName = row.cells[1].textContent;
+            const target = event.target.closest('button');
+            if (!target) return;
 
+            const row = target.closest('tr');
+            const itemIndex = row.dataset.index;
+
+            // --- Logic สำหรับการ "แก้ไข" สินค้า ---
+            if (target.classList.contains('edit-btn')) {
+                // ดึงข้อมูลจาก data attributes ของแถว
+                document.getElementById('edit-item-index').value = itemIndex;
+                document.getElementById('edit-item-name').value = row.dataset.itemName;
+                document.getElementById('edit-item-unit').value = row.dataset.unit;
+                document.getElementById('edit-item-price').value = row.dataset.price;
+                document.getElementById('edit-item-stock').value = row.dataset.stock;
+                editModal.show();
+            }
+
+            // --- Logic สำหรับการ "ลบ" สินค้า ---
+            if (target.classList.contains('delete-btn')) {
+                const itemName = row.dataset.itemName;
                 if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ "${itemName}"?`)) {
                     try {
                         const response = await fetch(`/api/products/${itemIndex}`, {
@@ -170,7 +219,7 @@
                         const result = await response.json();
                         if (response.ok) {
                             flashMessage(result.message, 'success');
-                            row.remove(); // ลบแถวออกจากตารางทันที
+                            setTimeout(() => window.location.reload(), 1000);
                         } else {
                             throw new Error(result.message);
                         }
@@ -180,7 +229,38 @@
                 }
             }
         });
+
+        // --- Logic สำหรับการ "บันทึกข้อมูลที่แก้ไข" จาก Modal ---
+        saveEditBtn.addEventListener('click', async function() {
+            const itemIndex = document.getElementById('edit-item-index').value;
+            const updatedItem = {
+                item_name: document.getElementById('edit-item-name').value,
+                unit: document.getElementById('edit-item-unit').value,
+                price: document.getElementById('edit-item-price').value,
+                stock_quantity: document.getElementById('edit-item-stock').value,
+            };
+
+            try {
+                const response = await fetch(`/api/products/${itemIndex}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': "{{ csrf_token() }}"
+                    },
+                    body: JSON.stringify(updatedItem)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    flashMessage('อัปเดตข้อมูลสำเร็จ!', 'success');
+                    editModal.hide();
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            }
+        });
     });
-    // --- END: สิ้นสุด JavaScript ---
 </script>
 {% endblock %}
