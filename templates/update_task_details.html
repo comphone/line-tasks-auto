@@ -578,7 +578,7 @@
         document.getElementById(`${currentTechnicianTargetId}_display`).value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
         technicianSelectionModal.hide();
     };
-
+    
     // --- History & Image Lightbox Functions ---
     function renderHistorySection() {
         const container = document.getElementById('history-section-body');
@@ -588,7 +588,7 @@
             container.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการทำงาน</p>';
             return;
         }
-        techReportsHistory.forEach((report) => {
+        techReportsHistory.forEach((report, index) => {
             const entry = document.createElement('div');
             entry.className = 'history-entry';
             let imageGalleryHtml = '';
@@ -614,7 +614,7 @@
             container.appendChild(entry);
         });
     }
-    
+
     // --- Page Initialization ---
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technician-action-sheet'));
@@ -629,6 +629,7 @@
         let itemScanner;
         const itemScannerContainer = document.getElementById('scanner-container');
         const itemAddModalEl = document.getElementById('addItemModal');
+        const closeScannerBtn = document.getElementById('close-scanner-btn');
 
         const stopItemScanner = () => {
             if (itemScanner && itemScanner.isScanning) {
@@ -639,8 +640,9 @@
 
         document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             itemScannerContainer.style.display = 'flex';
-            if (!itemScanner) itemScanner = new Html5Qrcode("qr-reader");
-            
+            if (!itemScanner) {
+                itemScanner = new Html5Qrcode("qr-reader");
+            }
             itemScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
                     const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
@@ -661,7 +663,7 @@
             });
         });
 
-        document.getElementById('close-scanner-btn').addEventListener('click', stopItemScanner);
+        closeScannerBtn.addEventListener('click', stopItemScanner);
         itemAddModalEl.addEventListener('hidden.bs.modal', stopItemScanner);
     });
 </script>

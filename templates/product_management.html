@@ -5,28 +5,9 @@
 {% block head_extra %}
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
 <style>
-    /* START: CSS สำหรับปุ่มปรับสต็อกด่วน และฟีเจอร์ใหม่ๆ */
-    .stock-adjust-cell {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 0.5rem; /* เพิ่มระยะห่างระหว่างปุ่ม */
-    }
-    .stock-adjust-btn {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        padding: 0;
-        font-weight: bold;
-        flex-shrink: 0; /* ป้องกันปุ่มถูกบีบ */
-    }
-    .stock-value {
-        min-width: 50px;
-        text-align: center;
-        font-size: 1.1em;
-        font-weight: 500;
-    }
-    /* END: CSS */
+    .stock-adjust-cell { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+    .stock-adjust-btn { width: 30px; height: 30px; border-radius: 50%; padding: 0; font-weight: bold; flex-shrink: 0; }
+    .stock-value { min-width: 50px; text-align: center; font-size: 1.1em; font-weight: 500; }
 </style>
 {% endblock %}
 
@@ -49,10 +30,9 @@
             </div>
         </div>
     </div>
+
     <div class="card shadow-sm">
-        <div class="card-header">
-            <h5 class="mb-0">รายการสินค้าทั้งหมดในระบบ</h5>
-        </div>
+        <div class="card-header"><h5 class="mb-0">รายการสินค้าทั้งหมดในระบบ</h5></div>
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-hover align-middle" id="equipment-table">
@@ -69,9 +49,7 @@
                     <tbody>
                         {% for item in equipment_catalog %}
                         <tr data-index="{{ loop.index0 }}" data-item-info="{{ item|tojson|forceescape }}">
-                            <td>
-                                <img src="{{ item.image_url or url_for('static', filename='logo.png') }}" class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover;">
-                            </td>
+                            <td><img src="{{ item.image_url or url_for('static', filename='logo.png') }}" class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover;"></td>
                             <td class="font-monospace">{{ item.product_code or '-' }}</td>
                             <td>{{ item.item_name }}</td>
                             <td class="text-end">{{ "%.2f"|format(item.price|float) }}</td>
@@ -81,16 +59,14 @@
                                     <span class="stock-value mx-1" id="stock-value-{{ loop.index0 }}">{{ item.stock_quantity or 0 }}</span>
                                     <button class="btn btn-sm btn-outline-success stock-adjust-btn" data-change="1">+</button>
                                 </div>
-                                </td>
+                            </td>
                             <td class="text-center">
                                 <button class="btn btn-sm btn-outline-warning edit-btn"><i class="fas fa-pen"></i></button>
                                 <button class="btn btn-sm btn-outline-danger delete-btn"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>
                         {% else %}
-                        <tr id="no-items-row">
-                            <td colspan="6" class="text-center text-muted p-4">ยังไม่มีข้อมูลสินค้าในแคตตาล็อก</td>
-                        </tr>
+                        <tr id="no-items-row"><td colspan="6" class="text-center text-muted p-4">ยังไม่มีข้อมูลสินค้าในแคตตาล็อก</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -145,7 +121,7 @@
   </div>
 </div>
 
-<div id="scanner-container" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1060; flex-direction: column;" class="d-flex justify-content-center align-items-center">
+<div id="scanner-container" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1060; flex-direction: column; justify-content: center; align-items: center;">
     <h5 class="text-white mb-3">กรุณาวางบาร์โค้ดให้อยู่ในกรอบ</h5>
     <div style="width: 90%; max-width: 500px; background: white; border-radius: 10px; overflow: hidden;"><div id="qr-reader"></div></div>
     <button id="close-scanner-btn" class="btn btn-danger mt-3">ปิดกล้อง</button>
@@ -186,7 +162,7 @@
                 row.style.display = (productCode.includes(filter) || productName.includes(filter)) ? '' : 'none';
             });
         });
-
+        
         document.getElementById('add-new-product-btn').addEventListener('click', () => {
             document.getElementById('edit-product-form').reset();
             document.getElementById('edit-item-index').value = '';
@@ -252,7 +228,7 @@
                 }
             }
         });
-
+        
         document.getElementById('edit-image-upload').addEventListener('change', async function(event) {
             const file = event.target.files[0];
             if (!file) return;
