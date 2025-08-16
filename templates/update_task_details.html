@@ -651,13 +651,18 @@
     function renderSummaryList() {
         const listContainer = document.getElementById('item-summary-list');
         const grandTotalDisplay = document.getElementById('grand-total-display');
+        const finalEquipmentSummary = document.getElementById('equipment-summary-final');
+        const progressEquipmentSummary = document.getElementById('equipment-summary-progress');
         let grandTotal = 0;
         
         if (jobItems.length === 0) {
             listContainer.innerHTML = '<p class="text-muted text-center p-3">ยังไม่มีรายการ</p>';
             grandTotalDisplay.textContent = 'รวม: 0.00 บาท';
+            finalEquipmentSummary.innerHTML = '<p class="text-muted">ไม่มีรายการอุปกรณ์</p>';
+            progressEquipmentSummary.innerHTML = '<p class="text-muted">ไม่มีรายการอุปกรณ์</p>';
         } else {
             listContainer.innerHTML = '';
+            let summaryText = '';
             jobItems.forEach((item, index) => {
                 const itemTotal = (item.quantity || 0) * (item.unit_price || 0);
                 grandTotal += itemTotal;
@@ -674,8 +679,11 @@
                     </div>
                 `;
                 listContainer.appendChild(itemElement);
+                summaryText += `• ${item.item_name} จำนวน ${item.quantity}\n`;
             });
             grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
+            finalEquipmentSummary.innerText = summaryText.trim();
+            progressEquipmentSummary.innerText = summaryText.trim();
         }
     }
 
@@ -961,6 +969,46 @@
             flashMessage('กดที่รูปภาพที่ต้องการแชร์ แล้วกดปุ่มนี้อีกครั้งเพื่อยืนยัน', 'info');
         }
     }
+    
+    async function shareSelectedImages(thumbnails) {
+        flashMessage('กำลังเตรียมไฟล์สำหรับแชร์...', 'info');
+        const fetchPromises = Array.from(thumbnails).map(thumb => {
+            const url = thumb.dataset.fullUrl;
+            const filename = thumb.dataset.filename;
+            return fetch(url)
+                .then(response => response.blob())
+                .then(blob => new File([blob], filename, { type: blob.type }))
+                .catch(err => {
+                    console.error(`Failed to fetch ${url}:`, err);
+                    return null;
+                });
+        });
+
+        const files = await Promise.all(fetchPromises);
+        const validFiles = files.filter(f => f !== null);
+
+        if (validFiles.length === 0) {
+            flashMessage('ไม่สามารถดาวน์โหลดไฟล์ที่เลือกเพื่อแชร์ได้', 'danger');
+            return;
+        }
+
+        if (navigator.canShare && navigator.canShare({ files: validFiles })) {
+            try {
+                await navigator.share({
+                    files: validFiles,
+                    title: 'รูปภาพจากงานซ่อม',
+                    text: `รูปภาพจากงาน #${taskId.substring(taskId.length-6)}`
+                });
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('Error sharing files:', err);
+                    flashMessage('การแชร์ไม่สำเร็จ', 'warning');
+                }
+            }
+        } else {
+            flashMessage('เบราว์เซอร์ของคุณไม่รองรับการแชร์ไฟล์หลายไฟล์', 'danger');
+        }
+    }
 
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technician-action-sheet'));
@@ -1002,6 +1050,60 @@
             } finally {
                 submitButton.disabled = false;
             }
+        });
+        
+        // --- NEW: Item Modal Save Logic ---
+        document.getElementById('save-item-modal-btn').addEventListener('click', () => {
+            const itemNameInput = document.getElementById('item-name-input');
+            const itemQuantityInput = document.getElementById('item-quantity-input');
+            const itemPriceInput = document.getElementById('item-price-input');
+            const editIndexInput = document.getElementById('edit-item-index');
+
+            if (!itemNameInput.value.trim() || !itemQuantityInput.value.trim()) {
+                flashMessage('กรุณากรอกชื่อและจำนวนรายการ', 'warning');
+                return;
+            }
+
+            const newItem = {
+                item_name: itemNameInput.value.trim(),
+                quantity: parseFloat(itemQuantityInput.value),
+                unit_price: parseFloat(itemPriceInput.value) || 0
+            };
+
+            const editIndex = editIndexInput.value;
+            if (editIndex !== '') {
+                // Edit existing item
+                jobItems[parseInt(editIndex)] = newItem;
+            } else {
+                // Add new item
+                jobItems.push(newItem);
+            }
+            
+            saveAllItemsToDb();
+            itemAddModal.hide();
+        });
+        
+        // --- NEW: Item Modal Edit Button Logic ---
+        document.getElementById('item-summary-list').addEventListener('click', (event) => {
+            const editBtn = event.target.closest('.edit-item-btn');
+            if (editBtn) {
+                const index = parseInt(editBtn.dataset.index);
+                const item = jobItems[index];
+                document.getElementById('edit-item-index').value = index;
+                document.getElementById('item-name-input').value = item.item_name;
+                document.getElementById('item-quantity-input').value = item.quantity;
+                document.getElementById('item-price-input').value = item.unit_price;
+                document.getElementById('addItemModalLabel').textContent = 'แก้ไขรายการ';
+            }
+        });
+        
+        // --- NEW: Reset Modal on Close ---
+        itemAddModal._element.addEventListener('hidden.bs.modal', () => {
+            document.getElementById('edit-item-index').value = '';
+            document.getElementById('item-name-input').value = '';
+            document.getElementById('item-quantity-input').value = '1';
+            document.getElementById('item-price-input').value = '';
+            document.getElementById('addItemModalLabel').textContent = 'เพิ่ม/แก้ไขรายการ';
         });
 
         let itemScanner;
