@@ -462,9 +462,10 @@
     </div>
 </div>
 
-<div id="scanner-container">
-    <div id="qr-reader"></div>
-    <button id="close-scanner-btn" class="btn btn-danger">ปิดกล้อง</button>
+<div id="scanner-container" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1080; flex-direction: column; justify-content: center; align-items: center;">
+    <h5 class="text-white mb-3">กรุณาวางบาร์โค้ดให้อยู่ในกรอบ</h5>
+    <div style="width: 90%; max-width: 500px; background: white; border-radius: 10px; overflow: hidden;"><div id="qr-reader"></div></div>
+    <button id="close-scanner-btn" class="btn btn-danger mt-3">ปิดกล้อง</button>
 </div>
 {% endblock %}
 
@@ -479,13 +480,13 @@
     const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
-    let technicianSelectionModal, itemAddModal;
+    let technicianSelectionModal, itemAddModal, editReportModal, editReportTextModal;
     let jobItems = [];
     let currentTechnicianTargetId;
     let selectedTechnicians = {};
     let currentLightboxImages = [];
     let slideIndex = 0;
-
+    
     // --- Utility Functions ---
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
@@ -579,6 +580,78 @@
         technicianSelectionModal.hide();
     };
     
+    // --- Job Items (Equipment) Functions ---
+    async function loadInitialItems() {
+        try {
+            const response = await fetch(`/api/task/${taskId}/items`);
+            if (!response.ok) throw new Error('Failed to fetch');
+            jobItems = await response.json();
+            renderSummaryList();
+        } catch (error) { 
+            console.error('Failed to load initial items:', error);
+            renderSummaryList(); // Render empty list on error
+        }
+    }
+
+    function renderSummaryList() {
+        const listContainer = document.getElementById('item-summary-list');
+        const grandTotalDisplay = document.getElementById('grand-total-display');
+        let grandTotal = 0;
+        
+        if (jobItems.length === 0) {
+            listContainer.innerHTML = '<p class="text-muted text-center p-3">ยังไม่มีรายการ</p>';
+            grandTotalDisplay.textContent = 'รวม: 0.00 บาท';
+        } else {
+            listContainer.innerHTML = '';
+            jobItems.forEach((item, index) => {
+                const itemTotal = (item.quantity || 0) * (item.unit_price || 0);
+                grandTotal += itemTotal;
+                const itemElement = document.createElement('div');
+                itemElement.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
+                itemElement.innerHTML = `
+                    <div>
+                        <strong>${item.item_name}</strong><br>
+                        <small class="text-muted">${item.quantity} x ${item.unit_price.toFixed(2)} บาท</small>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 edit-item-btn" data-index="${index}" data-bs-toggle="modal" data-bs-target="#addItemModal"><i class="fas fa-pen"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="handleDeleteItem(${index})"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                listContainer.appendChild(itemElement);
+            });
+            grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
+        }
+        // renderEquipmentSummaryInForms(); // This function is not defined, should be implemented if needed
+    }
+
+    function handleDeleteItem(index) {
+        if (confirm(`คุณต้องการลบรายการ "${jobItems[index].item_name}" ใช่หรือไม่?`)) {
+            jobItems.splice(index, 1);
+            saveAllItemsToDb();
+        }
+    }
+
+    async function saveAllItemsToDb() {
+       try {
+            const response = await fetch(`/api/task/${taskId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ items: jobItems })
+            });
+            if (!response.ok) {
+                 const errorResult = await response.json();
+                 throw new Error(errorResult.message || 'Server responded with an error');
+            }
+            const result = await response.json();
+            window.flashMessage(result.message, 'success');
+            renderSummaryList();
+        } catch (error) {
+            console.error('Failed to save all items:', error);
+            window.flashMessage(`เกิดข้อผิดพลาดในการบันทึกอุปกรณ์: ${error.message}`, 'danger');
+        }
+    }
+
     // --- History & Image Lightbox Functions ---
     function renderHistorySection() {
         const container = document.getElementById('history-section-body');
@@ -588,29 +661,18 @@
             container.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการทำงาน</p>';
             return;
         }
-        techReportsHistory.forEach((report, index) => {
+        techReportsHistory.forEach((report) => {
             const entry = document.createElement('div');
             entry.className = 'history-entry';
             let imageGalleryHtml = '';
             if (report.attachments && report.attachments.length > 0) {
                 imageGalleryHtml += '<div class="image-gallery-grid mt-3">';
                 report.attachments.forEach(att => {
-                    if (att.id) {
-                        imageGalleryHtml += `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="${att.name || 'รูปภาพ'}"></div>`;
-                    }
+                    if (att.id) imageGalleryHtml += `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="${att.name || 'รูปภาพ'}"></div>`;
                 });
                 imageGalleryHtml += '</div>';
             }
-            entry.innerHTML = `
-                <div class="history-entry-header">
-                    <span class="history-entry-title"><i class="fas fa-wrench me-2"></i>${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานความคืบหน้า'}</span>
-                </div>
-                <div class="history-entry-subheader text-muted small">
-                    <span>${new Date(report.summary_date).toLocaleString('th-TH')}</span>
-                    <span>โดย: ${report.technicians ? report.technicians.join(', ') : 'N/A'}</span>
-                </div>
-                <hr class="my-2">
-                <div class="history-entry-body"><p>${report.work_summary || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>${imageGalleryHtml}</div>`;
+            entry.innerHTML = `<div class="history-entry-header"><span class="history-entry-title"><i class="fas fa-wrench me-2"></i>${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานความคืบหน้า'}</span></div><div class="history-entry-subheader text-muted small"><span>${new Date(report.summary_date).toLocaleString('th-TH')}</span><span>โดย: ${report.technicians ? report.technicians.join(', ') : 'N/A'}</span></div><hr class="my-2"><div class="history-entry-body"><p>${report.work_summary || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>${imageGalleryHtml}</div>`;
             container.appendChild(entry);
         });
     }
@@ -619,11 +681,14 @@
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technician-action-sheet'));
         itemAddModal = new bootstrap.Modal(document.getElementById('addItemModal'));
-        
+        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
+
         setupSpeechRecognition('start-recognition-final', 'work_summary_final');
         setupSpeechRecognition('start-recognition-reschedule', 'reschedule_reason');
         setupSpeechRecognition('start-recognition-progress', 'work_summary_progress');
         
+        loadInitialItems();
         renderHistorySection();
 
         let itemScanner;
@@ -640,9 +705,8 @@
 
         document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             itemScannerContainer.style.display = 'flex';
-            if (!itemScanner) {
-                itemScanner = new Html5Qrcode("qr-reader");
-            }
+            if (!itemScanner) itemScanner = new Html5Qrcode("qr-reader");
+            
             itemScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
                     const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
