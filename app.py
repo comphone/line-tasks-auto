@@ -1,4 +1,5 @@
 import os
+import requests
 from flask_sqlalchemy import SQLAlchemy
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
@@ -303,7 +304,7 @@ _DEFAULT_APP_SETTINGS_STORE = {
         'message_nearby_template': 'มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?',
         'liff_popup_base_url': 'https://liff.line.me/2007690244-zBNe26ZO'
     },
-        'technician_templates': {
+    'technician_templates': {
         'task_details': [
             {'key': 'ล้างแอร์', 'value': 'ล้างทำความสะอาดเครื่องปรับอากาศ, ตรวจเช็คน้ำยา, วัดแรงดันไฟฟ้า และทำความสะอาดคอยล์ร้อน-เย็น'},
             {'key': 'ติดตั้งแอร์', 'value': 'ติดตั้งเครื่องปรับอากาศใหม่ ขนาด [ขนาด BTU] พร้อมเดินท่อน้ำยาและสายไฟ, ติดตั้งเบรกเกอร์'},
@@ -313,13 +314,13 @@ _DEFAULT_APP_SETTINGS_STORE = {
             {'key': 'รออะไหล่', 'value': 'ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง'},
         ]
     },
-    
     'message_templates': {
         'welcome_customer': "เรียน คุณ[customer_name],\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: [shop_phone]\nLINE ID: [shop_line_id]",
-    'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\n\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\n\n🔗 ดูรายละเอียดงาน:\n[task_url]",
-    'daily_reminder_header': "...",
-    'daily_reminder_task_line': "..."
-    }
+        'problem_report_admin': "🚨 ลูกค้าแจ้งปัญหา!\n\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\n\n🔗 ดูรายละเอียดงาน:\n[task_url]",
+        'daily_reminder_header': "...",
+        'daily_reminder_task_line': "..."
+    },
+    'product_categories': [] # เพิ่มบรรทัดนี้เข้ามา
 }
 
 def load_settings_from_file():
@@ -424,6 +425,12 @@ def save_app_settings(settings_data):
                         app.logger.warning(f"Skipping invalid equipment item: {item}")
                         continue
             current_settings['equipment_catalog'] = validated_catalog
+            
+        elif key == 'product_categories' and isinstance(value, list):
+            # ตรวจสอบและกรองข้อมูลหมวดหมู่ที่ส่งมา
+            validated_categories = sorted(list(set([str(cat).strip() for cat in value if str(cat).strip()])))
+            current_settings['product_categories'] = validated_categories
+        
         elif isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
             current_settings[key].update(value)
         else:
@@ -554,6 +561,43 @@ def get_google_service(api_name, api_version):
 
 def get_google_tasks_service(): return get_google_service('tasks', 'v1')
 def get_google_drive_service(): return get_google_service('drive', 'v3')
+
+GOOGLE_CUSTOM_SEARCH_API_KEY = os.environ.get('GOOGLE_CUSTOM_SEARCH_API_KEY')
+GOOGLE_CUSTOM_SEARCH_CX = os.environ.get('GOOGLE_CUSTOM_SEARCH_CX')
+
+@app.route('/api/search_images')
+def api_search_images():
+    """API สำหรับค้นหารูปภาพจาก Google Custom Search"""
+    query = request.args.get('q')
+    if not query:
+        return jsonify({'status': 'error', 'message': 'ต้องระบุคำค้นหา'}), 400
+
+    if not GOOGLE_CUSTOM_SEARCH_API_KEY or not GOOGLE_CUSTOM_SEARCH_CX:
+        app.logger.error("Google Custom Search API credentials are not set.")
+        return jsonify({'status': 'error', 'message': 'การตั้งค่า API ไม่สมบูรณ์'}), 500
+
+    try:
+        url = "https://www.googleapis.com/customsearch/v1"
+        params = {
+            'q': query,
+            'cx': GOOGLE_CUSTOM_SEARCH_CX,
+            'key': GOOGLE_CUSTOM_SEARCH_API_KEY,
+            'searchType': 'image',
+            'num': 8 # ดึงมา 8 รูปภาพ
+        }
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        
+        image_urls = [item['link'] for item in data.get('items', [])]
+        return jsonify({'status': 'success', 'images': image_urls})
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error calling Google Custom Search API: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Google'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in api_search_images: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
 @app.route('/api/search-equipment-catalog')
 def api_search_equipment_catalog():
@@ -2927,25 +2971,8 @@ def settings_page():
     
     # This part handles the initial page load (GET request)
     settings = get_app_settings()
-    return render_template('settings_page.html', settings=settings)
-    
-@app.route('/api/settings/categories', methods=['GET', 'POST'])
-def api_manage_categories():
-    """API สำหรับจัดการหมวดหมู่สินค้า"""
-    settings = get_app_settings()
-    if request.method == 'GET':
-        return jsonify(settings.get('product_categories', []))
-    
-    if request.method == 'POST':
-        data = request.json
-        new_categories = data.get('categories', [])
-        if isinstance(new_categories, list):
-            # Sanitize input
-            settings['product_categories'] = sorted([str(cat).strip() for cat in new_categories if str(cat).strip()])
-            if save_app_settings(settings):
-                return jsonify({'status': 'success', 'message': 'บันทึกหมวดหมู่เรียบร้อยแล้ว'})
-        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ถูกต้อง'}), 400  
-   
+    return render_template('settings_page.html', settings=settings)   
+ 
 @app.route('/api/upload_avatar', methods=['POST'])
 def api_upload_avatar():
     if 'file' not in request.files:
@@ -3833,6 +3860,22 @@ def callback_line():
     # For LIFF apps, often no server-side action is needed here
     # as the LIFF SDK handles the token on the client-side.
     return "OK", 200
+
+@app.route('/api/settings/categories', methods=['GET', 'POST'])
+def api_manage_categories():
+    """API สำหรับจัดการหมวดหมู่สินค้า"""
+    settings = get_app_settings()
+    if request.method == 'GET':
+        return jsonify(settings.get('product_categories', []))
+    
+    if request.method == 'POST':
+        data = request.json
+        new_categories = data.get('categories', [])
+        if isinstance(new_categories, list):
+            # ใช้ฟังก์ชัน save_app_settings ที่อัปเดตแล้ว
+            if save_app_settings({'product_categories': new_categories}):
+                return jsonify({'status': 'success', 'message': 'บันทึกหมวดหมู่เรียบร้อยแล้ว'})
+        return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ถูกต้อง'}), 400
 
 from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')

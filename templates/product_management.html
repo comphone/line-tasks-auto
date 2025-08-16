@@ -9,6 +9,29 @@
     .stock-adjust-btn { width: 30px; height: 30px; border-radius: 50%; padding: 0; font-weight: bold; flex-shrink: 0; }
     .stock-value { min-width: 50px; text-align: center; font-size: 1.1em; font-weight: 500; }
     .category-badge { font-size: 0.8em; }
+    
+    /* NEW: Image Search Styles */
+    #image-search-results {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 0.5rem;
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 0.5rem;
+    }
+    .search-thumbnail {
+        width: 100%;
+        height: 80px;
+        object-fit: cover;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: border-color 0.2s;
+    }
+    .search-thumbnail:hover {
+        border-color: #007bff;
+    }
 </style>
 {% endblock %}
 
@@ -89,7 +112,6 @@
     </div>
 </div>
 
-<!-- Modal for Adding/Editing Product -->
 <div class="modal fade" id="editProductModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
@@ -106,6 +128,15 @@
                     <input type="file" id="edit-image-upload" class="d-none" accept="image/*">
                     <button type="button" class="btn btn-sm btn-outline-primary w-100" onclick="document.getElementById('edit-image-upload').click();"><i class="fas fa-camera me-1"></i> เปลี่ยนรูปภาพ</button>
                     <input type="hidden" id="edit-image-url">
+                    <hr class="my-3">
+                    <div class="mb-2">
+                        <label for="image-search-input" class="form-label small text-muted">หรือค้นหารูปภาพออนไลน์</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-sm" id="image-search-input" placeholder="เช่น 'คอมพิวเตอร์ Asus'">
+                            <button type="button" class="btn btn-sm btn-secondary" id="image-search-btn"><i class="fas fa-search"></i></button>
+                        </div>
+                    </div>
+                    <div id="image-search-results"></div>
                 </div>
                 <div class="col-md-8">
                     <div class="row">
@@ -145,7 +176,6 @@
   </div>
 </div>
 
-<!-- Modal for Categories -->
 <div class="modal fade" id="categoriesModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -166,7 +196,6 @@
     </div>
 </div>
 
-<!-- Barcode Scanner Placeholder -->
 <div id="scanner-container" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1060; flex-direction: column; justify-content: center; align-items: center;">
     <h5 class="text-white mb-3">กรุณาวางบาร์โค้ดให้อยู่ในกรอบ</h5>
     <div style="width: 90%; max-width: 500px; background: white; border-radius: 10px; overflow: hidden;"><div id="qr-reader"></div></div>
@@ -194,19 +223,145 @@
     document.addEventListener('DOMContentLoaded', function() {
         const tableBody = document.querySelector('#equipment-table tbody');
         const editModalEl = document.getElementById('editProductModal');
+        const categoriesModalEl = document.getElementById('categoriesModal');
         const editModal = new bootstrap.Modal(editModalEl);
+        const categoriesModal = new bootstrap.Modal(categoriesModalEl);
         const searchInput = document.getElementById('product-search-input');
         const scannerContainer = document.getElementById('scanner-container');
         let html5QrCode = null;
+        let categories = []; // New global variable for categories
+        let catalog = {{ equipment_catalog | tojson | safe }};
 
+        // --- New Category Management Functions ---
+        async function loadCategories() {
+            try {
+                const response = await fetch('/api/settings/categories');
+                categories = await response.json();
+                renderCategoryLists();
+            } catch (error) {
+                console.error('Error loading categories:', error);
+            }
+        }
+
+        function renderCategoryLists() {
+            // Render in filter select
+            const filterSelect = document.getElementById('category-filter');
+            filterSelect.innerHTML = '<option value="all">แสดงทุกหมวดหมู่</option>';
+            categories.forEach(cat => {
+                filterSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
+            });
+
+            // Render in edit modal select
+            const editSelect = document.getElementById('edit-item-category');
+            editSelect.innerHTML = '<option value="">ไม่มีหมวดหมู่</option>';
+            categories.forEach(cat => {
+                editSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
+            });
+
+            // Render in categories modal
+            const categoryListContainer = document.getElementById('category-list');
+            categoryListContainer.innerHTML = '';
+            categories.forEach((cat, index) => {
+                const categoryItem = document.createElement('div');
+                categoryItem.className = 'input-group mb-2';
+                categoryItem.innerHTML = `
+                    <input type="text" class="form-control form-control-sm" value="${cat}" data-index="${index}">
+                    <button class="btn btn-sm btn-outline-danger" type="button" onclick="removeCategory(${index})"><i class="fas fa-trash"></i></button>
+                `;
+                categoryListContainer.appendChild(categoryItem);
+            });
+        }
+
+        window.removeCategory = (index) => {
+            if (confirm(`คุณแน่ใจหรือไม่ที่จะลบหมวดหมู่ "${categories[index]}"?`)) {
+                categories.splice(index, 1);
+                renderCategoryLists();
+            }
+        };
+
+        document.getElementById('add-category-btn').addEventListener('click', () => {
+            categories.push('หมวดหมู่ใหม่');
+            renderCategoryLists();
+        });
+
+        document.getElementById('save-categories-btn').addEventListener('click', async () => {
+            const inputElements = document.querySelectorAll('#category-list input');
+            const newCategories = Array.from(inputElements).map(input => input.value.trim()).filter(val => val);
+            try {
+                const response = await fetch('/api/settings/categories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': "{{ csrf_token() }}" },
+                    body: JSON.stringify({ categories: newCategories })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    flashMessage(result.message, 'success');
+                    await loadCategories();
+                    categoriesModal.hide();
+                } else { throw new Error(result.message); }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            }
+        });
+
+        // --- NEW: Image Search Functions ---
+        document.getElementById('image-search-btn').addEventListener('click', async () => {
+            const query = document.getElementById('image-search-input').value.trim();
+            if (!query) {
+                flashMessage('กรุณากรอกคำค้นหา', 'warning');
+                return;
+            }
+            
+            const resultsContainer = document.getElementById('image-search-results');
+            resultsContainer.innerHTML = '<p class="text-center text-muted small mt-2">กำลังค้นหา...</p>';
+
+            try {
+                // This is a placeholder for the backend API call
+                // Replace with your actual API endpoint that calls Google Custom Search
+                const response = await fetch(`/api/search_images?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.status === 'success' && data.images && data.images.length > 0) {
+                    resultsContainer.innerHTML = '';
+                    data.images.forEach(url => {
+                        const img = document.createElement('img');
+                        img.src = url;
+                        img.className = 'search-thumbnail';
+                        img.onclick = () => {
+                            document.getElementById('edit-image-preview').src = url;
+                            document.getElementById('edit-image-url').value = url;
+                            flashMessage('เลือกรูปภาพแล้ว', 'success');
+                        };
+                        resultsContainer.appendChild(img);
+                    });
+                } else {
+                    resultsContainer.innerHTML = '<p class="text-center text-muted small mt-2">ไม่พบรูปภาพ</p>';
+                }
+            } catch (error) {
+                flashMessage('เกิดข้อผิดพลาดในการค้นหา: ' + error.message, 'danger');
+                resultsContainer.innerHTML = '<p class="text-center text-danger small mt-2">เกิดข้อผิดพลาดในการเชื่อมต่อ</p>';
+            }
+        });
+
+        // --- Modify Existing Functions ---
         searchInput.addEventListener('keyup', () => {
             const filter = searchInput.value.toLowerCase();
-            tableBody.querySelectorAll('tr').forEach(row => {
+            const categoryFilter = document.getElementById('category-filter').value;
+            const rows = tableBody.querySelectorAll('tr');
+            rows.forEach(row => {
                 if (row.id === 'no-items-row') return;
-                const productCode = row.cells[1].textContent.toLowerCase();
-                const productName = row.cells[2].textContent.toLowerCase();
-                row.style.display = (productCode.includes(filter) || productName.includes(filter)) ? '' : 'none';
+                const productName = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+                const itemCategory = row.dataset.category;
+
+                const textMatch = (productName.includes(filter));
+                const categoryMatch = (categoryFilter === 'all' || itemCategory === categoryFilter);
+
+                row.style.display = (textMatch && categoryMatch) ? '' : 'none';
             });
+        });
+        
+        document.getElementById('category-filter').addEventListener('change', () => {
+             searchInput.dispatchEvent(new Event('keyup')); // Trigger a search
         });
         
         document.getElementById('add-new-product-btn').addEventListener('click', () => {
@@ -227,6 +382,7 @@
                 document.getElementById('editProductModalLabel').textContent = 'แก้ไขข้อมูลสินค้า';
                 document.getElementById('edit-item-index').value = itemIndex;
                 document.getElementById('edit-item-name').value = itemInfo.item_name;
+                document.getElementById('edit-item-category').value = itemInfo.category || '';
                 document.getElementById('edit-product-code').value = itemInfo.product_code || '';
                 document.getElementById('edit-item-unit').value = itemInfo.unit || '';
                 document.getElementById('edit-item-price').value = itemInfo.price;
@@ -237,7 +393,7 @@
                 editModal.show();
             }
             if (target.classList.contains('delete-btn')) {
-                const itemName = row.querySelector('td:nth-child(3)').textContent;
+                const itemName = row.querySelector('td:nth-child(2)').textContent;
                 if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ "${itemName}"?`)) {
                     try {
                         const response = await fetch(`/api/products/${itemIndex}`, {
@@ -303,6 +459,7 @@
             const isAdding = itemIndex === '';
             const itemData = {
                 item_name: document.getElementById('edit-item-name').value,
+                category: document.getElementById('edit-item-category').value,
                 product_code: document.getElementById('edit-product-code').value,
                 unit: document.getElementById('edit-item-unit').value,
                 price: document.getElementById('edit-item-price').value,
@@ -356,6 +513,8 @@
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
         editModalEl.addEventListener('hidden.bs.modal', stopScanner);
+        
+        loadCategories();
     });
 </script>
 {% endblock %}
