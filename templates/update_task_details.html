@@ -487,6 +487,7 @@
     // Data
     let jobItems = [];
     let currentTechnicianTargetId;
+    let selectedTechnicians = {}; // <-- ✅ NEW: To store selections for each form
 
     // Lightbox
     let currentLightboxImages = [];
@@ -567,6 +568,65 @@
             }
         });
     }
+
+    // --- ✅ START: โค้ดที่แก้ไขและเพิ่มเติมสำหรับ "เลือกช่าง" ---
+    window.openTechnicianModal = (targetId) => {
+        currentTechnicianTargetId = targetId;
+        // Initialize selections for this target if not already present
+        if (!selectedTechnicians[targetId]) {
+            selectedTechnicians[targetId] = [];
+        }
+        renderTechnicianList();
+        technicianSelectionModal.show();
+    };
+
+    function renderTechnicianList() {
+        const container = document.getElementById('technician-list-container');
+        container.innerHTML = '';
+        technicianList.forEach(tech => {
+            const isSelected = selectedTechnicians[currentTechnicianTargetId].includes(tech.name);
+            const item = document.createElement('div');
+            item.className = `technician-list-item ${isSelected ? 'selected' : ''}`;
+            item.dataset.techName = tech.name;
+            const avatarUrl = tech.avatar_id 
+                ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c`
+                : `https://via.placeholder.com/40/6c757d/ffffff?text=${tech.name[0]}`;
+
+            item.innerHTML = `
+                <img src="${avatarUrl}" alt="${tech.name}">
+                <span>${tech.name}</span>
+                ${isSelected ? '<i class="fas fa-check-circle check-icon"></i>' : ''}
+            `;
+            item.onclick = () => toggleTechnicianSelection(tech.name);
+            container.appendChild(item);
+        });
+    }
+
+    function toggleTechnicianSelection(techName) {
+        const currentSelection = selectedTechnicians[currentTechnicianTargetId];
+        const index = currentSelection.indexOf(techName);
+        if (index > -1) {
+            currentSelection.splice(index, 1);
+        } else {
+            currentSelection.push(techName);
+        }
+        renderTechnicianList(); // Re-render to show selection change
+    }
+
+    window.confirmTechnicianSelection = () => {
+        const selectedNames = selectedTechnicians[currentTechnicianTargetId];
+        const targetInput = document.getElementById(currentTechnicianTargetId);
+        const targetDisplay = document.getElementById(`${currentTechnicianTargetId}_display`);
+        
+        targetInput.value = selectedNames.join(',');
+        targetDisplay.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
+        
+        // Trigger input event to enable save button if needed
+        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+        technicianSelectionModal.hide();
+    };
+    // --- ✅ END: สิ้นสุดโค้ดที่แก้ไขและเพิ่มเติมสำหรับ "เลือกช่าง" ---
 
     async function saveAllItemsToDb() {
        try {
@@ -733,7 +793,6 @@
         }
     }
     
-    // --- ✅ START: โค้ดที่แก้ไขและสมบูรณ์แล้ว ---
     function renderHistorySection() {
         const container = document.getElementById('history-section-body');
         if (!container) return;
@@ -796,7 +855,6 @@
             container.appendChild(entry);
         });
     }
-    // --- ✅ END: สิ้นสุดโค้ดที่แก้ไข ---
 
     // --- Main entry point ---
     document.addEventListener('DOMContentLoaded', function() {
@@ -808,6 +866,12 @@
 
         loadInitialItems();
         renderHistorySection();
+        
+        // --- ✅ START: เพิ่มการเรียกใช้ฟังก์ชันบันทึกเสียง ---
+        setupSpeechRecognition('start-recognition-final', 'work_summary_final');
+        setupSpeechRecognition('start-recognition-reschedule', 'reschedule_reason');
+        setupSpeechRecognition('start-recognition-progress', 'work_summary_progress');
+        // --- ✅ END: เพิ่มการเรียกใช้ฟังก์ชันบันทึกเสียง ---
         
         // Setup Event Listeners
         const shareBtn = document.getElementById('lightbox-share-btn');
