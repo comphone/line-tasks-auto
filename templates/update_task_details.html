@@ -165,7 +165,12 @@
 
                 <div class="mb-3">
                     <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
-                    <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
+                    <div class="input-group">
+                        <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
+                        <button class="btn btn-outline-secondary" type="button" id="start-recognition-final" title="บันทึกด้วยเสียง">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                    </div>
                     <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                 </div>
                  <div class="mb-3">
@@ -226,7 +231,12 @@
                 </div>
                 <div class="mb-3">
                     <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
-                    <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
+                    <div class="input-group">
+                        <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
+                        <button class="btn btn-outline-secondary" type="button" id="start-recognition-reschedule" title="บันทึกด้วยเสียง">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                    </div>
                      <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                 </div>
                 <div class="mb-3">
@@ -264,8 +274,10 @@
                     <div class="mb-3">
                         <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
                         <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
                             <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
+                            <button class="btn btn-outline-secondary" type="button" id="start-recognition-progress" title="บันทึกด้วยเสียง">
+                                <i class="fas fa-microphone"></i>
+                            </button>
                         </div>
                         <small class="form-text text-muted">พิมพ์ `/` เพื่อแสดงรายการข้อความด่วน</small>
                     </div>
@@ -460,8 +472,76 @@
     let tempSelectedTechnicians = [];
     let jobItems = [];
     
-    // --- All functions are defined here to ensure they are globally available ---
+    // --- Speech Recognition Function ---
+    function setupSpeechRecognition(buttonId, textareaId) {
+        const button = document.getElementById(buttonId);
+        const textarea = document.getElementById(textareaId);
+        if (!button || !textarea) return;
 
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            button.disabled = true;
+            button.title = "เบราว์เซอร์ไม่รองรับการแปลงเสียงเป็นข้อความ";
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'th-TH';
+        recognition.interimResults = true;
+        recognition.continuous = true;
+
+        let isRecognizing = false;
+
+        recognition.onresult = (event) => {
+            let interimTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    const finalTranscript = event.results[i][0].transcript.trim();
+                    if (finalTranscript) {
+                        textarea.value += (textarea.value ? '\n' : '') + '- ' + finalTranscript;
+                    }
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+        };
+        
+        recognition.onend = () => {
+            if (isRecognizing) {
+                recognition.start();
+            }
+        };
+
+        recognition.onerror = (event) => {
+             console.error("Speech recognition error", event.error);
+             isRecognizing = false;
+             button.innerHTML = '<i class="fas fa-microphone"></i>';
+             button.classList.remove('btn-danger');
+             button.classList.add('btn-outline-secondary');
+        }
+
+        button.addEventListener('click', () => {
+            if (isRecognizing) {
+                recognition.stop();
+                isRecognizing = false;
+                button.innerHTML = '<i class="fas fa-microphone"></i>';
+                button.classList.remove('btn-danger');
+                button.classList.add('btn-outline-secondary');
+            } else {
+                try {
+                    recognition.start();
+                    isRecognizing = true;
+                    button.innerHTML = '<i class="fas fa-stop-circle"></i>';
+                    button.classList.add('btn-danger');
+                    button.classList.remove('btn-outline-secondary');
+                } catch(e) {
+                    console.error("Could not start recognition", e);
+                }
+            }
+        });
+    }
+
+    // --- All other functions ---
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -968,7 +1048,6 @@
             const tributeFinal = new Tribute(tributeOptions);
             const tributeReschedule = new Tribute(tributeOptions);
 
-            // Attach to all relevant textareas
             tributeProgress.attach(document.getElementById('work_summary_progress'));
             tributeFinal.attach(document.getElementById('work_summary_final'));
             tributeReschedule.attach(document.getElementById('reschedule_reason'));
@@ -979,6 +1058,11 @@
         setupFileUpload('progress');
         setupFileUpload('final');
         
+        // Setup Speech Recognition
+        setupSpeechRecognition('start-recognition-progress', 'work_summary_progress');
+        setupSpeechRecognition('start-recognition-final', 'work_summary_final');
+        setupSpeechRecognition('start-recognition-reschedule', 'reschedule_reason');
+
         document.getElementById('rescheduleTaskForm').addEventListener('submit', (e) => {
              e.preventDefault();
              handleFormSubmission(e.target, [], null);
