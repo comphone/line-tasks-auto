@@ -913,8 +913,22 @@
     
     function handleThumbnailClick(event, reportIndex, imageIndex) {
         const entry = document.getElementById(`history-entry-${reportIndex}`);
+        const gallery = document.getElementById(`gallery-grid-${reportIndex}`);
+        const shareButton = document.getElementById(`share-btn-${reportIndex}`);
+
         if (entry.classList.contains('selection-mode')) {
+            event.stopPropagation(); // หยุดการเปิด Lightbox
             event.currentTarget.parentElement.classList.toggle('selected');
+            const selectedCount = gallery.querySelectorAll('.thumbnail.selected').length;
+            if (selectedCount > 0) {
+                 shareButton.textContent = `ยืนยันการแชร์ (${selectedCount} รูป)`;
+                 shareButton.classList.remove('btn-outline-info');
+                 shareButton.classList.add('btn-success');
+            } else {
+                 shareButton.textContent = `ยกเลิกการเลือก`;
+                 shareButton.classList.remove('btn-success');
+                 shareButton.classList.add('btn-outline-info');
+            }
         } else {
             window.openLightbox(reportIndex, imageIndex);
         }
@@ -925,65 +939,26 @@
         const entry = document.getElementById(`history-entry-${reportIndex}`);
         const shareButton = document.getElementById(`share-btn-${reportIndex}`);
         const isInSelectionMode = entry.classList.contains('selection-mode');
+        const selectedThumbnails = entry.querySelectorAll('.thumbnail.selected');
 
         if (isInSelectionMode) {
-            // This is the second click, to confirm sharing
-            const selectedThumbnails = entry.querySelectorAll('.thumbnail.selected');
             if (selectedThumbnails.length > 0) {
+                // ถ้ามีรูปที่เลือก ให้ดำเนินการแชร์
                 await shareSelectedImages(selectedThumbnails);
             }
-            // Reset state regardless of whether images were shared
+            // รีเซ็ตสถานะหลังจากแชร์ (หรือยกเลิก)
             entry.classList.remove('selection-mode');
             shareButton.innerHTML = `<i class="fas fa-share-alt me-1"></i>แชร์รูปภาพ`;
             shareButton.classList.remove('btn-success');
             shareButton.classList.add('btn-outline-info');
             selectedThumbnails.forEach(t => t.classList.remove('selected'));
         } else {
-            // This is the first click, to enter selection mode
+            // เข้าสู่โหมดเลือกรูปภาพ
             entry.classList.add('selection-mode');
             shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์`;
             shareButton.classList.remove('btn-outline-info');
             shareButton.classList.add('btn-success');
-        }
-    }
-
-    async function shareSelectedImages(thumbnails) {
-        flashMessage('กำลังเตรียมไฟล์สำหรับแชร์...', 'info');
-        const fetchPromises = Array.from(thumbnails).map(thumb => {
-            const url = thumb.dataset.fullUrl;
-            const filename = thumb.dataset.filename;
-            return fetch(url)
-                .then(response => response.blob())
-                .then(blob => new File([blob], filename, { type: blob.type }))
-                .catch(err => {
-                    console.error(`Failed to fetch ${url}:`, err);
-                    return null;
-                });
-        });
-
-        const files = await Promise.all(fetchPromises);
-        const validFiles = files.filter(f => f !== null);
-
-        if (validFiles.length === 0) {
-            flashMessage('ไม่สามารถดาวน์โหลดไฟล์ที่เลือกเพื่อแชร์ได้', 'danger');
-            return;
-        }
-
-        if (navigator.canShare && navigator.canShare({ files: validFiles })) {
-            try {
-                await navigator.share({
-                    files: validFiles,
-                    title: 'รูปภาพจากงานซ่อม',
-                    text: `รูปภาพจากงาน #${taskId.substring(taskId.length-6)}`
-                });
-            } catch (err) {
-                if (err.name !== 'AbortError') {
-                    console.error('Error sharing files:', err);
-                    flashMessage('การแชร์ไม่สำเร็จ', 'warning');
-                }
-            }
-        } else {
-            flashMessage('เบราว์เซอร์ของคุณไม่รองรับการแชร์ไฟล์หลายไฟล์', 'danger');
+            flashMessage('กดที่รูปภาพที่ต้องการแชร์ แล้วกดปุ่มนี้อีกครั้งเพื่อยืนยัน', 'info');
         }
     }
 
