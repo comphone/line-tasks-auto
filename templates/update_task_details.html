@@ -479,13 +479,14 @@
     const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
     const taskId = "{{ task.id }}";
     const csrfToken = '{{ csrf_token() }}';
-    let technicianSelectionModal, editReportModal, editReportTextModal, itemAddModal;
+    let technicianSelectionModal, itemAddModal;
     let jobItems = [];
     let currentTechnicianTargetId;
     let selectedTechnicians = {};
     let currentLightboxImages = [];
     let slideIndex = 0;
 
+    // --- Utility Functions ---
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -506,11 +507,7 @@
         const textarea = document.getElementById(textareaId);
         if (!button || !textarea) return;
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            button.disabled = true;
-            button.title = "เบราว์เซอร์ไม่รองรับการแปลงเสียงเป็นข้อความ";
-            return;
-        }
+        if (!SpeechRecognition) { button.disabled = true; return; }
         const recognition = new SpeechRecognition();
         recognition.lang = 'th-TH';
         recognition.interimResults = false;
@@ -518,23 +515,18 @@
         let isRecognizing = false;
         recognition.onresult = (event) => {
             const transcript = event.results[0][0].transcript.trim();
-            if (transcript) {
-                const existingText = textarea.value.trim();
-                textarea.value += (existingText ? '\n' : '') + '- ' + transcript;
-            }
+            if (transcript) textarea.value += (textarea.value.trim() ? '\n' : '') + '- ' + transcript;
         };
         recognition.onend = () => {
             isRecognizing = false;
             button.innerHTML = '<i class="fas fa-microphone"></i>';
             button.classList.remove('btn-danger');
-            button.classList.add('btn-outline-secondary');
         };
         recognition.onerror = (event) => {
              console.error("Speech recognition error", event.error);
              isRecognizing = false;
              button.innerHTML = '<i class="fas fa-microphone"></i>';
              button.classList.remove('btn-danger');
-             button.classList.add('btn-outline-secondary');
         }
         button.addEventListener('click', () => {
             if (isRecognizing) {
@@ -545,17 +537,15 @@
                     isRecognizing = true;
                     button.innerHTML = '<i class="fas fa-stop-circle"></i>';
                     button.classList.add('btn-danger');
-                    button.classList.remove('btn-outline-secondary');
                 } catch(e) { console.error("Could not start recognition", e); }
             }
         });
     }
 
+    // --- Technician Selection Functions ---
     window.openTechnicianModal = (targetId) => {
         currentTechnicianTargetId = targetId;
-        if (!selectedTechnicians[targetId]) {
-            selectedTechnicians[targetId] = [];
-        }
+        if (!selectedTechnicians[targetId]) selectedTechnicians[targetId] = [];
         renderTechnicianList();
         technicianSelectionModal.show();
     };
@@ -567,7 +557,6 @@
             const isSelected = selectedTechnicians[currentTechnicianTargetId].includes(tech.name);
             const item = document.createElement('div');
             item.className = `technician-list-item ${isSelected ? 'selected' : ''}`;
-            item.dataset.techName = tech.name;
             const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `https://via.placeholder.com/40/6c757d/ffffff?text=${tech.name[0]}`;
             item.innerHTML = `<img src="${avatarUrl}" alt="${tech.name}"><span>${tech.name}</span>${isSelected ? '<i class="fas fa-check-circle check-icon"></i>' : ''}`;
             item.onclick = () => toggleTechnicianSelection(tech.name);
@@ -576,39 +565,57 @@
     }
 
     function toggleTechnicianSelection(techName) {
-        const currentSelection = selectedTechnicians[currentTechnicianTargetId];
-        const index = currentSelection.indexOf(techName);
-        if (index > -1) {
-            currentSelection.splice(index, 1);
-        } else {
-            currentSelection.push(techName);
-        }
+        const selection = selectedTechnicians[currentTechnicianTargetId];
+        const index = selection.indexOf(techName);
+        if (index > -1) selection.splice(index, 1);
+        else selection.push(techName);
         renderTechnicianList();
     }
 
     window.confirmTechnicianSelection = () => {
         const selectedNames = selectedTechnicians[currentTechnicianTargetId];
-        const targetInput = document.getElementById(currentTechnicianTargetId);
-        const targetDisplay = document.getElementById(`${currentTechnicianTargetId}_display`);
-        targetInput.value = selectedNames.join(',');
-        targetDisplay.value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
-        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById(currentTechnicianTargetId).value = selectedNames.join(',');
+        document.getElementById(`${currentTechnicianTargetId}_display`).value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
         technicianSelectionModal.hide();
     };
-    
-    // ... (All other functions from the previous correct response should be here) ...
-    // - saveAllItemsToDb
-    // - handleDeleteItem
-    // - renderSummaryList
-    // - loadInitialItems
-    // - showActionCard
-    // - openLightboxById
-    // - showLightboxImage
-    // - changeSlide
-    // - closeLightbox
-    // - shareCurrentImage
-    // - renderHistorySection
 
+    // --- History & Image Lightbox Functions ---
+    function renderHistorySection() {
+        const container = document.getElementById('history-section-body');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!techReportsHistory || techReportsHistory.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการทำงาน</p>';
+            return;
+        }
+        techReportsHistory.forEach((report) => {
+            const entry = document.createElement('div');
+            entry.className = 'history-entry';
+            let imageGalleryHtml = '';
+            if (report.attachments && report.attachments.length > 0) {
+                imageGalleryHtml += '<div class="image-gallery-grid mt-3">';
+                report.attachments.forEach(att => {
+                    if (att.id) {
+                        imageGalleryHtml += `<div class="thumbnail" onclick="window.openLightboxById('${att.id}')"><img src="https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200" alt="${att.name || 'รูปภาพ'}"></div>`;
+                    }
+                });
+                imageGalleryHtml += '</div>';
+            }
+            entry.innerHTML = `
+                <div class="history-entry-header">
+                    <span class="history-entry-title"><i class="fas fa-wrench me-2"></i>${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานความคืบหน้า'}</span>
+                </div>
+                <div class="history-entry-subheader text-muted small">
+                    <span>${new Date(report.summary_date).toLocaleString('th-TH')}</span>
+                    <span>โดย: ${report.technicians ? report.technicians.join(', ') : 'N/A'}</span>
+                </div>
+                <hr class="my-2">
+                <div class="history-entry-body"><p>${report.work_summary || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>${imageGalleryHtml}</div>`;
+            container.appendChild(entry);
+        });
+    }
+    
+    // --- Page Initialization ---
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technician-action-sheet'));
         itemAddModal = new bootstrap.Modal(document.getElementById('addItemModal'));
@@ -617,6 +624,8 @@
         setupSpeechRecognition('start-recognition-reschedule', 'reschedule_reason');
         setupSpeechRecognition('start-recognition-progress', 'work_summary_progress');
         
+        renderHistorySection();
+
         let itemScanner;
         const itemScannerContainer = document.getElementById('scanner-container');
         const itemAddModalEl = document.getElementById('addItemModal');
@@ -630,9 +639,8 @@
 
         document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             itemScannerContainer.style.display = 'flex';
-            if (!itemScanner) {
-                itemScanner = new Html5Qrcode("qr-reader");
-            }
+            if (!itemScanner) itemScanner = new Html5Qrcode("qr-reader");
+            
             itemScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
                     const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
@@ -642,12 +650,12 @@
                         flashMessage(`พบสินค้า: ${foundItem.item_name}`, 'success');
                     } else {
                         document.getElementById('item-name-input').value = decodedText;
-                        flashMessage(`ไม่พบสินค้าสำหรับรหัส: ${decodedText}`, 'warning');
+                        flashMessage(`ไม่พบรหัส ${decodedText} ในแคตตาล็อก`, 'warning');
                     }
                     stopItemScanner();
                 },
-                (errorMessage) => {}
-            ).catch(err => {
+                () => {}
+            ).catch(() => {
                 alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
                 stopItemScanner();
             });
@@ -655,8 +663,6 @@
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopItemScanner);
         itemAddModalEl.addEventListener('hidden.bs.modal', stopItemScanner);
-        
-        // ... (all other initializations)
     });
 </script>
 {% endblock %}
