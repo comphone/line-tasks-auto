@@ -746,7 +746,7 @@
                         const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
                         const fullUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`;
                         imageGalleryHtml += `
-                            <div class="thumbnail" data-full-url="${fullUrl}" data-filename="${att.name || 'image.jpg'}">
+                            <div class="thumbnail" data-full-url="${fullUrl}" data-filename="${att.name || 'image.jpg'}" data-file-id="${att.id}">
                                 <img src="${thumbnailUrl}" alt="${att.name || 'รูปภาพ'}"
                                      onclick="handleThumbnailClick(event, ${index}, ${imgIndex})">
                                 <div class="selection-overlay"><i class="fas fa-check"></i></div>
@@ -830,41 +830,6 @@
         document.getElementById('lightboxImg').src = imgData.url;
         document.getElementById('lightboxCaption').innerHTML = `${imgData.name} (${index + 1} / ${currentLightboxImages.length})`;
     }
-
-    document.getElementById('lightbox-share-btn').addEventListener('click', async () => {
-        if (!currentLightboxImages[slideIndex]) return;
-        
-        const imageUrl = currentLightboxImages[slideIndex].url;
-        const imageName = currentLightboxImages[slideIndex].name;
-        
-        try {
-            const response = await fetch(imageUrl);
-            const blob = await response.blob();
-            const file = new File([blob], imageName, { type: blob.type });
-
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title: 'รูปภาพจากงานซ่อม',
-                    text: `รูปภาพ: ${imageName}`
-                });
-            } else {
-                throw new Error('ไม่สามารถแชร์ไฟล์ได้');
-            }
-        } catch (err) {
-            console.error('เกิดข้อผิดพลาดในการแชร์:', err);
-            flashMessage(`ไม่สามารถแชร์ไฟล์ได้โดยตรง ลองแชร์ลิงก์แทน`, 'warning');
-            if (navigator.share) {
-                navigator.share({
-                    title: 'รูปภาพจากงานซ่อม',
-                    text: `รูปภาพ: ${imageName}`,
-                    url: window.location.href
-                }).catch(e => console.error('Share URL failed', e));
-            } else {
-                 flashMessage('เบราว์เซอร์ของคุณไม่รองรับฟังก์ชันแชร์', 'danger');
-            }
-        }
-    });
 
     window.openEditAttachmentsModal = (reportIndex) => {
         const report = techReportsHistory[reportIndex];
@@ -978,12 +943,12 @@
 
         try {
             await Promise.all(Array.from(thumbnails).map(async (thumb) => {
-                const imageUrl = thumb.dataset.fullUrl;
+                const fileId = thumb.dataset.fileId;
                 const imageName = thumb.dataset.filename || `image-${Date.now()}.jpg`;
                 
-                const response = await fetch(imageUrl);
+                const response = await fetch(`/api/proxy_drive_image/${fileId}`);
                 if (!response.ok) {
-                    console.error(`Failed to fetch image: ${imageUrl}`);
+                    console.error(`Failed to fetch image via proxy: ${fileId}`);
                     return;
                 }
                 
@@ -1007,7 +972,7 @@
 
         } catch (err) {
             console.error('Error sharing files:', err);
-            flashMessage('ไม่สามารถแชร์ไฟล์ได้โดยตรง ลองคัดลอกลิงก์แทน', 'warning');
+            flashMessage('ไม่สามารถแชร์ไฟล์ได้โดยตรง จะทำการคัดลอกลิงก์แทน', 'warning');
             const selectedUrls = Array.from(thumbnails).map(thumb => thumb.dataset.fullUrl);
             const urlList = selectedUrls.join('\n');
             const shareMessage = `${shareText}\n\n${urlList}`;
@@ -1034,6 +999,33 @@
         
         loadInitialItems();
         renderHistorySection();
+
+        document.getElementById('lightbox-share-btn').addEventListener('click', async () => {
+            if (!currentLightboxImages[slideIndex]) return;
+            
+            const imageInfo = currentLightboxImages[slideIndex];
+            const fileId = imageInfo.id;
+            const imageName = imageInfo.name;
+            
+            try {
+                const response = await fetch(`/api/proxy_drive_image/${fileId}`);
+                const blob = await response.blob();
+                const file = new File([blob], imageName, { type: blob.type });
+
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: 'รูปภาพจากงานซ่อม',
+                        text: `รูปภาพ: ${imageName}`
+                    });
+                } else {
+                    throw new Error('ไม่สามารถแชร์ไฟล์ได้');
+                }
+            } catch (err) {
+                console.error('เกิดข้อผิดพลาดในการแชร์:', err);
+                flashMessage(`ไม่สามารถแชร์ไฟล์ได้โดยตรง`, 'warning');
+            }
+        });
 
         document.getElementById('editReportTextForm').addEventListener('submit', async function(event) {
             event.preventDefault();
@@ -1064,7 +1056,6 @@
             }
         });
         
-        // --- NEW: Item Modal Save Logic ---
         document.getElementById('save-item-modal-btn').addEventListener('click', () => {
             const itemNameInput = document.getElementById('item-name-input');
             const itemQuantityInput = document.getElementById('item-quantity-input');
@@ -1084,10 +1075,8 @@
 
             const editIndex = editIndexInput.value;
             if (editIndex !== '') {
-                // Edit existing item
                 jobItems[parseInt(editIndex)] = newItem;
             } else {
-                // Add new item
                 jobItems.push(newItem);
             }
             
@@ -1095,7 +1084,6 @@
             itemAddModal.hide();
         });
         
-        // --- NEW: Item Modal Edit Button Logic ---
         document.getElementById('item-summary-list').addEventListener('click', (event) => {
             const editBtn = event.target.closest('.edit-item-btn');
             if (editBtn) {
@@ -1109,7 +1097,6 @@
             }
         });
         
-        // --- NEW: Reset Modal on Close ---
         itemAddModal._element.addEventListener('hidden.bs.modal', () => {
             document.getElementById('edit-item-index').value = '';
             document.getElementById('item-name-input').value = '';
@@ -1118,7 +1105,6 @@
             document.getElementById('addItemModalLabel').textContent = 'เพิ่ม/แก้ไขรายการ';
         });
         
-        // --- NEW: Search Item from Catalog ---
         const itemSearchInput = document.getElementById('item-name-input');
         const itemSearchResultsContainer = document.getElementById('item-search-results');
         

@@ -1,7 +1,8 @@
 import os
-from flask import Response # <-- เพิ่ม Response ใน import ของ Flask ด้านบนสุดของไฟล์
-from io import BytesIO      # <-- เพิ่ม io ใน import ด้านบนสุดของไฟล์
-from googleapiclient.http import MediaIoBaseDownload # <-- เพิ่มใน import ของ googleapiclient
+from flask import Response
+from io import BytesIO
+from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.errors import HttpError
 import requests
 from flask_sqlalchemy import SQLAlchemy
 import sentry_sdk
