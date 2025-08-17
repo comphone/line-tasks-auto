@@ -86,7 +86,14 @@ if SENTRY_DSN:
 
 app = Flask(__name__, static_folder='static')
 # ตั้งค่าตำแหน่งของไฟล์ฐานข้อมูล (จะถูกสร้างขึ้นในชื่อ data.sqlite)
+# ✅✅✅ START: โค้ดที่ต้องแก้ไข (วางทับของเดิม) ✅✅✅
+# เพิ่มความฉลาดในการตรวจสอบ Environment
+# ถ้าทำงานบน Render (RENDER=true) แต่ไม่มี DATABASE_URL จะหยุดทำงานทันที
+if os.environ.get('RENDER') == 'true' and not os.environ.get('DATABASE_URL'):
+    raise RuntimeError("FATAL: DATABASE_URL environment variable is not set on Render. Please create a PostgreSQL database and link it to this service.")
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///data.sqlite')
+# ✅✅✅ END: โค้ดที่ต้องแก้ไข ✅✅✅
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # --- END: ตั้งค่า Database ---
 # สร้างอ็อบเจ็กต์ SQLAlchemy และผูกกับ Flask app
@@ -2150,6 +2157,7 @@ def api_add_product():
         }
         catalog.append(new_item)
         if save_app_settings({'equipment_catalog': catalog}):
+            backup_settings_to_drive()
             return jsonify({'status': 'success', 'message': 'เพิ่มสินค้าใหม่สำเร็จ', 'item': new_item}), 201
         else:
             raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
@@ -2179,6 +2187,7 @@ def api_update_product(item_index):
         catalog[item_index]['image_url'] = data.get('image_url', catalog[item_index].get('image_url', ''))
 
         if save_app_settings({'equipment_catalog': catalog}):
+            backup_settings_to_drive()
             return jsonify({'status': 'success', 'message': 'อัปเดตข้อมูลสินค้าสำเร็จ', 'item': catalog[item_index]})
         else:
             raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
@@ -2207,6 +2216,7 @@ def api_adjust_stock(item_index):
         catalog[item_index]['stock_quantity'] = new_stock
 
         if save_app_settings({'equipment_catalog': catalog}):
+            backup_settings_to_drive()
             # ส่วนนี้คือจุดที่จะเพิ่ม "การบันทึกประวัติ" ในอนาคต
             # log_stock_movement(product_name=catalog[item_index]['item_name'], change=change, new_quantity=new_stock, user='admin')
             return jsonify({'status': 'success', 'new_stock': new_stock})
@@ -2230,6 +2240,7 @@ def api_delete_product(item_index):
         deleted_item = catalog.pop(item_index)
         
         if save_app_settings({'equipment_catalog': catalog}):
+            backup_settings_to_drive()
             return jsonify({'status': 'success', 'message': f"ลบสินค้า '{deleted_item['item_name']}' สำเร็จ"})
         else:
             raise Exception("ไม่สามารถบันทึกการตั้งค่าได้")
