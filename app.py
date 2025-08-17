@@ -401,7 +401,7 @@ def render_template_message(template_key, task):
 def save_app_settings(settings_data):
     """
     ฟังก์ชันกลางสำหรับบันทึกการตั้งค่าทั้งหมด
-    มีการตรวจสอบข้อมูล Catalog ก่อนบันทึกเสมอ
+    มีการตรวจสอบข้อมูล Catalog ก่อนบันทึกเสมอ (เวอร์ชันแก้ไข)
     """
     current_settings = get_app_settings()
 
@@ -412,25 +412,30 @@ def save_app_settings(settings_data):
             for item in value:
                 if isinstance(item, dict) and item.get('item_name'):
                     try:
+                        # ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅
+                        # แก้ไขส่วนนี้ให้บันทึกข้อมูลสินค้าครบทุกฟิลด์
                         new_item = {
                             'item_name': str(item['item_name']).strip(),
+                            'category': str(item.get('category', 'ไม่มีหมวดหมู่')).strip(),
+                            'product_code': str(item.get('product_code', '')).strip(),
                             'unit': str(item.get('unit', '')).strip(),
                             'price': float(item.get('price', 0)),
-                            # เพิ่มฟิลด์ใหม่ พร้อมค่าเริ่มต้น
+                            'cost_price': float(item.get('cost_price', 0)),
                             'stock_quantity': int(item.get('stock_quantity', 0)),
                             'image_url': str(item.get('image_url', '')).strip()
                         }
+                        # ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅
                         validated_catalog.append(new_item)
                     except (ValueError, TypeError):
-                        app.logger.warning(f"Skipping invalid equipment item: {item}")
+                        current_app.logger.warning(f"Skipping invalid equipment item: {item}")
                         continue
             current_settings['equipment_catalog'] = validated_catalog
-            
+
         elif key == 'product_categories' and isinstance(value, list):
             # ตรวจสอบและกรองข้อมูลหมวดหมู่ที่ส่งมา
             validated_categories = sorted(list(set([str(cat).strip() for cat in value if str(cat).strip()])))
             current_settings['product_categories'] = validated_categories
-        
+
         elif isinstance(value, dict) and key in current_settings and isinstance(current_settings[key], dict):
             current_settings[key].update(value)
         else:
