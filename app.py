@@ -3880,8 +3880,16 @@ def api_manage_categories():
 from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')
 
+# ✅✅✅ START: โค้ดที่แก้ไขให้ถูกต้อง ✅✅✅
+# รวม with app.app_context(): ให้เหลือแค่บล็อกเดียว
 with app.app_context():
+    # บรรทัดนี้จะสั่งให้ดึงไฟล์ settings_backup.json จาก Google Drive
+    # มาใช้งานทุกครั้งที่แอปเริ่มทำงาน ทำให้ข้อมูลสินค้าไม่หาย
+    load_settings_from_drive_on_startup()
+    
+    # บรรทัดนี้จะสร้างตารางในฐานข้อมูล (ถ้ายังไม่มี)
     db.create_all()
+# ✅✅✅ END: โค้ดที่แก้ไขให้ถูกต้อง ✅✅✅
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
