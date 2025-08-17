@@ -942,65 +942,68 @@
         }
     }
 
-    async function toggleShareMode(event, reportIndex) {
-        event.stopPropagation();
-        const entry = document.getElementById(`history-entry-${reportIndex}`);
-        const shareButton = document.getElementById(`share-btn-${reportIndex}`);
-        const isInSelectionMode = entry.classList.contains('selection-mode');
-        const selectedThumbnails = entry.querySelectorAll('.thumbnail.selected');
-
-        if (isInSelectionMode) {
-            if (selectedThumbnails.length > 0) {
-                // ถ้ามีรูปที่เลือก ให้ดำเนินการแชร์
-                await shareSelectedImages(selectedThumbnails);
-            }
-            // รีเซ็ตสถานะหลังจากแชร์ (หรือยกเลิก)
-            entry.classList.remove('selection-mode');
-            shareButton.innerHTML = `<i class="fas fa-share-alt me-1"></i>แชร์รูปภาพ`;
-            shareButton.classList.remove('btn-success');
-            shareButton.classList.add('btn-outline-info');
-            selectedThumbnails.forEach(t => t.classList.remove('selected'));
-        } else {
-            // เข้าสู่โหมดเลือกรูปภาพ
-            entry.classList.add('selection-mode');
-            shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์`;
-            shareButton.classList.remove('btn-outline-info');
-            shareButton.classList.add('btn-success');
-            flashMessage('กดที่รูปภาพที่ต้องการแชร์ แล้วกดปุ่มนี้อีกครั้งเพื่อยืนยัน', 'info');
-        }
-    }
-    
+    // ✅✅✅ START: โค้ดที่แก้ไขสำหรับฟังก์ชันแชร์ ✅✅✅
     async function shareSelectedImages(thumbnails) {
-        const selectedUrls = Array.from(thumbnails).map(thumb => thumb.dataset.fullUrl);
-        const shareText = `รูปภาพจากงาน #${taskId.substring(taskId.length-6)} (${selectedUrls.length} รูป)`;
+        // แสดงสถานะให้ผู้ใช้ทราบว่ากำลังเตรียมไฟล์
+        flashMessage('กำลังเตรียมรูปภาพสำหรับแชร์...', 'info');
+        
+        const filesToShare = [];
+        const shareText = `รูปภาพจากงาน #${taskId.substring(taskId.length-6)} (${thumbnails.length} รูป)`;
 
-        if (navigator.share) {
-            try {
+        try {
+            // ดึงข้อมูลรูปภาพทั้งหมดพร้อมๆ กันเพื่อความรวดเร็ว
+            await Promise.all(Array.from(thumbnails).map(async (thumb) => {
+                const imageUrl = thumb.dataset.fullUrl;
+                const imageName = thumb.dataset.filename || `image-${Date.now()}.jpg`;
+                
+                // Fetch the image from Google Drive
+                const response = await fetch(imageUrl);
+                if (!response.ok) {
+                    console.error(`Failed to fetch image: ${imageUrl}`);
+                    return; // ข้ามรูปนี้ไปถ้าโหลดไม่ได้
+                }
+                
+                // แปลงข้อมูลเป็น Blob (Binary Large Object)
+                const blob = await response.blob();
+                
+                // สร้างอ็อบเจ็กต์ File ที่ Web Share API เข้าใจ
+                const file = new File([blob], imageName, { type: blob.type });
+                filesToShare.push(file);
+            }));
+
+            // ตรวจสอบว่ามีไฟล์ที่พร้อมแชร์ และเบราว์เซอร์สามารถแชร์ไฟล์ได้หรือไม่
+            if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
+                // เรียกใช้ Web Share API พร้อมกับไฟล์
                 await navigator.share({
                     title: 'รูปภาพจากงานซ่อม',
                     text: shareText,
-                    url: selectedUrls.join('\n')
+                    files: filesToShare
                 });
-            } catch (err) {
-                if (err.name !== 'AbortError') {
-                    console.error('Error sharing URLs:', err);
-                    flashMessage('การแชร์ไม่สำเร็จ', 'warning');
-                }
+            } else if (filesToShare.length === 0) {
+                throw new Error('ไม่สามารถโหลดรูปภาพที่เลือกได้');
+            } else {
+                throw new Error('เบราว์เซอร์ไม่รองรับการแชร์หลายไฟล์');
             }
-        } else {
-            // Fallback for browsers that don't support the Web Share API
+
+        } catch (err) {
+            console.error('Error sharing files:', err);
+            // กรณีที่การแชร์ไฟล์ล้มเหลว (เช่น เบราว์เซอร์ไม่รองรับ) ให้เปลี่ยนไปใช้วิธีคัดลอกลิงก์แทน
+            flashMessage('ไม่สามารถแชร์ไฟล์ได้โดยตรง ลองคัดลอกลิงก์แทน', 'warning');
+            const selectedUrls = Array.from(thumbnails).map(thumb => thumb.dataset.fullUrl);
             const urlList = selectedUrls.join('\n');
             const shareMessage = `${shareText}\n\n${urlList}`;
             navigator.clipboard.writeText(shareMessage)
                 .then(() => {
                     flashMessage('คัดลอกลิงก์รูปภาพทั้งหมดไปยังคลิปบอร์ดแล้ว', 'success');
                 })
-                .catch(err => {
-                    console.error('Failed to copy to clipboard:', err);
-                    flashMessage('ไม่สามารถแชร์หรือคัดลอกลิงก์ได้', 'danger');
+                .catch(clipErr => {
+                    console.error('Failed to copy to clipboard:', clipErr);
+                    flashMessage('เกิดข้อผิดพลาดในการแชร์หรือคัดลอกลิงก์', 'danger');
                 });
         }
     }
+    // ✅✅✅ END: โค้ดที่แก้ไขสำหรับฟังก์ชันแชร์ ✅✅✅
+
 
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technician-action-sheet'));
