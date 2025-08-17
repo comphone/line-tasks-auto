@@ -1,4 +1,7 @@
 import os
+from flask import Response # <-- เพิ่ม Response ใน import ของ Flask ด้านบนสุดของไฟล์
+from io import BytesIO      # <-- เพิ่ม io ใน import ด้านบนสุดของไฟล์
+from googleapiclient.http import MediaIoBaseDownload # <-- เพิ่มใน import ของ googleapiclient
 import requests
 from flask_sqlalchemy import SQLAlchemy
 import sentry_sdk
@@ -628,6 +631,44 @@ def api_search_equipment_catalog():
     ][:10] # แสดงผลสูงสุด 10 รายการ
     
     return jsonify(results)
+
+# ✅✅✅ START: โค้ดที่ต้องเพิ่มสำหรับ Image Proxy ✅✅✅
+@app.route('/api/proxy_drive_image/<file_id>')
+def proxy_drive_image(file_id):
+    """
+    API สำหรับเป็นตัวกลาง (Proxy) ในการดึงรูปภาพจาก Google Drive
+    เพื่อแก้ไขปัญหา CORS Policy
+    """
+    drive_service = get_google_drive_service()
+    if not drive_service:
+        return Response("ไม่สามารถเชื่อมต่อ Google Drive service ได้", status=500)
+
+    try:
+        # ขอ Metadata เพื่อเอาชื่อไฟล์และ MimeType
+        file_metadata = drive_service.files().get(fileId=file_id, fields='name, mimeType').execute()
+        
+        request = drive_service.files().get_media(fileId=file_id)
+        fh = BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        fh.seek(0)
+        
+        # ส่งข้อมูลรูปภาพกลับไปให้หน้าเว็บ พร้อม Header ที่ถูกต้อง
+        return Response(
+            fh.getvalue(),
+            mimetype=file_metadata.get('mimeType', 'application/octet-stream'),
+            headers={"Content-Disposition": f"inline; filename=\"{file_metadata.get('name')}\""}
+        )
+    except HttpError as error:
+        app.logger.error(f"เกิดข้อผิดพลาดในการดึงไฟล์จาก Drive (ID: {file_id}): {error}")
+        return Response(f"ไม่พบไฟล์หรือเกิดข้อผิดพลาด: {error}", status=error.resp.status)
+    except Exception as e:
+        app.logger.error(f"เกิดข้อผิดพลาดที่ไม่คาดคิดใน Image Proxy: {e}")
+        return Response("เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์", status=500)
+# ✅✅✅ END: โค้ดที่ต้องเพิ่มสำหรับ Image Proxy ✅✅✅
 
 @app.route('/api/tasks/create', methods=['POST'])
 def api_create_task():
