@@ -544,6 +544,7 @@
     let currentLightboxImages = [];
     let slideIndex = 0;
     let currentEditingReportIndex = -1;
+    let itemSearchResults = []; // NEW: Variable for item search results
 
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
@@ -1115,11 +1116,11 @@
             if (itemScanner && itemScanner.isScanning) {
                 itemScanner.stop().catch(err => console.error("Error stopping item scanner.", err));
             }
-            itemScannerContainer.style.display = 'none';
+            scannerContainer.style.display = 'none';
         };
 
         document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
-            itemScannerContainer.style.display = 'flex';
+            scannerContainer.style.display = 'flex';
             if (!itemScanner) itemScanner = new Html5Qrcode("qr-reader");
             
             itemScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -1142,8 +1143,8 @@
             });
         });
 
-        closeScannerBtn.addEventListener('click', stopItemScanner);
-        itemAddModalEl.addEventListener('hidden.bs.modal', stopItemScanner);
+        closeScannerBtn.addEventListener('click', stopScanner);
+        itemAddModalEl.addEventListener('hidden.bs.modal', stopScanner);
     });
 </script>
 {% endblock %}
