@@ -39,7 +39,7 @@
 <div class="container mt-4">
     <div id="js-flash-message-container"></div>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items:center mb-4">
         <h1 class="h2 mb-0">📦 จัดการข้อมูลสินค้า</h1>
         <div>
             <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#categoriesModal"><i class="fas fa-tags me-2"></i>จัดการหมวดหมู่</button>
@@ -562,7 +562,7 @@
         document.getElementById('scan-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
             if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrCodeSupportedFormats.QR_CODE ] });
+                html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
             }
             html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
