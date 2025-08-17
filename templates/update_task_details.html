@@ -544,7 +544,6 @@
     let currentLightboxImages = [];
     let slideIndex = 0;
     let currentEditingReportIndex = -1;
-    let itemSearchResults = []; // NEW: Variable for item search results
 
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
@@ -972,42 +971,34 @@
     }
     
     async function shareSelectedImages(thumbnails) {
-        flashMessage('กำลังเตรียมไฟล์สำหรับแชร์...', 'info');
-        const fetchPromises = Array.from(thumbnails).map(thumb => {
-            const url = thumb.dataset.fullUrl;
-            const filename = thumb.dataset.filename;
-            return fetch(url)
-                .then(response => response.blob())
-                .then(blob => new File([blob], filename, { type: blob.type }))
-                .catch(err => {
-                    console.error(`Failed to fetch ${url}:`, err);
-                    return null;
-                });
-        });
+        const selectedUrls = Array.from(thumbnails).map(thumb => thumb.dataset.fullUrl);
+        const shareText = `รูปภาพจากงาน #${taskId.substring(taskId.length-6)} (${selectedUrls.length} รูป)`;
 
-        const files = await Promise.all(fetchPromises);
-        const validFiles = files.filter(f => f !== null);
-
-        if (validFiles.length === 0) {
-            flashMessage('ไม่สามารถดาวน์โหลดไฟล์ที่เลือกเพื่อแชร์ได้', 'danger');
-            return;
-        }
-
-        if (navigator.canShare && navigator.canShare({ files: validFiles })) {
+        if (navigator.share) {
             try {
                 await navigator.share({
-                    files: validFiles,
                     title: 'รูปภาพจากงานซ่อม',
-                    text: `รูปภาพจากงาน #${taskId.substring(taskId.length-6)}`
+                    text: shareText,
+                    url: selectedUrls.join('\n')
                 });
             } catch (err) {
                 if (err.name !== 'AbortError') {
-                    console.error('Error sharing files:', err);
+                    console.error('Error sharing URLs:', err);
                     flashMessage('การแชร์ไม่สำเร็จ', 'warning');
                 }
             }
         } else {
-            flashMessage('เบราว์เซอร์ของคุณไม่รองรับการแชร์ไฟล์หลายไฟล์', 'danger');
+            // Fallback for browsers that don't support the Web Share API
+            const urlList = selectedUrls.join('\n');
+            const shareMessage = `${shareText}\n\n${urlList}`;
+            navigator.clipboard.writeText(shareMessage)
+                .then(() => {
+                    flashMessage('คัดลอกลิงก์รูปภาพทั้งหมดไปยังคลิปบอร์ดแล้ว', 'success');
+                })
+                .catch(err => {
+                    console.error('Failed to copy to clipboard:', err);
+                    flashMessage('ไม่สามารถแชร์หรือคัดลอกลิงก์ได้', 'danger');
+                });
         }
     }
 
@@ -1106,6 +1097,46 @@
             document.getElementById('item-price-input').value = '';
             document.getElementById('addItemModalLabel').textContent = 'เพิ่ม/แก้ไขรายการ';
         });
+        
+        // --- NEW: Search Item from Catalog ---
+        const itemSearchInput = document.getElementById('item-name-input');
+        const itemSearchResultsContainer = document.getElementById('item-search-results');
+        
+        itemSearchInput.addEventListener('input', () => {
+            const query = itemSearchInput.value.toLowerCase().trim();
+            itemSearchResultsContainer.innerHTML = '';
+            if (query.length < 2) return;
+
+            const results = equipmentCatalog.filter(item => 
+                item.item_name.toLowerCase().includes(query) || 
+                (item.product_code && item.product_code.toLowerCase().includes(query))
+            ).slice(0, 10);
+            
+            if (results.length > 0) {
+                results.forEach(item => {
+                    const resultItem = document.createElement('a');
+                    resultItem.className = 'list-group-item list-group-item-action';
+                    resultItem.innerHTML = `
+                        <strong>${item.item_name}</strong><br>
+                        <small class="text-muted">ราคา: ${item.price.toFixed(2)} บาท, สต็อก: ${item.stock_quantity || 0}</small>
+                    `;
+                    resultItem.onclick = () => {
+                        document.getElementById('item-name-input').value = item.item_name;
+                        document.getElementById('item-price-input').value = item.price;
+                        itemSearchResultsContainer.innerHTML = '';
+                    };
+                    itemSearchResultsContainer.appendChild(resultItem);
+                });
+            } else {
+                 itemSearchResultsContainer.innerHTML = '<a class="list-group-item text-muted">ไม่พบสินค้าที่ค้นหา</a>';
+            }
+        });
+        
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('#addItemModal')) {
+                 itemSearchResultsContainer.innerHTML = '';
+            }
+        });
 
         let itemScanner;
         const itemScannerContainer = document.getElementById('scanner-container');
@@ -1114,15 +1145,16 @@
 
         const stopItemScanner = () => {
             if (itemScanner && itemScanner.isScanning) {
-                itemScanner.stop().catch(err => console.error("Error stopping item scanner.", err));
+                itemScanner.stop().catch(err => console.error("Error stopping scanner.", err));
             }
             scannerContainer.style.display = 'none';
         };
 
         document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
-            scannerContainer.style.display = 'flex';
-            if (!itemScanner) itemScanner = new Html5Qrcode("qr-reader");
-            
+            itemScannerContainer.style.display = 'flex';
+            if (!itemScanner) {
+                itemScanner = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
+            }
             itemScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
                     const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
@@ -1136,15 +1168,15 @@
                     }
                     stopItemScanner();
                 },
-                () => {}
+                (errorMessage) => { /* ignore parse errors */ }
             ).catch(() => {
                 alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
                 stopItemScanner();
             });
         });
 
-        closeScannerBtn.addEventListener('click', stopScanner);
-        itemAddModalEl.addEventListener('hidden.bs.modal', stopScanner);
+        closeScannerBtn.addEventListener('click', stopItemScanner);
+        itemAddModalEl.addEventListener('hidden.bs.modal', stopItemScanner);
     });
 </script>
 {% endblock %}

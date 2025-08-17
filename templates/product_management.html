@@ -142,7 +142,12 @@
                     <div class="row">
                         <div class="col-md-8 mb-3">
                             <label for="edit-item-name" class="form-label">ชื่อรายการ <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="edit-item-name" required>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="edit-item-name" required>
+                                <button class="btn btn-outline-secondary" type="button" id="start-recognition-item-name" title="บันทึกด้วยเสียง">
+                                    <i class="fas fa-microphone"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label for="edit-item-category" class="form-label">หมวดหมู่</label>
@@ -231,6 +236,66 @@
         let html5QrCode = null;
         let categories = []; // New global variable for categories
         let catalog = {{ equipment_catalog | tojson | safe }};
+
+        // --- NEW: Voice-to-Text Setup ---
+        function setupSpeechRecognition(buttonId, inputId) {
+            const button = document.getElementById(buttonId);
+            const input = document.getElementById(inputId);
+            if (!button || !input) return;
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                button.disabled = true;
+                button.title = "เบราว์เซอร์ไม่รองรับการแปลงเสียงเป็นข้อความ";
+                return;
+            }
+
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'th-TH';
+            recognition.interimResults = false;
+            recognition.continuous = false;
+
+            let isRecognizing = false;
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript.trim();
+                if (transcript) {
+                    input.value = transcript;
+                }
+            };
+
+            recognition.onend = () => {
+                isRecognizing = false;
+                button.innerHTML = '<i class="fas fa-microphone"></i>';
+                button.classList.remove('btn-danger');
+                button.classList.add('btn-outline-secondary');
+            };
+            
+            recognition.onerror = (event) => {
+                 console.error("Speech recognition error", event.error);
+                 isRecognizing = false;
+                 button.innerHTML = '<i class="fas fa-microphone"></i>';
+                 button.classList.remove('btn-danger');
+                 button.classList.add('btn-outline-secondary');
+            }
+
+            button.addEventListener('click', () => {
+                if (isRecognizing) {
+                    recognition.stop();
+                } else {
+                    try {
+                        recognition.start();
+                        isRecognizing = true;
+                        button.innerHTML = '<i class="fas fa-stop-circle"></i>';
+                        button.classList.add('btn-danger');
+                        button.classList.remove('btn-outline-secondary');
+                    } catch(e) {
+                        console.error("Could not start recognition", e);
+                    }
+                }
+            });
+        }
+        setupSpeechRecognition('start-recognition-item-name', 'edit-item-name');
 
         // --- New Category Management Functions ---
         async function loadCategories() {
@@ -370,6 +435,7 @@
             document.getElementById('editProductModalLabel').textContent = 'เพิ่มสินค้าใหม่';
             document.getElementById('edit-image-preview').src = "{{ url_for('static', filename='logo.png') }}";
             document.getElementById('edit-image-url').value = '';
+            document.getElementById('image-search-results').innerHTML = ''; // Clear old search results
         });
 
         tableBody.addEventListener('click', async (event) => {
@@ -496,7 +562,7 @@
         document.getElementById('scan-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
             if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
+                html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrCodeSupportedFormats.QR_CODE ] });
             }
             html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
