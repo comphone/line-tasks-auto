@@ -3895,23 +3895,6 @@ def trigger_organize_files():
 
     return redirect(url_for('settings_page'))
 
-@app.route('/admin/trigger_organize_files', methods=['POST'])
-def trigger_organize_files():
-    """
-    This new route triggers the file organization job to run in the background.
-    """
-    try:
-        run_at_time = datetime.datetime.now(THAILAND_TZ) + datetime.timedelta(seconds=3)
-        scheduler.add_job(background_organize_files_job, 'date', run_date=run_at_time, id='manual_file_organization', replace_existing=True)
-        
-        flash('🚀 เริ่มกระบวนการจัดระเบียบไฟล์เบื้องหลังแล้ว! ระบบจะแจ้งเตือนผ่าน LINE เมื่อทำงานเสร็จ (อาจใช้เวลาหลายนาที)', 'success')
-        app.logger.info("Background file organization job has been triggered.")
-    except Exception as e:
-        flash(f'เกิดข้อผิดพลาดในการเริ่มงานเบื้องหลัง: {e}', 'danger')
-        app.logger.error(f"Failed to trigger background job: {e}")
-
-    return redirect(url_for('settings_page'))
-
 @app.route('/admin/line_bot_status')
 def get_line_bot_status():
     """ตรวจสอบสถานะการตั้งค่าของ LINE Bot"""
