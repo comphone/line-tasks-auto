@@ -34,11 +34,13 @@
                 <li>ไฟล์ที่ถูกจัดระเบียบเรียบร้อยแล้ว จะไม่ถูกย้ายซ้ำ</li>
             </ul>
             <div class="text-center mt-4">
-                <form method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการเริ่มการจัดระเบียบไฟล์ทั้งหมด?');">
-                    <button type="submit" class="btn btn-primary btn-lg">
-                        <i class="fas fa-play-circle me-2"></i>เริ่มการจัดระเบียบไฟล์
-                    </button>
-                </form>
+				<form method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการเริ่มการจัดระเบียบไฟล์ทั้งหมด?');">
+					
+					<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+					<button type="submit" class="btn btn-primary btn-lg">
+						<i class="fas fa-play-circle me-2"></i>เริ่มการจัดระเบียบไฟล์
+					</button>
+				</form>
             </div>
         </div>
     </div>
