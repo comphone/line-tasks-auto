@@ -633,43 +633,43 @@ def api_search_equipment_catalog():
     
     return jsonify(results)
 
-# ✅✅✅ START: โค้ดที่ต้องเพิ่มสำหรับ Image Proxy ✅✅✅
 @app.route('/api/proxy_drive_image/<file_id>')
 def proxy_drive_image(file_id):
     """
-    API สำหรับเป็นตัวกลาง (Proxy) ในการดึงรูปภาพจาก Google Drive
-    เพื่อแก้ไขปัญหา CORS Policy
+    Acts as a proxy to download a file from Google Drive.
+    This is necessary to avoid CORS issues when using the Web Share API.
     """
-    drive_service = get_google_drive_service()
-    if not drive_service:
-        return Response("ไม่สามารถเชื่อมต่อ Google Drive service ได้", status=500)
+    service = get_google_drive_service()
+    if not service:
+        return "Google Drive service not available", 500
 
     try:
-        # ขอ Metadata เพื่อเอาชื่อไฟล์และ MimeType
-        file_metadata = drive_service.files().get(fileId=file_id, fields='name, mimeType').execute()
-        
-        request = drive_service.files().get_media(fileId=file_id)
+        request = service.files().get_media(fileId=file_id)
         fh = BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
         done = False
-        while not done:
+        while done is False:
             status, done = downloader.next_chunk()
         
         fh.seek(0)
         
-        # ส่งข้อมูลรูปภาพกลับไปให้หน้าเว็บ พร้อม Header ที่ถูกต้อง
-        return Response(
-            fh.getvalue(),
-            mimetype=file_metadata.get('mimeType', 'application/octet-stream'),
-            headers={"Content-Disposition": f"inline; filename=\"{file_metadata.get('name')}\""}
-        )
-    except HttpError as error:
-        app.logger.error(f"เกิดข้อผิดพลาดในการดึงไฟล์จาก Drive (ID: {file_id}): {error}")
-        return Response(f"ไม่พบไฟล์หรือเกิดข้อผิดพลาด: {error}", status=error.resp.status)
+        # พยายามหา MimeType จาก Google Drive ก่อน
+        try:
+            file_metadata = service.files().get(fileId=file_id, fields='mimeType').execute()
+            mime_type = file_metadata.get('mimeType', 'application/octet-stream')
+        except Exception:
+            mime_type = 'application/octet-stream'
+
+        return Response(fh.getvalue(), mimetype=mime_type)
+
+    except HttpError as e:
+        if e.resp.status == 404:
+            return "File not found on Google Drive", 404
+        app.logger.error(f"Google Drive API error for file {file_id}: {e}")
+        return "Error accessing file on Google Drive", 500
     except Exception as e:
-        app.logger.error(f"เกิดข้อผิดพลาดที่ไม่คาดคิดใน Image Proxy: {e}")
-        return Response("เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์", status=500)
-# ✅✅✅ END: โค้ดที่ต้องเพิ่มสำหรับ Image Proxy ✅✅✅
+        app.logger.error(f"Unexpected error in proxy for file {file_id}: {e}")
+        return "Internal server error", 500
 
 @app.route('/api/tasks/create', methods=['POST'])
 def api_create_task():
@@ -1070,15 +1070,23 @@ def find_or_create_drive_folder(name, parent_id):
     if not service:
         return None
     
-    query = f"name = '{name}' and '{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    # NEW LOGIC: Search for the folder by name first, regardless of parent
+    query = f"name = '{name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     try:
-        response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)', pageSize=1)
+        response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name, parents)', pageSize=1)
         files = response.get('files', [])
+        
         if files:
-            app.logger.info(f"Found existing Drive folder '{name}' with ID: {files[0]['id']}")
-            return files[0]['id']
+            # If folder(s) with this name exist, return the first one found.
+            folder_id = files[0]['id']
+            app.logger.info(f"Found existing Drive folder '{name}' with ID: {folder_id}. Using this as the master.")
+            return folder_id
         else:
-            app.logger.info(f"Folder '{name}' not found in parent '{parent_id}'. Creating it...")
+            # If no folder with this name exists anywhere, create it under the intended parent.
+            if not parent_id:
+                app.logger.error(f"Cannot create folder '{name}': parent_id is missing.")
+                return None
+            app.logger.info(f"Folder '{name}' not found. Creating it under parent '{parent_id}'...")
             file_metadata = {
                 'name': name,
                 'mimeType': 'application/vnd.google-apps.folder',
@@ -3948,6 +3956,68 @@ with app.app_context():
     # บรรทัดนี้จะสร้างตารางในฐานข้อมูล (ถ้ายังไม่มี)
     db.create_all()
 # ✅✅✅ END: โค้ดที่แก้ไขให้ถูกต้อง ✅✅✅
+
+@app.route('/admin/cleanup_drive', methods=['POST'])
+def cleanup_drive_folders():
+    """
+    Finds duplicate folders by name, merges their contents into one, and deletes the empty duplicates.
+    """
+    service = get_google_drive_service()
+    if not service:
+        flash('ไม่สามารถเชื่อมต่อ Google Drive API ได้', 'danger')
+        return redirect(url_for('settings_page'))
+
+    folder_names_to_check = ["Settings_Backups", "System_Backups", "Task_Attachments", "Technician_Avatars", "Product_Images"]
+    log_messages = []
+
+    for name in folder_names_to_check:
+        try:
+            query = f"name = '{name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            response = _execute_google_api_call_with_retry(service.files().list, q=query, spaces='drive', fields='files(id, name)')
+            folders = response.get('files', [])
+
+            if len(folders) <= 1:
+                log_messages.append(f"✅ โฟลเดอร์ '{name}' ไม่ซ้ำซ้อน ข้ามไป...")
+                continue
+
+            # Designate the first folder as the master folder
+            master_folder = folders[0]
+            duplicate_folders = folders[1:]
+            log_messages.append(f"⚠️ พบโฟลเดอร์ '{name}' ซ้ำกัน {len(folders)} อัน กำลังรวมไฟล์ไปที่ ID: {master_folder['id']}")
+
+            for dup_folder in duplicate_folders:
+                # Move all files and folders from the duplicate to the master
+                page_token = None
+                while True:
+                    res_files = _execute_google_api_call_with_retry(
+                        service.files().list,
+                        q=f"'{dup_folder['id']}' in parents and trashed=false",
+                        fields="nextPageToken, files(id, parents)",
+                        pageToken=page_token
+                    )
+                    for file_item in res_files.get('files', []):
+                        original_parents = ",".join(file_item.get('parents'))
+                        _execute_google_api_call_with_retry(
+                            service.files().update,
+                            fileId=file_item['id'],
+                            addParents=master_folder['id'],
+                            removeParents=original_parents
+                        )
+                        log_messages.append(f"   - 🚚 ย้ายไฟล์/โฟลเดอร์ ID: {file_item['id']} ไปยัง '{name}' หลัก")
+                    page_token = res_files.get('nextPageToken', None)
+                    if not page_token:
+                        break
+                
+                # Delete the now-empty duplicate folder
+                _execute_google_api_call_with_retry(service.files().delete, fileId=dup_folder['id'])
+                log_messages.append(f"   - 🗑️ ลบโฟลเดอร์ซ้ำ ID: {dup_folder['id']} เรียบร้อยแล้ว")
+
+        except HttpError as e:
+            log_messages.append(f"❌ เกิดข้อผิดพลาดขณะจัดการโฟลเดอร์ '{name}': {e}")
+            app.logger.error(f"Error cleaning up folder '{name}': {e}")
+    
+    flash('<strong>การทำความสะอาด Google Drive เสร็จสิ้น:</strong><br>' + '<br>'.join(log_messages), 'info')
+    return redirect(url_for('settings_page'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)

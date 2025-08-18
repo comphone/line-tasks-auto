@@ -745,6 +745,7 @@
                     if (att.id) {
                         const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
                         const fullUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`;
+                        // *** CHANGE: Added data-file-id attribute ***
                         imageGalleryHtml += `
                             <div class="thumbnail" data-full-url="${fullUrl}" data-filename="${att.name || 'image.jpg'}" data-file-id="${att.id}">
                                 <img src="${thumbnailUrl}" alt="${att.name || 'รูปภาพ'}"
@@ -798,107 +799,105 @@
             container.appendChild(entry);
         });
     }
-    
-    window.openLightbox = (reportIndex, imageIndex) => {
-        const report = techReportsHistory[reportIndex];
-        if (!report || !report.attachments) return;
 
-        currentLightboxImages = report.attachments.map(att => ({
-            id: att.id,
-            name: att.name || 'รูปภาพ',
-            url: `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`
-        }));
-        slideIndex = imageIndex;
-        document.getElementById('lightboxModal').style.display = "block";
-        showSlide(slideIndex);
-    };
+    // *** CHANGE: Updated share button to use the proxy ***
+    document.getElementById('lightbox-share-btn').addEventListener('click', async () => {
+        if (!currentLightboxImages[slideIndex]) return;
+        
+        const imageInfo = currentLightboxImages[slideIndex];
+        const fileId = imageInfo.id;
+        const imageName = imageInfo.name;
+        
+        try {
+            // Call the new proxy endpoint
+            const response = await fetch(`/api/proxy_drive_image/${fileId}`);
+            if (!response.ok) throw new Error('Proxy fetch failed');
+            
+            const blob = await response.blob();
+            const file = new File([blob], imageName, { type: blob.type });
 
-    window.closeLightbox = () => {
-        document.getElementById('lightboxModal').style.display = "none";
-    };
-
-    window.changeSlide = (n) => {
-        slideIndex += n;
-        if (slideIndex >= currentLightboxImages.length) { slideIndex = 0; }
-        if (slideIndex < 0) { slideIndex = currentLightboxImages.length - 1; }
-        showSlide(slideIndex);
-    };
-
-    function showSlide(index) {
-        if (!currentLightboxImages[index]) return;
-        const imgData = currentLightboxImages[index];
-        document.getElementById('lightboxImg').src = imgData.url;
-        document.getElementById('lightboxCaption').innerHTML = `${imgData.name} (${index + 1} / ${currentLightboxImages.length})`;
-    }
-
-    window.openEditAttachmentsModal = (reportIndex) => {
-        const report = techReportsHistory[reportIndex];
-        const form = document.getElementById('editReportForm');
-        form.action = `/task/${taskId}/edit_report/${reportIndex}`;
-
-        const container = document.getElementById('current-attachments-container');
-        container.innerHTML = '';
-        if (report.attachments && report.attachments.length > 0) {
-            report.attachments.forEach(att => {
-                container.innerHTML += `
-                    <div class="attachment-edit-item">
-                        <label class="form-check-label" for="att-${att.id}">
-                            <img src="https://drive.google.com/thumbnail?id=${att.id}&sz=s200" class="img-thumbnail">
-                        </label>
-                        <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" id="att-${att.id}" checked>
-                    </div>`;
-            });
-        } else {
-            container.innerHTML = '<p class="text-muted">ไม่มีรูปภาพในรายงานนี้</p>';
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: 'รูปภาพจากงานซ่อม',
+                    text: `รูปภาพ: ${imageName}`
+                });
+            } else {
+                throw new Error('ไม่สามารถแชร์ไฟล์ได้');
+            }
+        } catch (err) {
+            console.error('เกิดข้อผิดพลาดในการแชร์:', err);
+            flashMessage(`ไม่สามารถแชร์ไฟล์ได้โดยตรง`, 'warning');
         }
-        editReportModal.show();
-    };
+    });
 
-    window.openEditReportTextModal = (reportIndex) => {
-        currentEditingReportIndex = reportIndex;
-        const report = techReportsHistory[reportIndex];
-        const textarea = document.getElementById('editTextarea');
-        textarea.value = report.work_summary || '';
-        editReportTextModal.show();
-    };
-
-    window.deleteReport = async (reportIndex) => {
-        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้จะลบรูปภาพทั้งหมดในรายงานนี้อย่างถาวรและไม่สามารถย้อนกลับได้')) {
-            return;
-        }
+    // *** CHANGE: Updated multi-share function to use the proxy ***
+    async function shareSelectedImages(thumbnails) {
+        flashMessage('กำลังเตรียมรูปภาพสำหรับแชร์...', 'info');
+        const shareText = `รูปภาพจากงาน #${taskId.substring(taskId.length-6)} (${thumbnails.length} รูป)`;
 
         try {
-            const response = await fetch(`/api/task/${taskId}/delete_report/${reportIndex}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+            const fetchPromises = Array.from(thumbnails).map(thumb => {
+                const fileId = thumb.dataset.fileId; // Use fileId now
+                const imageName = thumb.dataset.filename || `image-${fileId}.jpg`;
+                
+                // Call the new proxy endpoint
+                return fetch(`/api/proxy_drive_image/${fileId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            console.error(`Failed to fetch image via proxy: ${fileId}`);
+                            return null;
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        if (blob) return new File([blob], imageName, { type: blob.type });
+                        return null;
+                    })
+                    .catch(err => {
+                        console.error(`Error in fetch promise for ${fileId}:`, err);
+                        return null;
+                    });
             });
-            const result = await response.json();
-            if (response.ok) {
-                flashMessage(result.message, 'success');
-                window.location.reload();
-            } else {
-                throw new Error(result.message);
+
+            const files = await Promise.all(fetchPromises);
+            const validFiles = files.filter(f => f !== null);
+
+            if (validFiles.length === 0) {
+                throw new Error('ไม่สามารถโหลดรูปภาพที่เลือกได้');
             }
-        } catch (error) {
-            flashMessage(`เกิดข้อผิดพลาดในการลบรายงาน: ${error.message}`, 'danger');
+
+            if (navigator.canShare && navigator.canShare({ files: validFiles })) {
+                await navigator.share({
+                    title: 'รูปภาพจากงานซ่อม',
+                    text: shareText,
+                    files: validFiles
+                });
+            } else {
+                throw new Error('เบราว์เซอร์ไม่รองรับการแชร์หลายไฟล์');
+            }
+
+        } catch (err) {
+            console.error('Error sharing files:', err);
+            flashMessage(err.message || 'เกิดข้อผิดพลาดในการแชร์', 'danger');
         }
-    };
-    
+    }
+
     function handleThumbnailClick(event, reportIndex, imageIndex) {
         const entry = document.getElementById(`history-entry-${reportIndex}`);
         const gallery = document.getElementById(`gallery-grid-${reportIndex}`);
         const shareButton = document.getElementById(`share-btn-${reportIndex}`);
 
         if (entry.classList.contains('selection-mode')) {
-            event.stopPropagation(); // หยุดการเปิด Lightbox
+            event.stopPropagation();
             event.currentTarget.parentElement.classList.toggle('selected');
             const selectedCount = gallery.querySelectorAll('.thumbnail.selected').length;
             if (selectedCount > 0) {
-                 shareButton.textContent = `ยืนยันการแชร์ (${selectedCount} รูป)`;
+                 shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์ (${selectedCount} รูป)`;
                  shareButton.classList.remove('btn-outline-info');
                  shareButton.classList.add('btn-success');
             } else {
-                 shareButton.textContent = `ยกเลิกการเลือก`;
+                 shareButton.innerHTML = `<i class="fas fa-times me-1"></i>ยกเลิกการเลือก`;
                  shareButton.classList.remove('btn-success');
                  shareButton.classList.add('btn-outline-info');
             }
