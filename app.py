@@ -3822,9 +3822,54 @@ def background_organize_files_job():
                 app.logger.error(f"DRIVE ORGANIZE: Error processing task {task.get('id')} for folder mapping: {e}")
 
         for file_item in all_files_to_organize:
-            # ... (ส่วนตรรกะการย้ายไฟล์เหมือนเดิม) ...
-            # (The logic for finding expected_folder_id and moving the file remains the same)
-            # This part is omitted for brevity but should be copied from your existing function.
+            file_id = file_item.get('id')
+            file_name = file_item.get('name', 'Unnamed File')
+            current_parents = file_parents_map.get(file_id, [])
+
+            matched_task_id = None
+            for task_id_candidate in task_folder_map.keys():
+                if task_id_candidate in file_name:
+                    matched_task_id = task_id_candidate
+                    break
+            
+            expected_folder_id = None
+            if matched_task_id and task_folder_map.get(matched_task_id):
+                expected_folder_id = task_folder_map[matched_task_id]
+            else:
+                for task in all_tasks:
+                    history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+                    for report in history:
+                        for attachment in report.get('attachments', []):
+                            if attachment.get('id') == file_id:
+                                if task.get('id') in task_folder_map:
+                                    expected_folder_id = task_folder_map[task.get('id')]
+                                break
+                        if expected_folder_id: break
+                    if expected_folder_id: break
+
+            if not expected_folder_id:
+                skipped_count += 1
+                continue
+
+            if expected_folder_id in current_parents:
+                skipped_count += 1
+                continue
+            
+            try:
+                parents_to_remove = [p for p in current_parents if p != expected_folder_id]
+                
+                _execute_google_api_call_with_retry(
+                    service.files().update,
+                    fileId=file_id,
+                    addParents=expected_folder_id,
+                    removeParents=",".join(parents_to_remove),
+                    fields='id, parents'
+                )
+                moved_count += 1
+            except Exception as e:
+                error_count += 1
+                app.logger.error(f"DRIVE ORGANIZE: Error moving file {file_id}: {e}")
+
 
         log_summary = f"🗂️ การจัดระเบียบไฟล์ใน Drive เสร็จสิ้น!\n\n- ย้ายสำเร็จ: {moved_count} ไฟล์\n- ข้ามไป: {skipped_count} ไฟล์\n- เกิดข้อผิดพลาด: {error_count} ไฟล์"
         app.logger.info(f"--- ✅ Finished Background Job --- \n{log_summary}")
@@ -3856,7 +3901,6 @@ def trigger_organize_files():
     This new route triggers the file organization job to run in the background.
     """
     try:
-        # สั่งให้ scheduler เริ่มทำงานนี้ทันที (ในอีก 3 วินาที)
         run_at_time = datetime.datetime.now(THAILAND_TZ) + datetime.timedelta(seconds=3)
         scheduler.add_job(background_organize_files_job, 'date', run_date=run_at_time, id='manual_file_organization', replace_existing=True)
         
