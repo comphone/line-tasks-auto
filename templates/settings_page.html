@@ -448,16 +448,24 @@
 		 <div class="d-flex flex-wrap gap-2">
 			<a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
 			<a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-clone me-2"></i>จัดการอุปกรณ์ที่ซ้ำซ้อน</a>
-			<a href="{{ url_for('organize_files') }}" class="btn btn-outline-info"><i class="fas fa-folder-open me-2"></i>จัดระเบียบไฟล์ใน Drive</a>
 			
+			<!-- ปุ่ม "จัดระเบียบไฟล์ใน Drive" ที่แก้ไขแล้ว -->
+			<form action="{{ url_for('trigger_organize_files') }}" method="POST" onsubmit="return confirm('คุณต้องการเริ่มกระบวนการจัดระเบียบไฟล์ในเบื้องหลังหรือไม่? ระบบจะแจ้งเตือนผ่าน LINE เมื่อทำงานเสร็จ');">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+				<button type="submit" class="btn btn-outline-info">
+					<i class="fas fa-folder-open me-2"></i>จัดระเบียบไฟล์ใน Drive
+				</button>
+			</form>
+
+			<!-- ปุ่ม "ทำความสะอาดโฟลเดอร์ซ้ำ" -->
 			<form action="{{ url_for('cleanup_drive_folders') }}" method="POST" onsubmit="return confirm('คุณต้องการเริ่มกระบวนการรวมโฟลเดอร์ที่ซ้ำกันใน Google Drive หรือไม่? กระบวนการนี้อาจใช้เวลาสักครู่');">
 				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 				<button type="submit" class="btn btn-outline-warning">
 					<i class="fas fa-broom me-2"></i>ทำความสะอาดโฟลเดอร์ซ้ำ
 				</button>
 			</form>
-			</div>
-			<hr>
+		</div>
+		<hr>
 			
 <div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
   <div class="modal-dialog">
