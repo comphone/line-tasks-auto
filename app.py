@@ -3943,6 +3943,44 @@ def api_manage_categories():
                 return jsonify({'status': 'success', 'message': 'บันทึกหมวดหมู่เรียบร้อยแล้ว'})
         return jsonify({'status': 'error', 'message': 'ข้อมูลไม่ถูกต้อง'}), 400
 
+@app.route('/api/search_product_image')
+def search_product_image():
+    """
+    API endpoint to search for product images online using Serper.dev API.
+    """
+    query = request.args.get('q')
+    if not query:
+        return jsonify({"error": "Query parameter is required"}), 400
+
+    serper_api_key = os.environ.get('SERPER_API_KEY')
+    if not serper_api_key:
+        return jsonify({"error": "Serper API key is not configured on the server"}), 500
+
+    headers = {
+        'X-API-KEY': serper_api_key,
+        'Content-Type': 'application/json'
+    }
+    payload = json.dumps({"q": query, "num": 20}) # ค้นหา 20 รูป
+    
+    try:
+        response = requests.post("https://google.serper.dev/images", headers=headers, data=payload, timeout=10)
+        response.raise_for_status() # Raise an exception for bad status codes
+        images = response.json().get('images', [])
+        
+        # คัดกรองและจัดรูปแบบผลลัพธ์ให้ใช้งานง่าย
+        formatted_images = [
+            {"thumbnail": img.get("thumbnailUrl"), "url": img.get("imageUrl"), "title": img.get("title")}
+            for img in images if img.get("thumbnailUrl") and img.get("imageUrl")
+        ]
+        return jsonify(formatted_images)
+        
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error calling Serper API: {e}")
+        return jsonify({"error": f"Could not connect to image search service: {e}"}), 503
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred during image search: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
 from liff_views import liff_bp
 app.register_blueprint(liff_bp, url_prefix='/')
 

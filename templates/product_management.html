@@ -234,10 +234,9 @@
         const searchInput = document.getElementById('product-search-input');
         const scannerContainer = document.getElementById('scanner-container');
         let html5QrCode = null;
-        let categories = []; // New global variable for categories
+        let categories = [];
         let catalog = {{ equipment_catalog | tojson | safe }};
 
-        // --- NEW: Voice-to-Text Setup ---
         function setupSpeechRecognition(buttonId, inputId) {
             const button = document.getElementById(buttonId);
             const input = document.getElementById(inputId);
@@ -297,7 +296,6 @@
         }
         setupSpeechRecognition('start-recognition-item-name', 'edit-item-name');
 
-        // --- New Category Management Functions ---
         async function loadCategories() {
             try {
                 const response = await fetch('/api/settings/categories');
@@ -309,21 +307,18 @@
         }
 
         function renderCategoryLists() {
-            // Render in filter select
             const filterSelect = document.getElementById('category-filter');
             filterSelect.innerHTML = '<option value="all">แสดงทุกหมวดหมู่</option>';
             categories.forEach(cat => {
                 filterSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
             });
 
-            // Render in edit modal select
             const editSelect = document.getElementById('edit-item-category');
             editSelect.innerHTML = '<option value="">ไม่มีหมวดหมู่</option>';
             categories.forEach(cat => {
                 editSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
             });
 
-            // Render in categories modal
             const categoryListContainer = document.getElementById('category-list');
             categoryListContainer.innerHTML = '';
             categories.forEach((cat, index) => {
@@ -369,25 +364,28 @@
             }
         });
 
-        // --- NEW: Image Search Functions ---
-        document.getElementById('image-search-btn').addEventListener('click', async () => {
+        const imageSearchInput = document.getElementById('image-search-input');
+        const imageSearchBtn = document.getElementById('image-search-btn');
+        const searchResultsContainer = document.getElementById('image-search-results-container');
+        const searchResultsDiv = document.getElementById('image-search-results');
+        const imagePreview = document.getElementById('edit-image-preview');
+        const imageUrlInput = document.getElementById('edit-image-url');
+
+        const performImageSearch = async () => {
             const query = document.getElementById('image-search-input').value.trim();
             if (!query) {
                 flashMessage('กรุณากรอกคำค้นหา', 'warning');
                 return;
             }
             
-            const resultsContainer = document.getElementById('image-search-results');
-            resultsContainer.innerHTML = '<p class="text-center text-muted small mt-2">กำลังค้นหา...</p>';
+            searchResultsDiv.innerHTML = '<p class="text-center text-muted small mt-2">กำลังค้นหา...</p>';
 
             try {
-                // This is a placeholder for the backend API call
-                // Replace with your actual API endpoint that calls Google Custom Search
                 const response = await fetch(`/api/search_images?q=${encodeURIComponent(query)}`);
                 const data = await response.json();
 
                 if (data.status === 'success' && data.images && data.images.length > 0) {
-                    resultsContainer.innerHTML = '';
+                    searchResultsDiv.innerHTML = '';
                     data.images.forEach(url => {
                         const img = document.createElement('img');
                         img.src = url;
@@ -397,18 +395,19 @@
                             document.getElementById('edit-image-url').value = url;
                             flashMessage('เลือกรูปภาพแล้ว', 'success');
                         };
-                        resultsContainer.appendChild(img);
+                        searchResultsDiv.appendChild(img);
                     });
                 } else {
-                    resultsContainer.innerHTML = '<p class="text-center text-muted small mt-2">ไม่พบรูปภาพ</p>';
+                    searchResultsDiv.innerHTML = '<p class="text-center text-muted small mt-2">ไม่พบรูปภาพ</p>';
                 }
             } catch (error) {
                 flashMessage('เกิดข้อผิดพลาดในการค้นหา: ' + error.message, 'danger');
-                resultsContainer.innerHTML = '<p class="text-center text-danger small mt-2">เกิดข้อผิดพลาดในการเชื่อมต่อ</p>';
+                searchResultsDiv.innerHTML = '<p class="text-center text-danger small mt-2">เกิดข้อผิดพลาดในการเชื่อมต่อ</p>';
             }
-        });
+        };
+        
+        imageSearchBtn.addEventListener('click', performImageSearch);
 
-        // --- Modify Existing Functions ---
         searchInput.addEventListener('keyup', () => {
             const filter = searchInput.value.toLowerCase();
             const categoryFilter = document.getElementById('category-filter').value;
@@ -426,7 +425,7 @@
         });
         
         document.getElementById('category-filter').addEventListener('change', () => {
-             searchInput.dispatchEvent(new Event('keyup')); // Trigger a search
+             searchInput.dispatchEvent(new Event('keyup'));
         });
         
         document.getElementById('add-new-product-btn').addEventListener('click', () => {
@@ -435,7 +434,7 @@
             document.getElementById('editProductModalLabel').textContent = 'เพิ่มสินค้าใหม่';
             document.getElementById('edit-image-preview').src = "{{ url_for('static', filename='logo.png') }}";
             document.getElementById('edit-image-url').value = '';
-            document.getElementById('image-search-results').innerHTML = ''; // Clear old search results
+            document.getElementById('image-search-results').innerHTML = '';
         });
 
         tableBody.addEventListener('click', async (event) => {
