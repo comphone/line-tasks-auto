@@ -1337,7 +1337,7 @@ def update_google_task(task_id, title=None, notes=None, status=None, due=None):
 
         if status == 'completed':
             task['completed'] = datetime.datetime.now(pytz.utc).isoformat().replace('+00:00', 'Z')
-            task['due'] = None
+            task.pop('due', None)
         else:
             task.pop('completed', None)
             if due is not None:
