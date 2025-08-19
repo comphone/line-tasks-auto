@@ -545,6 +545,158 @@
     let slideIndex = 0;
     let currentEditingReportIndex = -1;
 
+    // =================================================================
+    // START: โค้ดที่คัดลอกมาเพื่อแก้ไขปัญหาการปิดงาน
+    // =================================================================
+
+    // --- Global Variables for File Uploads ---
+    let filesToUpload = {
+        progress: [],
+        final: [],
+        reschedule: [] // แม้ฟอร์มเลื่อนนัดจะไม่มีอัปโหลด แต่สร้างไว้กัน error
+    };
+
+    // --- Function to Setup File Upload Zone ---
+    function setupFileUpload(zoneId, inputId, cameraId, progressContainerId, formType) {
+        const dropZone = document.getElementById(zoneId);
+        const fileInput = document.getElementById(inputId);
+        const cameraInput = document.getElementById(cameraId);
+        const progressContainer = document.getElementById(progressContainerId);
+
+        if (!dropZone) return;
+
+        const handleFiles = (newFiles) => {
+            filesToUpload[formType] = filesToUpload[formType].concat(Array.from(newFiles));
+            renderPreviews(progressContainer, formType);
+        };
+
+        const renderPreviews = () => {
+            progressContainer.innerHTML = '';
+            progressContainer.style.display = filesToUpload[formType].length > 0 ? 'block' : 'none';
+            filesToUpload[formType].forEach((file, index) => {
+                const progressHtml = `
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold small">${file.name}</div>
+                            <div class="progress" style="height: 10px;">
+                                <div id="progress-bar-${formType}-${index}" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close ms-2" onclick="removeFile('${formType}', ${index})"></button>
+                    </div>`;
+                progressContainer.insertAdjacentHTML('beforeend', progressHtml);
+            });
+        };
+        
+        window.removeFile = (type, index) => {
+            filesToUpload[type].splice(index, 1);
+            renderPreviews(progressContainer, type); // Pass correct parameters
+        };
+
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+        cameraInput.addEventListener('change', () => handleFiles(cameraInput.files));
+    }
+
+    // --- Function to Upload File with Progress Bar ---
+    function uploadFileWithProgress(formData, progressBar) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `{{ url_for('api_upload_attachment') }}`, true);
+            xhr.setRequestHeader('X-CSRFToken', csrfToken);
+
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable && progressBar) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                }
+            };
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(JSON.parse(xhr.responseText));
+                } else {
+                    try {
+                        const errorMsg = JSON.parse(xhr.responseText).message || xhr.statusText;
+                        reject(new Error(errorMsg));
+                    } catch(e) {
+                        reject(new Error(xhr.statusText));
+                    }
+                }
+            };
+            xhr.onerror = () => reject(new Error('Network error during upload.'));
+            xhr.send(formData);
+        });
+    }
+
+    // --- MAIN FUNCTION: To Handle Form Submissions ---
+    async function handleFormSubmission(event, formType) {
+        event.preventDefault();
+        const form = event.target;
+        
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+        let uploadedAttachments = [];
+        if (filesToUpload[formType] && filesToUpload[formType].length > 0) {
+            for (let i = 0; i < filesToUpload[formType].length; i++) {
+                const file = filesToUpload[formType][i];
+                const progressBar = document.getElementById(`progress-bar-${formType}-${i}`);
+                const fileFormData = new FormData();
+                fileFormData.append('file', file);
+                fileFormData.append('task_id', taskId); 
+                
+                try {
+                    const response = await uploadFileWithProgress(fileFormData, progressBar);
+                    uploadedAttachments.push(response.file_info);
+                } catch (error) {
+                    flashMessage(`อัปโหลดไฟล์ "${file.name}" ไม่สำเร็จ: ${error.message}`, 'danger');
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalButtonHtml;
+                    return;
+                }
+            }
+        }
+        
+        const mainFormData = new FormData(form);
+        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+        
+        // Try to get LIFF user ID if available
+        if (typeof liff !== 'undefined' && liff.getContext()) {
+             mainFormData.append('technician_line_user_id', liff.getContext().userId);
+        }
+
+        try {
+            const response = await fetch(`/api/task/${taskId}/update`, {
+                method: 'POST',
+                body: mainFormData,
+                headers: {'X-CSRFToken': csrfToken}
+            });
+            const result = await response.json();
+            if (response.ok) {
+               flashMessage(result.message, 'success');
+               if(result.redirect_url) {
+                   setTimeout(() => { window.location.href = result.redirect_url; }, 1500);
+               } else {
+                   setTimeout(() => { window.location.reload(); }, 1500);
+               }
+            } else {
+               throw new Error(result.message);
+            }
+        } catch (error) {
+            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    }
+    // =================================================================
+    // END: โค้ดที่คัดลอกมาเพื่อแก้ไขปัญหาการปิดงาน
+    // =================================================================
+
     window.flashMessage = (message, category = 'info') => {
         const container = document.getElementById('js-flash-message-container');
         if (!container) return;
@@ -745,7 +897,6 @@
                     if (att.id) {
                         const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
                         const fullUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`;
-                        // *** CHANGE: Added data-file-id attribute ***
                         imageGalleryHtml += `
                             <div class="thumbnail" data-full-url="${fullUrl}" data-filename="${att.name || 'image.jpg'}" data-file-id="${att.id}">
                                 <img src="${thumbnailUrl}" alt="${att.name || 'รูปภาพ'}"
@@ -800,7 +951,6 @@
         });
     }
 
-    // *** CHANGE: Updated share button to use the proxy ***
     document.getElementById('lightbox-share-btn').addEventListener('click', async () => {
         if (!currentLightboxImages[slideIndex]) return;
         
@@ -809,7 +959,6 @@
         const imageName = imageInfo.name;
         
         try {
-            // Call the new proxy endpoint
             const response = await fetch(`/api/proxy_drive_image/${fileId}`);
             if (!response.ok) throw new Error('Proxy fetch failed');
             
@@ -831,17 +980,15 @@
         }
     });
 
-    // *** CHANGE: Updated multi-share function to use the proxy ***
     async function shareSelectedImages(thumbnails) {
         flashMessage('กำลังเตรียมรูปภาพสำหรับแชร์...', 'info');
         const shareText = `รูปภาพจากงาน #${taskId.substring(taskId.length-6)} (${thumbnails.length} รูป)`;
 
         try {
             const fetchPromises = Array.from(thumbnails).map(thumb => {
-                const fileId = thumb.dataset.fileId; // Use fileId now
+                const fileId = thumb.dataset.fileId;
                 const imageName = thumb.dataset.filename || `image-${fileId}.jpg`;
                 
-                // Call the new proxy endpoint
                 return fetch(`/api/proxy_drive_image/${fileId}`)
                     .then(response => {
                         if (!response.ok) {
@@ -915,74 +1062,19 @@
 
         if (isInSelectionMode) {
             if (selectedThumbnails.length > 0) {
-                // ถ้ามีรูปที่เลือก ให้ดำเนินการแชร์
                 await shareSelectedImages(selectedThumbnails);
             }
-            // รีเซ็ตสถานะหลังจากแชร์ (หรือยกเลิก)
             entry.classList.remove('selection-mode');
             shareButton.innerHTML = `<i class="fas fa-share-alt me-1"></i>แชร์รูปภาพ`;
             shareButton.classList.remove('btn-success');
             shareButton.classList.add('btn-outline-info');
             selectedThumbnails.forEach(t => t.classList.remove('selected'));
         } else {
-            // เข้าสู่โหมดเลือกรูปภาพ
             entry.classList.add('selection-mode');
             shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์`;
             shareButton.classList.remove('btn-outline-info');
             shareButton.classList.add('btn-success');
             flashMessage('กดที่รูปภาพที่ต้องการแชร์ แล้วกดปุ่มนี้อีกครั้งเพื่อยืนยัน', 'info');
-        }
-    }
-    
-    async function shareSelectedImages(thumbnails) {
-        flashMessage('กำลังเตรียมรูปภาพสำหรับแชร์...', 'info');
-        
-        const filesToShare = [];
-        const shareText = `รูปภาพจากงาน #${taskId.substring(taskId.length-6)} (${thumbnails.length} รูป)`;
-
-        try {
-            await Promise.all(Array.from(thumbnails).map(async (thumb) => {
-                const fileId = thumb.dataset.fileId;
-                const imageName = thumb.dataset.filename || `image-${Date.now()}.jpg`;
-                
-                const response = await fetch(`/api/proxy_drive_image/${fileId}`);
-                if (!response.ok) {
-                    console.error(`Failed to fetch image via proxy: ${fileId}`);
-                    return;
-                }
-                
-                const blob = await response.blob();
-                
-                const file = new File([blob], imageName, { type: blob.type });
-                filesToShare.push(file);
-            }));
-
-            if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
-                await navigator.share({
-                    title: 'รูปภาพจากงานซ่อม',
-                    text: shareText,
-                    files: filesToShare
-                });
-            } else if (filesToShare.length === 0) {
-                throw new Error('ไม่สามารถโหลดรูปภาพที่เลือกได้');
-            } else {
-                throw new Error('เบราว์เซอร์ไม่รองรับการแชร์หลายไฟล์');
-            }
-
-        } catch (err) {
-            console.error('Error sharing files:', err);
-            flashMessage('ไม่สามารถแชร์ไฟล์ได้โดยตรง จะทำการคัดลอกลิงก์แทน', 'warning');
-            const selectedUrls = Array.from(thumbnails).map(thumb => thumb.dataset.fullUrl);
-            const urlList = selectedUrls.join('\n');
-            const shareMessage = `${shareText}\n\n${urlList}`;
-            navigator.clipboard.writeText(shareMessage)
-                .then(() => {
-                    flashMessage('คัดลอกลิงก์รูปภาพทั้งหมดไปยังคลิปบอร์ดแล้ว', 'success');
-                })
-                .catch(clipErr => {
-                    console.error('Failed to copy to clipboard:', clipErr);
-                    flashMessage('เกิดข้อผิดพลาดในการคัดลอกลิงก์', 'danger');
-                });
         }
     }
 
@@ -998,33 +1090,19 @@
         
         loadInitialItems();
         renderHistorySection();
-
-        document.getElementById('lightbox-share-btn').addEventListener('click', async () => {
-            if (!currentLightboxImages[slideIndex]) return;
-            
-            const imageInfo = currentLightboxImages[slideIndex];
-            const fileId = imageInfo.id;
-            const imageName = imageInfo.name;
-            
-            try {
-                const response = await fetch(`/api/proxy_drive_image/${fileId}`);
-                const blob = await response.blob();
-                const file = new File([blob], imageName, { type: blob.type });
-
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        files: [file],
-                        title: 'รูปภาพจากงานซ่อม',
-                        text: `รูปภาพ: ${imageName}`
-                    });
-                } else {
-                    throw new Error('ไม่สามารถแชร์ไฟล์ได้');
-                }
-            } catch (err) {
-                console.error('เกิดข้อผิดพลาดในการแชร์:', err);
-                flashMessage(`ไม่สามารถแชร์ไฟล์ได้โดยตรง`, 'warning');
-            }
-        });
+        
+        // --- ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ ---
+        // --- START: โค้ดที่เพิ่มเข้ามาเพื่อเชื่อมต่อฟังก์ชันกับฟอร์ม ---
+        // --- ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ ---
+        setupFileUpload('drop-zone-progress', 'files_progress', 'camera_progress', 'upload-progress-container-progress', 'progress');
+        setupFileUpload('drop-zone-final', 'files_final', 'camera_final', 'upload-progress-container-final', 'final');
+        
+        document.getElementById('progressReportForm').addEventListener('submit', (e) => handleFormSubmission(e, 'progress'));
+        document.getElementById('completeTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'final'));
+        document.getElementById('rescheduleTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'reschedule'));
+        // --- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ ---
+        // --- END: โค้ดที่เพิ่มเข้ามา ---
+        // --- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ ---
 
         document.getElementById('editReportTextForm').addEventListener('submit', async function(event) {
             event.preventDefault();
