@@ -777,132 +777,81 @@ def api_create_external_task():
     
 @app.route('/api/task/<task_id>/update', methods=['POST'])
 def api_update_task(task_id):
-    """API สำหรับอัปเดตข้อมูลงาน (เพิ่มรายงาน, ปิดงาน, เลื่อนนัด)"""
+    """API สำหรับอัปเดตข้อมูลงาน (เพิ่มรายงาน, ปิดงาน, เลื่อนนัด) - (เวอร์ชันแก้ไข ปลอดภัยกว่าเดิม)"""
     try:
         task_raw = get_single_task(task_id)
         if not task_raw:
             return jsonify({'status': 'error', 'message': 'ไม่พบงานที่ต้องการอัปเดต'}), 404
         
         action = request.form.get('action')
+        
+        # --- กลยุทธ์ใหม่: ใช้วิธีต่อท้ายข้อมูล (Append-only) เพื่อความปลอดภัย ---
+        current_notes = task_raw.get('notes', '')
+        new_report_block = ""
         update_payload = {}
-        flash_message = None
-        
-        history, base_notes_text = parse_tech_report_from_notes(task_raw.get('notes', ''))
-        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
-        
+        flash_message = ""
+
         new_attachments_from_ajax_json = request.form.get('uploaded_attachments_json')
-        new_attachments = []
-        if new_attachments_from_ajax_json:
-            try:
-                new_attachments = json.loads(new_attachments_from_ajax_json)
-            except json.JSONDecodeError:
-                app.logger.error("Failed to decode uploaded_attachments_json from request.")
+        new_attachments = json.loads(new_attachments_from_ajax_json) if new_attachments_from_ajax_json else []
 
-        if action == 'save_report':
-            work_summary = str(request.form.get('work_summary', '')).strip()
-            selected_technicians = request.form.get('technicians_report', '').split(',')
-            selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
-
-            if not (work_summary or new_attachments):
-                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพ'}), 400
-            if not selected_technicians:
-                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}), 400
-
-            history.append({
-                'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'work_summary': work_summary,
-                'attachments': new_attachments,
-                'technicians': selected_technicians
-            })
-            flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
-
-        # --- ✅✅✅ START: โค้ดที่ถูกต้องสำหรับ 'reschedule_task' ✅✅✅ ---
-        elif action == 'reschedule_task':
-            reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
-            reschedule_reason = str(request.form.get('reschedule_reason', '')).strip()
-            selected_technicians = request.form.get('technicians_reschedule', '').split(',')
-            selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
-
-            if not reschedule_due_str:
-                return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
+        # --- จัดการแต่ละ Action ---
+        if action in ['save_report', 'complete_task', 'reschedule_task']:
+            report_data = {'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat()}
             
-            try:
+            if action == 'reschedule_task':
+                reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
+                selected_technicians = request.form.get('technicians_reschedule', '').split(',')
+                if not reschedule_due_str: return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
+                
                 dt_local = THAILAND_TZ.localize(date_parse(reschedule_due_str))
                 update_payload['due'] = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
                 update_payload['status'] = 'needsAction'
-            except ValueError:
-                return jsonify({'status': 'error', 'message': 'รูปแบบวันเวลานัดหมายใหม่ไม่ถูกต้อง'}), 400
+                
+                report_data.update({
+                    'type': 'reschedule',
+                    'reason': str(request.form.get('reschedule_reason', '')).strip(),
+                    'new_due_date': dt_local.strftime("%d/%m/%y %H:%M"),
+                    'technicians': [t.strip() for t in selected_technicians if t.strip()]
+                })
+                flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
 
-            history.append({
-                'type': 'reschedule', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'reason': reschedule_reason, 'new_due_date': dt_local.strftime("%d/%m/%y %H:%M"),
-                'technicians': selected_technicians
-            })
-            flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
-        # --- ✅✅✅ END: โค้ดที่ถูกต้องสำหรับ 'reschedule_task' ✅✅✅ ---
+            else: # 'save_report' or 'complete_task'
+                work_summary = str(request.form.get('work_summary', '')).strip()
+                selected_technicians = request.form.get('technicians_report', '').split(',')
+                if not (work_summary or new_attachments): return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพ'}), 400
+                if not selected_technicians: return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}), 400
 
-        elif action == 'complete_task':
-            work_summary = str(request.form.get('work_summary', '')).strip()
-            selected_technicians = request.form.get('technicians_report', '').split(',')
-            selected_technicians = [t.strip() for t in selected_technicians if t.strip()]
+                report_data.update({
+                    'type': 'report',
+                    'work_summary': work_summary,
+                    'attachments': new_attachments,
+                    'technicians': [t.strip() for t in selected_technicians if t.strip()]
+                })
 
-            if not work_summary:
-                return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงานเพื่อปิดงาน'}), 400
-            if not selected_technicians:
-                return jsonify({'status': 'error', 'message': 'กรุณาเลือกช่างผู้รับผิดชอบ'}), 400
-            
-            latitude = request.form.get('current_latitude')
-            longitude = request.form.get('current_longitude')
-            technician_line_user_id = request.form.get('technician_line_user_id')
-
-            if latitude and longitude:
-                new_map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
-                if re.search(r"https?:\/\/[^\s]+", base_notes_text):
-                    base_notes_text = re.sub(r"https?:\/\/[^\s]+", new_map_url, base_notes_text)
+                if action == 'complete_task':
+                    update_payload['status'] = 'completed'
+                    flash_message = 'ปิดงานสำเร็จ!'
                 else:
-                    base_notes_text += f"\n{new_map_url}"
-                app.logger.info(f"Updated customer location for task {task_id} to {new_map_url}")
+                    flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
 
-                if technician_line_user_id:
-                    locations = load_technician_locations()
-                    locations[technician_line_user_id] = {
-                        'lat': float(latitude), 'lon': float(longitude),
-                        'timestamp': datetime.datetime.now(THAILAND_TZ).isoformat()
-                    }
-                    save_technician_locations(locations)
-                    app.logger.info(f"Updated technician {technician_line_user_id} location.")
+            # สร้างบล็อกข้อความของรายงานใหม่
+            new_report_block = f"\n\n--- TECH_REPORT_START ---\n{json.dumps(report_data, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---"
             
-            history.append({
-                'type': 'report', 'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat(),
-                'work_summary': work_summary,
-                'attachments': new_attachments,
-                'technicians': selected_technicians
-            })
-            
-            update_payload['status'] = 'completed'
-        
+            # ต่อท้ายบล็อกใหม่เข้ากับ notes เดิม
+            update_payload['notes'] = current_notes + new_report_block
+
+            # ทำการอัปเดต Google Task
+            updated_task = update_google_task(task_id, **update_payload)
+            if updated_task:
+                cache.clear()
+                if action == 'complete_task':
+                    send_completion_notification(updated_task, report_data['technicians'])
+                    return jsonify({'status': 'success', 'message': flash_message, 'redirect_url': url_for('liff.generate_public_report_qr', task_id=task_id)})
+                return jsonify({'status': 'success', 'message': flash_message})
+            else:
+                return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'}), 500
         else:
             return jsonify({'status': 'error', 'message': 'ไม่พบการกระทำที่ร้องขอ'}), 400
-            
-        history.sort(key=lambda x: x.get('summary_date', '0000-00-00'), reverse=True)
-        all_reports_text = "".join([f"\n\n--- TECH_REPORT_START ---\n{json.dumps(r, ensure_ascii=False, indent=2)}\n--- TECH_REPORT_END ---" for r in history])
-        
-        final_notes = base_notes_text
-        if all_reports_text: final_notes += all_reports_text
-        if feedback_data: final_notes += f"\n\n--- CUSTOMER_FEEDBACK_START ---\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n--- CUSTOMER_FEEDBACK_END ---"
-        
-        update_payload['notes'] = final_notes
-    
-        updated_task = update_google_task(task_id, **update_payload)
-        if updated_task:
-            cache.clear()
-            if action == 'complete_task':
-                technicians = request.form.get('technicians_report', '').split(',')
-                send_completion_notification(updated_task, technicians)
-                return jsonify({'status': 'success', 'message': 'ปิดงานสำเร็จ!', 'redirect_url': url_for('liff.generate_customer_onboarding_qr', task_id=task_id)})
-            return jsonify({'status': 'success', 'message': flash_message})
-        else:
-            return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'}), 500
 
     except Exception as e:
         app.logger.error(f'Unexpected error in api_update_task for task {task_id}: {e}', exc_info=True)

@@ -55,8 +55,6 @@
     #scanner-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 1080; flex-direction: column; }
     #qr-reader { width: 90%; max-width: 500px; background-color: white; border-radius: 8px; }
     #close-scanner-btn { margin-top: 1rem; }
-
-    /* --- Styles for Multi-Image Selection --- */
     .thumbnail.selectable { cursor: pointer; }
     .thumbnail.selected {
         outline: 3px solid #0d6efd;
@@ -85,8 +83,6 @@
     .history-entry.selection-mode .thumbnail .selection-overlay {
         display: flex;
     }
-
-    /* --- Styles for Improved Edit Images Modal --- */
     .attachment-edit-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -544,19 +540,27 @@
     let currentLightboxImages = [];
     let slideIndex = 0;
     let currentEditingReportIndex = -1;
-
-    // =================================================================
-    // START: โค้ดที่คัดลอกมาเพื่อแก้ไขปัญหาการปิดงาน
-    // =================================================================
-
-    // --- Global Variables for File Uploads ---
     let filesToUpload = {
         progress: [],
         final: [],
-        reschedule: [] // แม้ฟอร์มเลื่อนนัดจะไม่มีอัปโหลด แต่สร้างไว้กัน error
+        reschedule: []
     };
 
-    // --- Function to Setup File Upload Zone ---
+    function flashMessage(message, category = 'info') {
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+        container.insertAdjacentHTML('beforeend', alertHtml);
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement) {
+                const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                if (alertInstance) alertInstance.close(); else alertElement.remove();
+            }
+        }, 5000);
+    }
+    
     function setupFileUpload(zoneId, inputId, cameraId, progressContainerId, formType) {
         const dropZone = document.getElementById(zoneId);
         const fileInput = document.getElementById(inputId);
@@ -567,7 +571,7 @@
 
         const handleFiles = (newFiles) => {
             filesToUpload[formType] = filesToUpload[formType].concat(Array.from(newFiles));
-            renderPreviews(progressContainer, formType);
+            renderPreviews();
         };
 
         const renderPreviews = () => {
@@ -582,7 +586,7 @@
                                 <div id="progress-bar-${formType}-${index}" class="progress-bar" role="progressbar" style="width: 0%"></div>
                             </div>
                         </div>
-                        <button type="button" class="btn-close ms-2" onclick="removeFile('${formType}', ${index})"></button>
+                        <button type="button" class="btn-close ms-2" onclick="window.removeFile('${formType}', ${index})"></button>
                     </div>`;
                 progressContainer.insertAdjacentHTML('beforeend', progressHtml);
             });
@@ -590,7 +594,7 @@
         
         window.removeFile = (type, index) => {
             filesToUpload[type].splice(index, 1);
-            renderPreviews(progressContainer, type); // Pass correct parameters
+            renderPreviews();
         };
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -599,8 +603,7 @@
         fileInput.addEventListener('change', () => handleFiles(fileInput.files));
         cameraInput.addEventListener('change', () => handleFiles(cameraInput.files));
     }
-
-    // --- Function to Upload File with Progress Bar ---
+    
     function uploadFileWithProgress(formData, progressBar) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
@@ -629,8 +632,7 @@
             xhr.send(formData);
         });
     }
-
-    // --- MAIN FUNCTION: To Handle Form Submissions ---
+    
     async function handleFormSubmission(event, formType) {
         event.preventDefault();
         const form = event.target;
@@ -664,7 +666,6 @@
         const mainFormData = new FormData(form);
         mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
         
-        // Try to get LIFF user ID if available
         if (typeof liff !== 'undefined' && liff.getContext()) {
              mainFormData.append('technician_line_user_id', liff.getContext().userId);
         }
@@ -693,25 +694,94 @@
             submitButton.innerHTML = originalButtonHtml;
         }
     }
-    // =================================================================
-    // END: โค้ดที่คัดลอกมาเพื่อแก้ไขปัญหาการปิดงาน
-    // =================================================================
-
-    window.flashMessage = (message, category = 'info') => {
-        const container = document.getElementById('js-flash-message-container');
-        if (!container) return;
-        const alertId = `flash-${Date.now()}`;
-        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
-        container.insertAdjacentHTML('beforeend', alertHtml);
-        setTimeout(() => {
-            const alertElement = document.getElementById(alertId);
-            if (alertElement) {
-                const alertInstance = bootstrap.Alert.getInstance(alertElement);
-                if (alertInstance) alertInstance.close(); else alertElement.remove();
-            }
-        }, 5000);
+    
+    window.openLightbox = (reportIndex, imageIndex) => {
+        const report = techReportsHistory[reportIndex];
+        if (!report || !report.attachments) return;
+        currentLightboxImages = report.attachments;
+        slideIndex = imageIndex;
+        document.getElementById('lightboxModal').style.display = 'block';
+        showSlide(slideIndex);
     };
 
+    window.closeLightbox = () => {
+        document.getElementById('lightboxModal').style.display = 'none';
+    };
+
+    window.changeSlide = (n) => {
+        slideIndex += n;
+        if (slideIndex >= currentLightboxImages.length) { slideIndex = 0; }
+        if (slideIndex < 0) { slideIndex = currentLightboxImages.length - 1; }
+        showSlide(slideIndex);
+    };
+
+    function showSlide(index) {
+        if (!currentLightboxImages || currentLightboxImages.length === 0) return;
+        const imgData = currentLightboxImages[index];
+        const fullUrl = `https://drive.google.com/thumbnail?id=${imgData.id}&sz=w1280`;
+        document.getElementById('lightboxImg').src = fullUrl;
+    }
+
+    window.openEditReportTextModal = (reportIndex) => {
+        currentEditingReportIndex = reportIndex;
+        const report = techReportsHistory[reportIndex];
+        if (report) {
+            document.getElementById('editTextarea').value = report.work_summary || report.reason || '';
+            editReportTextModal.show();
+        }
+    };
+    
+    window.openEditAttachmentsModal = (reportIndex) => {
+        currentEditingReportIndex = reportIndex;
+        const report = techReportsHistory[reportIndex];
+        const container = document.getElementById('current-attachments-container');
+        const form = document.getElementById('editReportForm');
+        
+        container.innerHTML = '';
+        form.action = `{{ url_for('liff.task_details', task_id=task.id) }}/edit_report/${reportIndex}`;
+
+        if (report && report.attachments && report.attachments.length > 0) {
+            report.attachments.forEach(att => {
+                const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
+                const itemHtml = `
+                    <div class="attachment-edit-item">
+                        <label class="form-check-label">
+                            <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" checked>
+                            <img src="${thumbnailUrl}" class="img-thumbnail">
+                        </label>
+                    </div>`;
+                container.insertAdjacentHTML('beforeend', itemHtml);
+            });
+        } else {
+            container.innerHTML = '<p class="text-muted">ไม่มีรูปภาพในรายงานนี้</p>';
+        }
+        editReportModal.show();
+    };
+
+    async function deleteReport(reportIndex) {
+        const report = techReportsHistory[reportIndex];
+        if (!report) return;
+
+        const confirmation = confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้จะลบรูปภาพที่เกี่ยวข้องอย่างถาวร`);
+        if (!confirmation) return;
+
+        try {
+            const response = await fetch(`/api/task/${taskId}/delete_report/${reportIndex}`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken }
+            });
+            const result = await response.json();
+            if (response.ok) {
+                flashMessage(result.message, 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        }
+    }
+    
     function setupSpeechRecognition(buttonId, textareaId) {
         const button = document.getElementById(buttonId);
         const textarea = document.getElementById(textareaId);
@@ -896,11 +966,10 @@
                 report.attachments.forEach((att, imgIndex) => {
                     if (att.id) {
                         const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
-                        const fullUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w1280`;
                         imageGalleryHtml += `
-                            <div class="thumbnail" data-full-url="${fullUrl}" data-filename="${att.name || 'image.jpg'}" data-file-id="${att.id}">
+                            <div class="thumbnail" data-file-id="${att.id}" data-filename="${att.name || 'รูปภาพ'}">
                                 <img src="${thumbnailUrl}" alt="${att.name || 'รูปภาพ'}"
-                                     onclick="handleThumbnailClick(event, ${index}, ${imgIndex})">
+                                     onclick="window.handleThumbnailClick(event, ${index}, ${imgIndex})">
                                 <div class="selection-overlay"><i class="fas fa-check"></i></div>
                             </div>`;
                     }
@@ -910,7 +979,7 @@
             
             let shareButtonHtml = '';
             if (report.attachments && report.attachments.length > 0) {
-                 shareButtonHtml = `<button class="btn btn-sm btn-outline-info ms-2" id="share-btn-${index}" onclick="toggleShareMode(event, ${index})">
+                 shareButtonHtml = `<button class="btn btn-sm btn-outline-info ms-2" id="share-btn-${index}" onclick="window.toggleShareMode(event, ${index})">
                                     <i class="fas fa-share-alt me-1"></i>แชร์รูปภาพ
                                   </button>`;
             }
@@ -921,10 +990,10 @@
                         <i class="fas fa-ellipsis-v"></i>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="#" onclick="openEditReportTextModal(${index})"><i class="fas fa-edit me-2"></i>แก้ไขข้อความ</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="openEditAttachmentsModal(${index})"><i class="fas fa-images me-2"></i>แก้ไขรูปภาพ</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="window.openEditReportTextModal(${index})"><i class="fas fa-edit me-2"></i>แก้ไขข้อความ</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="window.openEditAttachmentsModal(${index})"><i class="fas fa-images me-2"></i>แก้ไขรูปภาพ</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteReport(${index})"><i class="fas fa-trash-alt me-2"></i>ลบรายงานนี้</a></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="window.deleteReport(${index})"><i class="fas fa-trash-alt me-2"></i>ลบรายงานนี้</a></li>
                     </ul>
                 </div>`;
 
@@ -944,7 +1013,7 @@
                 </div>
                 <hr class="my-2">
                 <div class="history-entry-body">
-                    <p id="report-summary-${index}">${report.work_summary || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                    <p id="report-summary-${index}">${report.work_summary || report.reason || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
                     ${imageGalleryHtml}
                 </div>`;
             container.appendChild(entry);
@@ -1030,7 +1099,7 @@
         }
     }
 
-    function handleThumbnailClick(event, reportIndex, imageIndex) {
+    window.handleThumbnailClick = function(event, reportIndex, imageIndex) {
         const entry = document.getElementById(`history-entry-${reportIndex}`);
         const gallery = document.getElementById(`gallery-grid-${reportIndex}`);
         const shareButton = document.getElementById(`share-btn-${reportIndex}`);
@@ -1053,7 +1122,7 @@
         }
     }
 
-    async function toggleShareMode(event, reportIndex) {
+    window.toggleShareMode = async function(event, reportIndex) {
         event.stopPropagation();
         const entry = document.getElementById(`history-entry-${reportIndex}`);
         const shareButton = document.getElementById(`share-btn-${reportIndex}`);
@@ -1091,18 +1160,12 @@
         loadInitialItems();
         renderHistorySection();
         
-        // --- ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ ---
-        // --- START: โค้ดที่เพิ่มเข้ามาเพื่อเชื่อมต่อฟังก์ชันกับฟอร์ม ---
-        // --- ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ ---
         setupFileUpload('drop-zone-progress', 'files_progress', 'camera_progress', 'upload-progress-container-progress', 'progress');
         setupFileUpload('drop-zone-final', 'files_final', 'camera_final', 'upload-progress-container-final', 'final');
         
         document.getElementById('progressReportForm').addEventListener('submit', (e) => handleFormSubmission(e, 'progress'));
         document.getElementById('completeTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'final'));
         document.getElementById('rescheduleTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'reschedule'));
-        // --- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ ---
-        // --- END: โค้ดที่เพิ่มเข้ามา ---
-        // --- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ ---
 
         document.getElementById('editReportTextForm').addEventListener('submit', async function(event) {
             event.preventDefault();
@@ -1226,19 +1289,19 @@
         const itemAddModalEl = document.getElementById('addItemModal');
         const closeScannerBtn = document.getElementById('close-scanner-btn');
 
-        const stopItemScanner = () => {
-            if (itemScanner && itemScanner.isScanning) {
-                itemScanner.stop().catch(err => console.error("Error stopping scanner.", err));
+        const stopScanner = () => {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
             }
             scannerContainer.style.display = 'none';
         };
 
-        document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
-            itemScannerContainer.style.display = 'flex';
-            if (!itemScanner) {
-                itemScanner = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
+        document.getElementById('scan-barcode-btn').addEventListener('click', () => {
+            scannerContainer.style.display = 'flex';
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
             }
-            itemScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
                     const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
                     if (foundItem) {
@@ -1249,17 +1312,19 @@
                         document.getElementById('item-name-input').value = decodedText;
                         flashMessage(`ไม่พบรหัส ${decodedText} ในแคตตาล็อก`, 'warning');
                     }
-                    stopItemScanner();
+                    stopScanner();
                 },
                 (errorMessage) => { /* ignore parse errors */ }
             ).catch(() => {
                 alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
-                stopItemScanner();
+                stopScanner();
             });
         });
 
-        closeScannerBtn.addEventListener('click', stopItemScanner);
-        itemAddModalEl.addEventListener('hidden.bs.modal', stopItemScanner);
+        document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
+        editModalEl.addEventListener('hidden.bs.modal', stopScanner);
+        
+        loadCategories();
     });
 </script>
 {% endblock %}
