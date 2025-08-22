@@ -367,7 +367,7 @@
                     </div>
 
                     <div class="d-flex align-items-center">
-                        <button type="submit" id="saveProgressBtn" class="btn btn-primary" disabled><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+                        <button type="submit" id="saveProgressBtn" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
                     </div>
                 </form>
             </div>
@@ -572,6 +572,7 @@
         const handleFiles = (newFiles) => {
             filesToUpload[formType] = filesToUpload[formType].concat(Array.from(newFiles));
             renderPreviews();
+            updateProgressSaveButtonState(); // <-- Call the new function
         };
 
         const renderPreviews = () => {
@@ -595,6 +596,7 @@
         window.removeFile = (type, index) => {
             filesToUpload[type].splice(index, 1);
             renderPreviews();
+            updateProgressSaveButtonState(); // <-- Call the new function
         };
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -850,12 +852,32 @@
         else selection.push(techName);
         renderTechnicianList();
     }
+    
+    function updateProgressSaveButtonState() {
+        const workSummary = document.getElementById('work_summary_progress').value.trim();
+        const technicians = document.getElementById('technicians_progress').value.trim();
+        const hasFiles = filesToUpload['progress'].length > 0;
+        const saveButton = document.getElementById('saveProgressBtn');
 
+        if (technicians && (workSummary || hasFiles)) {
+            saveButton.disabled = false;
+        } else {
+            saveButton.disabled = true;
+        }
+    }
+    
     window.confirmTechnicianSelection = () => {
         const selectedNames = selectedTechnicians[currentTechnicianTargetId];
         document.getElementById(currentTechnicianTargetId).value = selectedNames.join(',');
         document.getElementById(`${currentTechnicianTargetId}_display`).value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
         technicianSelectionModal.hide();
+        updateProgressSaveButtonState();
+    };
+    
+    window.removeFile = (type, index) => {
+        filesToUpload[type].splice(index, 1);
+        renderPreviews();
+        updateProgressSaveButtonState();
     };
     
     async function loadInitialItems() {
@@ -1166,6 +1188,12 @@
         document.getElementById('progressReportForm').addEventListener('submit', (e) => handleFormSubmission(e, 'progress'));
         document.getElementById('completeTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'final'));
         document.getElementById('rescheduleTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'reschedule'));
+        
+        // --- Added code for progress button state management ---
+        document.getElementById('work_summary_progress').addEventListener('input', updateProgressSaveButtonState);
+        document.getElementById('files_progress').addEventListener('change', updateProgressSaveButtonState);
+        document.getElementById('camera_progress').addEventListener('change', updateProgressSaveButtonState);
+        // --- End of added code ---
 
         document.getElementById('editReportTextForm').addEventListener('submit', async function(event) {
             event.preventDefault();
