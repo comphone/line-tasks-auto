@@ -557,22 +557,26 @@
             scannerContainer.style.display = 'none';
         };
 
-        document.getElementById('scan-barcode-btn').addEventListener('click', () => {
+		document.getElementById('scan-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
             if (!html5QrCode) {
                 html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
             }
-            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
-                (decodedText) => {
-                    document.getElementById('edit-product-code').value = decodedText;
+            
+            // ✅ โค้ดที่เพิ่ม: เพิ่ม setTimeout เพื่อให้เบราว์เซอร์พร้อม
+            setTimeout(() => {
+                html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                    (decodedText) => {
+                        document.getElementById('edit-product-code').value = decodedText;
+                        stopScanner();
+                        flashMessage(`สแกนสำเร็จ: ${decodedText}`, 'success');
+                    },
+                    (errorMessage) => { /* ignore parse errors */ }
+                ).catch(() => {
+                    alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
                     stopScanner();
-                    flashMessage(`สแกนสำเร็จ: ${decodedText}`, 'success');
-                },
-                (errorMessage) => { /* ignore parse errors */ }
-            ).catch(() => {
-                alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
-                stopScanner();
-            });
+                });
+            }, 500); // หน่วงเวลา 500ms
         });
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);

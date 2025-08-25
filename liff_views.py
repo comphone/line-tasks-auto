@@ -599,7 +599,7 @@ def create_invoice_flex_message(task, total_cost, invoice_url):
 
 @liff_bp.route('/api/billing/<task_id>/send_invoice', methods=['POST'])
 def send_invoice_to_customer(task_id):
-    """API สำหรับสร้างและส่งใบแจ้งหนี้ PDF ให้ลูกค้าทาง LINE (เวอร์ชันอัปเดต)"""
+    """API สำหรับสร้างและส่งใบแจ้งหนี้ PDF ให้ลูกค้าทาง LINE (เวอร์ชันแก้ไข)"""
     data = request.json
     recipient_id = data.get('recipient_id')
 
@@ -607,7 +607,6 @@ def send_invoice_to_customer(task_id):
     if not task_raw:
         return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลงาน'}), 404
 
-    # ถ้าไม่ได้ระบุผู้รับมา ให้ใช้ ID ของลูกค้าเป็นค่าเริ่มต้น
     if not recipient_id:
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         recipient_id = feedback_data.get('customer_line_user_id')
@@ -621,10 +620,22 @@ def send_invoice_to_customer(task_id):
     total_cost = sum(item.quantity * item.unit_price for item in items)
     settings = get_app_settings()
 
+    # --- ✅✅✅ START: เพิ่มโค้ดส่วนที่ขาดหายไป ✅✅✅ ---
+    subtotal = total_cost / 1.07
+    vat = total_cost - subtotal
+    try:
+        total_cost_in_words = num2words(total_cost, to='currency', lang='th')
+    except Exception:
+        total_cost_in_words = "ไม่สามารถแปลงเป็นตัวอักษรได้"
+    # --- ✅✅✅ END: เพิ่มโค้ดส่วนที่ขาดหายไป ✅✅✅ ---
+    
     invoice_html = render_template('invoice_template.html', 
                                    task=task, 
                                    items=items, 
                                    total_cost=total_cost,
+                                   subtotal=subtotal,
+                                   vat=vat,
+                                   total_cost_in_words=total_cost_in_words,
                                    settings=settings,
                                    now=datetime.datetime.now(THAILAND_TZ))
 
