@@ -1,4 +1,5 @@
 import os
+from app import get_app_settings, save_app_settings, backup_settings_to_drive
 from flask import Response
 from io import BytesIO
 from googleapiclient.http import MediaIoBaseDownload
@@ -2310,20 +2311,49 @@ def get_task_items(task_id):
     return jsonify([item.to_dict() for item in items])
 
 @app.route('/api/task/<task_id>/items', methods=['POST'])
-@csrf.exempt # << เพิ่มบรรทัดนี้เข้ามาใหม่ وهو أمر مهم جدا
+@csrf.exempt
 def add_task_items(task_id):
-    """API สำหรับบันทึกรายการอุปกรณ์ (แก้ไขให้ลบของเก่าก่อนเพิ่ม)"""
+    """API สำหรับบันทึกรายการอุปกรณ์ (พร้อมซิงค์ข้อมูลกับ Product Catalog)"""
     data = request.json
     items_data = data.get('items', [])
-    
-    # Placeholder - ควรเปลี่ยนเป็นชื่อช่างที่ Login จริงในอนาคต
-    technician_name = "ช่างผู้บันทึก" 
+    technician_name = "ช่างผู้บันทึก" # Placeholder
 
     try:
-        # 1. ลบรายการเดิมทั้งหมดของงานนี้ออกจากฐานข้อมูล
+        # --- ✅✅✅ START: โค้ดใหม่สำหรับซิงค์ข้อมูลสินค้า ✅✅✅ ---
+        settings = get_app_settings()
+        catalog = settings.get('equipment_catalog', [])
+        # สร้าง look-up set เพื่อการค้นหาที่รวดเร็ว (เทียบชื่อแบบ case-insensitive)
+        catalog_names = {item.get('item_name', '').lower().strip() for item in catalog}
+        
+        new_items_added_to_catalog = False
+        for item_data in items_data:
+            item_name_to_check = item_data.get('item_name', '').lower().strip()
+            # ตรวจสอบว่าเป็นสินค้าใหม่ที่ยังไม่มีใน Catalog หรือไม่
+            if item_name_to_check and item_name_to_check not in catalog_names:
+                new_item_for_catalog = {
+                    'item_name': item_data['item_name'].strip(),
+                    'category': 'ยังไม่ได้จัดหมวดหมู่',
+                    'product_code': '',
+                    'unit': '',
+                    'price': float(item_data.get('unit_price', 0)),
+                    'cost_price': 0,
+                    'stock_quantity': 0, # สต็อกเริ่มต้นเป็น 0
+                    'image_url': ''
+                }
+                catalog.append(new_item_for_catalog)
+                catalog_names.add(item_name_to_check) # อัปเดต look-up set
+                new_items_added_to_catalog = True
+                app.logger.info(f"New product '{item_data['item_name']}' auto-added to catalog.")
+        
+        # ถ้ามีการเพิ่มสินค้าใหม่ ให้บันทึกและสำรองข้อมูล
+        if new_items_added_to_catalog:
+            if save_app_settings({'equipment_catalog': catalog}):
+                backup_settings_to_drive()
+        # --- ✅✅✅ END: โค้ดใหม่สำหรับซิงค์ข้อมูลสินค้า ✅✅✅ ---
+
+        # --- ส่วนของการบันทึกรายการลงใน JobItem (โค้ดเดิม) ---
         JobItem.query.filter_by(task_google_id=task_id).delete()
         
-        # 2. เพิ่มรายการใหม่ทั้งหมดที่ส่งมาเข้าไปในฐานข้อมูล
         if items_data:
             for item_data in items_data:
                 new_item = JobItem(
@@ -2335,7 +2365,6 @@ def add_task_items(task_id):
                 )
                 db.session.add(new_item)
         
-        # 3. ยืนยันการเปลี่ยนแปลงทั้งหมดลงฐานข้อมูล
         db.session.commit()
         return jsonify({'status': 'success', 'message': 'บันทึกรายการอุปกรณ์เรียบร้อยแล้ว'}), 200
     except Exception as e:
