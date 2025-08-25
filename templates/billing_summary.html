@@ -112,10 +112,10 @@
                                     data-customer-name="{{ task.customer.name or 'N/A' }}"
                                     data-task-title="{{ task.title }}"
                                     data-total-cost="{{ '%.2f'|format(task.total_cost) }}"
-                                    title="แชร์ใบแจ้งหนี้">
+                                    title="แชร์ใบส่งของ/ใบวางบิล">
                                 <i class="fas fa-share-alt"></i>
                             </button>
-                            <a href="{{ url_for('liff.print_invoice', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="พิมพ์ใบแจ้งหนี้">
+                            <a href="{{ url_for('liff.print_invoice', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="พิมพ์ใบส่งของ/ใบวางบิล">
                                 <i class="fas fa-print"></i>
                             </a>
                             <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-secondary" title="ดูรายละเอียดงาน">
@@ -138,12 +138,12 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="sendInvoiceModalLabel">ส่งใบแจ้งหนี้ทาง LINE</h5>
+        <h5 class="modal-title" id="sendInvoiceModalLabel">ส่งใบส่งของ/ใบวางบิลทาง LINE</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="modal-task-id">
-        <p>คุณกำลังจะส่งใบแจ้งหนี้สำหรับงานของลูกค้า: <strong id="modal-customer-name"></strong></p>
+        <p>คุณกำลังจะส่งใบส่งของ/ใบวางบิลสำหรับงานของลูกค้า: <strong id="modal-customer-name"></strong></p>
         <div class="mb-3">
           <label for="recipient-line-id" class="form-label">ผู้รับ (LINE User ID หรือ Group ID)</label>
           <input type="text" class="form-control" id="recipient-line-id" placeholder="กรอก LINE ID ที่นี่...">
@@ -219,7 +219,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // --- โค้ดสำหรับปุ่ม "แชร์ใบแจ้งหนี้" ---
     document.querySelectorAll('.share-invoice-btn').forEach(button => {
         button.addEventListener('click', async function() {
             const taskId = this.dataset.taskId;
@@ -231,11 +230,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const isLiff = typeof liff !== 'undefined' && liff.isInClient();
 
-            // 1. ลองใช้ Web Share API ก่อน (สำหรับเบราว์เซอร์ปกติ)
             if (navigator.share && !isLiff) {
                 try {
-                    const shareTitle = `ใบแจ้งหนี้สำหรับงาน ${taskTitle}`;
-                    const shareText = `ใบแจ้งหนี้สำหรับคุณ ${customerName} ยอดรวม ${totalCost} บาท`;
+                    const shareTitle = `ใบส่งของ/ใบวางบิลสำหรับงาน ${taskTitle}`;
+                    const shareText = `ใบส่งของ/ใบวางบิลสำหรับคุณ ${customerName} ยอดรวม ${totalCost} บาท`;
 
                     const response = await fetch(pdfUrl);
                     if (!response.ok) throw new Error('Failed to fetch invoice PDF');
@@ -248,7 +246,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         files: [pdfFile]
                     });
                     
-                    // เมื่อแชร์สำเร็จ ถามผู้ใช้เพื่อเปลี่ยนสถานะ
                     const result = await Swal.fire({
                         title: 'แชร์สำเร็จ!',
                         text: 'คุณต้องการเปลี่ยนสถานะงานนี้เป็น "วางบิลแล้ว" หรือไม่?',
@@ -267,17 +264,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ไฟล์ได้: ' + error.message, 'error');
                 }
             } 
-            // 2. ใช้ LIFF shareTargetPicker เป็นตัวเลือกสำรอง
             else if (liff && liff.isApiAvailable('shareTargetPicker')) {
                  const flexMessage = {
                     type: 'flex',
-                    altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
+                    altText: `ใบส่งของ/ใบวางบิลสำหรับคุณ ${customerName}`,
                     contents: {
                         type: 'bubble',
                         header: {
                             type: 'box',
                             layout: 'vertical',
-                            contents: [{ type: 'text', text: 'ใบแจ้งค่าบริการ', weight: 'bold', color: '#FFFFFF', size: 'lg' }],
+                            contents: [{ type: 'text', text: 'ใบส่งของ/ใบวางบิล', weight: 'bold', color: '#FFFFFF', size: 'lg' }],
                             backgroundColor: '#28a745',
                         },
                         body: {
@@ -304,7 +300,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             layout: 'vertical',
                             contents: [{
                                 type: 'button',
-                                action: { type: 'uri', label: 'ดู/ดาวน์โหลดใบแจ้งหนี้ (PDF)', uri: pdfUrl },
+                                action: { type: 'uri', label: 'ดู/ดาวน์โหลดเอกสาร (PDF)', uri: pdfUrl },
                                 style: 'primary',
                                 height: 'sm',
                                 color: '#198754'
@@ -336,9 +332,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
                 }
             } 
-            // 3. กรณีที่ไม่รองรับทั้งสองแบบ
             else {
-                Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์ใบแจ้งหนี้โดยตรง', 'warning');
+                Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์โดยตรง', 'warning');
             }
         });
     });
