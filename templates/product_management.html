@@ -124,9 +124,9 @@
             <input type="hidden" id="edit-item-index">
             <div class="row">
                 <div class="col-md-4 text-center">
-                    <img id="edit-image-preview" src="{{ url_for('static', filename='logo.png') }}" class="img-thumbnail mb-2" style="width: 150px; height: 150px; object-fit: cover;">
+                    <img id="edit-image-preview" src="{{ url_for('static', filename='logo.png') }}" class="img-thumbnail" style="width: 150px; height: 150px; object-fit: cover;">
                     <input type="file" id="edit-image-upload" class="d-none" accept="image/*">
-                    <button type="button" class="btn btn-sm btn-outline-primary w-100" onclick="document.getElementById('edit-image-upload').click();"><i class="fas fa-camera me-1"></i> เปลี่ยนรูปภาพ</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100 mt-2" onclick="document.getElementById('edit-image-upload').click();"><i class="fas fa-camera me-1"></i> เปลี่ยนรูปภาพ</button>
                     <input type="hidden" id="edit-image-url">
                     <hr class="my-3">
                     <div class="mb-2">
@@ -136,7 +136,7 @@
                             <button type="button" class="btn btn-sm btn-secondary" id="image-search-btn"><i class="fas fa-search"></i></button>
                         </div>
                     </div>
-                    <div id="image-search-results"></div>
+                    <div id="image-search-results" class="mt-2"></div>
                 </div>
                 <div class="col-md-8">
                     <div class="row">
@@ -163,7 +163,7 @@
                     </div>
                     <div class="row">
                         <div class="col-6 mb-3"><label for="edit-item-unit" class="form-label">หน่วย</label><input type="text" class="form-control" id="edit-item-unit" placeholder="เช่น ชิ้น, เมตร"></div>
-                        <div class="col-6 mb-3"><label for="edit-item-stock" class="form-label">จำนวนสต็อก</label><input type="number" class="form-control" id="edit-item-stock" min="0" value="0"></div>
+                        <div class="col-6 mb-3"><label for="edit-item-stock" class="form-label">จำนวนสต็อก</label><input type="number" class="form-control" id="edit-item-stock" value="0"></div>
                     </div>
                     <div class="row">
                         <div class="col-6 mb-3"><label for="edit-cost-price" class="form-label">ราคาทุน</label><input type="number" class="form-control" id="edit-cost-price" step="any" min="0" placeholder="0.00"></div>
@@ -366,7 +366,6 @@
 
         const imageSearchInput = document.getElementById('image-search-input');
         const imageSearchBtn = document.getElementById('image-search-btn');
-        const searchResultsContainer = document.getElementById('image-search-results-container');
         const searchResultsDiv = document.getElementById('image-search-results');
         const imagePreview = document.getElementById('edit-image-preview');
         const imageUrlInput = document.getElementById('edit-image-url');
@@ -381,18 +380,18 @@
             searchResultsDiv.innerHTML = '<p class="text-center text-muted small mt-2">กำลังค้นหา...</p>';
 
             try {
-                const response = await fetch(`/api/search_images?q=${encodeURIComponent(query)}`);
+                const response = await fetch(`/api/search_product_image?q=${encodeURIComponent(query)}`);
                 const data = await response.json();
 
-                if (data.status === 'success' && data.images && data.images.length > 0) {
+                if (response.ok && data.length > 0) {
                     searchResultsDiv.innerHTML = '';
-                    data.images.forEach(url => {
+                    data.forEach(item => {
                         const img = document.createElement('img');
-                        img.src = url;
+                        img.src = item.thumbnail;
                         img.className = 'search-thumbnail';
                         img.onclick = () => {
-                            document.getElementById('edit-image-preview').src = url;
-                            document.getElementById('edit-image-url').value = url;
+                            imagePreview.src = item.url;
+                            imageUrlInput.value = item.url;
                             flashMessage('เลือกรูปภาพแล้ว', 'success');
                         };
                         searchResultsDiv.appendChild(img);
