@@ -67,8 +67,14 @@
 </div>
 
 <div class="card shadow-sm">
-    <div class="card-header">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h5 class="mb-0">จัดการสถานะการชำระเงิน</h5>
+        <form class="d-flex" role="search" id="billing-search-form">
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                <input class="form-control" type="search" placeholder="ค้นหาลูกค้าหรือชื่องาน..." aria-label="Search" id="billing-search-input">
+            </div>
+        </form>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -83,7 +89,7 @@
                 </thead>
                 <tbody>
                     {% for task in tasks %}
-                    <tr class="task-row">
+                    <tr class="task-row" data-search-terms="{{ task.customer.name | lower }} {{ task.title | lower }}">
                         <td>
                             <strong>{{ task.customer.name or '-' }}</strong>
                             <br>
@@ -101,14 +107,13 @@
                             </select>
                         </td>
                         <td class="text-center">
-                            <button class="btn btn-sm btn-outline-success send-invoice-btn"
-                                    data-bs-toggle="modal" 
-                                    data-bs-target="#sendInvoiceModal"
+                            <button class="btn btn-sm btn-outline-info share-invoice-btn"
                                     data-task-id="{{ task.id }}"
                                     data-customer-name="{{ task.customer.name or 'N/A' }}"
-                                    data-customer-line-id="{{ task.customer_line_id }}"
-                                    title="ส่งใบแจ้งหนี้ทาง LINE">
-                                <i class="fab fa-line"></i>
+                                    data-task-title="{{ task.title }}"
+                                    data-total-cost="{{ '%.2f'|format(task.total_cost) }}"
+                                    title="แชร์ใบแจ้งหนี้">
+                                <i class="fas fa-share-alt"></i>
                             </button>
                             <a href="{{ url_for('liff.print_invoice', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="พิมพ์ใบแจ้งหนี้">
                                 <i class="fas fa-print"></i>
@@ -197,57 +202,175 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    const sendInvoiceModal = new bootstrap.Modal(document.getElementById('sendInvoiceModal'));
-    const modalTaskId = document.getElementById('modal-task-id');
-    const modalCustomerName = document.getElementById('modal-customer-name');
-    const recipientInput = document.getElementById('recipient-line-id');
-    const confirmSendBtn = document.getElementById('confirm-send-invoice-btn');
+    const searchInput = document.getElementById('billing-search-input');
+    const taskRows = document.querySelectorAll('.task-row');
 
-    document.querySelectorAll('.send-invoice-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            modalTaskId.value = this.dataset.taskId;
-            modalCustomerName.textContent = this.dataset.customerName;
-            recipientInput.value = this.dataset.customerLineId || '';
+    if(searchInput) {
+        searchInput.addEventListener('input', function(event) {
+            const query = event.target.value.toLowerCase().trim();
+            taskRows.forEach(row => {
+                const searchTerms = row.dataset.searchTerms;
+                if (searchTerms.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+    
+    // --- โค้ดสำหรับปุ่ม "แชร์ใบแจ้งหนี้" ---
+    document.querySelectorAll('.share-invoice-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            const taskId = this.dataset.taskId;
+            const customerName = this.dataset.customerName;
+            const taskTitle = this.dataset.taskTitle;
+            const totalCost = this.dataset.totalCost;
+            
+            const pdfUrl = `{{ url_for('liff.generate_invoice_pdf', task_id='TASK_ID') }}`.replace('TASK_ID', taskId);
+
+            const isLiff = typeof liff !== 'undefined' && liff.isInClient();
+
+            // 1. ลองใช้ Web Share API ก่อน (สำหรับเบราว์เซอร์ปกติ)
+            if (navigator.share && !isLiff) {
+                try {
+                    const shareTitle = `ใบแจ้งหนี้สำหรับงาน ${taskTitle}`;
+                    const shareText = `ใบแจ้งหนี้สำหรับคุณ ${customerName} ยอดรวม ${totalCost} บาท`;
+
+                    const response = await fetch(pdfUrl);
+                    if (!response.ok) throw new Error('Failed to fetch invoice PDF');
+                    const pdfBlob = await response.blob();
+                    const pdfFile = new File([pdfBlob], `Invoice-${taskId}.pdf`, { type: 'application/pdf' });
+
+                    await navigator.share({
+                        title: shareTitle,
+                        text: shareText,
+                        files: [pdfFile]
+                    });
+                    
+                    // เมื่อแชร์สำเร็จ ถามผู้ใช้เพื่อเปลี่ยนสถานะ
+                    const result = await Swal.fire({
+                        title: 'แชร์สำเร็จ!',
+                        text: 'คุณต้องการเปลี่ยนสถานะงานนี้เป็น "วางบิลแล้ว" หรือไม่?',
+                        icon: 'success',
+                        showCancelButton: true,
+                        confirmButtonText: 'ใช่, เปลี่ยนสถานะ',
+                        cancelButtonText: 'ไม่, เก็บสถานะเดิม'
+                    });
+
+                    if (result.isConfirmed) {
+                        await updateBillingStatus(taskId, 'billed');
+                    }
+
+                } catch (error) {
+                    console.error(error);
+                    Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ไฟล์ได้: ' + error.message, 'error');
+                }
+            } 
+            // 2. ใช้ LIFF shareTargetPicker เป็นตัวเลือกสำรอง
+            else if (liff && liff.isApiAvailable('shareTargetPicker')) {
+                 const flexMessage = {
+                    type: 'flex',
+                    altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
+                    contents: {
+                        type: 'bubble',
+                        header: {
+                            type: 'box',
+                            layout: 'vertical',
+                            contents: [{ type: 'text', text: 'ใบแจ้งค่าบริการ', weight: 'bold', color: '#FFFFFF', size: 'lg' }],
+                            backgroundColor: '#28a745',
+                        },
+                        body: {
+                            type: 'box',
+                            layout: 'vertical',
+                            spacing: 'md',
+                            contents: [
+                                { type: 'text', text: `ลูกค้า: ${customerName}`, weight: 'bold' },
+                                { type: 'text', text: `เรื่อง: ${taskTitle}`, wrap: true, size: 'sm' },
+                                { type: 'separator', margin: 'lg' },
+                                {
+                                    type: 'box',
+                                    layout: 'baseline',
+                                    margin: 'lg',
+                                    contents: [
+                                        { type: 'text', text: 'ยอดชำระสุทธิ', size: 'md', color: '#555555', flex: 0 },
+                                        { type: 'text', text: `${totalCost} บาท`, size: 'xl', color: '#111111', weight: 'bold', align: 'end' }
+                                    ]
+                                }
+                            ]
+                        },
+                        footer: {
+                            type: 'box',
+                            layout: 'vertical',
+                            contents: [{
+                                type: 'button',
+                                action: { type: 'uri', label: 'ดู/ดาวน์โหลดใบแจ้งหนี้ (PDF)', uri: pdfUrl },
+                                style: 'primary',
+                                height: 'sm',
+                                color: '#198754'
+                            }]
+                        }
+                    }
+                };
+                
+                try {
+                    const result = await liff.shareTargetPicker([flexMessage]);
+                    if (result) {
+                        const confirmUpdate = await Swal.fire({
+                            title: 'แชร์สำเร็จ!',
+                            text: 'คุณต้องการเปลี่ยนสถานะงานนี้เป็น "วางบิลแล้ว" หรือไม่?',
+                            icon: 'success',
+                            showCancelButton: true,
+                            confirmButtonText: 'ใช่, เปลี่ยนสถานะ',
+                            cancelButtonText: 'ไม่, เก็บสถานะเดิม'
+                        });
+
+                        if (confirmUpdate.isConfirmed) {
+                             await updateBillingStatus(taskId, 'billed');
+                        }
+                    } else {
+                        console.log('ShareTargetPicker was cancelled by the user');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
+                }
+            } 
+            // 3. กรณีที่ไม่รองรับทั้งสองแบบ
+            else {
+                Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์ใบแจ้งหนี้โดยตรง', 'warning');
+            }
         });
     });
 
-    confirmSendBtn.addEventListener('click', function() {
-        const taskId = modalTaskId.value;
-        const recipientId = recipientInput.value.trim();
-        if (!recipientId) {
-            Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณากรอก LINE ID ของผู้รับ', 'warning');
-            return;
-        }
-        sendInvoice(taskId, recipientId, this);
-        sendInvoiceModal.hide();
-    });
-
-    async function sendInvoice(taskId, recipientId, button) {
-        const originalText = button.innerHTML;
-        button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span> กำลังส่ง...`;
-        button.disabled = true;
-
+    async function updateBillingStatus(taskId, status) {
         try {
-            const response = await fetch(`/api/billing/${taskId}/send_invoice`, {
+            const response = await fetch(`/api/billing/${taskId}/update_status`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ recipient_id: recipientId })
+                body: JSON.stringify({ status: status })
             });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
-
-            Swal.fire('ส่งสำเร็จ!', result.message, 'success');
-            setTimeout(() => window.location.reload(), 2000);
+            const data = await response.json();
+            if (data.status === 'success') {
+                const Toast = Swal.mixin({
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 2000,
+                    timerProgressBar: true
+                });
+                Toast.fire({ icon: 'success', title: 'อัปเดตสถานะแล้ว' });
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                Swal.fire('เกิดข้อผิดพลาด', data.message, 'error');
+            }
         } catch (error) {
-            Swal.fire('เกิดข้อผิดพลาด!', error.message, 'error');
-        } finally {
-            button.innerHTML = originalText;
-            button.disabled = false;
+            console.error('Error:', error);
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
         }
     }
 });
 </script>
-{% endblock %}

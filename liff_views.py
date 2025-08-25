@@ -13,7 +13,7 @@ from weasyprint import HTML
 from io import BytesIO
 from num2words import num2words
 from linebot.v3.messaging import FlexMessage
-
+from urllib.parse import quote_plus
 from app import (
     get_google_tasks_for_report,
     get_single_task,
@@ -37,6 +37,34 @@ from app import (
 liff_bp = Blueprint('liff', __name__)
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
+
+# --- Helper function for PDF generation ---
+def _generate_invoice_pdf_bytes(task_id):
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return None
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
+    total_cost = sum(item.quantity * item.unit_price for item in items)
+    settings = get_app_settings()
+    subtotal = total_cost / 1.07
+    vat = total_cost - subtotal
+    try:
+        total_cost_in_words = num2words(total_cost, to='currency', lang='th')
+    except Exception:
+        total_cost_in_words = "ไม่สามารถแปลงเป็นตัวอักษรได้"
+    
+    invoice_html = render_template('invoice_template.html',
+                                   task=task,
+                                   items=items,
+                                   total_cost=total_cost,
+                                   subtotal=subtotal,
+                                   vat=vat,
+                                   total_cost_in_words=total_cost_in_words,
+                                   settings=settings,
+                                   now=datetime.datetime.now(THAILAND_TZ))
+    return HTML(string=invoice_html).write_pdf()
 
 @liff_bp.route('/')
 @liff_bp.route('/summary')
@@ -261,10 +289,10 @@ def technician_report():
     report_data, technician_list = _get_technician_report_data(year, month)
 
     return render_template('technician_report.html',
-                        report_data=report_data, 
-                        selected_year=year, 
+                        report_data=report_data,
+                        selected_year=year,
                         selected_month=month,
-                        years=list(range(now.year - 5, now.year + 2)), 
+                        years=list(range(now.year - 5, now.year + 2)),
                         months=months,
                         technician_list=technician_list)
 
@@ -289,7 +317,7 @@ def technician_report_print():
 def product_management():
     settings = get_app_settings()
     equipment_catalog = settings.get('equipment_catalog', [])
-    return render_template('product_management.html', 
+    return render_template('product_management.html',
                            equipment_catalog=equipment_catalog)
 
 @liff_bp.route('/public/report/<task_id>')
@@ -304,7 +332,7 @@ def public_task_report(task_id):
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
     
     task['tech_reports_history'] = [
-        r for r in task['tech_reports_history'] 
+        r for r in task['tech_reports_history']
         if r.get('work_summary') or r.get('attachments')
     ]
 
@@ -336,7 +364,7 @@ def generate_public_report_qr(task_id):
 def form_page():
     settings = get_app_settings()
     technician_templates = settings.get('technician_templates', {})
-    return render_template('form.html', 
+    return render_template('form.html',
                            task_detail_snippets=technician_templates.get('task_details', []))
 
 @liff_bp.route('/external_job_form')
@@ -433,6 +461,7 @@ def technician_location_update_page():
 @liff_bp.route('/billing')
 def billing_summary():
     """แสดงหน้าสรุปรายการงานที่เสร็จแล้วเพื่อรอการเก็บเงิน (เวอร์ชันอัปเดต)"""
+    search_query = request.args.get('search_query', '').strip().lower()
     completed_tasks_raw = [t for t in (get_google_tasks_for_report(show_completed=True) or []) if t.get('status') == 'completed']
     
     tasks_with_details = []
@@ -443,6 +472,12 @@ def billing_summary():
     }
 
     for task_raw in completed_tasks_raw:
+        customer_info = parse_customer_info_from_notes(task_raw.get('notes', ''))
+        searchable_text = f"{task_raw.get('title', '')} {customer_info.get('name', '')}".lower()
+
+        if search_query and search_query not in searchable_text:
+            continue
+
         items = JobItem.query.filter_by(task_google_id=task_raw['id']).all()
         total_cost = sum(item.quantity * item.unit_price for item in items)
         
@@ -453,15 +488,12 @@ def billing_summary():
             db.session.commit()
 
         task = parse_google_task_dates(task_raw)
-        task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+        task['customer'] = customer_info
         task['total_cost'] = total_cost
         task['billing_status'] = billing_status.status
         
-        # --- ✅✅✅ START: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
-        # ดึง LINE User ID ของลูกค้าเพื่อนำไปใช้ในปุ่ม "Send LINE"
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         task['customer_line_id'] = feedback_data.get('customer_line_user_id', '')
-        # --- ✅✅✅ END: โค้dที่เพิ่มใหม่ ✅✅✅ ---
         
         tasks_with_details.append(task)
         
@@ -474,7 +506,7 @@ def billing_summary():
 
     tasks_with_details.sort(key=lambda x: x.get('completed', '0'), reverse=True)
 
-    return render_template('billing_summary.html', tasks=tasks_with_details, summary=summary_data)
+    return render_template('billing_summary.html', tasks=tasks_with_details, summary=summary_data, search_query=search_query)
 
 @liff_bp.route('/api/billing/<task_id>/update_status', methods=['POST'])
 def update_billing_status(task_id):
@@ -620,18 +652,16 @@ def send_invoice_to_customer(task_id):
     total_cost = sum(item.quantity * item.unit_price for item in items)
     settings = get_app_settings()
 
-    # --- ✅✅✅ START: เพิ่มโค้ดส่วนที่ขาดหายไป ✅✅✅ ---
     subtotal = total_cost / 1.07
     vat = total_cost - subtotal
     try:
         total_cost_in_words = num2words(total_cost, to='currency', lang='th')
     except Exception:
         total_cost_in_words = "ไม่สามารถแปลงเป็นตัวอักษรได้"
-    # --- ✅✅✅ END: เพิ่มโค้ดส่วนที่ขาดหายไป ✅✅✅ ---
     
-    invoice_html = render_template('invoice_template.html', 
-                                   task=task, 
-                                   items=items, 
+    invoice_html = render_template('invoice_template.html',
+                                   task=task,
+                                   items=items,
                                    total_cost=total_cost,
                                    subtotal=subtotal,
                                    vat=vat,
@@ -664,6 +694,28 @@ def send_invoice_to_customer(task_id):
             
     return jsonify({'status': 'success', 'message': f'ส่งใบแจ้งหนี้ไปยัง {recipient_id} เรียบร้อยแล้ว'})
 
+@liff_bp.route('/api/generate_invoice_pdf/<task_id>')
+def generate_invoice_pdf(task_id):
+    """
+    สร้างไฟล์ PDF ของใบแจ้งหนี้และส่งกลับเป็น Response เพื่อให้ Web Share API
+    สามารถนำไปใช้ได้โดยตรง
+    """
+    pdf_bytes = _generate_invoice_pdf_bytes(task_id)
+    if pdf_bytes:
+        task_raw = get_single_task(task_id)
+        if not task_raw: abort(404)
+        task = parse_google_task_dates(task_raw)
+        customer = parse_customer_info_from_notes(task.get('notes', ''))
+        
+        pdf_filename = f"Invoice-{task['id'][-6:].upper()}-{customer.get('name', 'customer')}.pdf".replace(" ", "_")
+        
+        response = make_response(pdf_bytes)
+        response.headers.set('Content-Type', 'application/pdf')
+        response.headers.set('Content-Disposition', 'attachment', filename=pdf_filename)
+        return response
+    
+    return "Failed to generate PDF", 500
+
 @liff_bp.route('/invoice/<task_id>/print')
 def print_invoice(task_id):
     """แสดงหน้าใบแจ้งหนี้สำหรับพิมพ์ (เวอร์ชันอัปเดต)"""
@@ -676,25 +728,21 @@ def print_invoice(task_id):
     
     items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
     
-    # --- ✅✅✅ START: โค้ดที่แก้ไขและเพิ่มใหม่ ✅✅✅ ---
     total_cost = sum(item.quantity * item.unit_price for item in items)
     
-    # คำนวณ VAT จากยอดรวม (Assuming total_cost is inclusive of VAT)
     subtotal = total_cost / 1.07
     vat = total_cost - subtotal
 
-    # แปลงตัวเลขเป็นตัวอักษรภาษาไทย
     try:
         total_cost_in_words = num2words(total_cost, to='currency', lang='th')
     except Exception:
         total_cost_in_words = "ไม่สามารถแปลงเป็นตัวอักษรได้"
-    # --- ✅✅✅ END: โค้ดที่แก้ไขและเพิ่มใหม่ ✅✅✅ ---
 
     settings = get_app_settings()
 
-    return render_template('invoice_template.html', 
-                           task=task, 
-                           items=items, 
+    return render_template('invoice_template.html',
+                           task=task,
+                           items=items,
                            total_cost=total_cost,
                            subtotal=subtotal,
                            vat=vat,
