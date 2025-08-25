@@ -192,9 +192,6 @@
                 <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
                     <i class="fas fa-calendar-alt"></i> เลื่อนนัด
                 </button>
-                <button type="button" class="btn btn-success action-btn" onclick="shareInvoice()">
-                    <i class="fas fa-share-alt"></i> แชร์ใบแจ้งหนี้
-                </button>
                 <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
                     <i class="fas fa-qrcode"></i> QR Code ลูกค้า
                 </a>
@@ -1366,7 +1363,7 @@
     async function shareInvoice() {
         // ตรวจสอบว่าโค้ดทำงานในสภาพแวดล้อมใด
         const isLiff = typeof liff !== 'undefined' && liff.isInClient();
-        const pdfUrl = `{{ url_for('liff.generate_invoice_pdf', task_id='TASK_ID') }}`.replace('TASK_ID', taskId);
+        const pdfUrl = `{{ url_for('liff.generate_invoice_pdf', task_id=task.id) }}`;
 
         // 1. ลองใช้ Web Share API (สำหรับเบราว์เซอร์ปกติ)
         if (navigator.share && !isLiff) {
@@ -1390,7 +1387,7 @@
             }
         } 
         // 2. ใช้ LIFF shareTargetPicker เป็นตัวเลือกสำรอง
-        else if (isLiff && liff.isApiAvailable('shareTargetPicker')) {
+        else if (isLiff && typeof liff !== 'undefined' && liff.isApiAvailable('shareTargetPicker')) {
             const taskTitle = "{{ task.title | escape }}";
             const customerName = "{{ task.customer.name | escape }}";
             const totalCostFormatted = "{{ '%.2f'|format(total_cost) }}";

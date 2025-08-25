@@ -38,6 +38,7 @@ liff_bp = Blueprint('liff', __name__)
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
+# --- Helper function for PDF generation ---
 def _generate_invoice_pdf_bytes(task_id):
     task_raw = get_single_task(task_id)
     if not task_raw:
@@ -351,17 +352,19 @@ def generate_public_report_qr(task_id):
     task = get_single_task(task_id)
     if not task:
         abort(404)
-
-    public_report_url = url_for('liff.public_task_report', task_id=task['id'], _external=True)
-    qr_code = generate_qr_code_base64(public_report_url)
+    
+    settings = get_app_settings()
+    line_oa_id = settings.get('shop_info', {}).get('line_id', '@YOUR_LINE_OA_ID').replace('@','')
+    line_add_friend_url = f"https://line.me/R/ti/p/@{line_oa_id}?referral={task_id}"
+    
+    qr_code_b64 = generate_qr_code_base64(line_add_friend_url)
     customer = parse_customer_info_from_notes(task.get('notes', ''))
     
-    return render_template('public_report_qr.html',
-                           qr_code_base64_report=qr_code,
+    return render_template('generate_onboarding_qr.html',
+                           qr_code_base64=qr_code_b64,
+                           liff_url=line_add_friend_url,
                            task=task,
                            customer_info=customer,
-                           public_report_url=public_report_url,
-                           LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION,
                            now=datetime.datetime.now(THAILAND_TZ))
 
 @liff_bp.route('/form')
@@ -407,11 +410,7 @@ def task_details(task_id):
             if report.get('attachments'):
                 all_attachments.extend(report['attachments'])
 
-    # --- ✅✅✅ START: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
-    # คำนวณยอดรวมค่าใช้จ่ายทั้งหมดของงานนี้
-    items = JobItem.query.filter_by(task_google_id=task_id).all()
-    total_cost = sum(item.quantity * item.unit_price for item in items)
-    # --- ✅✅✅ END: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
+    total_cost = sum(item.quantity * item.unit_price for item in JobItem.query.filter_by(task_google_id=task_id).all())
 
     return render_template('update_task_details.html',
                            task=task,
@@ -419,7 +418,7 @@ def task_details(task_id):
                            all_attachments=all_attachments,
                            progress_report_snippets=technician_templates.get('progress_reports', []),
                            equipment_catalog=equipment_catalog,
-                           total_cost=total_cost,  # <-- ส่งตัวแปรใหม่ไปที่ Template
+                           total_cost=total_cost,
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 
 @liff_bp.route('/customer_problem_form/<task_id>')
