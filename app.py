@@ -3167,6 +3167,35 @@ def api_upload_product_image():
     else:
         return jsonify({'status': 'error', 'message': 'Failed to upload image to Google Drive'}), 500
 
+@app.route('/api/upload_payment_qr', methods=['POST'])
+def api_upload_payment_qr():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+    
+    # สร้างหรือค้นหาโฟลเดอร์สำหรับเก็บไฟล์ของบริษัท
+    assets_folder_id = find_or_create_drive_folder("Company_Assets", GOOGLE_DRIVE_FOLDER_ID)
+    if not assets_folder_id:
+        return jsonify({'status': 'error', 'message': 'Could not create or find Company_Assets folder'}), 500
+
+    # ใช้ชื่อไฟล์มาตรฐานเพื่อให้อัปเดตทับไฟล์เดิมได้ง่าย
+    filename = "payment_qr_code.png"
+    mime_type = file.mimetype or 'image/png'
+    
+    # อ่านไฟล์เข้า memory
+    file_bytes = BytesIO(file.read())
+    media_body = MediaIoBaseUpload(file_bytes, mimetype=mime_type, resumable=True)
+    
+    # อัปโหลดไฟล์ขึ้น Drive
+    drive_file = _perform_drive_upload(media_body, filename, mime_type, assets_folder_id)
+    
+    if drive_file:
+        return jsonify({'status': 'success', 'file_id': drive_file.get('id')})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to upload QR code to Google Drive'}), 500
+
 @app.route('/test_notification', methods=['POST'])
 def test_notification():
     recipient_id = request.form.get('test_recipient')

@@ -276,7 +276,6 @@
     </div>
 </form>
 
-<!-- LIFF Debug Panel -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-info text-dark">
         <h5 class="mb-0"><i class="fas fa-bug me-2"></i>🔍 LIFF Debug Panel</h5>
@@ -312,7 +311,6 @@
             </div>
         </div>
         
-        <!-- Quick LIFF ID Input -->
         <div class="card bg-light mb-3">
             <div class="card-body p-3">
                 <h6 class="card-title mb-2">⚡ Quick LIFF ID Setup</h6>
@@ -340,7 +338,6 @@
             </div>
         </div>
         
-        <!-- Results Container -->
         <div id="liffDebugResult" class="mt-3"></div>
     </div>
 </div>
@@ -382,7 +379,33 @@
     </div>
 </form>
 
-<!-- LINE Bot Status -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fas fa-qrcode me-2"></i>ตั้งค่าการชำระเงิน (QR Code)</h5>
+    </div>
+    <div class="card-body p-4 text-center">
+        <p class="text-muted">อัปโหลดรูปภาพ QR Code สำหรับรับชำระเงิน (เช่น PromptPay) รูปภาพนี้จะแสดงในใบแจ้งหนี้</p>
+        
+        <div class="mb-3">
+            {% set qr_code_id = settings.shop_info.get('payment_qr_code_id') %}
+            <img id="qr-code-preview" 
+                 src="{% if qr_code_id %}https://drive.google.com/thumbnail?id={{ qr_code_id }}&sz=w200{% else %}https://via.placeholder.com/200x200.png?text=Upload+QR+Code{% endif %}" 
+                 class="img-thumbnail" 
+                 alt="QR Code Preview" 
+                 style="max-width: 200px; height: auto;">
+        </div>
+        
+        <div class="mb-3">
+            <input class="form-control" type="file" id="qr-code-upload-input" accept="image/*">
+        </div>
+        
+        <button type="button" class="btn btn-success" id="save-qr-code-btn" disabled>
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
+            <i class="fas fa-save me-2"></i> บันทึก QR Code
+        </button>
+    </div>
+</div>
+
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-warning text-dark">
         <h5 class="mb-0"><i class="fas fa-robot me-2"></i>🤖 สถานะ LINE Bot</h5>
@@ -402,7 +425,6 @@
     </div>
 </div>
 
-<!-- Admin Tools -->
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-secondary text-white">
         <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เครื่องมือผู้ดูแลระบบ (Admin Tools)</h5>
@@ -449,7 +471,6 @@
 			<a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
 			<a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-clone me-2"></i>จัดการอุปกรณ์ที่ซ้ำซ้อน</a>
 			
-			<!-- ปุ่ม "จัดระเบียบไฟล์ใน Drive" ที่แก้ไขแล้ว -->
 			<form action="{{ url_for('trigger_organize_files') }}" method="POST" onsubmit="return confirm('คุณต้องการเริ่มกระบวนการจัดระเบียบไฟล์ในเบื้องหลังหรือไม่? ระบบจะแจ้งเตือนผ่าน LINE เมื่อทำงานเสร็จ');">
 				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 				<button type="submit" class="btn btn-outline-info">
@@ -457,7 +478,6 @@
 				</button>
 			</form>
 
-			<!-- ปุ่ม "ทำความสะอาดโฟลเดอร์ซ้ำ" -->
 			<form action="{{ url_for('cleanup_drive_folders') }}" method="POST" onsubmit="return confirm('คุณต้องการเริ่มกระบวนการรวมโฟลเดอร์ที่ซ้ำกันใน Google Drive หรือไม่? กระบวนการนี้อาจใช้เวลาสักครู่');">
 				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 				<button type="submit" class="btn btn-outline-warning">
@@ -545,27 +565,20 @@
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block body_extra %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    //======================================================================
-    // NEW: Technician Snippet Templates Management
-    //======================================================================
-    
-    // Data for technician templates, loaded from Flask's settings object
     let technicianTemplates = {
         task_details: {{ settings.technician_templates.task_details | tojson | safe }},
         progress_reports: {{ settings.technician_templates.progress_reports | tojson | safe }}
     };
 
-    // Function to render templates for a given category
     function renderTemplates(category) {
         const container = document.getElementById(`${category.replace('_', '-')}-templates-container`);
         if (!container) return;
-        container.innerHTML = ''; // Clear existing
+        container.innerHTML = '';
         technicianTemplates[category].forEach((template, index) => {
             const templateEl = document.createElement('div');
             templateEl.className = 'template-item';
@@ -578,13 +591,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Function to add a new empty template
     window.addTemplate = (category) => {
         technicianTemplates[category].push({ key: '', value: '' });
         renderTemplates(category);
     };
 
-    // Function to remove a template
     window.removeTemplate = (category, index) => {
         if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบเทมเพลตนี้?')) {
             technicianTemplates[category].splice(index, 1);
@@ -592,17 +603,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // Function to update the data model when an input changes
     window.updateTemplate = (inputElement) => {
         const category = inputElement.dataset.category;
         const index = parseInt(inputElement.dataset.index);
         const property = inputElement.placeholder.includes('Key') ? 'key' : 'value';
         technicianTemplates[category][index][property] = inputElement.value;
     };
-
-    //======================================================================
-    // EXISTING: Technician & Other Settings Management
-    //======================================================================
 
     let technicians = {{ settings.technician_list | tojson | safe }};
     let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
@@ -868,6 +874,79 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    const qrCodeInput = document.getElementById('qr-code-upload-input');
+    const qrCodePreview = document.getElementById('qr-code-preview');
+    const saveQrCodeBtn = document.getElementById('save-qr-code-btn');
+    let uploadedFileId = null;
+
+    if(qrCodeInput) {
+        qrCodeInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    qrCodePreview.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+                saveQrCodeBtn.disabled = false;
+            }
+        });
+    }
+
+    if(saveQrCodeBtn) {
+        saveQrCodeBtn.addEventListener('click', async function() {
+            const file = qrCodeInput.files[0];
+            if (!file) {
+                flashMessage('กรุณาเลือกไฟล์รูปภาพ QR Code ก่อน', 'warning');
+                return;
+            }
+
+            const spinner = saveQrCodeBtn.querySelector('.spinner-border');
+            const icon = saveQrCodeBtn.querySelector('.fa-save');
+            spinner.style.display = 'inline-block';
+            icon.style.display = 'none';
+            saveQrCodeBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const uploadResponse = await fetch('/api/upload_payment_qr', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const uploadResult = await uploadResponse.json();
+                if (!uploadResponse.ok) throw new Error(uploadResult.message);
+                
+                uploadedFileId = uploadResult.file_id;
+
+                const settingsResponse = await fetch("{{ url_for('settings_page') }}", {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        shop_info: { payment_qr_code_id: uploadedFileId }
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+                const settingsResult = await settingsResponse.json();
+                if (!settingsResponse.ok) throw new Error(settingsResult.message);
+
+                flashMessage('บันทึก QR Code สำเร็จ!', 'success');
+                qrCodeInput.value = '';
+
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            } finally {
+                spinner.style.display = 'none';
+                icon.style.display = 'inline-block';
+                saveQrCodeBtn.disabled = true;
+            }
+        });
+    }
 });
 
 function flashMessage(message, category) {
@@ -884,7 +963,5 @@ function flashMessage(message, category) {
         else newMessage.remove();
     }, 5000);
 }
-
-// ... (All other existing global functions like checkLineBotStatus, etc. should be here)
 </script>
 {% endblock %}

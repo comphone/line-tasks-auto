@@ -375,12 +375,19 @@ def task_details(task_id):
             if report.get('attachments'):
                 all_attachments.extend(report['attachments'])
 
+    # --- ✅✅✅ START: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
+    # คำนวณยอดรวมค่าใช้จ่ายทั้งหมดของงานนี้
+    items = JobItem.query.filter_by(task_google_id=task_id).all()
+    total_cost = sum(item.quantity * item.unit_price for item in items)
+    # --- ✅✅✅ END: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
+
     return render_template('update_task_details.html',
                            task=task,
                            technician_list=technician_list,
                            all_attachments=all_attachments,
                            progress_report_snippets=technician_templates.get('progress_reports', []),
                            equipment_catalog=equipment_catalog,
+                           total_cost=total_cost,  # <-- ส่งตัวแปรใหม่ไปที่ Template
                            LIFF_ID_TO_USE=LIFF_ID_FORM)
 
 @liff_bp.route('/customer_problem_form/<task_id>')
@@ -425,7 +432,7 @@ def technician_location_update_page():
 
 @liff_bp.route('/billing')
 def billing_summary():
-    """แสดงหน้าสรุปรายการงานที่เสร็จแล้วเพื่อรอการเก็บเงิน"""
+    """แสดงหน้าสรุปรายการงานที่เสร็จแล้วเพื่อรอการเก็บเงิน (เวอร์ชันอัปเดต)"""
     completed_tasks_raw = [t for t in (get_google_tasks_for_report(show_completed=True) or []) if t.get('status') == 'completed']
     
     tasks_with_details = []
@@ -441,7 +448,6 @@ def billing_summary():
         
         billing_status = BillingStatus.query.filter_by(task_google_id=task_raw['id']).first()
         if not billing_status:
-            # สร้าง status เริ่มต้นถ้ายังไม่มี
             billing_status = BillingStatus(task_google_id=task_raw['id'])
             db.session.add(billing_status)
             db.session.commit()
@@ -450,9 +456,15 @@ def billing_summary():
         task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
         task['total_cost'] = total_cost
         task['billing_status'] = billing_status.status
+        
+        # --- ✅✅✅ START: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
+        # ดึง LINE User ID ของลูกค้าเพื่อนำไปใช้ในปุ่ม "Send LINE"
+        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        task['customer_line_id'] = feedback_data.get('customer_line_user_id', '')
+        # --- ✅✅✅ END: โค้dที่เพิ่มใหม่ ✅✅✅ ---
+        
         tasks_with_details.append(task)
         
-        # คำนวณยอดรวมสำหรับแดชบอร์ด
         if billing_status.status == 'pending_billing':
             summary_data['pending_billing_total'] += total_cost
         elif billing_status.status in ['billed', 'overdue']:
@@ -587,38 +599,39 @@ def create_invoice_flex_message(task, total_cost, invoice_url):
 
 @liff_bp.route('/api/billing/<task_id>/send_invoice', methods=['POST'])
 def send_invoice_to_customer(task_id):
-    """API สำหรับสร้างและส่งใบแจ้งหนี้ PDF ให้ลูกค้าทาง LINE"""
+    """API สำหรับสร้างและส่งใบแจ้งหนี้ PDF ให้ลูกค้าทาง LINE (เวอร์ชันอัปเดต)"""
+    data = request.json
+    recipient_id = data.get('recipient_id')
+
     task_raw = get_single_task(task_id)
     if not task_raw:
         return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลงาน'}), 404
 
-    # 1. ค้นหา LINE User ID ของลูกค้าจากใน Task Notes
-    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
-    customer_line_id = feedback_data.get('customer_line_user_id')
-    if not customer_line_id:
-        return jsonify({'status': 'error', 'message': 'ไม่พบ LINE User ID ของลูกค้า ไม่สามารถส่งเอกสารได้'}), 404
+    # ถ้าไม่ได้ระบุผู้รับมา ให้ใช้ ID ของลูกค้าเป็นค่าเริ่มต้น
+    if not recipient_id:
+        feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+        recipient_id = feedback_data.get('customer_line_user_id')
+    
+    if not recipient_id:
+        return jsonify({'status': 'error', 'message': 'ไม่พบผู้รับ LINE ID, กรุณากรอก ID ผู้รับ'}), 404
 
-    # 2. รวบรวมข้อมูลสำหรับสร้างใบแจ้งหนี้
     task = parse_google_task_dates(task_raw)
     task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
     items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
     total_cost = sum(item.quantity * item.unit_price for item in items)
     settings = get_app_settings()
 
-    # 3. Render HTML template ให้เป็น String
-    invoice_html = render_template('invoice_template.html',
-                                   task=task,
-                                   items=items,
+    invoice_html = render_template('invoice_template.html', 
+                                   task=task, 
+                                   items=items, 
                                    total_cost=total_cost,
                                    settings=settings,
                                    now=datetime.datetime.now(THAILAND_TZ))
 
-    # 4. แปลง HTML เป็น PDF ในหน่วยความจำ
     pdf_bytes = HTML(string=invoice_html).write_pdf()
     pdf_file = BytesIO(pdf_bytes)
     pdf_filename = f"Invoice-{task['id'][-6:].upper()}-{task['customer'].get('name', 'customer')}.pdf".replace(" ", "_")
 
-    # 5. อัปโหลด PDF ไปยัง Google Drive
     invoices_folder_id = find_or_create_drive_folder("Invoices", os.environ.get('GOOGLE_DRIVE_FOLDER_ID'))
     if not invoices_folder_id:
         return jsonify({'status': 'error', 'message': 'ไม่สามารถสร้างโฟลเดอร์ Invoices บน Drive ได้'}), 500
@@ -629,18 +642,16 @@ def send_invoice_to_customer(task_id):
     
     invoice_url = drive_file_info['webViewLink']
 
-    # 6. สร้างและส่ง Flex Message ไปยังลูกค้า
     flex_message = create_invoice_flex_message(task, total_cost, invoice_url)
-    message_queue.add_message(customer_line_id, [flex_message])
+    message_queue.add_message(recipient_id, [flex_message])
     
-    # 7. อัปเดตสถานะการเงินเป็น 'วางบิลแล้ว'
     billing_record = BillingStatus.query.filter_by(task_google_id=task_id).first()
     if billing_record and billing_record.status == 'pending_billing':
         billing_record.status = 'billed'
         billing_record.billed_date = datetime.datetime.utcnow()
         db.session.commit()
             
-    return jsonify({'status': 'success', 'message': 'ส่งใบแจ้งหนี้ให้ลูกค้าทาง LINE เรียบร้อยแล้ว'})
+    return jsonify({'status': 'success', 'message': f'ส่งใบแจ้งหนี้ไปยัง {recipient_id} เรียบร้อยแล้ว'})
 
 @liff_bp.route('/invoice/<task_id>/print')
 def print_invoice(task_id):

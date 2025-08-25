@@ -192,6 +192,11 @@
                 <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
                     <i class="fas fa-calendar-alt"></i> เลื่อนนัด
                 </button>
+                {# --- ✅✅✅ START: เพิ่มปุ่มใหม่ที่นี่ ✅✅✅ --- #}
+                <button type="button" class="btn btn-success action-btn" onclick="shareInvoiceViaLine()">
+                    <i class="fab fa-line"></i> แชร์ใบแจ้งหนี้
+                </button>
+                {# --- ✅✅✅ END: เพิ่มปุ่มใหม่ --- #}				
                 <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
                     <i class="fas fa-qrcode"></i> QR Code ลูกค้า
                 </a>
@@ -1357,5 +1362,91 @@
         itemAddModalEl.addEventListener('hidden.bs.modal', stopScanner);
         
     });
+	
+    async function shareInvoiceViaLine() {
+        if (!liff.isLoggedIn()) {
+            alert('กรุณาเข้าสู่ระบบ LINE ก่อนแชร์');
+            liff.login();
+            return;
+        }
+
+        // ตรวจสอบว่าฟังก์ชัน shareTargetPicker พร้อมใช้งานหรือไม่
+        if (!liff.isApiAvailable('shareTargetPicker')) {
+            Swal.fire('ไม่รองรับ', 'ฟีเจอร์แชร์ไม่พร้อมใช้งานในเวอร์ชัน LINE ของคุณ กรุณาอัปเดตแอปพลิเคชัน LINE', 'warning');
+            return;
+        }
+
+        const taskTitle = "{{ task.title | escape }}";
+        const customerName = "{{ task.customer.name | escape }}";
+        const totalCostFormatted = "{{ '%.2f'|format(total_cost) }}";
+        const invoiceUrl = "{{ url_for('liff.print_invoice', task_id=task.id, _external=True) }}";
+        
+        // สร้างข้อความ Flex Message สำหรับแชร์
+        const flexMessage = {
+            type: 'flex',
+            altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
+            contents: {
+                type: 'bubble',
+                header: {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [{
+                        type: 'text',
+                        text: 'ใบแจ้งค่าบริการ',
+                        weight: 'bold',
+                        color: '#FFFFFF',
+                        size: 'lg'
+                    }],
+                    backgroundColor: '#28a745',
+                },
+                body: {
+                    type: 'box',
+                    layout: 'vertical',
+                    spacing: 'md',
+                    contents: [
+                        { type: 'text', text: `ลูกค้า: ${customerName}`, weight: 'bold' },
+                        { type: 'text', text: `เรื่อง: ${taskTitle}`, wrap: true, size: 'sm' },
+                        { type: 'separator', margin: 'lg' },
+                        {
+                            type: 'box',
+                            layout: 'baseline',
+                            margin: 'lg',
+                            contents: [
+                                { type: 'text', text: 'ยอดชำระสุทธิ', size: 'md', color: '#555555', flex: 0 },
+                                { type: 'text', text: `${totalCostFormatted} บาท`, size: 'xl', color: '#111111', weight: 'bold', align: 'end' }
+                            ]
+                        }
+                    ]
+                },
+                footer: {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [{
+                        type: 'button',
+                        action: { type: 'uri', label: 'ดู/ดาวน์โหลดใบแจ้งหนี้ (PDF)', uri: invoiceUrl },
+                        style: 'primary',
+                        height: 'sm',
+                        color: '#198754'
+                    }]
+                }
+            }
+        };
+
+        // เรียกใช้งาน Share Target Picker
+        try {
+            const result = await liff.shareTargetPicker([flexMessage]);
+            if (result) {
+                // shareTargetPicker was launched successfully
+                Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบแจ้งหนี้ใน LINE เรียบร้อยแล้ว', 'success');
+            } else {
+                // User cancelled the picker
+                console.log('ShareTargetPicker was cancelled by the user');
+            }
+        } catch (error) {
+            console.error(error);
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
+        }
+    }
+
 </script>
 {% endblock %}

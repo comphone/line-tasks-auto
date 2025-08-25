@@ -102,9 +102,12 @@
                         </td>
                         <td class="text-center">
                             <button class="btn btn-sm btn-outline-success send-invoice-btn"
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#sendInvoiceModal"
                                     data-task-id="{{ task.id }}"
-                                    title="ส่งใบแจ้งหนี้ทาง LINE"
-                                    {% if task.billing_status == 'paid' %}disabled{% endif %}>
+                                    data-customer-name="{{ task.customer.name or 'N/A' }}"
+                                    data-customer-line-id="{{ task.customer_line_id }}"
+                                    title="ส่งใบแจ้งหนี้ทาง LINE">
                                 <i class="fab fa-line"></i>
                             </button>
                             <a href="{{ url_for('liff.print_invoice', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="พิมพ์ใบแจ้งหนี้">
@@ -125,6 +128,30 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="sendInvoiceModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sendInvoiceModalLabel">ส่งใบแจ้งหนี้ทาง LINE</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modal-task-id">
+        <p>คุณกำลังจะส่งใบแจ้งหนี้สำหรับงานของลูกค้า: <strong id="modal-customer-name"></strong></p>
+        <div class="mb-3">
+          <label for="recipient-line-id" class="form-label">ผู้รับ (LINE User ID หรือ Group ID)</label>
+          <input type="text" class="form-control" id="recipient-line-id" placeholder="กรอก LINE ID ที่นี่...">
+          <div class="form-text">หากเป็นลูกค้าที่เคยเชื่อมต่อ LINE ระบบจะใส่ ID ให้อัตโนมัติ</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-success" id="confirm-send-invoice-btn"><i class="fas fa-paper-plane me-2"></i>ยืนยันการส่ง</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block body_extra %}
@@ -134,16 +161,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const csrfToken = '{{ csrf_token() }}';
 
     statusSelects.forEach(select => {
-        // Set initial background color
         select.className = 'form-select form-select-sm status-select status-' + select.value;
-        
         select.addEventListener('change', function() {
             const taskId = this.dataset.taskId;
             const newStatus = this.value;
-
-            // Update background color immediately for better user experience
             this.className = 'form-select form-select-sm status-select status-' + newStatus;
-
             fetch(`/api/billing/${taskId}/update_status`, {
                 method: 'POST',
                 headers: {
@@ -155,7 +177,6 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    // Optionally show a success toast
                     const Toast = Swal.mixin({
                         toast: true,
                         position: 'top-end',
@@ -163,11 +184,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         timer: 2000,
                         timerProgressBar: true
                     });
-                    Toast.fire({
-                        icon: 'success',
-                        title: 'อัปเดตสถานะแล้ว'
-                    });
-                    // Reload the page to update summary cards after a short delay
+                    Toast.fire({ icon: 'success', title: 'อัปเดตสถานะแล้ว' });
                     setTimeout(() => window.location.reload(), 1500);
                 } else {
                     Swal.fire('เกิดข้อผิดพลาด', data.message, 'error');
@@ -180,45 +197,54 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    const sendInvoiceModal = new bootstrap.Modal(document.getElementById('sendInvoiceModal'));
+    const modalTaskId = document.getElementById('modal-task-id');
+    const modalCustomerName = document.getElementById('modal-customer-name');
+    const recipientInput = document.getElementById('recipient-line-id');
+    const confirmSendBtn = document.getElementById('confirm-send-invoice-btn');
+
     document.querySelectorAll('.send-invoice-btn').forEach(button => {
         button.addEventListener('click', function() {
-            const taskId = this.dataset.taskId;
-            Swal.fire({
-                title: 'ยืนยันการส่งใบแจ้งหนี้?',
-                text: `คุณต้องการส่งใบแจ้งหนี้สำหรับงานนี้ให้ลูกค้าทาง LINE หรือไม่? (สถานะจะเปลี่ยนเป็น "วางบิลแล้ว")`,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'ใช่, ส่งเลย!',
-                cancelButtonText: 'ยกเลิก',
-                confirmButtonColor: '#28a745'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    sendInvoice(taskId, this);
-                }
-            });
+            modalTaskId.value = this.dataset.taskId;
+            modalCustomerName.textContent = this.dataset.customerName;
+            recipientInput.value = this.dataset.customerLineId || '';
         });
     });
 
-    async function sendInvoice(taskId, button) {
-        const originalIcon = button.innerHTML;
-        button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span>`;
+    confirmSendBtn.addEventListener('click', function() {
+        const taskId = modalTaskId.value;
+        const recipientId = recipientInput.value.trim();
+        if (!recipientId) {
+            Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณากรอก LINE ID ของผู้รับ', 'warning');
+            return;
+        }
+        sendInvoice(taskId, recipientId, this);
+        sendInvoiceModal.hide();
+    });
+
+    async function sendInvoice(taskId, recipientId, button) {
+        const originalText = button.innerHTML;
+        button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span> กำลังส่ง...`;
         button.disabled = true;
 
         try {
             const response = await fetch(`/api/billing/${taskId}/send_invoice`, {
                 method: 'POST',
-                headers: { 'X-CSRFToken': csrfToken }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ recipient_id: recipientId })
             });
             const result = await response.json();
-            if (!response.ok) {
-                throw new Error(result.message);
-            }
+            if (!response.ok) throw new Error(result.message);
+
             Swal.fire('ส่งสำเร็จ!', result.message, 'success');
-            // รีโหลดหน้าเพื่ออัปเดตสถานะและยอดรวม
             setTimeout(() => window.location.reload(), 2000);
         } catch (error) {
             Swal.fire('เกิดข้อผิดพลาด!', error.message, 'error');
-            button.innerHTML = originalIcon;
+        } finally {
+            button.innerHTML = originalText;
             button.disabled = false;
         }
     }

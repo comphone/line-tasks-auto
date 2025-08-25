@@ -144,10 +144,23 @@
     </table>
 
     <div class="row total-section">
-        <div class="col-7 align-self-center">
+        <div class="col-7">
+            {% set qr_code_id = settings.shop_info.get('payment_qr_code_id') %}
+            {% if qr_code_id %}
+            <div class="d-flex align-items-center">
+                <div class="me-3">
+                    <p class="mb-1"><strong>สแกนเพื่อชำระเงิน</strong></p>
+                    <img src="https://drive.google.com/thumbnail?id={{ qr_code_id }}&sz=w150" alt="Payment QR Code" style="max-width: 150px; height: auto;">
+                </div>
+                <div class="amount-in-words flex-grow-1">
+                    ({{ total_cost_in_words }})
+                </div>
+            </div>
+            {% else %}
             <div class="amount-in-words">
                 ({{ total_cost_in_words }})
             </div>
+            {% endif %}
         </div>
         <div class="col-5">
             <table class="table table-borderless">
@@ -185,7 +198,7 @@
     <div class="footer-company-info">
         <p>
             <strong>{{ settings.shop_info.get('company_name', 'ห้างหุ้นส่วนจำกัด คอมโฟนแอนด์อิเลคโทรนิคส์') }}</strong><br>
-            {{ settings.shop_info.get('address', '691 หมู่ 3 ต.แวง อ.โพนทอง จ.ร้อยเอ็ด 45110') }} | เลขที่ผู้เสียภาษี: {{ settings.shop_info.get('tax_id', '0-453560001176') }} | โทร: {{ settings.shop_info.contact_phone }}
+            {{ settings.shop_info.get('address', '691 หมู่ 3 ต.แวง อ.โพนทอง จ.ร้อยเอ็ด 45110') }} | เลขที่ผู้เสียภาษี: {{ settings.shop_info.get('tax_id', '0453560001176') }} | โทร: {{ settings.shop_info.contact_phone }}
         </p>
     </div>
 </div>
