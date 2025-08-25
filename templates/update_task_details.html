@@ -1333,11 +1333,9 @@
             scannerContainer.style.display = 'none';
         };
 
-        document.getElementById('scan-barcode-btn').addEventListener('click', () => {
+        document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
-            }
+            const html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
             html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
                     const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
@@ -1364,13 +1362,12 @@
     });
 	
     async function shareInvoiceViaLine() {
-        if (!liff.isLoggedIn()) {
+        if (typeof liff === 'undefined' || !liff.isLoggedIn()) {
             alert('กรุณาเข้าสู่ระบบ LINE ก่อนแชร์');
             liff.login();
             return;
         }
 
-        // ตรวจสอบว่าฟังก์ชัน shareTargetPicker พร้อมใช้งานหรือไม่
         if (!liff.isApiAvailable('shareTargetPicker')) {
             Swal.fire('ไม่รองรับ', 'ฟีเจอร์แชร์ไม่พร้อมใช้งานในเวอร์ชัน LINE ของคุณ กรุณาอัปเดตแอปพลิเคชัน LINE', 'warning');
             return;
@@ -1381,7 +1378,6 @@
         const totalCostFormatted = "{{ '%.2f'|format(total_cost) }}";
         const invoiceUrl = "{{ url_for('liff.print_invoice', task_id=task.id, _external=True) }}";
         
-        // สร้างข้อความ Flex Message สำหรับแชร์
         const flexMessage = {
             type: 'flex',
             altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
@@ -1432,14 +1428,11 @@
             }
         };
 
-        // เรียกใช้งาน Share Target Picker
         try {
             const result = await liff.shareTargetPicker([flexMessage]);
             if (result) {
-                // shareTargetPicker was launched successfully
                 Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบแจ้งหนี้ใน LINE เรียบร้อยแล้ว', 'success');
             } else {
-                // User cancelled the picker
                 console.log('ShareTargetPicker was cancelled by the user');
             }
         } catch (error) {
@@ -1447,6 +1440,5 @@
             Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
         }
     }
-
 </script>
 {% endblock %}
