@@ -12,6 +12,7 @@ from dateutil.parser import parse as date_parse
 from weasyprint import HTML
 from io import BytesIO
 from num2words import num2words
+from urllib.parse import quote_plus, quote
 from linebot.v3.messaging import FlexMessage
 from urllib.parse import quote_plus
 from app import (
