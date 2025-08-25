@@ -714,7 +714,12 @@ def generate_invoice_pdf(task_id):
         
         response = make_response(pdf_bytes)
         response.headers.set('Content-Type', 'application/pdf')
-        response.headers.set('Content-Disposition', 'attachment', filename=pdf_filename)
+        
+        # --- ✅ โค้ดที่แก้ไข ---
+        # เข้ารหัสชื่อไฟล์ให้ถูกต้องตามมาตรฐาน RFC 5987
+        response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(pdf_filename)}"
+        # --- ✅ สิ้นสุดโค้ดที่แก้ไข ---
+
         return response
     
     return "Failed to generate PDF", 500
