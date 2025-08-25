@@ -1330,7 +1330,7 @@
 
 		document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
-            html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
+			html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5Qrcode.Html5QrcodeSupportedFormats.CODE_128, Html5Qrcode.Html5QrcodeSupportedFormats.EAN_13, Html5Qrcode.Html5QrcodeSupportedFormats.QR_CODE ] });
             
             // ✅ โค้ดที่เพิ่ม: เพิ่ม setTimeout เพื่อให้เบราว์เซอร์พร้อม
             setTimeout(() => {
