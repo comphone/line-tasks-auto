@@ -90,7 +90,7 @@
 <div class="invoice-container">
     <div class="header-section">
         <div class="company-details">
-            <img src="{{ url_for('static', filename='logo.png', _external=True) }}" alt="Company Logo">
+            <img src="file://{{ logo_path }}" alt="Company Logo">
             <h5 class="fw-bold mb-1">{{ settings.shop_info.get('company_name', 'ห้างหุ้นส่วนจำกัด คอมโฟนแอนด์อิเลคโทรนิคส์') }}</h5>
             <p class="mb-0">{{ settings.shop_info.get('address', '691 หมู่ 3 ต.แวง อ.โพนทอง จ.ร้อยเอ็ด 45110') }}</p>
             <p class="mb-0">เลขที่ผู้เสียภาษี: {{ settings.shop_info.get('tax_id', '0-4535-60001-17-6') }} (สำนักงานใหญ่)</p>

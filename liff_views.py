@@ -38,7 +38,6 @@ liff_bp = Blueprint('liff', __name__)
 
 THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
-# --- Helper function for PDF generation ---
 def _generate_invoice_pdf_bytes(task_id):
     task_raw = get_single_task(task_id)
     if not task_raw:
@@ -54,6 +53,9 @@ def _generate_invoice_pdf_bytes(task_id):
         total_cost_in_words = num2words(total_cost, to='currency', lang='th')
     except Exception:
         total_cost_in_words = "ไม่สามารถแปลงเป็นตัวอักษรได้"
+
+    # --- ✅ โค้ดที่แก้ไข: เปลี่ยนการอ้างอิงโลโก้ ---
+    logo_path = os.path.join(current_app.root_path, 'static', 'logo.png')
     
     invoice_html = render_template('invoice_template.html',
                                    task=task,
@@ -63,7 +65,9 @@ def _generate_invoice_pdf_bytes(task_id):
                                    vat=vat,
                                    total_cost_in_words=total_cost_in_words,
                                    settings=settings,
-                                   now=datetime.datetime.now(THAILAND_TZ))
+                                   now=datetime.datetime.now(THAILAND_TZ),
+                                   logo_path=logo_path)
+    # --- ✅ สิ้นสุดโค้ดที่แก้ไข ---
     return HTML(string=invoice_html).write_pdf()
 
 @liff_bp.route('/')
