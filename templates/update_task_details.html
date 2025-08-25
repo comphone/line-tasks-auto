@@ -1177,64 +1177,6 @@
         }
     }
 
-    async function initializeLiffApp() {
-        try {
-            const liffId = "{{ LIFF_ID_TO_USE }}";
-            if (!liffId || liffId === 'None') {
-                throw new Error('LIFF ID is not configured on the server.');
-            }
-            await liff.init({ liffId: liffId });
-            if (!liff.isLoggedIn()) {
-                // โดยปกติเมื่อเข้าผ่าน LINE จะ login อัตโนมัติ
-                // ถ้าไม่ login อาจหมายถึงเปิดในเบราว์เซอร์ธรรมดา
-                console.log("LIFF not logged in.");
-            }
-        } catch (error) {
-            console.error('LIFF Initialization failed:', error);
-            Swal.fire('LIFF Error', 'ไม่สามารถเริ่มต้นการเชื่อมต่อกับ LINE ได้: ' + error.message, 'error');
-        }
-    }
-
-    async function shareInvoiceViaLine() {
-        // ตรวจสอบสถานะ login ก่อนแชร์
-        if (!liff.isLoggedIn()) {
-            Swal.fire({
-                title: 'กรุณาเข้าสู่ระบบ LINE',
-                text: "ฟังก์ชันนี้จำเป็นต้องเข้าสู่ระบบ LINE ก่อนใช้งาน",
-                icon: 'warning',
-                confirmButtonText: 'ตกลง'
-            });
-            // liff.login(); // อาจไม่จำเป็นถ้าผู้ใช้เข้าผ่าน LINE อยู่แล้ว
-            return;
-        }
-
-        if (!liff.isApiAvailable('shareTargetPicker')) {
-            Swal.fire('ไม่รองรับ', 'ฟีเจอร์แชร์ไม่พร้อมใช้งานในเวอร์ชัน LINE ของคุณ กรุณาอัปเดตแอปพลิเคชัน LINE', 'warning');
-            return;
-        }
-
-        const taskTitle = "{{ task.title | escape }}";
-        const customerName = "{{ task.customer.name | escape }}";
-        const totalCostFormatted = "{{ '%.2f'|format(total_cost) }}";
-        const invoiceUrl = "{{ url_for('liff.print_invoice', task_id=task.id, _external=True) }}";
-        
-        const flexMessage = {
-            type: 'flex',
-            altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
-            contents: { /* ... โค้ด Flex Message เหมือนเดิม ... */ }
-        };
-
-        try {
-            const result = await liff.shareTargetPicker([flexMessage]);
-            if (result) {
-                Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบแจ้งหนี้ใน LINE เรียบร้อยแล้ว', 'success');
-            }
-        } catch (error) {
-            console.error(error);
-            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
-        }
-    }
-
     document.addEventListener('DOMContentLoaded', function() {
         technicianSelectionModal = new bootstrap.Modal(document.getElementById('technician-action-sheet'));
         itemAddModal = new bootstrap.Modal(document.getElementById('addItemModal'));
@@ -1379,7 +1321,7 @@
             }
         });
 
-        let itemScanner;
+        let html5QrCode = null; // ✅ โค้ดที่แก้ไข: ย้ายการประกาศมาไว้ที่นี่
         const scannerContainer = document.getElementById('scanner-container');
         const itemAddModalEl = document.getElementById('addItemModal');
         const closeScannerBtn = document.getElementById('close-scanner-btn');
@@ -1393,7 +1335,7 @@
 
 		document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
-            const html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
+            html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
             
             // ✅ โค้ดที่เพิ่ม: เพิ่ม setTimeout เพื่อให้เบราว์เซอร์พร้อม
             setTimeout(() => {

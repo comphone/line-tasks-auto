@@ -233,7 +233,7 @@
         const categoriesModal = new bootstrap.Modal(categoriesModalEl);
         const searchInput = document.getElementById('product-search-input');
         const scannerContainer = document.getElementById('scanner-container');
-        let html5QrCode = null;
+        let html5QrCode = null; // ✅ โค้ดที่แก้ไข: ย้ายการประกาศมาไว้ที่นี่
         let categories = [];
         let catalog = {{ equipment_catalog | tojson | safe }};
 
@@ -550,6 +550,7 @@
             }
         });
 
+        let html5QrCode = null; // ✅ โค้ดที่แก้ไข: ย้ายการประกาศมาไว้ที่นี่
         const stopScanner = () => {
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
@@ -560,6 +561,7 @@
 		document.getElementById('scan-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
             if (!html5QrCode) {
+                // ✅ โค้ดที่แก้ไข: แก้ไขการใช้ Html5QrcodeSupportedFormats
                 html5QrCode = new Html5Qrcode("qr-reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.QR_CODE ] });
             }
             
