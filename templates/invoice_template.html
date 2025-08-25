@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ใบแจ้งหนี้ (Invoice) - เลขที่งาน #{{ task.id[-6:].upper() }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; /* Recommended for Thai fonts */ background-color: #fff; }
+        .invoice-container { max-width: 800px; margin: 30px auto; border: 1px solid #dee2e6; padding: 40px; }
+        .invoice-header { text-align: center; margin-bottom: 40px; }
+        .invoice-header img { max-height: 80px; margin-bottom: 20px; }
+        .invoice-details, .customer-details { margin-bottom: 30px; }
+        .table { font-size: 0.95rem; }
+        .total-section { margin-top: 30px; }
+        .total-section td { font-weight: bold; font-size: 1.1rem; }
+        .footer-note { margin-top: 40px; font-size: 0.8rem; color: #6c757d; text-align: center; }
+        @media print {
+            body { -webkit-print-color-adjust: exact; }
+            .no-print { display: none; }
+            .invoice-container { border: none; box-shadow: none; margin: 0; padding: 0; }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+
+<div class="invoice-container">
+    <div class="invoice-header">
+        <img src="{{ url_for('static', filename='logo.png', _external=True) }}" alt="Company Logo">
+        <h3>ใบแจ้งหนี้ / INVOICE</h3>
+        <p>
+            <strong>{{ settings.shop_info.get('company_name', 'Comphone Service') }}</strong><br>
+            โทร: {{ settings.shop_info.contact_phone }} | LINE: {{ settings.shop_info.line_id }}
+        </p>
+    </div>
+
+    <div class="row invoice-details">
+        <div class="col-6">
+            <h5>ข้อมูลลูกค้า</h5>
+            <p class="mb-0"><strong>ชื่อ:</strong> {{ task.customer.name or '-' }}</p>
+            {% if task.customer.organization %}
+            <p class="mb-0"><strong>หน่วยงาน:</strong> {{ task.customer.organization }}</p>
+            {% endif %}
+            <p class="mb-0"><strong>โทร:</strong> {{ task.customer.phone or '-' }}</p>
+            <p class="mb-0"><strong>ที่อยู่:</strong> {{ task.customer.address or '-' }}</p>
+        </div>
+        <div class="col-6 text-end">
+            <p><strong>เลขที่งาน:</strong> #{{ task.id[-6:].upper() }}</p>
+            <p><strong>วันที่ออกเอกสาร:</strong> {{ now.strftime('%d/%m/%Y') }}</p>
+            <p><strong>วันที่บริการเสร็จสิ้น:</strong> {{ task.completed_formatted }}</p>
+        </div>
+    </div>
+    
+    <div class="customer-details">
+        <h5>เรื่อง: {{ task.title }}</h5>
+    </div>
+
+    <table class="table table-bordered">
+        <thead class="table-light">
+            <tr>
+                <th style="width: 5%;">#</th>
+                <th>รายการ</th>
+                <th class="text-center" style="width: 15%;">จำนวน</th>
+                <th class="text-end" style="width: 20%;">ราคา/หน่วย (บาท)</th>
+                <th class="text-end" style="width: 20%;">ราคารวม (บาท)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ item.item_name }}</td>
+                <td class="text-center">{{ item.quantity }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.unit_price) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.quantity * item.unit_price) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center">-- ไม่มีรายการค่าใช้จ่ายเพิ่มเติม --</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="row total-section">
+        <div class="col-6">
+            <p><strong>หมายเหตุ:</strong></p>
+            <p class="text-muted small">กรุณาชำระเงินภายใน 30 วันหลังจากวันที่ออกเอกสาร</p>
+        </div>
+        <div class="col-6">
+            <table class="table table-borderless">
+                <tbody>
+                    <tr>
+                        <td class="text-end">ยอดรวมทั้งสิ้น</td>
+                        <td class="text-end bg-light">{{ "%.2f"|format(total_cost) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="footer-note">
+        ขอขอบคุณที่ใช้บริการ
+    </div>
+</div>
+
+</body>
+</html>

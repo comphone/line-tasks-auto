@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}สรุปรายการเก็บเงิน{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">💰 สรุปรายการเก็บเงิน</h1>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <input type="text" id="billing-search-input" class="form-control" placeholder="🔍 ค้นหางาน, ชื่อลูกค้า, หรือเบอร์โทร...">
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">รายการงานที่เสร็จสิ้นแล้ว</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle" id="billing-table">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 15%;">วันที่ปิดงาน</th>
+                        <th>ลูกค้า / ชื่องาน</th>
+                        <th class="text-end" style="width: 20%;">ยอดรวม</th>
+                        <th class="text-center" style="width: 15%;">จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr class="task-row">
+                        <td>{{ task.completed_formatted }}</td>
+                        <td>
+                            <strong>{{ task.customer.name or '-' }}</strong>
+                            <br>
+                            <small class="text-muted">{{ task.title }}</small>
+                        </td>
+                        <td class="text-end fw-bold">
+                            {{ "%.2f"|format(task.total_cost) }} บาท
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('liff.print_invoice', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-primary">
+                                <i class="fas fa-print me-1"></i> พิมพ์ใบแจ้งหนี้
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center p-4 text-muted">ไม่พบรายการงานที่เสร็จสิ้นแล้ว</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('billing-search-input');
+    const tableRows = document.querySelectorAll('#billing-table .task-row');
+
+    searchInput.addEventListener('keyup', function() {
+        const filter = searchInput.value.toLowerCase().trim();
+        tableRows.forEach(row => {
+            const textContent = row.textContent || row.innerText;
+            if (textContent.toLowerCase().includes(filter)) {
+                row.style.display = "";
+            } else {
+                row.style.display = "none";
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

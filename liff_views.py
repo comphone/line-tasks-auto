@@ -23,7 +23,9 @@ from app import (
     cache,
     _get_technician_report_data,
     LIFF_ID_FORM,
-    LIFF_ID_TECHNICIAN_LOCATION
+    LIFF_ID_TECHNICIAN_LOCATION,
+    db, 
+    JobItem
 )
 
 liff_bp = Blueprint('liff', __name__)
@@ -414,3 +416,46 @@ def open_in_line():
 @liff_bp.route('/technician/update_location')
 def technician_location_update_page():
     return render_template('technician_location_update.html', LIFF_ID_TECHNICIAN_LOCATION=LIFF_ID_TECHNICIAN_LOCATION)
+
+@liff_bp.route('/billing')
+def billing_summary():
+    """แสดงหน้าสรุปรายการงานที่เสร็จแล้วเพื่อรอการเก็บเงิน"""
+    completed_tasks_raw = [t for t in (get_google_tasks_for_report(show_completed=True) or []) if t.get('status') == 'completed']
+    
+    tasks_with_items = []
+    for task_raw in completed_tasks_raw:
+        items = JobItem.query.filter_by(task_google_id=task_raw['id']).all()
+        total_cost = sum(item.quantity * item.unit_price for item in items)
+        
+        task = parse_google_task_dates(task_raw)
+        task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+        task['total_cost'] = total_cost
+        task['has_items'] = bool(items)
+        tasks_with_items.append(task)
+
+    tasks_with_items.sort(key=lambda x: x.get('completed', '0'), reverse=True)
+
+    return render_template('billing_summary.html', tasks=tasks_with_items)
+
+@liff_bp.route('/invoice/<task_id>/print')
+def print_invoice(task_id):
+    """แสดงหน้าใบแจ้งหนี้สำหรับพิมพ์"""
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        abort(404)
+
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    
+    items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
+    
+    total_cost = sum(item.quantity * item.unit_price for item in items)
+
+    settings = get_app_settings()
+
+    return render_template('invoice_template.html', 
+                           task=task, 
+                           items=items, 
+                           total_cost=total_cost,
+                           settings=settings,
+                           now=datetime.datetime.now(THAILAND_TZ))
