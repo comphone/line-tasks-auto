@@ -109,8 +109,8 @@ class JobItem(db.Model):
     item_name = db.Column(db.String(255), nullable=False)
     quantity = db.Column(db.Float, nullable=False, default=1)
     unit_price = db.Column(db.Float, nullable=False, default=0)
-    status = db.Column(db.String(50), nullable=False, default='pending') # สถานะ: pending, approved, billed
-    added_by = db.Column(db.String(100)) # ชื่อช่างที่เพิ่ม
+    status = db.Column(db.String(50), nullable=False, default='pending')
+    added_by = db.Column(db.String(100))
     added_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
     def to_dict(self):
@@ -124,7 +124,24 @@ class JobItem(db.Model):
             'added_by': self.added_by,
             'added_at': self.added_at.isoformat()
         }
-# --- END: เพิ่ม Model ใหม่ ---
+
+# --- ✅✅✅ START: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
+class BillingStatus(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    task_google_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    status = db.Column(db.String(50), nullable=False, default='pending_billing') # สถานะ: pending_billing, billed, paid, overdue
+    billed_date = db.Column(db.DateTime)
+    paid_date = db.Column(db.DateTime)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'task_google_id': self.task_google_id,
+            'status': self.status,
+            'billed_date': self.billed_date.isoformat() if self.billed_date else None,
+            'paid_date': self.paid_date.isoformat() if self.paid_date else None,
+        }
+# --- ✅✅✅ END: โค้ดที่เพิ่มใหม่ ✅✅✅ ---
 
 CORS(app) # --- เพิ่มบรรทัดนี้เพื่อเปิดใช้งาน CORS ---
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
@@ -3592,13 +3609,17 @@ def handle_text_message(event):
             for task in tasks[:5]:
                 customer, dates = parse_customer_info_from_notes(task.get('notes', '')), parse_google_task_dates(task)
                 loc = f"พิกัด: {customer.get('map_url')}" if customer.get('map_url') else "พิกัด: - (ไม่มีข้อมูล)"
+                
+                # --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ ---
                 msg_text = (f"🔔 งานสำหรับวันนี้\n\n"
-                           f"ชื่องาน: {task.get('title', '-')}\n"
                            f"👤 ลูกค้า: {customer.get('name', '-')}\n"
                            f"📞 โทร: {customer.get('phone', '-')}\n"
+                           f"ชื่องาน: {task.get('title', '-')}\n"
                            f"🗓️ นัดหมาย: {dates.get('due_formatted', '-')}\n"
                            f"📍 {loc}\n\n"
                            f"🔗 ดูรายละเอียด/แก้ไข:\n{url_for('liff.task_details', task_id=task.get('id'), _external=True)}")
+                # --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ ---
+                
                 messages.append(TextMessage(text=msg_text))
 
     elif text == 'งานค้าง':

@@ -71,3 +71,4 @@ Werkzeug==3.0.3
 wrapt==1.17.3
 WTForms==3.2.1
 yarl==1.20.1
+WeasyPrint

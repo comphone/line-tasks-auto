@@ -1,48 +1,117 @@
 {% extends "base.html" %}
 
-{% block title %}สรุปรายการเก็บเงิน{% endblock %}
+{% block title %}แดชบอร์ดการเงิน{% endblock %}
+
+{% block head_extra %}
+<style>
+    .summary-card {
+        color: white;
+        border-radius: .75rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .status-select {
+        min-width: 150px;
+    }
+    .status-badge {
+        font-size: 0.9em;
+        padding: .5em .75em;
+        color: white;
+        border-radius: 50rem;
+    }
+    .status-pending_billing { background-color: #ffc107; color: #000 !important; }
+    .status-billed { background-color: #0dcaf0; color: #000 !important; }
+    .status-paid { background-color: #198754; }
+    .status-overdue { background-color: #dc3545; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h2 mb-0">💰 สรุปรายการเก็บเงิน</h1>
+    <h1 class="h2 mb-0">💰 แดชบอร์ดการเงิน</h1>
 </div>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <input type="text" id="billing-search-input" class="form-control" placeholder="🔍 ค้นหางาน, ชื่อลูกค้า, หรือเบอร์โทร...">
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="summary-card bg-warning h-100 p-3">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 me-3"><i class="fas fa-hourglass-half"></i></div>
+                <div>
+                    <h6 class="mb-0">ยอดรอวางบิล</h6>
+                    <span class="fs-4 fw-bold">{{ "%.2f"|format(summary.pending_billing_total) }}</span> บาท
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="summary-card bg-info h-100 p-3">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 me-3"><i class="fas fa-file-invoice"></i></div>
+                <div>
+                    <h6 class="mb-0">ยอดค้างชำระ (วางบิลแล้ว)</h6>
+                    <span class="fs-4 fw-bold">{{ "%.2f"|format(summary.billed_total) }}</span> บาท
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="summary-card bg-success h-100 p-3">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 me-3"><i class="fas fa-check-circle"></i></div>
+                <div>
+                    <h6 class="mb-0">ยอดชำระแล้ว (ทั้งหมด)</h6>
+                    <span class="fs-4 fw-bold">{{ "%.2f"|format(summary.paid_total) }}</span> บาท
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="card shadow-sm">
     <div class="card-header">
-        <h5 class="mb-0">รายการงานที่เสร็จสิ้นแล้ว</h5>
+        <h5 class="mb-0">จัดการสถานะการชำระเงิน</h5>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle" id="billing-table">
+            <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 15%;">วันที่ปิดงาน</th>
                         <th>ลูกค้า / ชื่องาน</th>
-                        <th class="text-end" style="width: 20%;">ยอดรวม</th>
-                        <th class="text-center" style="width: 15%;">จัดการ</th>
+                        <th class="text-end">ยอดรวม</th>
+                        <th class="text-center">สถานะ</th>
+                        <th class="text-center">จัดการ</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for task in tasks %}
                     <tr class="task-row">
-                        <td>{{ task.completed_formatted }}</td>
                         <td>
                             <strong>{{ task.customer.name or '-' }}</strong>
                             <br>
                             <small class="text-muted">{{ task.title }}</small>
                         </td>
                         <td class="text-end fw-bold">
-                            {{ "%.2f"|format(task.total_cost) }} บาท
+                            {{ "%.2f"|format(task.total_cost) }}
                         </td>
                         <td class="text-center">
-                            <a href="{{ url_for('liff.print_invoice', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-primary">
-                                <i class="fas fa-print me-1"></i> พิมพ์ใบแจ้งหนี้
+                             <select class="form-select form-select-sm status-select status-{{ task.billing_status }}" data-task-id="{{ task.id }}">
+                                <option value="pending_billing" {% if task.billing_status == 'pending_billing' %}selected{% endif %}>รอวางบิล</option>
+                                <option value="billed" {% if task.billing_status == 'billed' %}selected{% endif %}>วางบิลแล้ว</option>
+                                <option value="paid" {% if task.billing_status == 'paid' %}selected{% endif %}>ชำระแล้ว</option>
+                                <option value="overdue" {% if task.billing_status == 'overdue' %}selected{% endif %}>เกินกำหนด</option>
+                            </select>
+                        </td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-success send-invoice-btn"
+                                    data-task-id="{{ task.id }}"
+                                    title="ส่งใบแจ้งหนี้ทาง LINE"
+                                    {% if task.billing_status == 'paid' %}disabled{% endif %}>
+                                <i class="fab fa-line"></i>
+                            </button>
+                            <a href="{{ url_for('liff.print_invoice', task_id=task.id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="พิมพ์ใบแจ้งหนี้">
+                                <i class="fas fa-print"></i>
+                            </a>
+                            <a href="{{ url_for('liff.task_details', task_id=task.id) }}" class="btn btn-sm btn-outline-secondary" title="ดูรายละเอียดงาน">
+                                <i class="fas fa-search"></i>
                             </a>
                         </td>
                     </tr>
@@ -61,20 +130,98 @@
 {% block body_extra %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const searchInput = document.getElementById('billing-search-input');
-    const tableRows = document.querySelectorAll('#billing-table .task-row');
+    const statusSelects = document.querySelectorAll('.status-select');
+    const csrfToken = '{{ csrf_token() }}';
 
-    searchInput.addEventListener('keyup', function() {
-        const filter = searchInput.value.toLowerCase().trim();
-        tableRows.forEach(row => {
-            const textContent = row.textContent || row.innerText;
-            if (textContent.toLowerCase().includes(filter)) {
-                row.style.display = "";
-            } else {
-                row.style.display = "none";
-            }
+    statusSelects.forEach(select => {
+        // Set initial background color
+        select.className = 'form-select form-select-sm status-select status-' + select.value;
+        
+        select.addEventListener('change', function() {
+            const taskId = this.dataset.taskId;
+            const newStatus = this.value;
+
+            // Update background color immediately for better user experience
+            this.className = 'form-select form-select-sm status-select status-' + newStatus;
+
+            fetch(`/api/billing/${taskId}/update_status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ status: newStatus })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Optionally show a success toast
+                    const Toast = Swal.mixin({
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 2000,
+                        timerProgressBar: true
+                    });
+                    Toast.fire({
+                        icon: 'success',
+                        title: 'อัปเดตสถานะแล้ว'
+                    });
+                    // Reload the page to update summary cards after a short delay
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    Swal.fire('เกิดข้อผิดพลาด', data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
+            });
         });
     });
+
+    document.querySelectorAll('.send-invoice-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const taskId = this.dataset.taskId;
+            Swal.fire({
+                title: 'ยืนยันการส่งใบแจ้งหนี้?',
+                text: `คุณต้องการส่งใบแจ้งหนี้สำหรับงานนี้ให้ลูกค้าทาง LINE หรือไม่? (สถานะจะเปลี่ยนเป็น "วางบิลแล้ว")`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'ใช่, ส่งเลย!',
+                cancelButtonText: 'ยกเลิก',
+                confirmButtonColor: '#28a745'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    sendInvoice(taskId, this);
+                }
+            });
+        });
+    });
+
+    async function sendInvoice(taskId, button) {
+        const originalIcon = button.innerHTML;
+        button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span>`;
+        button.disabled = true;
+
+        try {
+            const response = await fetch(`/api/billing/${taskId}/send_invoice`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken }
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message);
+            }
+            Swal.fire('ส่งสำเร็จ!', result.message, 'success');
+            // รีโหลดหน้าเพื่ออัปเดตสถานะและยอดรวม
+            setTimeout(() => window.location.reload(), 2000);
+        } catch (error) {
+            Swal.fire('เกิดข้อผิดพลาด!', error.message, 'error');
+            button.innerHTML = originalIcon;
+            button.disabled = false;
+        }
+    }
 });
 </script>
 {% endblock %}

@@ -9,6 +9,10 @@ from flask import (
     current_app, redirect, flash, make_response
 )
 from dateutil.parser import parse as date_parse
+from weasyprint import HTML
+from io import BytesIO
+from num2words import num2words
+from linebot.v3.messaging import FlexMessage
 
 from app import (
     get_google_tasks_for_report,
@@ -24,8 +28,10 @@ from app import (
     _get_technician_report_data,
     LIFF_ID_FORM,
     LIFF_ID_TECHNICIAN_LOCATION,
-    db, 
-    JobItem
+    db, JobItem, BillingStatus,
+    find_or_create_drive_folder,
+    upload_data_from_memory_to_drive,
+    message_queue
 )
 
 liff_bp = Blueprint('liff', __name__)
@@ -422,24 +428,223 @@ def billing_summary():
     """แสดงหน้าสรุปรายการงานที่เสร็จแล้วเพื่อรอการเก็บเงิน"""
     completed_tasks_raw = [t for t in (get_google_tasks_for_report(show_completed=True) or []) if t.get('status') == 'completed']
     
-    tasks_with_items = []
+    tasks_with_details = []
+    summary_data = {
+        'pending_billing_total': 0,
+        'billed_total': 0,
+        'paid_total': 0
+    }
+
     for task_raw in completed_tasks_raw:
         items = JobItem.query.filter_by(task_google_id=task_raw['id']).all()
         total_cost = sum(item.quantity * item.unit_price for item in items)
         
+        billing_status = BillingStatus.query.filter_by(task_google_id=task_raw['id']).first()
+        if not billing_status:
+            # สร้าง status เริ่มต้นถ้ายังไม่มี
+            billing_status = BillingStatus(task_google_id=task_raw['id'])
+            db.session.add(billing_status)
+            db.session.commit()
+
         task = parse_google_task_dates(task_raw)
         task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
         task['total_cost'] = total_cost
-        task['has_items'] = bool(items)
-        tasks_with_items.append(task)
+        task['billing_status'] = billing_status.status
+        tasks_with_details.append(task)
+        
+        # คำนวณยอดรวมสำหรับแดชบอร์ด
+        if billing_status.status == 'pending_billing':
+            summary_data['pending_billing_total'] += total_cost
+        elif billing_status.status in ['billed', 'overdue']:
+            summary_data['billed_total'] += total_cost
+        elif billing_status.status == 'paid':
+            summary_data['paid_total'] += total_cost
 
-    tasks_with_items.sort(key=lambda x: x.get('completed', '0'), reverse=True)
+    tasks_with_details.sort(key=lambda x: x.get('completed', '0'), reverse=True)
 
-    return render_template('billing_summary.html', tasks=tasks_with_items)
+    return render_template('billing_summary.html', tasks=tasks_with_details, summary=summary_data)
+
+@liff_bp.route('/api/billing/<task_id>/update_status', methods=['POST'])
+def update_billing_status(task_id):
+    data = request.json
+    new_status = data.get('status')
+    
+    if not new_status:
+        return jsonify({'status': 'error', 'message': 'ไม่พบสถานะใหม่'}), 400
+
+    billing_record = BillingStatus.query.filter_by(task_google_id=task_id).first()
+    if not billing_record:
+        billing_record = BillingStatus(task_google_id=task_id)
+        db.session.add(billing_record)
+
+    billing_record.status = new_status
+    if new_status == 'billed' and not billing_record.billed_date:
+        billing_record.billed_date = datetime.datetime.utcnow()
+    elif new_status == 'paid' and not billing_record.paid_date:
+        billing_record.paid_date = datetime.datetime.utcnow()
+
+    try:
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'อัปเดตสถานะสำเร็จ'})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating billing status for task {task_id}: {e}")
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูล'}), 500
+
+def create_invoice_flex_message(task, total_cost, invoice_url):
+    """สร้าง Flex Message สำหรับส่งใบแจ้งหนี้ให้ลูกค้า"""
+    customer_name = task['customer'].get('name', 'N/A')
+    task_title_short = (task['title'][:30] + '..') if len(task['title']) > 30 else task['title']
+    
+    flex_json_payload = {
+      "type": "bubble",
+      "header": {
+        "type": "box",
+        "layout": "vertical",
+        "contents": [
+          {
+            "type": "text",
+            "text": "ใบแจ้งค่าบริการ (Invoice)",
+            "weight": "bold",
+            "color": "#FFFFFF",
+            "size": "lg"
+          }
+        ],
+        "backgroundColor": "#28a745",
+        "paddingAll": "20px"
+      },
+      "body": {
+        "type": "box",
+        "layout": "vertical",
+        "contents": [
+          {
+            "type": "text",
+            "text": f"เรียน คุณ{customer_name}",
+            "weight": "bold",
+            "size": "md",
+            "margin": "md"
+          },
+          {
+            "type": "text",
+            "text": "บริษัทฯ ขอส่งใบแจ้งค่าบริการสำหรับงานซ่อมของท่าน ดังรายละเอียดในไฟล์เอกสารแนบ",
+            "wrap": True,
+            "size": "sm",
+            "margin": "md"
+          },
+          {
+            "type": "separator",
+            "margin": "xl"
+          },
+          {
+            "type": "box",
+            "layout": "vertical",
+            "margin": "lg",
+            "spacing": "sm",
+            "contents": [
+              {
+                "type": "box",
+                "layout": "baseline",
+                "spacing": "sm",
+                "contents": [
+                  {"type": "text", "text": "ชื่องาน", "color": "#aaaaaa", "size": "sm", "flex": 2},
+                  {"type": "text", "text": task_title_short, "wrap": True, "color": "#666666", "size": "sm", "flex": 5}
+                ]
+              },
+              {
+                "type": "box",
+                "layout": "baseline",
+                "spacing": "sm",
+                "contents": [
+                  {"type": "text", "text": "ยอดชำระ", "color": "#aaaaaa", "size": "sm", "flex": 2},
+                  {"type": "text", "text": f"{total_cost:,.2f} บาท", "wrap": True, "color": "#666666", "size": "sm", "flex": 5, "weight": "bold"}
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "footer": {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "contents": [
+          {
+            "type": "button",
+            "style": "primary",
+            "height": "sm",
+            "action": {
+              "type": "uri",
+              "label": "📄 ดาวน์โหลดใบแจ้งหนี้ (PDF)",
+              "uri": invoice_url
+            },
+            "color": "#198754"
+          }
+        ],
+        "flex": 0
+      }
+    }
+    return FlexMessage(alt_text=f"ใบแจ้งค่าบริการสำหรับงาน {task_title_short}", contents=flex_json_payload)
+
+@liff_bp.route('/api/billing/<task_id>/send_invoice', methods=['POST'])
+def send_invoice_to_customer(task_id):
+    """API สำหรับสร้างและส่งใบแจ้งหนี้ PDF ให้ลูกค้าทาง LINE"""
+    task_raw = get_single_task(task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลงาน'}), 404
+
+    # 1. ค้นหา LINE User ID ของลูกค้าจากใน Task Notes
+    feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
+    customer_line_id = feedback_data.get('customer_line_user_id')
+    if not customer_line_id:
+        return jsonify({'status': 'error', 'message': 'ไม่พบ LINE User ID ของลูกค้า ไม่สามารถส่งเอกสารได้'}), 404
+
+    # 2. รวบรวมข้อมูลสำหรับสร้างใบแจ้งหนี้
+    task = parse_google_task_dates(task_raw)
+    task['customer'] = parse_customer_info_from_notes(task.get('notes', ''))
+    items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
+    total_cost = sum(item.quantity * item.unit_price for item in items)
+    settings = get_app_settings()
+
+    # 3. Render HTML template ให้เป็น String
+    invoice_html = render_template('invoice_template.html',
+                                   task=task,
+                                   items=items,
+                                   total_cost=total_cost,
+                                   settings=settings,
+                                   now=datetime.datetime.now(THAILAND_TZ))
+
+    # 4. แปลง HTML เป็น PDF ในหน่วยความจำ
+    pdf_bytes = HTML(string=invoice_html).write_pdf()
+    pdf_file = BytesIO(pdf_bytes)
+    pdf_filename = f"Invoice-{task['id'][-6:].upper()}-{task['customer'].get('name', 'customer')}.pdf".replace(" ", "_")
+
+    # 5. อัปโหลด PDF ไปยัง Google Drive
+    invoices_folder_id = find_or_create_drive_folder("Invoices", os.environ.get('GOOGLE_DRIVE_FOLDER_ID'))
+    if not invoices_folder_id:
+        return jsonify({'status': 'error', 'message': 'ไม่สามารถสร้างโฟลเดอร์ Invoices บน Drive ได้'}), 500
+
+    drive_file_info = upload_data_from_memory_to_drive(pdf_file, pdf_filename, 'application/pdf', invoices_folder_id)
+    if not drive_file_info or 'webViewLink' not in drive_file_info:
+        return jsonify({'status': 'error', 'message': 'ไม่สามารถอัปโหลดใบแจ้งหนี้ไปยัง Google Drive ได้'}), 500
+    
+    invoice_url = drive_file_info['webViewLink']
+
+    # 6. สร้างและส่ง Flex Message ไปยังลูกค้า
+    flex_message = create_invoice_flex_message(task, total_cost, invoice_url)
+    message_queue.add_message(customer_line_id, [flex_message])
+    
+    # 7. อัปเดตสถานะการเงินเป็น 'วางบิลแล้ว'
+    billing_record = BillingStatus.query.filter_by(task_google_id=task_id).first()
+    if billing_record and billing_record.status == 'pending_billing':
+        billing_record.status = 'billed'
+        billing_record.billed_date = datetime.datetime.utcnow()
+        db.session.commit()
+            
+    return jsonify({'status': 'success', 'message': 'ส่งใบแจ้งหนี้ให้ลูกค้าทาง LINE เรียบร้อยแล้ว'})
 
 @liff_bp.route('/invoice/<task_id>/print')
 def print_invoice(task_id):
-    """แสดงหน้าใบแจ้งหนี้สำหรับพิมพ์"""
+    """แสดงหน้าใบแจ้งหนี้สำหรับพิมพ์ (เวอร์ชันอัปเดต)"""
     task_raw = get_single_task(task_id)
     if not task_raw:
         abort(404)
@@ -449,7 +654,19 @@ def print_invoice(task_id):
     
     items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
     
+    # --- ✅✅✅ START: โค้ดที่แก้ไขและเพิ่มใหม่ ✅✅✅ ---
     total_cost = sum(item.quantity * item.unit_price for item in items)
+    
+    # คำนวณ VAT จากยอดรวม (Assuming total_cost is inclusive of VAT)
+    subtotal = total_cost / 1.07
+    vat = total_cost - subtotal
+
+    # แปลงตัวเลขเป็นตัวอักษรภาษาไทย
+    try:
+        total_cost_in_words = num2words(total_cost, to='currency', lang='th')
+    except Exception:
+        total_cost_in_words = "ไม่สามารถแปลงเป็นตัวอักษรได้"
+    # --- ✅✅✅ END: โค้ดที่แก้ไขและเพิ่มใหม่ ✅✅✅ ---
 
     settings = get_app_settings()
 
@@ -457,5 +674,8 @@ def print_invoice(task_id):
                            task=task, 
                            items=items, 
                            total_cost=total_cost,
+                           subtotal=subtotal,
+                           vat=vat,
+                           total_cost_in_words=total_cost_in_words,
                            settings=settings,
                            now=datetime.datetime.now(THAILAND_TZ))
