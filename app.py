@@ -844,9 +844,47 @@ def api_update_task(task_id):
             updated_task = update_google_task(task_id, **update_payload)
             if updated_task:
                 cache.clear()
+                
+                # --- โค้ดสำหรับตัดสต็อก ---
+                if action == 'complete_task':
+                    try:
+                        app.logger.info(f"Task {task_id} completed. Starting stock deduction process.")
+                        items_to_deduct = JobItem.query.filter_by(task_google_id=task_id).all()
+                        
+                        if items_to_deduct:
+                            settings = get_app_settings()
+                            catalog = settings.get('equipment_catalog', [])
+                            catalog_dict = {item['item_name'].lower(): item for item in catalog}
+                            changes_made = False
+
+                            for item in items_to_deduct:
+                                key = item.item_name.lower()
+                                if key in catalog_dict:
+                                    current_stock = catalog_dict[key].get('stock_quantity', 0)
+                                    new_stock = current_stock - item.quantity
+                                    catalog_dict[key]['stock_quantity'] = new_stock
+                                    changes_made = True
+                                    app.logger.info(f"Deducted {item.quantity} of '{item.item_name}'. New stock: {new_stock}")
+
+                            if changes_made:
+                                updated_catalog = list(catalog_dict.values())
+                                if not save_app_settings({'equipment_catalog': updated_catalog}):
+                                    app.logger.error(f"CRITICAL: Failed to save updated catalog after stock deduction for task {task_id}")
+                                    notify_admin_error(f"Stock deduction failed for task {task_id}")
+                                else:
+                                    app.logger.info(f"Stock deduction successful for task {task_id}. Backing up settings to Drive.")
+                                    backup_settings_to_drive()
+                        else:
+                            app.logger.info(f"No items recorded for task {task_id}. Skipping stock deduction.")
+
+                    except Exception as stock_e:
+                        app.logger.error(f"An error occurred during stock deduction for task {task_id}: {stock_e}", exc_info=True)
+                        notify_admin_error(f"Stock deduction failed for task {task_id}: {stock_e}")
+                
                 if action == 'complete_task':
                     send_completion_notification(updated_task, report_data['technicians'])
                     return jsonify({'status': 'success', 'message': flash_message, 'redirect_url': url_for('liff.generate_public_report_qr', task_id=task_id)})
+                
                 return jsonify({'status': 'success', 'message': flash_message})
             else:
                 return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลหลัก!'}), 500
@@ -2209,9 +2247,9 @@ def api_adjust_stock(item_index):
         if not (0 <= item_index < len(catalog)):
             return jsonify({'status': 'error', 'message': 'ไม่พบสินค้า'}), 404
 
-        # ปรับปรุงสต็อก (ป้องกันไม่ให้ติดลบ)
+        # ปรับปรุงสต็อก (อนุญาตให้ติดลบได้)
         current_stock = int(catalog[item_index].get('stock_quantity', 0))
-        new_stock = max(0, current_stock + change)
+        new_stock = current_stock + change
         catalog[item_index]['stock_quantity'] = new_stock
 
         if save_app_settings({'equipment_catalog': catalog}):

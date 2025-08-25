@@ -492,6 +492,9 @@
                     <label for="item-name-input" class="form-label">ชื่อรายการ</label>
                     <div class="input-group">
                         <input type="text" class="form-control form-control-lg" id="item-name-input" placeholder="ค้นหาหรือพิมพ์ชื่อ..." autocomplete="off">
+                        <button class="btn btn-outline-secondary" type="button" id="start-recognition-item-name" title="บันทึกด้วยเสียง">
+                            <i class="fas fa-microphone"></i>
+                        </button>
                         <button class="btn btn-outline-secondary" type="button" id="scan-item-barcode-btn" title="สแกนบาร์โค้ด">
                             <i class="fas fa-barcode"></i>
                         </button>
@@ -1178,6 +1181,7 @@
         setupSpeechRecognition('start-recognition-final', 'work_summary_final');
         setupSpeechRecognition('start-recognition-reschedule', 'reschedule_reason');
         setupSpeechRecognition('start-recognition-progress', 'work_summary_progress');
+        setupSpeechRecognition('start-recognition-item-name', 'item-name-input');
         
         loadInitialItems();
         renderHistorySection();
@@ -1313,7 +1317,7 @@
         });
 
         let itemScanner;
-        const itemScannerContainer = document.getElementById('scanner-container');
+        const scannerContainer = document.getElementById('scanner-container');
         const itemAddModalEl = document.getElementById('addItemModal');
         const closeScannerBtn = document.getElementById('close-scanner-btn');
 
@@ -1350,9 +1354,8 @@
         });
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
-        editModalEl.addEventListener('hidden.bs.modal', stopScanner);
+        itemAddModalEl.addEventListener('hidden.bs.modal', stopScanner);
         
-        loadCategories();
     });
 </script>
 {% endblock %}

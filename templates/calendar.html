@@ -5,6 +5,7 @@
 {% block head_extra %}
 <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/main.min.css' rel='stylesheet' />
 <style>
+    /* CSS styles remain the same */
     #external-events-container {
         height: 80vh;
         display: flex;
@@ -237,7 +238,10 @@
                 if (originalDivElement) {
                     originalDivElement.remove();
                 }
+                // --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ ---
+                // สั่งให้ปฏิทินโหลดข้อมูลทั้งหมดใหม่จากเซิร์ฟเวอร์
                 calendar.refetchEvents();
+                // --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ ---
             } else {
                 Swal.fire({
                     icon: 'error',
