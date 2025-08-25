@@ -192,11 +192,9 @@
                 <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
                     <i class="fas fa-calendar-alt"></i> เลื่อนนัด
                 </button>
-                {# --- ✅✅✅ START: เพิ่มปุ่มใหม่ที่นี่ ✅✅✅ --- #}
-                <button type="button" class="btn btn-success action-btn" onclick="shareInvoiceViaLine()">
+                <button type="button" class="btn btn-success action-btn" onclick="shareInvoice()">
                     <i class="fas fa-share-alt"></i> แชร์ใบแจ้งหนี้
                 </button>
-                {# --- ✅✅✅ END: เพิ่มปุ่มใหม่ --- #}				
                 <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
                     <i class="fas fa-qrcode"></i> QR Code ลูกค้า
                 </a>
@@ -580,7 +578,7 @@
         const handleFiles = (newFiles) => {
             filesToUpload[formType] = filesToUpload[formType].concat(Array.from(newFiles));
             renderPreviews();
-            updateProgressSaveButtonState(); // <-- Call the new function
+            updateProgressSaveButtonState();
         };
 
         const renderPreviews = () => {
@@ -591,7 +589,7 @@
                     <div class="d-flex align-items-center mb-2">
                         <div class="flex-grow-1">
                             <div class="fw-bold small">${file.name}</div>
-                            <div class="progress" style="height: 10px;">
+                            <div class="progress" style="height: 1.0em;">
                                 <div id="progress-bar-${formType}-${index}" class="progress-bar" role="progressbar" style="width: 0%"></div>
                             </div>
                         </div>
@@ -604,7 +602,7 @@
         window.removeFile = (type, index) => {
             filesToUpload[type].splice(index, 1);
             renderPreviews();
-            updateProgressSaveButtonState(); // <-- Call the new function
+            updateProgressSaveButtonState();
         };
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -1365,83 +1363,102 @@
         
     });
 	
-    async function shareInvoiceViaLine() {
-        if (typeof liff === 'undefined' || !liff.isLoggedIn()) {
-            alert('กรุณาเข้าสู่ระบบ LINE ก่อนแชร์');
-            liff.login();
-            return;
-        }
+    async function shareInvoice() {
+        // ตรวจสอบว่าโค้ดทำงานในสภาพแวดล้อมใด
+        const isLiff = typeof liff !== 'undefined' && liff.isInClient();
+        const pdfUrl = `{{ url_for('liff.generate_invoice_pdf', task_id='TASK_ID') }}`.replace('TASK_ID', taskId);
 
-        if (!liff.isApiAvailable('shareTargetPicker')) {
-            Swal.fire('ไม่รองรับ', 'ฟีเจอร์แชร์ไม่พร้อมใช้งานในเวอร์ชัน LINE ของคุณ กรุณาอัปเดตแอปพลิเคชัน LINE', 'warning');
-            return;
-        }
+        // 1. ลองใช้ Web Share API (สำหรับเบราว์เซอร์ปกติ)
+        if (navigator.share && !isLiff) {
+            try {
+                // Fetch the PDF from our API endpoint
+                const response = await fetch(pdfUrl);
+                if (!response.ok) throw new Error('Failed to fetch invoice PDF');
+                const pdfBlob = await response.blob();
+                const pdfFile = new File([pdfBlob], `Invoice-${taskId}.pdf`, { type: 'application/pdf' });
 
-        const taskTitle = "{{ task.title | escape }}";
-        const customerName = "{{ task.customer.name | escape }}";
-        const totalCostFormatted = "{{ '%.2f'|format(total_cost) }}";
-        const invoiceUrl = "{{ url_for('liff.print_invoice', task_id=task.id, _external=True) }}";
-        
-        const flexMessage = {
-            type: 'flex',
-            altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
-            contents: {
-                type: 'bubble',
-                header: {
-                    type: 'box',
-                    layout: 'vertical',
-                    contents: [{
-                        type: 'text',
-                        text: 'ใบแจ้งค่าบริการ',
-                        weight: 'bold',
-                        color: '#FFFFFF',
-                        size: 'lg'
-                    }],
-                    backgroundColor: '#28a745',
-                },
-                body: {
-                    type: 'box',
-                    layout: 'vertical',
-                    spacing: 'md',
-                    contents: [
-                        { type: 'text', text: `ลูกค้า: ${customerName}`, weight: 'bold' },
-                        { type: 'text', text: `เรื่อง: ${taskTitle}`, wrap: true, size: 'sm' },
-                        { type: 'separator', margin: 'lg' },
-                        {
-                            type: 'box',
-                            layout: 'baseline',
-                            margin: 'lg',
-                            contents: [
-                                { type: 'text', text: 'ยอดชำระสุทธิ', size: 'md', color: '#555555', flex: 0 },
-                                { type: 'text', text: `${totalCostFormatted} บาท`, size: 'xl', color: '#111111', weight: 'bold', align: 'end' }
-                            ]
-                        }
-                    ]
-                },
-                footer: {
-                    type: 'box',
-                    layout: 'vertical',
-                    contents: [{
-                        type: 'button',
-                        action: { type: 'uri', label: 'ดู/ดาวน์โหลดใบแจ้งหนี้ (PDF)', uri: invoiceUrl },
-                        style: 'primary',
-                        height: 'sm',
-                        color: '#198754'
-                    }]
+                await navigator.share({
+                    title: `ใบแจ้งหนี้สำหรับงาน #{{ task.id[-6:] }}`,
+                    text: `ใบแจ้งหนี้สำหรับคุณ {{ task.customer.name or '-' }}`,
+                    files: [pdfFile]
+                });
+                
+                Swal.fire('แชร์สำเร็จ!', 'แชร์ใบแจ้งหนี้เรียบร้อยแล้ว', 'success');
+            } catch (error) {
+                console.error('Web Share API Error:', error);
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ไฟล์ได้: ' + error.message, 'error');
+            }
+        } 
+        // 2. ใช้ LIFF shareTargetPicker เป็นตัวเลือกสำรอง
+        else if (isLiff && liff.isApiAvailable('shareTargetPicker')) {
+            const taskTitle = "{{ task.title | escape }}";
+            const customerName = "{{ task.customer.name | escape }}";
+            const totalCostFormatted = "{{ '%.2f'|format(total_cost) }}";
+            
+            const flexMessage = {
+                type: 'flex',
+                altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
+                contents: {
+                    type: 'bubble',
+                    header: {
+                        type: 'box',
+                        layout: 'vertical',
+                        contents: [{
+                            type: 'text',
+                            text: 'ใบแจ้งค่าบริการ',
+                            weight: 'bold',
+                            color: '#FFFFFF',
+                            size: 'lg'
+                        }],
+                        backgroundColor: '#28a745',
+                    },
+                    body: {
+                        type: 'box',
+                        layout: 'vertical',
+                        spacing: 'md',
+                        contents: [
+                            { type: 'text', text: `ลูกค้า: ${customerName}`, weight: 'bold' },
+                            { type: 'text', text: `เรื่อง: ${taskTitle}`, wrap: true, size: 'sm' },
+                            { type: 'separator', margin: 'lg' },
+                            {
+                                type: 'box',
+                                layout: 'baseline',
+                                margin: 'lg',
+                                contents: [
+                                    { type: 'text', text: 'ยอดชำระสุทธิ', size: 'md', color: '#555555', flex: 0 },
+                                    { type: 'text', text: `${totalCostFormatted} บาท`, size: 'xl', color: '#111111', weight: 'bold', align: 'end' }
+                                ]
+                            }
+                        ]
+                    },
+                    footer: {
+                        type: 'box',
+                        layout: 'vertical',
+                        contents: [{
+                            type: 'button',
+                            action: { type: 'uri', label: 'ดู/ดาวน์โหลดใบแจ้งหนี้ (PDF)', uri: pdfUrl },
+                            style: 'primary',
+                            height: 'sm',
+                            color: '#198754'
+                        }]
+                    }
                 }
+            };
+            try {
+                const result = await liff.shareTargetPicker([flexMessage]);
+                if (result) {
+                    Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบแจ้งหนี้ใน LINE เรียบร้อยแล้ว', 'success');
+                } else {
+                    console.log('ShareTargetPicker was cancelled by the user');
+                }
+            } catch (error) {
+                console.error('LIFF Share Error:', error);
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
             }
-        };
-
-        try {
-            const result = await liff.shareTargetPicker([flexMessage]);
-            if (result) {
-                Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบแจ้งหนี้ใน LINE เรียบร้อยแล้ว', 'success');
-            } else {
-                console.log('ShareTargetPicker was cancelled by the user');
-            }
-        } catch (error) {
-            console.error(error);
-            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
+        } 
+        // 3. กรณีที่ไม่รองรับทั้งสองแบบ
+        else {
+            Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์ใบแจ้งหนี้โดยตรง', 'warning');
         }
     }
 </script>
