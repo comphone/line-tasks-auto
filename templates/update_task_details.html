@@ -4,6 +4,7 @@
 
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
+{# --- ✅ 1. เพิ่ม Script ที่ขาดหายไป --- #}
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
 <style>
 	/* Styles for the page */
@@ -191,6 +192,9 @@
                 </button>
                 <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
                     <i class="fas fa-calendar-alt"></i> เลื่อนนัด
+                </button>
+                <button type="button" class="btn btn-success action-btn" onclick="shareInvoice()">
+                    <i class="fas fa-share-alt"></i> แชร์ใบส่งของ/ใบวางบิล
                 </button>
                 <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
                     <i class="fas fa-qrcode"></i> QR Code ลูกค้า
@@ -1193,11 +1197,9 @@
         document.getElementById('completeTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'final'));
         document.getElementById('rescheduleTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'reschedule'));
         
-        // --- Added code for progress button state management ---
         document.getElementById('work_summary_progress').addEventListener('input', updateProgressSaveButtonState);
         document.getElementById('files_progress').addEventListener('change', updateProgressSaveButtonState);
         document.getElementById('camera_progress').addEventListener('change', updateProgressSaveButtonState);
-        // --- End of added code ---
 
         document.getElementById('editReportTextForm').addEventListener('submit', async function(event) {
             event.preventDefault();
@@ -1316,7 +1318,7 @@
             }
         });
 
-        let html5QrCode = null; // ✅ โค้ดที่แก้ไข: ย้ายการประกาศมาไว้ที่นี่
+        let html5QrCode = null;
         const scannerContainer = document.getElementById('scanner-container');
         const itemAddModalEl = document.getElementById('addItemModal');
         const closeScannerBtn = document.getElementById('close-scanner-btn');
@@ -1328,18 +1330,18 @@
             scannerContainer.style.display = 'none';
         };
 
-			document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
-				scannerContainer.style.display = 'flex';
-				// ✅ บรรทัดที่แก้ไขแล้ว
-				html5QrCode = new Html5Qrcode("qr-reader", { 
-					formatsToSupport: [ 
-						Html5Qrcode.Html5QrcodeSupportedFormats.CODE_128, 
-						Html5Qrcode.Html5QrcodeSupportedFormats.EAN_13, 
-						Html5Qrcode.Html5QrcodeSupportedFormats.QR_CODE 
-					] 
-				});
+		document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
+            scannerContainer.style.display = 'flex';
             
-            // ✅ โค้ดที่เพิ่ม: เพิ่ม setTimeout เพื่อให้เบราว์เซอร์พร้อม
+            // --- ✅ 2. แก้ไขการเรียกใช้ให้ถูกต้อง ---
+            html5QrCode = new Html5Qrcode("qr-reader", { 
+                formatsToSupport: [ 
+                    Html5Qrcode.Html5QrcodeSupportedFormats.CODE_128, 
+                    Html5Qrcode.Html5QrcodeSupportedFormats.EAN_13, 
+                    Html5Qrcode.Html5QrcodeSupportedFormats.QR_CODE 
+                ] 
+            });
+            
             setTimeout(() => {
                 html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                     (decodedText) => {
@@ -1359,7 +1361,7 @@
                     alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
                     stopScanner();
                 });
-            }, 500); // หน่วงเวลา 500ms
+            }, 500);
         });
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
@@ -1368,40 +1370,36 @@
     });
 	
     async function shareInvoice() {
-        // ตรวจสอบว่าโค้ดทำงานในสภาพแวดล้อมใด
         const isLiff = typeof liff !== 'undefined' && liff.isInClient();
-        const pdfUrl = `{{ url_for('liff.generate_invoice_pdf', task_id=task.id) }}`;
+        const pdfUrl = `{{ url_for('liff.generate_invoice_pdf', task_id='TASK_ID') }}`.replace('TASK_ID', taskId);
 
-        // 1. ลองใช้ Web Share API (สำหรับเบราว์เซอร์ปกติ)
         if (navigator.share && !isLiff) {
             try {
-                // Fetch the PDF from our API endpoint
                 const response = await fetch(pdfUrl);
                 if (!response.ok) throw new Error('Failed to fetch invoice PDF');
                 const pdfBlob = await response.blob();
                 const pdfFile = new File([pdfBlob], `Invoice-${taskId}.pdf`, { type: 'application/pdf' });
 
                 await navigator.share({
-                    title: `ใบแจ้งหนี้สำหรับงาน #{{ task.id[-6:] }}`,
-                    text: `ใบแจ้งหนี้สำหรับคุณ {{ task.customer.name or '-' }}`,
+                    title: `ใบส่งของ/ใบวางบิลสำหรับงาน #{{ task.id[-6:] }}`,
+                    text: `ใบส่งของ/ใบวางบิลสำหรับคุณ {{ task.customer.name or '-' }}`,
                     files: [pdfFile]
                 });
                 
-                Swal.fire('แชร์สำเร็จ!', 'แชร์ใบแจ้งหนี้เรียบร้อยแล้ว', 'success');
+                Swal.fire('แชร์สำเร็จ!', 'แชร์ใบส่งของ/ใบวางบิลเรียบร้อยแล้ว', 'success');
             } catch (error) {
                 console.error('Web Share API Error:', error);
                 Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ไฟล์ได้: ' + error.message, 'error');
             }
         } 
-        // 2. ใช้ LIFF shareTargetPicker เป็นตัวเลือกสำรอง
-        else if (isLiff && typeof liff !== 'undefined' && liff.isApiAvailable('shareTargetPicker')) {
+        else if (isLiff && liff.isApiAvailable('shareTargetPicker')) {
             const taskTitle = "{{ task.title | escape }}";
             const customerName = "{{ task.customer.name | escape }}";
             const totalCostFormatted = "{{ '%.2f'|format(total_cost) }}";
             
             const flexMessage = {
                 type: 'flex',
-                altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
+                altText: `ใบส่งของ/ใบวางบิลสำหรับคุณ ${customerName}`,
                 contents: {
                     type: 'bubble',
                     header: {
@@ -1409,7 +1407,7 @@
                         layout: 'vertical',
                         contents: [{
                             type: 'text',
-                            text: 'ใบแจ้งค่าบริการ',
+                            text: 'ใบส่งของ/ใบวางบิล',
                             weight: 'bold',
                             color: '#FFFFFF',
                             size: 'lg'
@@ -1440,7 +1438,7 @@
                         layout: 'vertical',
                         contents: [{
                             type: 'button',
-                            action: { type: 'uri', label: 'ดู/ดาวน์โหลดใบแจ้งหนี้ (PDF)', uri: pdfUrl },
+                            action: { type: 'uri', label: 'ดู/ดาวน์โหลดเอกสาร (PDF)', uri: pdfUrl },
                             style: 'primary',
                             height: 'sm',
                             color: '#198754'
@@ -1451,7 +1449,7 @@
             try {
                 const result = await liff.shareTargetPicker([flexMessage]);
                 if (result) {
-                    Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบแจ้งหนี้ใน LINE เรียบร้อยแล้ว', 'success');
+                    Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบส่งของ/ใบวางบิลใน LINE เรียบร้อยแล้ว', 'success');
                 } else {
                     console.log('ShareTargetPicker was cancelled by the user');
                 }
@@ -1460,9 +1458,8 @@
                 Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ได้: ' + error.message, 'error');
             }
         } 
-        // 3. กรณีที่ไม่รองรับทั้งสองแบบ
         else {
-            Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์ใบแจ้งหนี้โดยตรง', 'warning');
+            Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์โดยตรง', 'warning');
         }
     }
 </script>
