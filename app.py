@@ -794,7 +794,7 @@ def api_create_external_task():
     
 @app.route('/api/task/<task_id>/update', methods=['POST'])
 def api_update_task(task_id):
-    """API สำหรับอัปเดตข้อมูลงาน (เพิ่มรายงาน, ปิดงาน, เลื่อนนัด) - (เวอร์ชันแก้ไข เพิ่มการส่ง attachments ไปยัง notification)"""
+    """API สำหรับอัปเดตข้อมูลงาน (เพิ่มรายงาน, ปิดงาน, เลื่อนนัด) - (แก้ไข IndentationError)"""
     try:
         task_raw = get_single_task(task_id)
         if not task_raw:
@@ -813,7 +813,6 @@ def api_update_task(task_id):
             report_data = {'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat()}
             
             if action == 'reschedule_task':
-                # ... (ส่วนนี้ไม่มีการเปลี่ยนแปลง)
                 reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
                 selected_technicians = request.form.get('technicians_reschedule', '').split(',')
                 if not reschedule_due_str: return jsonify({'status': 'error', 'message': 'กรุณากำหนดวันนัดหมายใหม่'}), 400
@@ -830,7 +829,6 @@ def api_update_task(task_id):
                 })
                 flash_message = 'เลื่อนนัดและบันทึกเหตุผลเรียบร้อยแล้ว'
             else: 
-                # ... (ส่วนนี้ไม่มีการเปลี่ยนแปลง)
                 work_summary = str(request.form.get('work_summary', '')).strip()
                 selected_technicians = request.form.get('technicians_report', '').split(',')
                 if not (work_summary or new_attachments): return jsonify({'status': 'error', 'message': 'กรุณากรอกสรุปงาน หรือแนบไฟล์รูปภาพ'}), 400
@@ -857,20 +855,47 @@ def api_update_task(task_id):
                 cache.clear()
                 
                 if action == 'complete_task':
-                    # --- START: ✅✅✅ แก้ไขจุดนี้: ส่ง new_attachments ไปด้วย ---
                     send_completion_notification(
                         updated_task, 
                         report_data.get('technicians', []), 
                         attachments=new_attachments
                     )
-                    # --- END: ✅✅✅ ---
-                    # (ส่วนของการตัดสต็อก คงไว้เหมือนเดิม)
+                    
+                    # --- START: ✅✅✅ แก้ไข Indentation Error ที่นี่ ✅✅✅ ---
                     try:
-                        # ... (โค้ดตัดสต็อก) ...
+                        app.logger.info(f"Task {task_id} completed. Starting stock deduction process.")
+                        items_to_deduct = JobItem.query.filter_by(task_google_id=task_id).all()
+                        
+                        if items_to_deduct:
+                            settings = get_app_settings()
+                            catalog = settings.get('equipment_catalog', [])
+                            catalog_dict = {item['item_name'].lower(): item for item in catalog}
+                            changes_made = False
+
+                            for item in items_to_deduct:
+                                key = item.item_name.lower()
+                                if key in catalog_dict:
+                                    current_stock = catalog_dict[key].get('stock_quantity', 0)
+                                    new_stock = current_stock - item.quantity
+                                    catalog_dict[key]['stock_quantity'] = new_stock
+                                    changes_made = True
+                                    app.logger.info(f"Deducted {item.quantity} of '{item.item_name}'. New stock: {new_stock}")
+
+                            if changes_made:
+                                updated_catalog = list(catalog_dict.values())
+                                if not save_app_settings({'equipment_catalog': updated_catalog}):
+                                    app.logger.error(f"CRITICAL: Failed to save updated catalog after stock deduction for task {task_id}")
+                                    notify_admin_error(f"Stock deduction failed for task {task_id}")
+                                else:
+                                    app.logger.info(f"Stock deduction successful for task {task_id}. Backing up settings to Drive.")
+                                    backup_settings_to_drive()
+                        else:
+                            app.logger.info(f"No items recorded for task {task_id}. Skipping stock deduction.")
                     except Exception as stock_e:
                         app.logger.error(f"An error occurred during stock deduction for task {task_id}: {stock_e}", exc_info=True)
                         notify_admin_error(f"Stock deduction failed for task {task_id}: {stock_e}")
-                    
+                    # --- END: ✅✅✅ แก้ไข Indentation Error ที่นี่ ✅✅✅ ---
+
                     return jsonify({'status': 'success', 'message': flash_message, 'redirect_url': url_for('liff.generate_public_report_qr', task_id=task_id)})
 
                 elif action == 'reschedule_task':
@@ -880,11 +905,10 @@ def api_update_task(task_id):
                         reason=report_data.get('reason', 'ไม่ได้ระบุ'),
                         technicians=report_data.get('technicians', []),
                         is_today=False,
-                        attachments=[] # การเลื่อนนัดไม่มีรูปภาพ
+                        attachments=[]
                     )
                 
                 elif action == 'save_report':
-                    # --- START: ✅✅✅ แก้ไขจุดนี้: ส่ง new_attachments ไปด้วย ---
                     send_update_notification(
                         task=updated_task,
                         new_due_date_str="ไม่ได้เปลี่ยนแปลง",
@@ -893,7 +917,6 @@ def api_update_task(task_id):
                         is_today=True,
                         attachments=new_attachments
                     )
-                    # --- END: ✅✅✅ ---
                 
                 return jsonify({'status': 'success', 'message': flash_message})
             else:
