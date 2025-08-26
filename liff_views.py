@@ -4,6 +4,7 @@ import datetime
 import pytz
 import base64
 import json
+from datetime import timedelta
 from flask import (
     Blueprint, render_template, request, url_for, abort, jsonify,
     current_app, redirect, flash, make_response
@@ -835,4 +836,9 @@ def activity_feed():
     # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
     activities.sort(key=lambda x: x['timestamp'], reverse=True)
 
-    return render_template('activity_feed.html', activities=activities, technician_list=technician_list)
+    return render_template(
+        'activity_feed.html', 
+        activities=activities, 
+        technician_list=technician_list,
+        timedelta=timedelta  # <--- เพิ่มตัวแปรนี้เข้าไป
+    )
