@@ -118,7 +118,7 @@
     {% else %}
         {% set today = now.date() %}
         {% set yesterday = today - timedelta(days=1) %}
-        {% for date, items in activities | groupbye('timestamp.date()') | sort(reverse=true) %}
+        {% for date, items in activities | groupby('timestamp.date()') | sort(reverse=true) %}
             <div class="activity-group" data-date="{{ date.isoformat() }}">
                 <h5 class="activity-group-date">
                     {% if date == today %}วันนี้
