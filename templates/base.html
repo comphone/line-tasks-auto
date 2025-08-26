@@ -51,6 +51,9 @@
 					<li class="nav-item">
 						<a class="nav-link {% if request.endpoint == 'liff.summary' %}active{% endif %}" href="{{ url_for('liff.summary') }}"><i class="fas fa-list-check me-1"></i>สรุปงาน</a>
 					</li>
+                    <li class="nav-item">
+						<a class="nav-link {% if request.endpoint == 'liff.activity_feed' %}active{% endif %}" href="{{ url_for('liff.activity_feed') }}"><i class="fas fa-stream me-1"></i>ความเคลื่อนไหว</a>
+					</li>
 					<li class="nav-item">
 						<a class="nav-link {% if request.endpoint == 'liff.calendar_view' %}active{% endif %}" href="{{ url_for('liff.calendar_view') }}"><i class="fas fa-calendar-alt me-1"></i>ปฏิทิน</a>
 					</li>

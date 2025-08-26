@@ -9,7 +9,7 @@
     .stock-adjust-btn { width: 30px; height: 30px; border-radius: 50%; padding: 0; font-weight: bold; flex-shrink: 0; }
     .stock-value { min-width: 50px; text-align: center; font-size: 1.1em; font-weight: 500; }
     .category-badge { font-size: 0.8em; }
-    
+
     /* NEW: Image Search Styles */
     #image-search-results {
         display: grid;
@@ -32,6 +32,22 @@
     .search-thumbnail:hover {
         border-color: #007bff;
     }
+
+    /* --- START: โค้ดสำหรับเส้นเล็งบาร์โค้ด --- */
+    #qr-reader {
+        position: relative;
+    }
+    #qr-reader__scan_region::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: red;
+        box-shadow: 0 0 5px red;
+    }
+    /* --- END: โค้ดสำหรับเส้นเล็งบาร์โค้ด --- */
 </style>
 {% endblock %}
 
@@ -549,54 +565,51 @@
             }
         });
 
-    const stopScanner = () => {
-        if (html5QrCode && html5QrCode.isScanning) {
-            html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
-        }
-        scannerContainer.style.display = 'none';
-    };
-
-    document.getElementById('scan-barcode-btn').addEventListener('click', () => {
-        scannerContainer.style.display = 'flex';
-        if (!html5QrCode) {
-            // ปรับปรุงการสร้าง object โดยปิด verbose mode เพื่อลด log ใน console
-            html5QrCode = new Html5Qrcode("qr-reader", /* verbose= */ false);
-        }
-
-        // ตั้งค่าเครื่องสแกนให้ยืดหยุ่นและมีประสิทธิภาพมากขึ้น
-        const config = {
-            fps: 15, // เพิ่ม Frame rate เพื่อการจับภาพที่ดีขึ้น
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
-                // ทำให้กรอบสแกนปรับขนาดตามหน้าจอ (70% ของด้านที่สั้นที่สุด)
-                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                const qrboxSize = Math.floor(minEdge * 0.7);
-                return { width: qrboxSize, height: qrboxSize };
-            },
-            rememberLastUsedCamera: true,
-            // ใช้ BarcodeDetector ของเบราว์เซอร์โดยตรง (ถ้ามี) ซึ่งเร็วกว่า
-            experimentalFeatures: {
-                useBarCodeDetectorIfSupported: true,
-            },
+        // --- START: โค้ดสแกนบาร์โค้ดที่ปรับปรุงแล้ว ---
+        const stopScanner = () => {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
+            }
+            scannerContainer.style.display = 'none';
         };
 
-        setTimeout(() => {
-            // เริ่มการสแกนโดยร้องขอกล้องหลัง แต่ไม่ระบุเงื่อนไขที่เข้มงวดเกินไป
-            html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText) => {
-                    document.getElementById('edit-product-code').value = decodedText;
-                    stopScanner();
-                    flashMessage(`สแกนสำเร็จ: ${decodedText}`, 'success');
+        document.getElementById('scan-barcode-btn').addEventListener('click', () => {
+            scannerContainer.style.display = 'flex';
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("qr-reader", /* verbose= */ false);
+            }
+
+            const config = {
+                fps: 15,
+                qrbox: (viewfinderWidth, viewfinderHeight) => {
+                    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                    const qrboxSize = Math.floor(minEdge * 0.7);
+                    return { width: qrboxSize, height: qrboxSize };
                 },
-                (errorMessage) => { /* ไม่ต้องทำอะไรเมื่อสแกนไม่ติด */ }
-            ).catch((err) => {
-                console.error(`Unable to start scanning, error: ${err}`);
-                alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบว่าได้ให้สิทธิ์การเข้าถึงกล้องในเบราว์เซอร์แล้ว");
-                stopScanner();
-            });
-        }, 500);
-    });
+                rememberLastUsedCamera: true,
+                experimentalFeatures: {
+                    useBarCodeDetectorIfSupported: true,
+                },
+            };
+
+            setTimeout(() => {
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText) => {
+                        document.getElementById('edit-product-code').value = decodedText;
+                        stopScanner();
+                        flashMessage(`สแกนสำเร็จ: ${decodedText}`, 'success');
+                    },
+                    (errorMessage) => { /* ignore */ }
+                ).catch((err) => {
+                    console.error(`Unable to start scanning, error: ${err}`);
+                    alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบว่าได้ให้สิทธิ์การเข้าถึงกล้องในเบราว์เซอร์แล้ว");
+                    stopScanner();
+                });
+            }, 500);
+        });
+        // --- END: โค้ดสแกนบาร์โค้ดที่ปรับปรุงแล้ว ---
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
         editModalEl.addEventListener('hidden.bs.modal', stopScanner);

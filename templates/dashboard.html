@@ -257,6 +257,12 @@
 									{% else %}
 										<strong>{{ task.customer.name or '-' }}</strong>
 									{% endif %}
+                                    
+                                    {% if task.assigned_technician %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-dark fw-normal"><i class="fas fa-user-cog me-1"></i>{{ task.assigned_technician }}</span>
+                                        </div>
+                                    {% endif %}
 								</td>
 								<td class="task-title-cell" title="{{ task.title }}">
 									{{ task.title | replace('\n', '<br>') | safe }}
@@ -328,10 +334,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // ✅ START: โค้ดใหม่สำหรับทำให้ทั้งแถวคลิกได้
         document.querySelectorAll('.clickable-row').forEach(row => {
             row.addEventListener('click', function(event) {
-                // ตรวจสอบว่าไม่ได้คลิกที่ checkbox, ปุ่ม, หรือลิงก์ภายในแถว
                 const ignoredElements = 'input, button, a, i';
                 if (event.target.matches(ignoredElements) || event.target.closest(ignoredElements)) {
                     return;
@@ -344,13 +348,10 @@
             });
         });
 
-        // เปลี่ยน CSS cursor สำหรับแถวที่คลิกได้
         const style = document.createElement('style');
         style.innerHTML = `.clickable-row { cursor: pointer; }`;
         document.head.appendChild(style);
-        // ✅ END: สิ้นสุดโค้ดใหม่
 
-        // --- ส่วนของ Chart (เหมือนเดิม) ---
         const monthlyCtx = document.getElementById('monthlyTasksChart');
         let myChart;
 
@@ -375,11 +376,9 @@
             document.getElementById('chart-tab')?.addEventListener('shown.bs.tab', () => myChart?.update());
         }
 
-        // --- ส่วนแสดงตาราง (เหมือนเดิม) ---
         document.getElementById('task-table-container').style.display = 'block';
         document.getElementById('table-loading-spinner').style.display = 'none';
 		
-        // --- โค้ด Live Search ที่ปรับปรุงใหม่ (เหมือนเดิม) ---
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
             function clearHighlights(container) {
@@ -421,7 +420,6 @@
             });
         }
 
-        // --- ส่วนใหม่: จัดการ Batch Actions (เหมือนเดิม) ---
         const selectAllCheckbox = document.getElementById('select-all-tasks');
         const taskCheckboxes = document.querySelectorAll('.task-checkbox:not(#select-all-tasks)');
         const batchActionBar = document.getElementById('batch-actions-bar');

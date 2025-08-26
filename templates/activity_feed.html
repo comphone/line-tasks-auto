@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}ความเคลื่อนไหวล่าสุด{% endblock %}
+
+{% block head_extra %}
+<style>
+    .activity-feed {
+        list-style: none;
+        padding-left: 0;
+    }
+    .activity-item {
+        position: relative;
+        padding: 1rem 1rem 1.5rem 2.5rem;
+        border-left: 2px solid #e9ecef;
+    }
+    .activity-item::before {
+        content: '';
+        position: absolute;
+        left: -9px;
+        top: 1.25rem;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background-color: #fff;
+        border: 2px solid #0d6efd;
+    }
+    .activity-item .activity-icon {
+        position: absolute;
+        left: -17px;
+        top: 1rem;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background-color: #0d6efd;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .activity-item.type-new_task .activity-icon { background-color: #0d6efd; }
+    .activity-item.type-report .activity-icon { background-color: #6c757d; }
+    .activity-item.type-reschedule .activity-icon { background-color: #ffc107; }
+    .activity-item.type-completed .activity-icon { background-color: #198754; }
+
+    .activity-content {
+        font-size: 0.95rem;
+    }
+    .activity-time {
+        font-size: 0.8rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">⏱️ ความเคลื่อนไหวล่าสุด</h1>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <ul class="activity-feed">
+            {% for activity in activities %}
+                <li class="activity-item type-{{ activity.type }}">
+                    <div class="activity-icon">
+                        {% if activity.type == 'new_task' %}
+                            <i class="fas fa-plus"></i>
+                        {% elif activity.type == 'report' %}
+                            <i class="fas fa-edit"></i>
+                        {% elif activity.type == 'reschedule' %}
+                            <i class="fas fa-calendar-alt"></i>
+                        {% elif activity.type == 'completed' %}
+                            <i class="fas fa-check"></i>
+                        {% endif %}
+                    </div>
+                    <div class="activity-content">
+                        {{ activity.description | safe }}
+                        <div class="activity-time">
+                            {{ activity.timestamp.strftime('%d/%m/%Y %H:%M') }}
+                        </div>
+                    </div>
+                </li>
+            {% else %}
+                <li class="text-center text-muted p-5">ไม่พบกิจกรรมล่าสุด</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

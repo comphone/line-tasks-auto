@@ -32,7 +32,9 @@ from app import (
     db, JobItem, BillingStatus,
     find_or_create_drive_folder,
     upload_data_from_memory_to_drive,
-    message_queue
+    message_queue,
+    parse_assigned_technician_from_notes,
+    parse_internal_notes_from_notes 
 )
 
 liff_bp = Blueprint('liff', __name__)
@@ -130,10 +132,14 @@ def summary():
                 parsed_task['customer'] = customer_info
                 parsed_task['is_overdue'] = is_overdue
                 parsed_task['is_today'] = is_today
+                # --- START: ✅ โค้ดที่เพิ่มเข้ามา ---
+                parsed_task['assigned_technician'] = parse_assigned_technician_from_notes(task_item.get('notes', ''))
+                # --- END: ✅ โค้dที่เพิ่มเข้ามา ---
                 final_tasks.append(parsed_task)
 
     final_tasks.sort(key=lambda x: (x.get('status') == 'completed', x.get('due') is None, datetime.datetime.fromisoformat(x.get('due', '9999-12-31T23:59:59Z').replace('Z', '+00:00'))))
-
+    
+    # ... (ส่วน Chart เหมือนเดิม) ...
     monthly_completed = {}
     for i in range(12, -1, -1):
         dt = datetime.datetime.now(THAILAND_TZ) - datetime.timedelta(days=i*30)
@@ -399,7 +405,9 @@ def task_details(task_id):
     
     task['customer'] = parse_customer_info_from_notes(notes)
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
-    
+    task['assigned_technician'] = parse_assigned_technician_from_notes(notes)
+    task['internal_notes'] = parse_internal_notes_from_notes(notes) 
+
     settings = get_app_settings()
     technician_list = settings.get('technician_list', [])
     equipment_catalog = settings.get('equipment_catalog', [])
@@ -758,3 +766,54 @@ def print_invoice(task_id):
                            total_cost_in_words=total_cost_in_words,
                            settings=settings,
                            now=datetime.datetime.now(THAILAND_TZ))
+                           
+@liff_bp.route('/activity_feed')
+def activity_feed():
+    """แสดงหน้าสรุปความเคลื่อนไหวของงานทั้งหมด"""
+    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    activities = []
+
+    for task in tasks_raw:
+        task_id = task.get('id')
+        task_title_safe = task.get('title', 'N/A')
+        customer_name = parse_customer_info_from_notes(task.get('notes', '')).get('name', 'N/A')
+        task_url = url_for('liff.task_details', task_id=task_id)
+
+        # 1. กิจกรรมการสร้างงาน
+        if task.get('created'):
+            activities.append({
+                'timestamp': date_parse(task.get('created')),
+                'type': 'new_task',
+                'description': f'มีการสร้างงานใหม่: <a href="{task_url}"><strong>{task_title_safe}</strong></a> สำหรับลูกค้า <strong>{customer_name}</strong>'
+            })
+            
+        # 2. กิจกรรมการปิดงาน
+        if task.get('status') == 'completed' and task.get('completed'):
+             activities.append({
+                'timestamp': date_parse(task.get('completed')),
+                'type': 'completed',
+                'description': f'ปิดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a> ของลูกค้า <strong>{customer_name}</strong> เรียบร้อยแล้ว'
+            })
+
+        # 3. กิจกรรมจาก Tech Reports
+        history, _ = parse_tech_report_from_notes(task.get('notes', ''))
+        for report in history:
+            report_type = report.get('type', 'report')
+            technicians = ", ".join(report.get('technicians', ['N/A']))
+            
+            description = ""
+            if report_type == 'report':
+                description = f'<strong>{technicians}</strong> ได้เพิ่มรายงานในงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
+            elif report_type == 'reschedule':
+                description = f'<strong>{technicians}</strong> ได้เลื่อนนัดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
+
+            activities.append({
+                'timestamp': date_parse(report.get('summary_date')),
+                'type': report_type,
+                'description': description
+            })
+
+    # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
+    activities.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    return render_template('activity_feed.html', activities=activities[:100]) # แสดง 100 กิจกรรมล่าสุด                           
