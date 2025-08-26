@@ -816,4 +816,4 @@ def activity_feed():
     # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
     activities.sort(key=lambda x: x['timestamp'], reverse=True)
 
-    return render_template('activity_feed.html', activities=activities[:100]) # แสดง 100 กิจกรรมล่าสุด                  
+    return render_template('activity_feed.html', activities=activities[:100])                 
