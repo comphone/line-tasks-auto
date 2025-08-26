@@ -4,7 +4,6 @@
 
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
-{# --- ✅ 1. เพิ่ม Script ที่ขาดหายไป --- #}
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
 <style>
 	/* Styles for the page */
@@ -194,7 +193,7 @@
                     <i class="fas fa-calendar-alt"></i> เลื่อนนัด
                 </button>
                 <button type="button" class="btn btn-success action-btn" onclick="shareInvoice()">
-                    <i class="fas fa-share-alt"></i> แชร์ใบส่งของ/ใบวางบิล
+                    <i class="fas fa-share-alt"></i> แชร์ใบแจ้งหนี้
                 </button>
                 <a href="{{ url_for('liff.generate_customer_onboarding_qr', task_id=task.id) }}" target="_blank" class="btn btn-info action-btn">
                     <i class="fas fa-qrcode"></i> QR Code ลูกค้า
@@ -1332,8 +1331,6 @@
 
 		document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
-            
-            // --- ✅ 2. แก้ไขการเรียกใช้ให้ถูกต้อง ---
             html5QrCode = new Html5Qrcode("qr-reader", { 
                 formatsToSupport: [ 
                     Html5Qrcode.Html5QrcodeSupportedFormats.CODE_128, 
@@ -1381,12 +1378,12 @@
                 const pdfFile = new File([pdfBlob], `Invoice-${taskId}.pdf`, { type: 'application/pdf' });
 
                 await navigator.share({
-                    title: `ใบส่งของ/ใบวางบิลสำหรับงาน #{{ task.id[-6:] }}`,
-                    text: `ใบส่งของ/ใบวางบิลสำหรับคุณ {{ task.customer.name or '-' }}`,
+                    title: `ใบแจ้งหนี้สำหรับงาน #{{ task.id[-6:] }}`,
+                    text: `ใบแจ้งหนี้สำหรับคุณ {{ task.customer.name or '-' }}`,
                     files: [pdfFile]
                 });
                 
-                Swal.fire('แชร์สำเร็จ!', 'แชร์ใบส่งของ/ใบวางบิลเรียบร้อยแล้ว', 'success');
+                Swal.fire('แชร์สำเร็จ!', 'แชร์ใบแจ้งหนี้เรียบร้อยแล้ว', 'success');
             } catch (error) {
                 console.error('Web Share API Error:', error);
                 Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถแชร์ไฟล์ได้: ' + error.message, 'error');
@@ -1399,7 +1396,7 @@
             
             const flexMessage = {
                 type: 'flex',
-                altText: `ใบส่งของ/ใบวางบิลสำหรับคุณ ${customerName}`,
+                altText: `ใบแจ้งหนี้สำหรับคุณ ${customerName}`,
                 contents: {
                     type: 'bubble',
                     header: {
@@ -1407,7 +1404,7 @@
                         layout: 'vertical',
                         contents: [{
                             type: 'text',
-                            text: 'ใบส่งของ/ใบวางบิล',
+                            text: 'ใบแจ้งค่าบริการ',
                             weight: 'bold',
                             color: '#FFFFFF',
                             size: 'lg'
@@ -1438,7 +1435,7 @@
                         layout: 'vertical',
                         contents: [{
                             type: 'button',
-                            action: { type: 'uri', label: 'ดู/ดาวน์โหลดเอกสาร (PDF)', uri: pdfUrl },
+                            action: { type: 'uri', label: 'ดู/ดาวน์โหลดใบแจ้งหนี้ (PDF)', uri: pdfUrl },
                             style: 'primary',
                             height: 'sm',
                             color: '#198754'
@@ -1449,7 +1446,7 @@
             try {
                 const result = await liff.shareTargetPicker([flexMessage]);
                 if (result) {
-                    Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบส่งของ/ใบวางบิลใน LINE เรียบร้อยแล้ว', 'success');
+                    Swal.fire('แชร์สำเร็จ!', 'ส่งสรุปใบแจ้งหนี้ใน LINE เรียบร้อยแล้ว', 'success');
                 } else {
                     console.log('ShareTargetPicker was cancelled by the user');
                 }
@@ -1459,7 +1456,7 @@
             }
         } 
         else {
-            Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์โดยตรง', 'warning');
+            Swal.fire('ไม่รองรับ', 'อุปกรณ์ของคุณไม่รองรับการแชร์ใบแจ้งหนี้โดยตรง', 'warning');
         }
     }
 </script>
