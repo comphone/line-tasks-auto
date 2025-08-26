@@ -20,7 +20,9 @@
     .info-value.value-large { font-size: 1.25em; font-weight: 700; }
     .info-value.value-medium { font-size: 1.2em; font-weight: 600; }
     .info-value.value-small { font-size: 0.9em; }
-    .history-entry { background-color: #f8f9fa; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
+    .history-entry { background-color: #fff; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
+    /* --- NEW: Style for internal notes --- */
+    .history-entry.internal-note { background-color: #f8f9fa; border-left-color: #6c757d; }
     .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
     .history-entry-subheader { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
     .history-entry-title { font-weight: 600; }
@@ -198,33 +200,6 @@
 		</div>
 	</div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
-            <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>บันทึกภายใน (สำหรับทีมงาน)</h5>
-        </div>
-        <div class="card-body">
-            <div class="mb-3">
-                <textarea class="form-control" id="internal-note-textarea" rows="3" placeholder="พิมพ์ข้อความถึงช่างที่นี่..."></textarea>
-            </div>
-            <button class="btn btn-secondary w-100" id="add-internal-note-btn">
-                <i class="fas fa-plus me-2"></i>เพิ่มบันทึก
-            </button>
-            <hr>
-            <div id="internal-notes-list">
-                {% if task.internal_notes %}
-                    {% for note in task.internal_notes %}
-                        <div class="alert alert-secondary">
-                            <p class="mb-1">{{ note.text | replace('\n', '<br>') | safe }}</p>
-                            <small class="text-muted">โดย: {{ note.user }} - {{ (note.timestamp | dateutil_parse).strftime('%d/%m/%y %H:%M') }}</small>
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="text-muted text-center" id="no-internal-notes">ยังไม่มีบันทึกภายใน</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
     <div class="card shadow-sm mb-4" id="chooseActionCard">
         <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
@@ -309,6 +284,10 @@
                     </div>
                 </div>
 
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" role="switch" id="is_internal_note_final" name="is_internal_note">
+                    <label class="form-check-label" for="is_internal_note_final">บันทึกเป็นโน้ตภายใน (สำหรับทีมงานเท่านั้น)</label>
+                </div>
                 <hr>
                 <div class="d-flex align-items-center">
                     <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
@@ -411,6 +390,10 @@
                         <div id="upload-progress-container-progress" class="upload-progress-container mt-2"></div>
                     </div>
 
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="is_internal_note_progress" name="is_internal_note">
+                        <label class="form-check-label" for="is_internal_note_progress">บันทึกเป็นโน้ตภายใน (สำหรับทีมงานเท่านั้น)</label>
+                    </div>
                     <div class="d-flex align-items-center">
                         <button type="submit" id="saveProgressBtn" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
                     </div>
@@ -447,6 +430,7 @@
     </div>
 </div>
 
+{# ... Modals (lightbox, technician-action-sheet, etc.) remain unchanged ... #}
 <div id="lightboxModal" class="lightbox">
     <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
     <button class="btn btn-light" id="lightbox-share-btn" title="แชร์รูปภาพ">
@@ -1051,7 +1035,10 @@
         }
         techReportsHistory.forEach((report, index) => {
             const entry = document.createElement('div');
-            entry.className = 'history-entry';
+            // --- START: โค้ดที่แก้ไข ---
+            const isInternal = report.is_internal === true;
+            entry.className = `history-entry ${isInternal ? 'internal-note' : ''}`;
+            // --- END: โค้ดที่แก้ไข ---
             entry.id = `history-entry-${index}`;
 
             let imageGalleryHtml = '';
@@ -1091,12 +1078,21 @@
                     </ul>
                 </div>`;
 
+            // --- START: โค้ดที่แก้ไข ---
+            let titleHtml;
+            if (isInternal) {
+                titleHtml = '<i class="fas fa-lock me-2"></i>บันทึกภายใน';
+            } else if (report.type === 'reschedule') {
+                titleHtml = '<i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย';
+            } else {
+                titleHtml = '<i class="fas fa-wrench me-2"></i>รายงานความคืบหน้า';
+            }
+            // --- END: โค้ดที่แก้ไข ---
+
             entry.innerHTML = `
                 <div class="history-entry-header">
                     <div class="d-flex align-items-center">
-                        <span class="history-entry-title">
-                            <i class="fas fa-wrench me-2"></i>${report.type === 'reschedule' ? 'เลื่อนนัดหมาย' : 'รายงานความคืบหน้า'}
-                        </span>
+                        <span class="history-entry-title">${titleHtml}</span>
                         ${shareButtonHtml}
                     </div>
                     ${dropdownMenu}
@@ -1114,6 +1110,7 @@
         });
     }
 
+    // ... (ส่วนที่เหลือของ JavaScript เหมือนเดิมทั้งหมด) ...
     document.getElementById('lightbox-share-btn').addEventListener('click', async () => {
         if (!currentLightboxImages[slideIndex]) return;
         

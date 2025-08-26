@@ -33,8 +33,7 @@ from app import (
     find_or_create_drive_folder,
     upload_data_from_memory_to_drive,
     message_queue,
-    parse_assigned_technician_from_notes,
-    parse_internal_notes_from_notes 
+    parse_assigned_technician_from_notes
 )
 
 liff_bp = Blueprint('liff', __name__)
@@ -406,7 +405,6 @@ def task_details(task_id):
     task['customer'] = parse_customer_info_from_notes(notes)
     task['tech_reports_history'], _ = parse_tech_report_from_notes(notes)
     task['assigned_technician'] = parse_assigned_technician_from_notes(notes)
-    task['internal_notes'] = parse_internal_notes_from_notes(notes) 
 
     settings = get_app_settings()
     technician_list = settings.get('technician_list', [])
@@ -769,8 +767,10 @@ def print_invoice(task_id):
                            
 @liff_bp.route('/activity_feed')
 def activity_feed():
-    """แสดงหน้าสรุปความเคลื่อนไหวของงานทั้งหมด (แก้ไข TypeError)"""
+    """แสดงหน้าสรุปความเคลื่อนไหวของงานทั้งหมด (เวอร์ชันปรับปรุง)"""
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    settings = get_app_settings()
+    technician_list = settings.get('technician_list', [])
     activities = []
 
     for task in tasks_raw:
@@ -781,51 +781,58 @@ def activity_feed():
 
         # 1. กิจกรรมการสร้างงาน
         if task.get('created'):
-            # แปลงเวลาให้เป็น aware datetime
             created_dt = date_parse(task.get('created'))
-            if created_dt.tzinfo is None:
-                created_dt = THAILAND_TZ.localize(created_dt) # ทำให้เป็น aware
             activities.append({
-                'timestamp': created_dt, # <--- ใช้เวลาที่แปลงแล้ว
+                'timestamp': created_dt.astimezone(THAILAND_TZ),
                 'type': 'new_task',
-                'description': f'มีการสร้างงานใหม่: <a href="{task_url}"><strong>{task_title_safe}</strong></a> สำหรับลูกค้า <strong>{customer_name}</strong>'
+                'description': f'สร้างงานใหม่: <a href="{task_url}"><strong>{task_title_safe}</strong></a> สำหรับลูกค้า <strong>{customer_name}</strong>',
+                'technician': 'System',
+                'customer': customer_name
             })
             
         # 2. กิจกรรมการปิดงาน
         if task.get('status') == 'completed' and task.get('completed'):
-            # แปลงเวลาให้เป็น aware datetime
             completed_dt = date_parse(task.get('completed'))
-            if completed_dt.tzinfo is None:
-                completed_dt = THAILAND_TZ.localize(completed_dt) # ทำให้เป็น aware
             activities.append({
-                'timestamp': completed_dt, # <--- ใช้เวลาที่แปลงแล้ว
+                'timestamp': completed_dt.astimezone(THAILAND_TZ),
                 'type': 'completed',
-                'description': f'ปิดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a> ของลูกค้า <strong>{customer_name}</strong> เรียบร้อยแล้ว'
+                'description': f'ปิดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a> ของลูกค้า <strong>{customer_name}</strong> เรียบร้อยแล้ว',
+                'technician': 'System',
+                'customer': customer_name
             })
 
         # 3. กิจกรรมจาก Tech Reports
         history, _ = parse_tech_report_from_notes(task.get('notes', ''))
         for report in history:
-            report_type = report.get('type', 'report')
-            technicians = ", ".join(report.get('technicians', ['N/A']))
+            report_type = 'internal_note' if report.get('is_internal') else report.get('type', 'report')
+            technicians = report.get('technicians', ['N/A'])
             
             description = ""
             if report_type == 'report':
-                description = f'<strong>{technicians}</strong> ได้เพิ่มรายงานในงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
+                description = f'ได้เพิ่มรายงานในงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
+            elif report_type == 'internal_note':
+                 description = f'ได้เพิ่มบันทึกภายในถึงทีมงานเกี่ยวกับงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
             elif report_type == 'reschedule':
-                description = f'<strong>{technicians}</strong> ได้เลื่อนนัดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
+                description = f'ได้เลื่อนนัดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
 
-            # แปลงเวลาให้เป็น aware datetime
             report_dt = date_parse(report.get('summary_date'))
+            
+            # ทำให้เป็น aware datetime เสมอ
             if report_dt.tzinfo is None:
-                report_dt = THAILAND_TZ.localize(report_dt) # ทำให้เป็น aware
-            activities.append({
-                'timestamp': report_dt, # <--- ใช้เวลาที่แปลงแล้ว
-                'type': report_type,
-                'description': description
-            })
+                report_dt = THAILAND_TZ.localize(report_dt)
+            else:
+                report_dt = report_dt.astimezone(THAILAND_TZ)
 
-    # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า (ตอนนี้จะไม่มี Error แล้ว)
+            for tech_name in technicians:
+                 activities.append({
+                    'timestamp': report_dt,
+                    'type': report_type,
+                    'description': description,
+                    'technician': tech_name,
+                    'customer': customer_name
+                })
+
+    # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
     activities.sort(key=lambda x: x['timestamp'], reverse=True)
 
-    return render_template('activity_feed.html', activities=activities[:100])           
+    return render_template('activity_feed.html', activities=activities, technician_list=technician_list)

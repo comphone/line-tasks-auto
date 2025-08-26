@@ -811,6 +811,10 @@ def api_update_task(task_id):
 
         if action in ['save_report', 'complete_task', 'reschedule_task']:
             report_data = {'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat()}
+
+            is_internal_note = request.form.get('is_internal_note') == 'on'
+            if is_internal_note:
+                report_data['is_internal'] = True
             
             if action == 'reschedule_task':
                 reschedule_due_str = str(request.form.get('reschedule_due', '')).strip()
