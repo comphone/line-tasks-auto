@@ -556,14 +556,14 @@
             scannerContainer.style.display = 'none';
         };
 
-		document.getElementById('scan-barcode-btn').addEventListener('click', () => {
+        document.getElementById('scan-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
             if (!html5QrCode) {
                 html5QrCode = new Html5Qrcode("qr-reader", { 
                     formatsToSupport: [ 
-                        Html5Qrcode.Html5QrcodeSupportedFormats.CODE_128, 
-                        Html5Qrcode.Html5QrcodeSupportedFormats.EAN_13, 
-                        Html5Qrcode.Html5QrcodeSupportedFormats.QR_CODE 
+                        "CODE_128", 
+                        "EAN_13", 
+                        "QR_CODE" 
                     ] 
                 });
             }

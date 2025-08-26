@@ -1326,13 +1326,13 @@
             scannerContainer.style.display = 'none';
         };
 
-		document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
+        document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
             scannerContainer.style.display = 'flex';
             html5QrCode = new Html5Qrcode("qr-reader", { 
                 formatsToSupport: [ 
-                    Html5Qrcode.Html5QrcodeSupportedFormats.CODE_128, 
-                    Html5Qrcode.Html5QrcodeSupportedFormats.EAN_13, 
-                    Html5Qrcode.Html5QrcodeSupportedFormats.QR_CODE 
+                    "CODE_128", 
+                    "EAN_13", 
+                    "QR_CODE" 
                 ] 
             });
             
