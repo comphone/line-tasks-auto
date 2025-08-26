@@ -10,6 +10,7 @@
     .stock-value { min-width: 50px; text-align: center; font-size: 1.1em; font-weight: 500; }
     .category-badge { font-size: 0.8em; }
     
+    /* NEW: Image Search Styles */
     #image-search-results {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
@@ -293,7 +294,7 @@
                 }
             });
         }
-        
+
         async function loadCategories() {
             try {
                 const response = await fetch('/api/settings/categories');
@@ -586,6 +587,7 @@
         editModalEl.addEventListener('hidden.bs.modal', stopScanner);
         
         loadCategories();
+        setupSpeechRecognition('start-recognition-item-name', 'edit-item-name');
     });
 </script>
 {% endblock %}
