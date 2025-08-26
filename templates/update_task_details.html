@@ -1328,29 +1328,27 @@
 
     document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
         scannerContainer.style.display = 'flex';
-        // ใช้ config เดียวกันกับหน้าจัดการสินค้า
         if (!html5QrCode) {
+             // ปรับปรุงการสร้าง object
             html5QrCode = new Html5Qrcode("qr-reader", false);
         }
-
-        const scannerConfig = {
-            fps: 10,
-            qrbox: { width: 250, height: 150 },
+        
+        // ใช้ config แบบเดียวกับหน้าจัดการสินค้าเพื่อมาตรฐานเดียวกัน
+        const config = {
+            fps: 15,
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                const qrboxSize = Math.floor(minEdge * 0.7);
+                return { width: qrboxSize, height: qrboxSize };
+            },
             rememberLastUsedCamera: true,
-        };
-        const cameraConfig = {
-            facingMode: "environment",
-            videoConstraints: {
-                width: { min: 640, ideal: 1280, max: 1920 },
-                height: { min: 480, ideal: 720, max: 1080 },
-                focusMode: 'continuous'
-            }
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         };
 
         setTimeout(() => {
             html5QrCode.start(
-                cameraConfig,
-                scannerConfig,
+                { facingMode: "environment" },
+                config,
                 (decodedText) => {
                     const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
                     if (foundItem) {
@@ -1364,8 +1362,9 @@
                     stopScanner();
                 },
                 (errorMessage) => { /* ไม่ต้องทำอะไร */ }
-            ).catch(() => {
-                alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
+            ).catch((err) => {
+                console.error(`Unable to start scanning, error: ${err}`);
+                alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบว่าได้ให้สิทธิ์การเข้าถึงกล้องในเบราว์เซอร์แล้ว");
                 stopScanner();
             });
         }, 500);
