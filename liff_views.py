@@ -781,16 +781,24 @@ def activity_feed():
 
         # 1. กิจกรรมการสร้างงาน
         if task.get('created'):
+            # แปลงเวลาให้เป็น aware datetime
+            created_dt = date_parse(task.get('created'))
+            if created_dt.tzinfo is None:
+                created_dt = THAILAND_TZ.localize(created_dt) # ทำให้เป็น aware
             activities.append({
-                'timestamp': date_parse(task.get('created')),
+                'timestamp': created_dt, # <--- ใช้เวลาที่แปลงแล้ว
                 'type': 'new_task',
                 'description': f'มีการสร้างงานใหม่: <a href="{task_url}"><strong>{task_title_safe}</strong></a> สำหรับลูกค้า <strong>{customer_name}</strong>'
             })
             
         # 2. กิจกรรมการปิดงาน
         if task.get('status') == 'completed' and task.get('completed'):
-             activities.append({
-                'timestamp': date_parse(task.get('completed')),
+            # แปลงเวลาให้เป็น aware datetime
+            completed_dt = date_parse(task.get('completed'))
+            if completed_dt.tzinfo is None:
+                completed_dt = THAILAND_TZ.localize(completed_dt) # ทำให้เป็น aware
+            activities.append({
+                'timestamp': completed_dt, # <--- ใช้เวลาที่แปลงแล้ว
                 'type': 'completed',
                 'description': f'ปิดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a> ของลูกค้า <strong>{customer_name}</strong> เรียบร้อยแล้ว'
             })
@@ -807,13 +815,17 @@ def activity_feed():
             elif report_type == 'reschedule':
                 description = f'<strong>{technicians}</strong> ได้เลื่อนนัดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
 
+            # แปลงเวลาให้เป็น aware datetime
+            report_dt = date_parse(report.get('summary_date'))
+            if report_dt.tzinfo is None:
+                report_dt = THAILAND_TZ.localize(report_dt) # ทำให้เป็น aware
             activities.append({
-                'timestamp': date_parse(report.get('summary_date')),
+                'timestamp': report_dt, # <--- ใช้เวลาที่แปลงแล้ว
                 'type': report_type,
                 'description': description
             })
 
-    # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
+    # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า (ตอนนี้จะไม่มี Error แล้ว)
     activities.sort(key=lambda x: x['timestamp'], reverse=True)
 
-    return render_template('activity_feed.html', activities=activities[:100])                 
+    return render_template('activity_feed.html', activities=activities[:100])           
