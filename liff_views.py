@@ -769,9 +769,10 @@ def print_invoice(task_id):
                            
 @liff_bp.route('/activity_feed')
 def activity_feed():
-    """แสดงหน้าสรุปความเคลื่อนไหวของงานทั้งหมด"""
+    """แสดงหน้าสรุปความเคลื่อนไหวของงานทั้งหมด (แก้ไข TypeError)"""
     tasks_raw = get_google_tasks_for_report(show_completed=True) or []
     activities = []
+    utc_tz = pytz.utc
 
     for task in tasks_raw:
         task_id = task.get('id')
@@ -779,15 +780,15 @@ def activity_feed():
         customer_name = parse_customer_info_from_notes(task.get('notes', '')).get('name', 'N/A')
         task_url = url_for('liff.task_details', task_id=task_id)
 
-        # 1. กิจกรรมการสร้างงาน
+        # --- START: ✅✅✅ แก้ไขการจัดการ Timestamp ---
         if task.get('created'):
+            # Google's timestamp is already timezone-aware (UTC)
             activities.append({
                 'timestamp': date_parse(task.get('created')),
                 'type': 'new_task',
                 'description': f'มีการสร้างงานใหม่: <a href="{task_url}"><strong>{task_title_safe}</strong></a> สำหรับลูกค้า <strong>{customer_name}</strong>'
             })
             
-        # 2. กิจกรรมการปิดงาน
         if task.get('status') == 'completed' and task.get('completed'):
              activities.append({
                 'timestamp': date_parse(task.get('completed')),
@@ -795,7 +796,6 @@ def activity_feed():
                 'description': f'ปิดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a> ของลูกค้า <strong>{customer_name}</strong> เรียบร้อยแล้ว'
             })
 
-        # 3. กิจกรรมจาก Tech Reports
         history, _ = parse_tech_report_from_notes(task.get('notes', ''))
         for report in history:
             report_type = report.get('type', 'report')
@@ -807,13 +807,15 @@ def activity_feed():
             elif report_type == 'reschedule':
                 description = f'<strong>{technicians}</strong> ได้เลื่อนนัดงาน <a href="{task_url}"><strong>{task_title_safe}</strong></a>'
 
+            # Report timestamp is created with timezone, so it's aware
             activities.append({
                 'timestamp': date_parse(report.get('summary_date')),
                 'type': report_type,
                 'description': description
             })
+        # --- END: ✅✅✅ แก้ไขการจัดการ Timestamp ---
 
     # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
     activities.sort(key=lambda x: x['timestamp'], reverse=True)
 
-    return render_template('activity_feed.html', activities=activities[:100]) # แสดง 100 กิจกรรมล่าสุด                           
+    return render_template('activity_feed.html', activities=activities[:100])                       

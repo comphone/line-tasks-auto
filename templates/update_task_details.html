@@ -215,8 +215,8 @@
                     {% for note in task.internal_notes %}
                         <div class="alert alert-secondary">
                             <p class="mb-1">{{ note.text | replace('\n', '<br>') | safe }}</p>
-                            <small class="text-muted">โดย: {{ note.user }} - {{ note.timestamp | dateutil_parse | strftime('%d/%m/%y %H:%M') }}</small>
-                        </div>
+                            <small class="text-muted">โดย: {{ note.user }} - {{ (note.timestamp | dateutil_parse).strftime('%d/%m/%y %H:%M') }}</small>
+                            </div>
                     {% endfor %}
                 {% else %}
                     <p class="text-muted text-center" id="no-internal-notes">ยังไม่มีบันทึกภายใน</p>
