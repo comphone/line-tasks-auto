@@ -1319,44 +1319,57 @@
         const itemAddModalEl = document.getElementById('addItemModal');
         const closeScannerBtn = document.getElementById('close-scanner-btn');
 
-        const stopScanner = () => {
-            if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
+    const stopScanner = () => {
+        if (html5QrCode && html5QrCode.isScanning) {
+            html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
+        }
+        scannerContainer.style.display = 'none';
+    };
+
+    document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
+        scannerContainer.style.display = 'flex';
+        // ใช้ config เดียวกันกับหน้าจัดการสินค้า
+        if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode("qr-reader", false);
+        }
+
+        const scannerConfig = {
+            fps: 10,
+            qrbox: { width: 250, height: 150 },
+            rememberLastUsedCamera: true,
+        };
+        const cameraConfig = {
+            facingMode: "environment",
+            videoConstraints: {
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 },
+                focusMode: 'continuous'
             }
-            scannerContainer.style.display = 'none';
         };
 
-        document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
-            scannerContainer.style.display = 'flex';
-            html5QrCode = new Html5Qrcode("qr-reader", { 
-                formatsToSupport: [ 
-                    "CODE_128", 
-                    "EAN_13", 
-                    "QR_CODE" 
-                ] 
-            });
-            
-            setTimeout(() => {
-                html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
-                    (decodedText) => {
-                        const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
-                        if (foundItem) {
-                            document.getElementById('item-name-input').value = foundItem.item_name;
-                            document.getElementById('item-price-input').value = foundItem.price;
-                            flashMessage(`พบสินค้า: ${foundItem.item_name}`, 'success');
-                        } else {
-                            document.getElementById('item-name-input').value = decodedText;
-                            flashMessage(`ไม่พบรหัส ${decodedText} ในแคตตาล็อก`, 'warning');
-                        }
-                        stopScanner();
-                    },
-                    (errorMessage) => { /* ignore parse errors */ }
-                ).catch(() => {
-                    alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
+        setTimeout(() => {
+            html5QrCode.start(
+                cameraConfig,
+                scannerConfig,
+                (decodedText) => {
+                    const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
+                    if (foundItem) {
+                        document.getElementById('item-name-input').value = foundItem.item_name;
+                        document.getElementById('item-price-input').value = foundItem.price;
+                        flashMessage(`พบสินค้า: ${foundItem.item_name}`, 'success');
+                    } else {
+                        document.getElementById('item-name-input').value = decodedText;
+                        flashMessage(`ไม่พบรหัส ${decodedText} ในแคตตาล็อก`, 'warning');
+                    }
                     stopScanner();
-                });
-            }, 500);
-        });
+                },
+                (errorMessage) => { /* ไม่ต้องทำอะไร */ }
+            ).catch(() => {
+                alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบการอนุญาต");
+                stopScanner();
+            });
+        }, 500);
+    });
 
         document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
         itemAddModalEl.addEventListener('hidden.bs.modal', stopScanner);
