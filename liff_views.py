@@ -4,6 +4,7 @@ import datetime
 import pytz
 import base64
 import json
+from itertools import groupby
 from datetime import timedelta
 from flask import (
     Blueprint, render_template, request, url_for, abort, jsonify,
@@ -833,12 +834,17 @@ def activity_feed():
                     'customer': customer_name
                 })
 
-    # เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
+    # 1. เรียงลำดับกิจกรรมทั้งหมดจากใหม่ไปเก่า
     activities.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    # 2. จัดกลุ่มกิจกรรมตามวัน โดยใช้ groupby จาก Python
+    grouped_activities = []
+    for date, items in groupby(activities, key=lambda x: x['timestamp'].date()):
+        grouped_activities.append((date, list(items)))
 
     return render_template(
         'activity_feed.html', 
-        activities=activities, 
+        grouped_activities=grouped_activities,
         technician_list=technician_list,
-        timedelta=timedelta  # <--- เพิ่มตัวแปรนี้เข้าไป
+        timedelta=timedelta
     )
