@@ -173,12 +173,16 @@ def update_google_task(task_id, **kwargs):
             current_app.logger.error(f"Task {task_id} not found for update.")
             return None
         
+        # อัปเดตข้อมูลทั้งหมดที่ส่งเข้ามาผ่าน kwargs
         task.update(kwargs)
 
+        # จัดการสถานะ 'completed' เป็นพิเศษ
         if kwargs.get('status') == 'completed' and 'completed' not in task:
              task['completed'] = datetime.now(pytz.utc).isoformat().replace('+00:00', 'Z')
+             # เมื่องานเสร็จสิ้นแล้ว ให้ลบวันนัดหมายออกไป
              task.pop('due', None)
         elif kwargs.get('status') == 'needsAction':
+             # ถ้าสถานะเปลี่ยนกลับเป็น "ยังไม่เสร็จ" ให้ลบวันที่เสร็จสิ้นออก
              task.pop('completed', None)
 
         return _execute_google_api_call_with_retry(
