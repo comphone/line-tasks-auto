@@ -955,13 +955,11 @@ def api_update_job_report(customer_task_id, job_id):
         new_attachments_json = request.form.get('uploaded_attachments_json')
         new_attachments = json.loads(new_attachments_json) if new_attachments_json else []
         
-        # ดึง technician_line_user_id ถ้ามี
         liff_user_id = request.form.get('technician_line_user_id')
 
         flash_message = "อัปเดตข้อมูลเรียบร้อยแล้ว"
         report_data = {'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat()}
         
-        # ตรวจสอบค่าจาก checkbox is_internal_note (มีเฉพาะใน progressReportForm และ finalReportCard)
         is_internal_note = request.form.get('is_internal_note') == 'on'
         
         technicians_report = request.form.get('technicians_report', '')
@@ -979,10 +977,12 @@ def api_update_job_report(customer_task_id, job_id):
                 'liff_user_id': liff_user_id
             })
         elif action == 'reschedule_task':
-            new_due_str = request.form.get('reschedule_due')
-            if new_due_str:
-                dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
-                job_to_update['due_date'] = dt_local.astimezone(pytz.utc).isoformat()
+                    new_due_str = request.form.get('reschedule_due')
+                    new_due_date = None
+                    if new_due_str:
+                        dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
+                        new_due_date = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+                        job_to_update['due_date'] = new_due_date
             
             flash_message = 'เลื่อนนัดเรียบร้อยแล้ว'
             report_data.update({
@@ -1008,19 +1008,22 @@ def api_update_job_report(customer_task_id, job_id):
             job_to_update['reports'] = []
         job_to_update['reports'].append(report_data)
 
-        # อัปเดต assigned_technician ในโปรไฟล์หลักจาก report ล่าสุด
         if technicians:
             profile_data['assigned_technician'] = ", ".join(technicians)
         
+        # Truncate notes if they are too long
         final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
-        
+        if len(final_notes.encode('utf-8')) > 8000: # Leave some buffer
+            # Remove the oldest report until the notes are small enough
+            while len(final_notes.encode('utf-8')) > 8000 and job_to_update['reports']:
+                job_to_update['reports'].pop(0)
+                final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
+
+
         if update_google_task(customer_task_id, notes=final_notes):
             cache.clear()
-            # ส่งแจ้งเตือนถ้าเป็นการปิดงาน
             if action == 'complete_task':
-                # ใช้ customer_task_id ในการส่งแจ้งเตือน
-                # send_completion_notification(task_raw, technicians, new_attachments) 
-                pass # NOTE: ตัดส่วนนี้ออกชั่วคราวเพื่อรอการปรับปรุงระบบแจ้งเตือน
+                pass 
             
             return jsonify({'status': 'success', 'message': flash_message})
         else:
