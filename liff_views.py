@@ -188,14 +188,13 @@ def job_details(customer_task_id, job_id):
     
 @liff_bp.route('/api/customer/<customer_task_id>/job/<job_id>/update', methods=['POST'])
 def api_update_job_report(customer_task_id, job_id):
-    """(ฟังก์ชันใหม่) รับข้อมูลอัปเดตจากฟอร์มสำหรับใบงานย่อย (Job Order)"""
+    """(เวอร์ชันแก้ไขสมบูรณ์) API สำหรับอัปเดตข้อมูลในใบงานย่อย (Job Order)"""
     try:
         task_raw = get_single_task(customer_task_id)
         if not task_raw:
             return jsonify({'status': 'error', 'message': 'ไม่พบโปรไฟล์ลูกค้า'}), 404
 
         profile_data = parse_customer_profile_from_task(task_raw)
-        
         job_to_update = next((job for job in profile_data.get('jobs', []) if job.get('job_id') == job_id), None)
         if not job_to_update:
             return jsonify({'status': 'error', 'message': 'ไม่พบใบงานที่ต้องการอัปเดต'}), 404
@@ -203,12 +202,10 @@ def api_update_job_report(customer_task_id, job_id):
         action = request.form.get('action')
         new_attachments_json = request.form.get('uploaded_attachments_json')
         new_attachments = json.loads(new_attachments_json) if new_attachments_json else []
-        
         liff_user_id = request.form.get('technician_line_user_id')
 
         flash_message = "อัปเดตข้อมูลเรียบร้อยแล้ว"
         report_data = {'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat()}
-        
         is_internal_note = request.form.get('is_internal_note') == 'on'
         
         technicians_report_str = request.form.get('technicians_report', '')
@@ -219,44 +216,53 @@ def api_update_job_report(customer_task_id, job_id):
             tech_info = next((tech for tech in settings.get('technician_list', []) if tech.get('line_user_id') == liff_user_id), None)
             if tech_info:
                 technicians = [tech_info['name']]
-
         if not technicians:
-             technicians = ["ไม่ระบุชื่อ"]
+            technicians = ["ไม่ระบุชื่อ"]
+
+        # --- START: ✅ โค้ดที่แก้ไข ---
+        # ตัวแปรสำหรับส่งไปอัปเดต Google Task โดยตรง
+        task_update_kwargs = {}
 
         if action == 'complete_task':
             job_to_update['status'] = 'completed'
             job_to_update['completed_date'] = datetime.datetime.now(pytz.utc).isoformat()
             flash_message = 'ปิดงานสำเร็จ!'
+            
+            # ตรวจสอบว่าทุก Job ในโปรไฟล์เสร็จสิ้นแล้วหรือยัง
+            all_jobs_completed = all(j.get('status') == 'completed' for j in profile_data.get('jobs', []))
+            if all_jobs_completed:
+                task_update_kwargs['status'] = 'completed'
+                flash_message += ' (งานหลักถูกปิดแล้ว)'
+
             report_data.update({
                 'type': 'report',
                 'work_summary': str(request.form.get('work_summary', '')).strip(),
-                'technicians': technicians,
-                'is_internal': is_internal_note,
-                'liff_user_id': liff_user_id
+                'technicians': technicians, 'is_internal': is_internal_note, 'liff_user_id': liff_user_id
             })
+
         elif action == 'reschedule_task':
             new_due_str = request.form.get('reschedule_due')
             if new_due_str:
                 dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
-                job_to_update['due_date'] = dt_local.astimezone(pytz.utc).isoformat()
+                utc_due_date = dt_local.astimezone(pytz.utc).isoformat()
+                job_to_update['due_date'] = utc_due_date
+                task_update_kwargs['due'] = utc_due_date.replace('+00:00', 'Z')
             
             flash_message = 'เลื่อนนัดเรียบร้อยแล้ว'
             report_data.update({
                 'type': 'reschedule',
                 'reason': str(request.form.get('reschedule_reason', '')).strip(),
-                'technicians': technicians,
-                'is_internal': is_internal_note,
-                'liff_user_id': liff_user_id
+                'technicians': technicians, 'is_internal': is_internal_note, 'liff_user_id': liff_user_id
             })
+
         elif action == 'save_report':
-             flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
-             report_data.update({
+            flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
+            report_data.update({
                 'type': 'report',
                 'work_summary': str(request.form.get('work_summary', '')).strip(),
-                'technicians': technicians,
-                'is_internal': is_internal_note,
-                'liff_user_id': liff_user_id
+                'technicians': technicians, 'is_internal': is_internal_note, 'liff_user_id': liff_user_id
             })
+        # --- END: ✅ โค้ดที่แก้ไข ---
         
         report_data['attachments'] = new_attachments
         
@@ -273,20 +279,20 @@ def api_update_job_report(customer_task_id, job_id):
             while len(final_notes.encode('utf-8')) > 8000 and job_to_update.get('reports'):
                 job_to_update['reports'].pop(0)
                 final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
-
-        if update_google_task(customer_task_id, notes=final_notes):
+        
+        # --- START: ✅ โค้ดที่แก้ไข ---
+        # ส่ง notes และ kwargs อื่นๆ (status, due) ไปพร้อมกัน
+        if update_google_task(customer_task_id, notes=final_notes, **task_update_kwargs):
+        # --- END: ✅ โค้ดที่แก้ไข ---
             cache.clear()
-            if action == 'complete_task':
-                #  send_completion_notification(task_raw, technicians, new_attachments) # สามารถเปิดใช้งานส่วนแจ้งเตือนได้ที่นี่
-                pass
-            
+            # ... (ส่วนแจ้งเตือน)
             return jsonify({'status': 'success', 'message': flash_message})
         else:
             return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลลง Google Tasks'}), 500
 
     except Exception as e:
         current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500    
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500  
 
 @liff_bp.route('/summary/print')
 def summary_print():
