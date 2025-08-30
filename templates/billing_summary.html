@@ -4,22 +4,35 @@
 
 {% block head_extra %}
 <style>
+    /* --- START: ✅ CSS ที่ปรับปรุงใหม่ --- */
     .kanban-board { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem; }
-    .kanban-column { flex: 1 0 300px; min-width: 300px; background-color: #f4f5f7; border-radius: 0.5rem; }
-    .kanban-column-header { padding: 1rem; font-weight: 600; border-bottom: 3px solid transparent; display: flex; justify-content: space-between; }
+    .kanban-column { flex: 1 0 320px; min-width: 320px; background-color: #f4f5f7; border-radius: 0.5rem; }
+    .kanban-column-header { padding: 0.75rem 1rem; font-weight: 600; border-bottom: 3px solid transparent; display: flex; justify-content: space-between; align-items: center; }
     .kanban-column-header.pending_billing { border-color: #ffc107; }
     .kanban-column-header.billed { border-color: #0dcaf0; }
     .kanban-column-header.overdue { border-color: #dc3545; }
     .kanban-column-header.paid { border-color: #198754; }
     .kanban-cards { min-height: 400px; padding: 0.5rem; }
-    .kanban-card { background-color: #fff; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 0.75rem; cursor: grab; border-left: 5px solid #6c757d; position: relative; }
-    .kanban-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+
+    /* ปรับขนาดการ์ดให้กระชับขึ้น */
+    .kanban-card { 
+        background-color: #fff; 
+        border-radius: 0.5rem; 
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
+        padding: 0.75rem; 
+        margin-bottom: 0.75rem; 
+        cursor: grab; 
+        border-left: 5px solid #6c757d; 
+        position: relative; 
+    }
+    .kanban-card:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     .kanban-card.is-overdue { border-left-color: #dc3545; background-color: #fff5f5; }
-    .kanban-card .card-title { font-size: 1rem; font-weight: 600; }
-    .kanban-card .card-customer { font-size: 0.9rem; color: #6c757d; }
-    .kanban-card .card-amount { font-size: 1.25rem; font-weight: 700; color: #198754; }
-    .kanban-card .card-date { font-size: 0.8rem; color: #adb5bd; }
+    .kanban-card .card-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .kanban-card .card-customer { font-size: 0.85rem; color: #6c757d; margin-bottom: 0.5rem; }
+    .kanban-card .card-amount { font-size: 1.1rem; font-weight: 700; color: #198754; }
+    .kanban-card .card-date { font-size: 0.75rem; color: #adb5bd; }
     .sortable-ghost { opacity: 0.4; background: #cce5ff; }
+
     .card-checkbox { position: absolute; top: 10px; right: 10px; transform: scale(1.5); }
     .kanban-card.selected { border-left-color: #0d6efd; background-color: #e7f1ff; }
     .batch-actions-bar {
@@ -41,11 +54,12 @@
         box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
     }
     .batch-actions-bar.active { bottom: 20px; }
+    /* --- END: ✅ CSS ที่ปรับปรุงใหม่ --- */
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
     <h1 class="h2 mb-0">💰 แดชบอร์ดการเงิน (Kanban)</h1>
     <div>
         <span id="total-revenue" class="badge bg-success fs-6 me-2">ยอดชำระแล้ว: {{ "%.2f"|format(summary.paid_total) }} บาท</span>
@@ -53,6 +67,12 @@
     </div>
 </div>
 
+<div class="mb-3">
+    <div class="input-group">
+        <span class="input-group-text"><i class="fas fa-search"></i></span>
+        <input type="text" id="kanban-search-input" class="form-control" placeholder="ค้นหาจากชื่องาน หรือ ชื่อลูกค้า...">
+    </div>
+</div>
 <div class="kanban-board" id="kanban-board-container">
     <div class="kanban-column">
         <div class="kanban-column-header pending_billing"><span>⏳ รอวางบิล</span><span id="count-pending_billing">0</span></div>
@@ -94,34 +114,47 @@ document.addEventListener('DOMContentLoaded', function() {
     const batchMarkPaidBtn = document.getElementById('batch-mark-paid-btn');
     const batchCancelBtn = document.getElementById('batch-cancel-btn');
     let selectedTaskIds = new Set();
+    
+    // --- START: ✅ แก้ไขฟังก์ชันสร้าง URL ให้ถูกต้อง ---
+    const detailUrlTemplate = "{{ url_for('liff.customer_profile', customer_task_id='__TASK_ID__') }}";
 
     function createKanbanCard(task) {
         const card = document.createElement('div');
         card.className = 'kanban-card';
         card.dataset.taskId = task.id;
+        
+        // เพิ่ม data-search สำหรับใช้ในการค้นหา
+        const searchTerm = `${task.title} ${task.customer.name || ''}`.toLowerCase();
+        card.dataset.search = searchTerm;
+        
         if (task.billing_status === 'overdue') card.classList.add('is-overdue');
 
         const billedDate = task.billing_status_details.billed_date ? new Date(task.billing_status_details.billed_date).toLocaleDateString('th-TH') : '-';
         const dueDate = task.billing_status_details.payment_due_date ? new Date(task.billing_status_details.payment_due_date).toLocaleDateString('th-TH') : '-';
         
+        const detailUrl = detailUrlTemplate.replace('__TASK_ID__', task.id);
+        
         card.innerHTML = `
             <input type="checkbox" class="form-check-input card-checkbox" data-task-id="${task.id}">
-            <h6 class="card-title">${task.title}</h6>
-            <p class="card-customer">${task.customer.name || '-'}</p>
-            <p class="card-amount">${task.total_cost.toFixed(2)} บาท</p>
             <div class="d-flex justify-content-between">
-                <small class="card-date">วางบิล: ${billedDate}</small>
-                <small class="card-date text-danger">กำหนดชำระ: ${dueDate}</small>
+                <h6 class="card-title">${task.title}</h6>
+                <p class="card-amount">${task.total_cost.toFixed(2)}</p>
             </div>
-            <a href="{{ url_for('liff.customer_profile', customer_task_id='TASK_ID') }}".replace('TASK_ID', task.id) class="btn btn-sm btn-outline-secondary mt-2"><i class="fas fa-eye me-1"></i> ดูรายละเอียด</a>
+            <p class="card-customer">${task.customer.name || '-'}</p>
+            <div class="d-flex justify-content-between align-items-center mt-2">
+                <div>
+                    <p class="card-date mb-0">วางบิล: ${billedDate}</p>
+                    <p class="card-date mb-0 text-danger">กำหนดชำระ: ${dueDate}</p>
+                </div>
+                <a href="${detailUrl}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-eye"></i></a>
+            </div>
         `;
         return card;
     }
+    // --- END: ✅ แก้ไขฟังก์ชันสร้าง URL ---
 
     function renderBoard() {
-        // Clear existing cards
         document.querySelectorAll('.kanban-cards').forEach(col => col.innerHTML = '');
-        
         allTasks.forEach(task => {
             const columnId = `cards-${task.billing_status}`;
             const column = document.getElementById(columnId);
@@ -130,15 +163,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 column.appendChild(card);
             }
         });
+        updateCounts();
+    }
 
-        // Update counts
+    function updateCounts() {
         document.querySelectorAll('.kanban-column-header').forEach(header => {
             const status = header.parentElement.querySelector('.kanban-cards').dataset.status;
-            const count = allTasks.filter(t => t.billing_status === status).length;
+            const count = header.parentElement.querySelectorAll('.kanban-card:not([style*="display: none"])').length;
             header.querySelector('span:last-child').textContent = count;
         });
     }
     
+    // ... (ส่วนที่เหลือของ JavaScript เหมือนเดิม) ...
+    // --- START: ✅ เพิ่ม JavaScript สำหรับการค้นหา ---
+    const searchInput = document.getElementById('kanban-search-input');
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+        document.querySelectorAll('.kanban-card').forEach(card => {
+            const searchTerm = card.dataset.search;
+            if (searchTerm.includes(query)) {
+                card.style.display = '';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        updateCounts(); // อัปเดตจำนวนการ์ดที่แสดงผลในแต่ละคอลัมน์
+    });
+    // --- END: ✅ เพิ่ม JavaScript สำหรับการค้นหา ---
+
     function initializeKanban() {
         document.querySelectorAll('.kanban-cards').forEach(el => {
             new Sortable(el, {
@@ -163,10 +215,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message);
-            // Optional: Show success toast
         } catch (error) {
             console.error('Failed to update status:', error);
-            // Revert UI on failure
             cardElement.parentElement.removeChild(cardElement); 
             renderBoard(); 
         }
@@ -205,10 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     batchMarkPaidBtn.addEventListener('click', async () => {
         if (selectedTaskIds.size === 0) return;
-        
         const taskIds = Array.from(selectedTaskIds);
-        
-        // ... (SweetAlert logic here if you use it) ...
         try {
             const response = await fetch("{{ url_for('liff.api_billing_batch_update') }}", {
                 method: 'POST',
@@ -217,17 +264,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const resData = await response.json();
             if (resData.status !== 'success') throw new Error(resData.message);
-            
-            // Refresh board
             window.location.reload(); 
-
         } catch (error) {
             console.error('Batch update error:', error);
             alert('เกิดข้อผิดพลาด: ' + error.message);
         }
     });
 
-    // Initial render and setup
     renderBoard();
     initializeKanban();
 });
