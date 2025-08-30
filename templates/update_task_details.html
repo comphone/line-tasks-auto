@@ -858,29 +858,32 @@
         editReportModal.show();
     };
 
-    async function deleteReport(reportIndex) {
-        const report = techReportsHistory[reportIndex];
-        if (!report) return;
+	async function deleteReport(reportIndex) {
+		const report = techReportsHistory[reportIndex];
+		if (!report) return;
 
-        const confirmation = confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้จะลบรูปภาพที่เกี่ยวข้องอย่างถาวร`);
-        if (!confirmation) return;
+		const confirmation = confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้จะลบรูปภาพที่เกี่ยวข้องอย่างถาวร`);
+		if (!confirmation) return;
 
-        try {
-            const response = await fetch(`/api/task/${taskId}/delete_report/${reportIndex}`, {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrfToken }
-            });
-            const result = await response.json();
-            if (response.ok) {
-                flashMessage(result.message, 'success');
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-        }
-    }
+		try {
+			// --- START: ✅ โค้ดที่แก้ไข ---
+			// เปลี่ยน URL ให้เรียกไปยัง Endpoint ใหม่ที่ถูกต้อง
+			const response = await fetch(`/api/customer/${customerTaskId}/job/${taskId}/delete_report/${reportIndex}`, {
+			// --- END: ✅ โค้ดที่แก้ไข ---
+				method: 'POST',
+				headers: { 'X-CSRFToken': csrfToken }
+			});
+			const result = await response.json();
+			if (response.ok) {
+				flashMessage(result.message, 'success');
+				setTimeout(() => window.location.reload(), 1500);
+			} else {
+				throw new Error(result.message);
+			}
+		} catch (error) {
+			flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+		}
+	}
     
     function setupSpeechRecognition(buttonId, textareaId) {
         const button = document.getElementById(buttonId);
