@@ -247,6 +247,10 @@ def api_update_job_report(customer_task_id, job_id):
                 utc_due_date = dt_local.astimezone(pytz.utc).isoformat()
                 job_to_update['due_date'] = utc_due_date
                 task_update_kwargs['due'] = utc_due_date.replace('+00:00', 'Z')
+                
+                # ถ้างานเคยเสร็จแล้ว ให้เปลี่ยนสถานะกลับเป็น "ยังไม่เสร็จ"
+                if task_raw.get('status') == 'completed':
+                    task_update_kwargs['status'] = 'needsAction'
             
             flash_message = 'เลื่อนนัดเรียบร้อยแล้ว'
             report_data.update({
@@ -285,7 +289,6 @@ def api_update_job_report(customer_task_id, job_id):
         if update_google_task(customer_task_id, notes=final_notes, **task_update_kwargs):
         # --- END: ✅ โค้ดที่แก้ไข ---
             cache.clear()
-            # ... (ส่วนแจ้งเตือน)
             return jsonify({'status': 'success', 'message': flash_message})
         else:
             return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลลง Google Tasks'}), 500
@@ -574,7 +577,10 @@ def stock_management():
 @liff_bp.route('/billing')
 def billing_summary():
     search_query = request.args.get('search_query', '').strip().lower()
-    completed_tasks_raw = [t for t in (get_google_tasks_for_report(show_completed=True) or []) if t.get('status') == 'completed']
+    
+    # ดึงเฉพาะงานที่มีสถานะ completed
+    tasks_raw = get_google_tasks_for_report(show_completed=True) or []
+    completed_tasks_raw = [t for t in tasks_raw if t.get('status') == 'completed']
     
     tasks_with_details = []
     summary_data = {'pending_billing_total': 0, 'billed_total': 0, 'paid_total': 0}
@@ -587,9 +593,17 @@ def billing_summary():
         if search_query and search_query not in searchable_text:
             continue
 
-        items = JobItem.query.filter_by(task_google_id=task_raw['id']).all()
-        total_cost = sum(item.quantity * item.unit_price for item in items)
+        # --- START: ✅ โค้ดที่แก้ไข ---
+        # วนลูปเพื่อดึง Job IDs ทั้งหมดที่อยู่ในโปรไฟล์ของลูกค้ารายนี้
+        job_ids_in_profile = [job.get('job_id') for job in task.get('jobs', [])]
         
+        total_cost = 0
+        if job_ids_in_profile:
+            # ดึงรายการ JobItem ทั้งหมดที่เกี่ยวข้องกับ Job IDs เหล่านั้น
+            items = JobItem.query.filter(JobItem.task_google_id.in_(job_ids_in_profile)).all()
+            total_cost = sum(item.quantity * item.unit_price for item in items)
+        # --- END: ✅ โค้ดที่แก้ไข ---
+
         billing_status = BillingStatus.query.filter_by(task_google_id=task_raw['id']).first()
         if not billing_status:
             billing_status = BillingStatus(task_google_id=task_raw['id'])
@@ -598,6 +612,7 @@ def billing_summary():
 
         task['total_cost'] = total_cost
         task['billing_status'] = billing_status.status
+        task['billing_status_details'] = billing_status.to_dict() # ส่งข้อมูล billing ทั้งหมดไปที่ template
         
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         task['customer_line_id'] = feedback_data.get('customer_line_user_id', '')
