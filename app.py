@@ -880,6 +880,54 @@ def api_update_job_report(customer_task_id, job_id):
         current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
+@app.route('/api/customer/<customer_task_id>/job/<job_id>/add_internal_note', methods=['POST'])
+def add_internal_note_to_job(customer_task_id, job_id):
+    """
+    (ปรับปรุง) API สำหรับเพิ่มบันทึกภายในสำหรับงานย่อยโดยเฉพาะ
+    """
+    data = request.json
+    note_text = data.get('note_text', '').strip()
+    user = data.get('user', 'Admin')
+
+    if not note_text:
+        return jsonify({'status': 'error', 'message': 'กรุณาพิมพ์ข้อความ'}), 400
+
+    task_raw = get_single_task(customer_task_id)
+    if not task_raw:
+        return jsonify({'status': 'error', 'message': 'ไม่พบโปรไฟล์ลูกค้า'}), 404
+
+    profile_data = parse_customer_profile_from_task(task_raw)
+    
+    job_to_update = next((job for job in profile_data.get('jobs', []) if job.get('job_id') == job_id), None)
+    if not job_to_update:
+        return jsonify({'status': 'error', 'message': 'ไม่พบใบงานที่ต้องการอัปเดต'}), 404
+        
+    new_note_data = {
+        "user": user,
+        "timestamp": datetime.datetime.now(THAILAND_TZ).isoformat(),
+        "text": note_text
+    }
+    
+    if 'internal_notes' not in job_to_update:
+        job_to_update['internal_notes'] = []
+        
+    job_to_update['internal_notes'].append(new_note_data)
+
+    final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
+
+    if update_google_task(customer_task_id, notes=final_notes):
+        cache.clear()
+        
+        # ... (ส่วนการส่งแจ้งเตือนยังคงเหมือนเดิม แต่สามารถปรับให้รวม job_id ได้) ...
+
+        return jsonify({
+            'status': 'success', 
+            'message': 'เพิ่มบันทึกภายในเรียบร้อยแล้ว',
+            'new_note': new_note_data
+        })
+    else:
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูล'}), 500
+
 @app.route('/api/task/<task_id>/edit_main', methods=['POST'])
 def api_edit_task_main(task_id):
     """API สำหรับแก้ไขข้อมูลหลักของงาน"""
