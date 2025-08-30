@@ -12,7 +12,7 @@
     .kanban-column-header.overdue { border-color: #dc3545; }
     .kanban-column-header.paid { border-color: #198754; }
     .kanban-cards { min-height: 400px; padding: 0.5rem; }
-    .kanban-card { background-color: #fff; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 0.75rem; cursor: grab; border-left: 5px solid #6c757d; position: relative; } /* Added position: relative */
+    .kanban-card { background-color: #fff; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 0.75rem; cursor: grab; border-left: 5px solid #6c757d; position: relative; }
     .kanban-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
     .kanban-card.is-overdue { border-left-color: #dc3545; background-color: #fff5f5; }
     .kanban-card .card-title { font-size: 1rem; font-weight: 600; }
@@ -20,13 +20,11 @@
     .kanban-card .card-amount { font-size: 1.25rem; font-weight: 700; color: #198754; }
     .kanban-card .card-date { font-size: 0.8rem; color: #adb5bd; }
     .sortable-ghost { opacity: 0.4; background: #cce5ff; }
-
-    /* --- START: โค้ดสำหรับ Batch Actions --- */
     .card-checkbox { position: absolute; top: 10px; right: 10px; transform: scale(1.5); }
     .kanban-card.selected { border-left-color: #0d6efd; background-color: #e7f1ff; }
     .batch-actions-bar {
         position: fixed;
-        bottom: -100px; /* Start hidden */
+        bottom: -100px;
         left: 50%;
         transform: translateX(-50%);
         width: auto;
@@ -42,8 +40,7 @@
         gap: 1rem;
         box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
     }
-    .batch-actions-bar.active { bottom: 20px; } /* Slide in */
-    /* --- END: โค้ดสำหรับ Batch Actions --- */
+    .batch-actions-bar.active { bottom: 20px; }
 </style>
 {% endblock %}
 
@@ -51,21 +48,28 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h2 mb-0">💰 แดชบอร์ดการเงิน (Kanban)</h1>
     <div>
-        <span id="total-revenue" class="badge bg-success fs-6 me-2">ยอดชำระแล้ว: 0.00 บาท</span>
-        <span id="total-due" class="badge bg-warning text-dark fs-6">ยอดค้างชำระ: 0.00 บาท</span>
+        <span id="total-revenue" class="badge bg-success fs-6 me-2">ยอดชำระแล้ว: {{ "%.2f"|format(summary.paid_total) }} บาท</span>
+        <span id="total-due" class="badge bg-warning text-dark fs-6">ยอดค้างชำระ: {{ "%.2f"|format(summary.billed_total) }} บาท</span>
     </div>
 </div>
 
-<div id="kanban-loading" class="text-center p-5">
-    <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
-    <p class="mt-2 text-muted">กำลังโหลดข้อมูลบอร์ด...</p>
-</div>
-
-<div class="kanban-board" id="kanban-board-container" style="display: none;">
-    <div class="kanban-column"><div class="kanban-column-header pending_billing"><span>⏳ รอวางบิล</span><span id="count-pending_billing">0</span></div><div class="kanban-cards" id="cards-pending_billing" data-status="pending_billing"></div></div>
-    <div class="kanban-column"><div class="kanban-column-header billed"><span>📬 วางบิลแล้ว</span><span id="count-billed">0</span></div><div class="kanban-cards" id="cards-billed" data-status="billed"></div></div>
-    <div class="kanban-column"><div class="kanban-column-header overdue"><span>🚨 เกินกำหนด</span><span id="count-overdue">0</span></div><div class="kanban-cards" id="cards-overdue" data-status="overdue"></div></div>
-    <div class="kanban-column"><div class="kanban-column-header paid"><span>✅ ชำระแล้ว</span><span id="count-paid">0</span></div><div class="kanban-cards" id="cards-paid" data-status="paid"></div></div>
+<div class="kanban-board" id="kanban-board-container">
+    <div class="kanban-column">
+        <div class="kanban-column-header pending_billing"><span>⏳ รอวางบิล</span><span id="count-pending_billing">0</span></div>
+        <div class="kanban-cards" id="cards-pending_billing" data-status="pending_billing"></div>
+    </div>
+    <div class="kanban-column">
+        <div class="kanban-column-header billed"><span>📬 วางบิลแล้ว</span><span id="count-billed">0</span></div>
+        <div class="kanban-cards" id="cards-billed" data-status="billed"></div>
+    </div>
+    <div class="kanban-column">
+        <div class="kanban-column-header overdue"><span>🚨 เกินกำหนด</span><span id="count-overdue">0</span></div>
+        <div class="kanban-cards" id="cards-overdue" data-status="overdue"></div>
+    </div>
+    <div class="kanban-column">
+        <div class="kanban-column-header paid"><span>✅ ชำระแล้ว</span><span id="count-paid">0</span></div>
+        <div class="kanban-cards" id="cards-paid" data-status="paid"></div>
+    </div>
 </div>
 
 <div class="batch-actions-bar" id="batch-actions-bar">
@@ -81,12 +85,10 @@
 
 {% block body_extra %}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const csrfToken = '{{ csrf_token() }}';
-    const kanbanContainer = document.getElementById('kanban-board-container');
-    const loadingDiv = document.getElementById('kanban-loading');
+    const allTasks = {{ tasks | tojson | safe }};
     const batchActionBar = document.getElementById('batch-actions-bar');
     const selectionCounter = document.getElementById('selection-counter');
     const batchMarkPaidBtn = document.getElementById('batch-mark-paid-btn');
@@ -116,15 +118,60 @@ document.addEventListener('DOMContentLoaded', function() {
         return card;
     }
 
-    async function fetchAndRenderBoard() {
-        // ... (โค้ดส่วนนี้เหมือนเดิม) ...
-    }
+    function renderBoard() {
+        // Clear existing cards
+        document.querySelectorAll('.kanban-cards').forEach(col => col.innerHTML = '');
+        
+        allTasks.forEach(task => {
+            const columnId = `cards-${task.billing_status}`;
+            const column = document.getElementById(columnId);
+            if (column) {
+                const card = createKanbanCard(task);
+                column.appendChild(card);
+            }
+        });
 
-    function initializeKanban() {
-        // ... (โค้ดส่วนนี้เหมือนเดิม) ...
+        // Update counts
+        document.querySelectorAll('.kanban-column-header').forEach(header => {
+            const status = header.parentElement.querySelector('.kanban-cards').dataset.status;
+            const count = allTasks.filter(t => t.billing_status === status).length;
+            header.querySelector('span:last-child').textContent = count;
+        });
     }
     
-    // --- START: ฟังก์ชันใหม่สำหรับจัดการ Batch Actions ---
+    function initializeKanban() {
+        document.querySelectorAll('.kanban-cards').forEach(el => {
+            new Sortable(el, {
+                group: 'kanban',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: function(evt) {
+                    const taskId = evt.item.dataset.taskId;
+                    const newStatus = evt.to.dataset.status;
+                    updateStatusOnServer(taskId, newStatus, evt.item);
+                },
+            });
+        });
+    }
+
+    async function updateStatusOnServer(taskId, newStatus, cardElement) {
+        try {
+            const response = await fetch(`/api/billing/${taskId}/update_status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            // Optional: Show success toast
+        } catch (error) {
+            console.error('Failed to update status:', error);
+            // Revert UI on failure
+            cardElement.parentElement.removeChild(cardElement); 
+            renderBoard(); 
+        }
+    }
+
     function updateBatchActionBar() {
         if (selectedTaskIds.size > 0) {
             selectionCounter.textContent = `เลือก ${selectedTaskIds.size} รายการ`;
@@ -134,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    kanbanContainer.addEventListener('change', (event) => {
+    document.getElementById('kanban-board-container').addEventListener('change', (event) => {
         if (event.target.classList.contains('card-checkbox')) {
             const taskId = event.target.dataset.taskId;
             const card = event.target.closest('.kanban-card');
@@ -161,39 +208,28 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const taskIds = Array.from(selectedTaskIds);
         
-        Swal.fire({
-            title: `ยืนยันการย้าย ${taskIds.length} รายการ`,
-            text: 'คุณต้องการเปลี่ยนสถานะรายการที่เลือกทั้งหมดเป็น "ชำระแล้ว" หรือไม่?',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'ยืนยัน',
-            cancelButtonText: 'ยกเลิก'
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                Swal.fire({ title: 'กำลังดำเนินการ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        // ... (SweetAlert logic here if you use it) ...
+        try {
+            const response = await fetch("{{ url_for('liff.api_billing_batch_update') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ task_ids: taskIds, status: 'paid' })
+            });
+            const resData = await response.json();
+            if (resData.status !== 'success') throw new Error(resData.message);
+            
+            // Refresh board
+            window.location.reload(); 
 
-                try {
-                    const response = await fetch("{{ url_for('liff.api_billing_batch_update') }}", {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                        body: JSON.stringify({ task_ids: taskIds, status: 'paid' })
-                    });
-                    const resData = await response.json();
-                    if (resData.status !== 'success') throw new Error(resData.message);
-                    
-                    Swal.fire('สำเร็จ!', 'ย้ายรายการทั้งหมดเรียบร้อยแล้ว', 'success');
-                    batchCancelBtn.click(); // Clear selection
-                    await fetchAndRenderBoard(); // Refresh the board
-
-                } catch (error) {
-                    Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
-                }
-            }
-        });
+        } catch (error) {
+            console.error('Batch update error:', error);
+            alert('เกิดข้อผิดพลาด: ' + error.message);
+        }
     });
-    // --- END: ฟังก์ชันใหม่สำหรับจัดการ Batch Actions ---
 
-    fetchAndRenderBoard().then(initializeKanban);
+    // Initial render and setup
+    renderBoard();
+    initializeKanban();
 });
 </script>
 {% endblock %}

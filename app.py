@@ -2326,6 +2326,7 @@ def add_task_items(task_id):
     (เวอร์ชันปรับปรุง) API สำหรับบันทึกรายการอุปกรณ์
     - ถ้ามีช่างรับผิดชอบ: ตัดสตอกจากคลังของช่าง
     - ถ้าไม่มีช่างรับผิดชอบ: ตัดสตอกจากคลังหลัก
+    - **เพิ่มสินค้าใหม่เข้า Catalog โดยอัตโนมัติหากไม่พบ**
     """
     data = request.json
     items_data = data.get('items', [])
@@ -2336,45 +2337,34 @@ def add_task_items(task_id):
             return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลงาน'}), 404
         
         warehouse_to_use = None
-        added_by_user = "Admin" # ผู้บันทึกเริ่มต้น
-
-        # 1. ตรวจสอบว่ามีช่างได้รับมอบหมายงานหรือไม่
+        added_by_user = "Admin"
         assigned_technicians_str = parse_assigned_technician_from_notes(task_raw.get('notes', ''))
         
         if assigned_technicians_str:
-            # --- กรณีมีช่างรับผิดชอบ ---
             added_by_user = assigned_technicians_str
             assigned_technicians_set = {name.strip() for name in assigned_technicians_str.split(',')}
             all_van_warehouses = Warehouse.query.filter_by(type='technician_van', is_active=True).all()
-            
             for wh in all_van_warehouses:
                 if wh.technician_name:
                     warehouse_techs_set = {name.strip() for name in wh.technician_name.split(',')}
                     if not warehouse_techs_set.isdisjoint(assigned_technicians_set):
                         warehouse_to_use = wh
                         break
-            
             if not warehouse_to_use:
-                return jsonify({'status': 'error', 'message': f'ไม่พบคลังสินค้าสำหรับทีมช่างที่ได้รับมอบหมายงานนี้'}), 404
+                return jsonify({'status': 'error', 'message': 'ไม่พบคลังสินค้าสำหรับทีมช่าง'}), 404
         else:
-            # --- กรณีไม่มีช่างรับผิดชอบ ---
             main_warehouse = Warehouse.query.filter_by(type='main', is_active=True).first()
             if main_warehouse:
                 warehouse_to_use = main_warehouse
             else:
-                return jsonify({'status': 'error', 'message': 'ยังไม่ได้มอบหมายงานให้ช่าง และไม่พบคลังสินค้าหลักสำหรับตัดสต็อก'}), 404
+                return jsonify({'status': 'error', 'message': 'ไม่พบคลังสินค้าหลักสำหรับตัดสต็อก'}), 404
 
-        # --- ส่วนที่เหลือของฟังก์ชัน (จัดการฐานข้อมูล) ---
         warehouse_id_to_use = warehouse_to_use.id
 
         JobItem.query.filter_by(task_google_id=task_id).delete()
-        
         old_movements = StockMovement.query.filter(StockMovement.notes.like(f"%Job:{task_id}%")).all()
         for movement in old_movements:
-            stock_level = StockLevel.query.filter_by(
-                product_code=movement.product_code, 
-                warehouse_id=movement.from_warehouse_id
-            ).first()
+            stock_level = StockLevel.query.filter_by(product_code=movement.product_code, warehouse_id=movement.from_warehouse_id).first()
             if stock_level:
                 stock_level.quantity += movement.quantity_change
             db.session.delete(movement)
@@ -2382,18 +2372,39 @@ def add_task_items(task_id):
         if items_data:
             settings = get_app_settings()
             catalog = settings.get('equipment_catalog', [])
-            catalog_dict = {item['item_name']: item for item in catalog}
+            catalog_dict_by_name = {item['item_name'].lower(): item for item in catalog}
+            catalog_changed = False
 
             for item_data in items_data:
+                # --- START: ✅ โค้ดที่แก้ไข ---
+                # ตรวจสอบว่ามีสินค้านี้ใน Catalog หรือไม่
+                item_name_lower = item_data['item_name'].lower()
+                if item_name_lower not in catalog_dict_by_name:
+                    # ถ้าไม่มี ให้เพิ่มเข้าไปใหม่
+                    new_product = {
+                        'item_name': item_data['item_name'],
+                        'category': 'ไม่มีหมวดหมู่',
+                        'product_code': item_data['item_name'], # ใช้ชื่อเป็นรหัสชั่วคราว
+                        'unit': 'ชิ้น',
+                        'price': float(item_data.get('unit_price', 0)),
+                        'cost_price': 0,
+                        'stock_quantity': 0,
+                        'image_url': ''
+                    }
+                    catalog.append(new_product)
+                    catalog_dict_by_name[item_name_lower] = new_product
+                    catalog_changed = True
+                # --- END: ✅ โค้ดที่แก้ไข ---
+
                 new_job_item = JobItem(
                     task_google_id=task_id, item_name=item_data['item_name'],
-                    quantity=float(item_data['quantity']), unit_price=float(item_data['unit_price']),
+                    quantity=float(item_data['quantity']), unit_price=float(item_data.get('unit_price', 0)),
                     added_by=added_by_user
                 )
                 db.session.add(new_job_item)
                 db.session.flush()
 
-                product_code = catalog_dict.get(item_data['item_name'], {}).get('product_code', item_data['item_name'])
+                product_code = catalog_dict_by_name.get(item_name_lower, {}).get('product_code', item_data['item_name'])
                 quantity_used = float(item_data['quantity'])
 
                 stock_level = StockLevel.query.filter_by(product_code=product_code, warehouse_id=warehouse_id_to_use).first()
@@ -2410,6 +2421,11 @@ def add_task_items(task_id):
                     notes=f"Used in Job:{task_id}", user=added_by_user
                 )
                 db.session.add(movement)
+
+            # ถ้ามีการเพิ่มสินค้าใหม่ ให้บันทึก settings.json
+            if catalog_changed:
+                save_app_settings({'equipment_catalog': catalog})
+                backup_settings_to_drive()
         
         db.session.commit()
         return jsonify({'status': 'success', 'message': f'บันทึกรายการและตัดสตอกจากคลัง "{warehouse_to_use.name}" เรียบร้อยแล้ว'}), 200
