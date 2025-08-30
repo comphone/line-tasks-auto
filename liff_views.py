@@ -752,7 +752,6 @@ def delete_job_from_profile(customer_task_id, job_id):
 @liff_bp.route('/customer/<customer_task_id>/job/<job_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(customer_task_id, job_id, report_index):
     """(เวอร์ชันใหม่) แก้ไขไฟล์แนบในรายงานของใบงานย่อย (Job)"""
-    from app import HttpError
     try:
         task_raw = get_single_task(customer_task_id)
         if not task_raw:
@@ -779,6 +778,9 @@ def edit_report_attachments(customer_task_id, job_id, report_index):
                         _execute_google_api_call_with_retry(drive_service.files().delete, fileId=att['id'])
                     except HttpError as e:
                         current_app.logger.error(f"Failed to delete attachment {att['id']}: {e}")
+
+        # (ส่วนนี้คือ Logic การอัปโหลดไฟล์ใหม่)
+        # ... (ใส่โค้ดส่วนอัปโหลดไฟล์ใหม่ที่นี่ ถ้ามี) ...
 
         profile_data['jobs'][job_index]['reports'][report_index]['attachments'] = updated_attachments
 
@@ -869,18 +871,23 @@ def activity_feed():
     for task_raw in tasks_raw:
         task = parse_task_data(task_raw)
         
+        # --- START: โค้ดที่แก้ไข ---
+        # ใช้ customer_task_id สำหรับสร้าง URL ที่ถูกต้องเสมอ
         customer_task_id = task.get('id')
         task_title_safe = task.get('title', 'N/A')
         customer_name = task.get('customer', {}).get('name', 'N/A')
+        # สร้างลิงก์ไปยังหน้าโปรไฟล์ลูกค้า ซึ่งเป็นหน้าหลักในการจัดการ
         correct_task_url = url_for('liff.customer_profile', customer_task_id=customer_task_id)
+        # --- END: โค้ดที่แก้ไข ---
 
         common_data = {
             'task_id': customer_task_id,
             'task_title': task_title_safe,
             'customer': customer_name,
-            'task_url': correct_task_url
+            'task_url': correct_task_url # ใช้ URL ที่ถูกต้อง
         }
 
+        # กิจกรรม: สร้างงานใหม่
         if task.get('created'):
             created_dt = date_parse(task.get('created'))
             activities.append({
@@ -891,6 +898,7 @@ def activity_feed():
                 'technician': 'System',
             })
             
+        # กิจกรรม: ปิดงาน
         if task.get('status') == 'completed' and task.get('completed'):
             completed_dt = date_parse(task.get('completed'))
             activities.append({
@@ -901,6 +909,7 @@ def activity_feed():
                 'technician': 'System',
             })
 
+        # กิจกรรม: จากประวัติ (เพิ่มรายงาน, เลื่อนนัด, บันทึกภายใน)
         history, _ = parse_tech_report_from_notes(task.get('notes', ''))
         for report in history:
             report_type = 'internal_note' if report.get('is_internal') else report.get('type', 'report')
