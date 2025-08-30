@@ -20,7 +20,7 @@ from linebot.v3.messaging import FlexMessage
 from urllib.parse import quote_plus
 from app import (
     db, JobItem, BillingStatus, LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION,
-    message_queue, cache, Warehouse, StockLevel
+    message_queue, cache, Warehouse, StockLevel, get_google_drive_service, _execute_google_api_call_with_retry
 )
 from utils import (
     get_google_tasks_for_report, get_single_task, parse_google_task_dates,
@@ -752,6 +752,7 @@ def delete_job_from_profile(customer_task_id, job_id):
 @liff_bp.route('/customer/<customer_task_id>/job/<job_id>/edit_report/<int:report_index>', methods=['POST'])
 def edit_report_attachments(customer_task_id, job_id, report_index):
     """(เวอร์ชันใหม่) แก้ไขไฟล์แนบในรายงานของใบงานย่อย (Job)"""
+    from app import HttpError
     try:
         task_raw = get_single_task(customer_task_id)
         if not task_raw:
@@ -778,9 +779,6 @@ def edit_report_attachments(customer_task_id, job_id, report_index):
                         _execute_google_api_call_with_retry(drive_service.files().delete, fileId=att['id'])
                     except HttpError as e:
                         current_app.logger.error(f"Failed to delete attachment {att['id']}: {e}")
-
-        # (ส่วนนี้คือ Logic การอัปโหลดไฟล์ใหม่)
-        # ... (ใส่โค้ดส่วนอัปโหลดไฟล์ใหม่ที่นี่ ถ้ามี) ...
 
         profile_data['jobs'][job_index]['reports'][report_index]['attachments'] = updated_attachments
 
@@ -871,23 +869,18 @@ def activity_feed():
     for task_raw in tasks_raw:
         task = parse_task_data(task_raw)
         
-        # --- START: โค้ดที่แก้ไข ---
-        # ใช้ customer_task_id สำหรับสร้าง URL ที่ถูกต้องเสมอ
         customer_task_id = task.get('id')
         task_title_safe = task.get('title', 'N/A')
         customer_name = task.get('customer', {}).get('name', 'N/A')
-        # สร้างลิงก์ไปยังหน้าโปรไฟล์ลูกค้า ซึ่งเป็นหน้าหลักในการจัดการ
         correct_task_url = url_for('liff.customer_profile', customer_task_id=customer_task_id)
-        # --- END: โค้ดที่แก้ไข ---
 
         common_data = {
             'task_id': customer_task_id,
             'task_title': task_title_safe,
             'customer': customer_name,
-            'task_url': correct_task_url # ใช้ URL ที่ถูกต้อง
+            'task_url': correct_task_url
         }
 
-        # กิจกรรม: สร้างงานใหม่
         if task.get('created'):
             created_dt = date_parse(task.get('created'))
             activities.append({
@@ -898,7 +891,6 @@ def activity_feed():
                 'technician': 'System',
             })
             
-        # กิจกรรม: ปิดงาน
         if task.get('status') == 'completed' and task.get('completed'):
             completed_dt = date_parse(task.get('completed'))
             activities.append({
@@ -909,7 +901,6 @@ def activity_feed():
                 'technician': 'System',
             })
 
-        # กิจกรรม: จากประวัติ (เพิ่มรายงาน, เลื่อนนัด, บันทึกภายใน)
         history, _ = parse_tech_report_from_notes(task.get('notes', ''))
         for report in history:
             report_type = 'internal_note' if report.get('is_internal') else report.get('type', 'report')
@@ -938,10 +929,10 @@ def activity_feed():
         technician_list=technician_list,
         timedelta=timedelta
     )
-
+    
 @liff_bp.route('/api/customer/<customer_task_id>/job/<job_id>/update', methods=['POST'])
 def api_update_job_report(customer_task_id, job_id):
-    """(เวอร์ชันใหม่) API สำหรับอัปเดตข้อมูลในใบงานย่อย (Job Order)"""
+    """(เวอร์ชันแก้ไข) API สำหรับอัปเดตข้อมูลในใบงานย่อย (Job Order)"""
     try:
         task_raw = get_single_task(customer_task_id)
         if not task_raw:
@@ -949,26 +940,25 @@ def api_update_job_report(customer_task_id, job_id):
 
         profile_data = parse_customer_profile_from_task(task_raw)
         
-        job_to_update = None
-        job_index = -1
-        for i, job in enumerate(profile_data.get('jobs', [])):
-            if job.get('job_id') == job_id:
-                job_to_update = job
-                job_index = i
-                break
-        
+        job_to_update = next((job for job in profile_data.get('jobs', []) if job.get('job_id') == job_id), None)
         if not job_to_update:
             return jsonify({'status': 'error', 'message': 'ไม่พบใบงานที่ต้องการอัปเดต'}), 404
 
         action = request.form.get('action')
         new_attachments_json = request.form.get('uploaded_attachments_json')
         new_attachments = json.loads(new_attachments_json) if new_attachments_json else []
+        
+        # ดึง technician_line_user_id ถ้ามี
+        liff_user_id = request.form.get('technician_line_user_id')
 
         flash_message = "อัปเดตข้อมูลเรียบร้อยแล้ว"
         report_data = {'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat()}
         
-        # ตรวจสอบค่าจาก checkbox is_internal_note
+        # ตรวจสอบค่าจาก checkbox is_internal_note (มีเฉพาะใน progressReportForm และ finalReportCard)
         is_internal_note = request.form.get('is_internal_note') == 'on'
+        
+        technicians_report = request.form.get('technicians_report', '')
+        technicians = [t.strip() for t in technicians_report.split(',') if t.strip()]
 
         if action == 'complete_task':
             job_to_update['status'] = 'completed'
@@ -977,8 +967,9 @@ def api_update_job_report(customer_task_id, job_id):
             report_data.update({
                 'type': 'report',
                 'work_summary': str(request.form.get('work_summary', '')).strip(),
-                'technicians': [t.strip() for t in request.form.get('technicians_report', '').split(',') if t.strip()],
-                'is_internal': is_internal_note
+                'technicians': technicians,
+                'is_internal': is_internal_note,
+                'liff_user_id': liff_user_id
             })
         elif action == 'reschedule_task':
             new_due_str = request.form.get('reschedule_due')
@@ -990,16 +981,18 @@ def api_update_job_report(customer_task_id, job_id):
             report_data.update({
                 'type': 'reschedule',
                 'reason': str(request.form.get('reschedule_reason', '')).strip(),
-                'technicians': [t.strip() for t in request.form.get('technicians_reschedule', '').split(',') if t.strip()],
-                'is_internal': is_internal_note
+                'technicians': technicians,
+                'is_internal': is_internal_note,
+                'liff_user_id': liff_user_id
             })
         elif action == 'save_report':
              flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
              report_data.update({
                 'type': 'report',
                 'work_summary': str(request.form.get('work_summary', '')).strip(),
-                'technicians': [t.strip() for t in request.form.get('technicians_report', '').split(',') if t.strip()],
-                'is_internal': is_internal_note
+                'technicians': technicians,
+                'is_internal': is_internal_note,
+                'liff_user_id': liff_user_id
             })
         
         report_data['attachments'] = new_attachments
@@ -1008,16 +1001,24 @@ def api_update_job_report(customer_task_id, job_id):
             job_to_update['reports'] = []
         job_to_update['reports'].append(report_data)
 
-        profile_data['jobs'][job_index] = job_to_update
+        # อัปเดต assigned_technician ในโปรไฟล์หลักจาก report ล่าสุด
+        if technicians:
+            profile_data['assigned_technician'] = ", ".join(technicians)
         
         final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
         
         if update_google_task(customer_task_id, notes=final_notes):
             cache.clear()
+            # ส่งแจ้งเตือนถ้าเป็นการปิดงาน
+            if action == 'complete_task':
+                # ใช้ customer_task_id ในการส่งแจ้งเตือน
+                # send_completion_notification(task_raw, technicians, new_attachments) 
+                pass # NOTE: ตัดส่วนนี้ออกชั่วคราวเพื่อรอการปรับปรุงระบบแจ้งเตือน
+            
             return jsonify({'status': 'success', 'message': flash_message})
         else:
             return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลลง Google Tasks'}), 500
 
     except Exception as e:
         current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500    
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
