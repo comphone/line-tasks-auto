@@ -1829,6 +1829,26 @@ def scheduled_backup_job():
         
         app.logger.info(f"--- Finished Scheduled Backup Job ---")
         return overall_success
+        
+def scheduled_overdue_check_job():
+    """Scheduled job to automatically move billed tasks to overdue."""
+    with app.app_context():
+        current_app.logger.info("Running scheduled overdue check job...")
+        now = datetime.datetime.utcnow()
+        
+        # ค้นหางานทั้งหมดที่สถานะเป็น "วางบิลแล้ว" และมี "วันครบกำหนดชำระ" ผ่านไปแล้ว
+        overdue_records = BillingStatus.query.filter(
+            BillingStatus.status == 'billed',
+            BillingStatus.payment_due_date.isnot(None),
+            BillingStatus.payment_due_date < now
+        ).all()
+
+        if overdue_records:
+            for record in overdue_records:
+                record.status = 'overdue'
+                current_app.logger.info(f"Task {record.task_google_id} moved to overdue.")
+            db.session.commit()
+            current_app.logger.info(f"Updated {len(overdue_records)} tasks to overdue status.")        
 
 def scheduled_overdue_check_job():
     """Scheduled job to automatically move billed tasks to overdue."""
@@ -2119,14 +2139,14 @@ def run_scheduler():
     rt = settings.get('report_times', {})
     scheduler.add_job(scheduled_appointment_reminder_job, CronTrigger(hour=rt.get('appointment_reminder_hour_thai', 7), minute=0), id='daily_appointment_reminder', replace_existing=True)
     scheduler.add_job(scheduled_customer_follow_up_job, CronTrigger(hour=rt.get('customer_followup_hour_thai', 9), minute=5), id='daily_customer_followup', replace_existing=True)
-    
-    # --- START: เพิ่ม Job ใหม่สำหรับ Kanban Board ---
+ 
+    # --- START: ✅ เพิ่ม Job ใหม่สำหรับ Kanban Board ---
     # Job: Check for Overdue Invoices (for Kanban Board Automation)
     # ทำงานทุกวันตอน 8 โมงเช้า เพื่อตรวจสอบบิลที่เกินกำหนดชำระ
     scheduler.add_job(scheduled_overdue_check_job, CronTrigger(hour=8, minute=0), id='daily_overdue_check', replace_existing=True)
     app.logger.info("Scheduled daily overdue invoice check for 08:00 Thai time.")
-    # --- END: เพิ่ม Job ใหม่สำหรับ Kanban Board ---
-
+    # --- END: ✅ เพิ่ม Job ใหม่สำหรับ Kanban Board ---
+ 
     # Job: Nearby Job Alerts for Technicians
     popup_settings = settings.get('popup_notifications', {})
     if popup_settings.get('enabled_nearby_job'):

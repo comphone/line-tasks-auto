@@ -659,7 +659,7 @@ def update_billing_status(task_id):
     
 @liff_bp.route('/api/billing/batch_update', methods=['POST'])
 def api_billing_batch_update():
-    from app import BillingStatus, db
+    from app import BillingStatus, db # Import ภายในฟังก์ชัน
     
     data = request.json
     task_ids = data.get('task_ids', [])

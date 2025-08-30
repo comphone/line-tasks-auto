@@ -123,7 +123,6 @@ document.addEventListener('DOMContentLoaded', function() {
         card.className = 'kanban-card';
         card.dataset.taskId = task.id;
         
-        // เพิ่ม data-search สำหรับใช้ในการค้นหา
         const searchTerm = `${task.title} ${task.customer.name || ''}`.toLowerCase();
         card.dataset.search = searchTerm;
         
@@ -146,7 +145,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     <p class="card-date mb-0">วางบิล: ${billedDate}</p>
                     <p class="card-date mb-0 text-danger">กำหนดชำระ: ${dueDate}</p>
                 </div>
-                <a href="${detailUrl}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-eye"></i></a>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-success send-invoice-btn" data-task-id="${task.id}" data-recipient-id="${task.customer_line_id}" title="ส่งใบแจ้งหนี้">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <a href="${detailUrl}" class="btn btn-sm btn-outline-secondary" title="ดูรายละเอียด"><i class="fas fa-eye"></i></a>
+                </div>
             </div>
         `;
         return card;
@@ -174,7 +178,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // ... (ส่วนที่เหลือของ JavaScript เหมือนเดิม) ...
     // --- START: ✅ เพิ่ม JavaScript สำหรับการค้นหา ---
     const searchInput = document.getElementById('kanban-search-input');
     searchInput.addEventListener('input', function() {
@@ -187,7 +190,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 card.style.display = 'none';
             }
         });
-        updateCounts(); // อัปเดตจำนวนการ์ดที่แสดงผลในแต่ละคอลัมน์
+        updateCounts();
     });
     // --- END: ✅ เพิ่ม JavaScript สำหรับการค้นหา ---
 
@@ -222,6 +225,50 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // --- START: ✅ เพิ่มฟังก์ชันสำหรับปุ่มส่งใบแจ้งหนี้ ---
+    document.getElementById('kanban-board-container').addEventListener('click', async function(event) {
+        const sendBtn = event.target.closest('.send-invoice-btn');
+        if (sendBtn) {
+            const taskId = sendBtn.dataset.taskId;
+            let recipientId = sendBtn.dataset.recipientId;
+
+            if (!recipientId || recipientId === 'undefined') {
+                recipientId = prompt("ไม่พบ LINE ID ของลูกค้า กรุณากรอก LINE User ID ที่ต้องการส่ง:", "");
+                if (!recipientId) return; // User cancelled
+            }
+
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+            try {
+                const response = await fetch(`/api/billing/${taskId}/send_invoice`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ recipient_id: recipientId })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message);
+
+                alert('ส่งใบแจ้งหนี้สำเร็จ!'); // Replace with a better notification if needed
+                
+                // Find the card and move it to 'billed' column if it was 'pending_billing'
+                const card = document.querySelector(`.kanban-card[data-task-id="${taskId}"]`);
+                if (card && card.closest('.kanban-cards').id === 'cards-pending_billing') {
+                    document.getElementById('cards-billed').appendChild(card);
+                    updateCounts();
+                }
+
+            } catch (error) {
+                alert(`เกิดข้อผิดพลาด: ${error.message}`);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+            }
+        }
+    });
+    // --- END: ✅ เพิ่มฟังก์ชันสำหรับปุ่มส่งใบแจ้งหนี้ ---
+
+    // ... (ส่วน Batch Actions เหมือนเดิม) ...
     function updateBatchActionBar() {
         if (selectedTaskIds.size > 0) {
             selectionCounter.textContent = `เลือก ${selectedTaskIds.size} รายการ`;
