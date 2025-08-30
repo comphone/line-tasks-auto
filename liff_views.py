@@ -779,13 +779,13 @@ def create_invoice_flex_message(task, total_cost, invoice_url):
     }
     return FlexMessage(alt_text=f"ใบแจ้งค่าบริการสำหรับงาน {task_title_short}", contents=flex_json_payload)
 
-@liff_bp.route('/api/billing/<task_id>/send_invoice', methods=['POST'])
-def send_invoice_to_customer(task_id):
+@liff_bp.route('/api/billing/<customer_task_id>/send_invoice', methods=['POST'])
+def send_invoice_to_customer(customer_task_id):
     """API สำหรับสร้างและส่งใบแจ้งหนี้ PDF ให้ลูกค้าทาง LINE (เวอร์ชันแก้ไข)"""
     data = request.json
     recipient_id = data.get('recipient_id')
 
-    task_raw = get_single_task(task_id)
+    task_raw = get_single_task(customer_task_id) # ใช้ customer_task_id ที่รับมา
     if not task_raw:
         return jsonify({'status': 'error', 'message': 'ไม่พบข้อมูลงาน'}), 404
 
@@ -797,7 +797,14 @@ def send_invoice_to_customer(task_id):
         return jsonify({'status': 'error', 'message': 'ไม่พบผู้รับ LINE ID, กรุณากรอก ID ผู้รับ'}), 404
 
     task = parse_task_data(task_raw)
-    items = JobItem.query.filter_by(task_google_id=task_id).order_by(JobItem.added_at.asc()).all()
+    
+    # --- START: ✅ แก้ไขการดึง Job Items ---
+    job_ids_in_profile = [job.get('job_id') for job in task.get('jobs', [])]
+    items = []
+    if job_ids_in_profile:
+        items = JobItem.query.filter(JobItem.task_google_id.in_(job_ids_in_profile)).order_by(JobItem.added_at.asc()).all()
+    # --- END: ✅ แก้ไขการดึง Job Items ---
+
     total_cost = sum(item.quantity * item.unit_price for item in items)
     settings = get_app_settings()
 
@@ -838,7 +845,7 @@ def send_invoice_to_customer(task_id):
     flex_message = create_invoice_flex_message(task, total_cost, invoice_url)
     message_queue.add_message(recipient_id, [flex_message])
     
-    billing_record = BillingStatus.query.filter_by(task_google_id=task_id).first()
+    billing_record = BillingStatus.query.filter_by(task_google_id=customer_task_id).first()
     if billing_record and billing_record.status == 'pending_billing':
         billing_record.status = 'billed'
         billing_record.billed_date = datetime.datetime.utcnow()
