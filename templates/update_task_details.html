@@ -1506,7 +1506,7 @@
 
         async function assignTask(techName) {
             try {
-                const response = await fetch(`/api/task/${customerTaskId}/assign`, {
+                const response = await fetch(`/api/task/${taskId}/assign`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1547,89 +1547,5 @@
                 }
             });
         }
-
-        // --- START: โค้ดสำหรับฟีเจอร์บันทึกภายในที่ปรับปรุงแล้ว ---
-        function renderInternalNotes() {
-            const container = document.getElementById('internal-notes-log');
-            container.innerHTML = '';
-            
-            // ดึงข้อมูลจาก history ที่มี flag 'is_internal' เป็น true
-            const internalNotes = techReportsHistory.filter(report => report.is_internal === true);
-            
-            if (internalNotes.length === 0) {
-                container.innerHTML = '<p class="text-muted text-center p-3">ไม่มีบันทึกติดต่อภายใน</p>';
-                return;
-            }
-
-            internalNotes.forEach(note => {
-                const entry = document.createElement('div');
-                entry.className = 'card-text p-3 border-bottom';
-                entry.innerHTML = `
-                    <p class="mb-1">
-                        <strong>โดย:</strong> ${note.technicians ? note.technicians.join(', ') : 'N/A'}
-                        <small class="text-muted float-end">${new Date(note.summary_date).toLocaleString('th-TH')}</small>
-                    </p>
-                    <p class="mb-0">${note.work_summary}</p>
-                `;
-                container.appendChild(entry);
-            });
-            // เลื่อนไปที่ข้อความล่าสุด
-            container.scrollTop = container.scrollHeight;
-        }
-
-        const internalNoteForm = document.getElementById('internalNoteForm');
-        const internalNoteInput = document.getElementById('internal-note-input');
-        const sendInternalNoteBtn = document.getElementById('send-internal-note-btn');
-
-        internalNoteForm.addEventListener('submit', async function(event) {
-            event.preventDefault();
-            const noteText = internalNoteInput.value.trim();
-            if (!noteText) {
-                flashMessage('กรุณาพิมพ์ข้อความเพื่อบันทึก', 'warning');
-                return;
-            }
-
-            sendInternalNoteBtn.disabled = true;
-            sendInternalNoteBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-            
-            let currentUser = "Admin";
-            if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
-                 const profile = await liff.getProfile();
-                 currentUser = profile.displayName;
-            }
-
-            try {
-                // อัปเดต API endpoint ให้ใช้ customer_task_id และ job_id
-                const api_url = `/api/task/${customerTaskId}/job/${taskId}/add_internal_note`;
-                const response = await fetch(api_url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify({ note_text: noteText, user: currentUser })
-                });
-                
-                const result = await response.json();
-                if (response.ok) {
-                    flashMessage(result.message, 'success');
-                    internalNoteInput.value = '';
-                    // เพิ่มบันทึกใหม่เข้าไปใน array ต้นฉบับและ render ใหม่
-                    const job = profileData.jobs.find(j => j.job_id === taskId);
-                    if (job) {
-                        job.internal_notes = job.internal_notes || [];
-                        job.internal_notes.push(result.new_note);
-                    }
-                    renderInternalNotes();
-                } else {
-                    throw new Error(result.message);
-                }
-            } catch (error) {
-                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-            } finally {
-                sendInternalNoteBtn.disabled = false;
-                sendInternalNoteBtn.innerHTML = '<i class="fas fa-paper-plane"></i> ส่ง';
-            }
-        });
-        
-        renderInternalNotes();
-        // --- END: โค้ดสำหรับฟีเจอร์บันทึกภายในที่ปรับปรุงแล้ว ---
     });
 </script>

@@ -938,3 +938,86 @@ def activity_feed():
         technician_list=technician_list,
         timedelta=timedelta
     )
+
+@liff_bp.route('/api/customer/<customer_task_id>/job/<job_id>/update', methods=['POST'])
+def api_update_job_report(customer_task_id, job_id):
+    """(เวอร์ชันใหม่) API สำหรับอัปเดตข้อมูลในใบงานย่อย (Job Order)"""
+    try:
+        task_raw = get_single_task(customer_task_id)
+        if not task_raw:
+            return jsonify({'status': 'error', 'message': 'ไม่พบโปรไฟล์ลูกค้า'}), 404
+
+        profile_data = parse_customer_profile_from_task(task_raw)
+        
+        job_to_update = None
+        job_index = -1
+        for i, job in enumerate(profile_data.get('jobs', [])):
+            if job.get('job_id') == job_id:
+                job_to_update = job
+                job_index = i
+                break
+        
+        if not job_to_update:
+            return jsonify({'status': 'error', 'message': 'ไม่พบใบงานที่ต้องการอัปเดต'}), 404
+
+        action = request.form.get('action')
+        new_attachments_json = request.form.get('uploaded_attachments_json')
+        new_attachments = json.loads(new_attachments_json) if new_attachments_json else []
+
+        flash_message = "อัปเดตข้อมูลเรียบร้อยแล้ว"
+        report_data = {'summary_date': datetime.datetime.now(THAILAND_TZ).isoformat()}
+        
+        # ตรวจสอบค่าจาก checkbox is_internal_note
+        is_internal_note = request.form.get('is_internal_note') == 'on'
+
+        if action == 'complete_task':
+            job_to_update['status'] = 'completed'
+            job_to_update['completed_date'] = datetime.datetime.now(pytz.utc).isoformat()
+            flash_message = 'ปิดงานสำเร็จ!'
+            report_data.update({
+                'type': 'report',
+                'work_summary': str(request.form.get('work_summary', '')).strip(),
+                'technicians': [t.strip() for t in request.form.get('technicians_report', '').split(',') if t.strip()],
+                'is_internal': is_internal_note
+            })
+        elif action == 'reschedule_task':
+            new_due_str = request.form.get('reschedule_due')
+            if new_due_str:
+                dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
+                job_to_update['due_date'] = dt_local.astimezone(pytz.utc).isoformat()
+            
+            flash_message = 'เลื่อนนัดเรียบร้อยแล้ว'
+            report_data.update({
+                'type': 'reschedule',
+                'reason': str(request.form.get('reschedule_reason', '')).strip(),
+                'technicians': [t.strip() for t in request.form.get('technicians_reschedule', '').split(',') if t.strip()],
+                'is_internal': is_internal_note
+            })
+        elif action == 'save_report':
+             flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
+             report_data.update({
+                'type': 'report',
+                'work_summary': str(request.form.get('work_summary', '')).strip(),
+                'technicians': [t.strip() for t in request.form.get('technicians_report', '').split(',') if t.strip()],
+                'is_internal': is_internal_note
+            })
+        
+        report_data['attachments'] = new_attachments
+        
+        if 'reports' not in job_to_update:
+            job_to_update['reports'] = []
+        job_to_update['reports'].append(report_data)
+
+        profile_data['jobs'][job_index] = job_to_update
+        
+        final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
+        
+        if update_google_task(customer_task_id, notes=final_notes):
+            cache.clear()
+            return jsonify({'status': 'success', 'message': flash_message})
+        else:
+            return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกข้อมูลลง Google Tasks'}), 500
+
+    except Exception as e:
+        current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500    
