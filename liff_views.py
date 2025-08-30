@@ -612,7 +612,7 @@ def billing_summary():
 
         task['total_cost'] = total_cost
         task['billing_status'] = billing_status.status
-        task['billing_status_details'] = billing_status.to_dict() # ส่งข้อมูล billing ทั้งหมดไปที่ template
+        task['billing_status_details'] = billing_status.to_dict()
         
         feedback_data = parse_customer_feedback_from_notes(task_raw.get('notes', ''))
         task['customer_line_id'] = feedback_data.get('customer_line_user_id', '')

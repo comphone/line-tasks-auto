@@ -1399,38 +1399,40 @@
             document.getElementById('addItemModalLabel').textContent = 'เพิ่ม/แก้ไขรายการ';
         });
         
-        const itemSearchInput = document.getElementById('item-name-input');
-        const itemSearchResultsContainer = document.getElementById('item-search-results');
-        
-        itemSearchInput.addEventListener('input', () => {
-            const query = itemSearchInput.value.toLowerCase().trim();
-            itemSearchResultsContainer.innerHTML = '';
-            if (query.length < 2) return;
+		const itemSearchInput = document.getElementById('item-name-input');
+		const itemSearchResultsContainer = document.getElementById('item-search-results');
 
-            const results = equipmentCatalog.filter(item => 
-                item.item_name.toLowerCase().includes(query) || 
-                (item.product_code && item.product_code.toLowerCase().includes(query))
-            ).slice(0, 10);
-            
-            if (results.length > 0) {
-                results.forEach(item => {
-                    const resultItem = document.createElement('a');
-                    resultItem.className = 'list-group-item list-group-item-action';
-                    resultItem.innerHTML = `
-                        <strong>${item.item_name}</strong><br>
-                        <small class="text-muted">ราคา: ${item.price.toFixed(2)} บาท, สต็อก: ${item.stock_quantity || 0}</small>
-                    `;
-                    resultItem.onclick = () => {
-                        document.getElementById('item-name-input').value = item.item_name;
-                        document.getElementById('item-price-input').value = item.price;
-                        itemSearchResultsContainer.innerHTML = '';
-                    };
-                    itemSearchResultsContainer.appendChild(resultItem);
-                });
-            } else {
-                 itemSearchResultsContainer.innerHTML = '<a class="list-group-item text-muted">ไม่พบสินค้าที่ค้นหา</a>';
-            }
-        });
+		itemSearchInput.addEventListener('input', () => {
+			const query = itemSearchInput.value.toLowerCase().trim();
+			itemSearchResultsContainer.innerHTML = '';
+			if (query.length < 2) return;
+
+			// ค้นหาจากตัวแปร equipmentCatalog ที่ถูกส่งมาจาก Backend
+			const results = equipmentCatalog.filter(item => 
+				item.item_name.toLowerCase().includes(query) || 
+				(item.product_code && item.product_code.toLowerCase().includes(query))
+			).slice(0, 10);
+			
+			if (results.length > 0) {
+				results.forEach(item => {
+					const resultItem = document.createElement('a');
+					resultItem.className = 'list-group-item list-group-item-action';
+					resultItem.innerHTML = `
+						<strong>${item.item_name}</strong><br>
+						<small class="text-muted">ราคา: ${item.price.toFixed(2)} บาท, สต็อก: ${item.stock_quantity || 0}</small>
+					`;
+					// เมื่อคลิก จะเติมข้อมูลให้
+					resultItem.onclick = () => {
+						document.getElementById('item-name-input').value = item.item_name;
+						document.getElementById('item-price-input').value = item.price;
+						itemSearchResultsContainer.innerHTML = '';
+					};
+					itemSearchResultsContainer.appendChild(resultItem);
+				});
+			} else {
+				 itemSearchResultsContainer.innerHTML = '<a class="list-group-item text-muted">ไม่พบสินค้าที่ค้นหา</a>';
+			}
+		});
         
         document.addEventListener('click', (event) => {
             if (!event.target.closest('#addItemModal')) {
