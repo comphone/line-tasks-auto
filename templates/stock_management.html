@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการสต็อกสินค้า{% endblock %}
+
+{% block head_extra %}
+<style>
+    .table th, .table td {
+        vertical-align: middle;
+    }
+    .stock-cell {
+        font-weight: bold;
+        text-align: center;
+    }
+    .stock-zero {
+        color: #dc3545;
+    }
+    .stock-low {
+        color: #ffc107;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">📦 จัดการสต็อกสินค้า</h1>
+    <div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#stockMovementModal" data-type="adjustment">
+            <i class="fas fa-edit me-2"></i>ปรับสต็อก / รับของเข้า
+        </button>
+        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#stockMovementModal" data-type="transfer">
+            <i class="fas fa-exchange-alt me-2"></i>โอนย้ายสินค้าระหว่างคลัง
+        </button>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header"><h5 class="mb-0">ภาพรวมสต็อกสินค้าคงเหลือ</h5></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover mb-0">
+                <thead class="table-light text-center">
+                    <tr>
+                        <th style="width: 40%;">สินค้า</th>
+                        {% for wh in warehouses %}
+                        <th>{{ wh.name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products %}
+                    <tr>
+                        <td>
+                            <strong>{{ product.item_name }}</strong>
+                            <br><small class="text-muted font-monospace">{{ product.product_code or 'N/A' }}</small>
+                        </td>
+                        {% for wh in warehouses %}
+                        {% set qty = stock_levels.get((product.product_code, wh.id), 0) %}
+                        <td class="stock-cell {% if qty <= 0 %}stock-zero{% elif qty <= 5 %}stock-low{% endif %}">
+                            {{ qty if qty % 1 != 0 else qty|int }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ warehouses|length + 1 }}" class="text-center text-muted p-4">
+                            ยังไม่มีข้อมูลสินค้าในระบบ กรุณาไปที่หน้า <a href="{{ url_for('liff.product_management') }}">จัดการข้อมูลสินค้า</a> เพื่อเพิ่มสินค้าก่อน
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="stockMovementModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="stockMovementModalLabel">ทำรายการ</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="movement-type">
+        
+        <div class="row">
+            <div class="col-md-8 mb-3">
+                <label for="product-select" class="form-label">สินค้า <span class="text-danger">*</span></label>
+                <select class="form-select" id="product-select" required>
+                    <option value="" disabled selected>-- กรุณาเลือกสินค้า --</option>
+                    {% for p in products %}
+                    <option value="{{ p.product_code }}">{{ p.item_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label for="quantity-input" class="form-label">จำนวน <span class="text-danger">*</span></label>
+                <input type="number" class="form-control" id="quantity-input" step="any" required>
+            </div>
+        </div>
+
+        <div id="transfer-group" class="row">
+            <div class="col-md-6 mb-3">
+                <label for="from-warehouse-select" class="form-label">จากคลัง <span class="text-danger">*</span></label>
+                <select class="form-select" id="from-warehouse-select">
+                    {% for wh in warehouses %}<option value="{{ wh.id }}">{{ wh.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="to-warehouse-select" class="form-label">ไปคลัง <span class="text-danger">*</span></label>
+                <select class="form-select" id="to-warehouse-select">
+                     {% for wh in warehouses %}<option value="{{ wh.id }}">{{ wh.name }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div id="adjustment-group" class="row">
+             <div class="col-md-6 mb-3">
+                <label for="to-warehouse-adj-select" class="form-label">เข้าคลัง <span class="text-danger">*</span></label>
+                <select class="form-select" id="to-warehouse-adj-select">
+                    {% for wh in warehouses %}<option value="{{ wh.id }}">{{ wh.name }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div class="mb-3">
+            <label for="notes-input" class="form-label">หมายเหตุ</label>
+            <textarea class="form-control" id="notes-input" rows="2" placeholder="เช่น รับของล็อตใหม่, โอนของให้ช่างเตรียมงาน..."></textarea>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" id="confirm-movement-btn">ยืนยัน</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const movementModalEl = document.getElementById('stockMovementModal');
+    const movementModal = new bootstrap.Modal(movementModalEl);
+    
+    movementModalEl.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const type = button.dataset.type;
+        
+        document.getElementById('movement-type').value = type;
+        const transferGroup = document.getElementById('transfer-group');
+        const adjGroup = document.getElementById('adjustment-group');
+        const modalLabel = document.getElementById('stockMovementModalLabel');
+
+        if (type === 'transfer') {
+            transferGroup.style.display = 'flex';
+            adjGroup.style.display = 'none';
+            modalLabel.textContent = 'โอนย้ายสินค้าระหว่างคลัง';
+        } else {
+            transferGroup.style.display = 'none';
+            adjGroup.style.display = 'flex';
+            modalLabel.textContent = 'ปรับสต็อก / รับของเข้า';
+        }
+    });
+
+    document.getElementById('confirm-movement-btn').addEventListener('click', function() {
+        const type = document.getElementById('movement-type').value;
+        const productCode = document.getElementById('product-select').value;
+        const quantity = document.getElementById('quantity-input').value;
+        const notes = document.getElementById('notes-input').value;
+
+        if (!productCode || !quantity) {
+            alert('กรุณากรอกข้อมูลสินค้าและจำนวนให้ครบถ้วน');
+            return;
+        }
+
+        let payload = {
+            product_code: productCode,
+            quantity: parseFloat(quantity),
+            notes: notes,
+            user: "Admin" // Placeholder
+        };
+
+        let url = '';
+
+        if (type === 'transfer') {
+            payload.from_warehouse_id = document.getElementById('from-warehouse-select').value;
+            payload.to_warehouse_id = document.getElementById('to-warehouse-select').value;
+            url = "{{ url_for('api_stock_transfer') }}";
+            if (payload.from_warehouse_id === payload.to_warehouse_id) {
+                alert('คลังต้นทางและปลายทางต้องไม่ซ้ำกัน');
+                return;
+            }
+        } else { // adjustment
+            payload.to_warehouse_id = document.getElementById('to-warehouse-adj-select').value;
+            url = "{{ url_for('api_stock_adjust') }}";
+        }
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                movementModal.hide();
+                Swal.fire({
+                    icon: 'success',
+                    title: data.message,
+                    showConfirmButton: false,
+                    timer: 1500
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else {
+                throw new Error(data.message);
+            }
+        })
+        .catch(err => {
+            Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        });
+    });
+});
+</script>
+{% endblock %}

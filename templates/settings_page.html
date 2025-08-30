@@ -1,0 +1,1289 @@
+{% extends "base.html" %}
+
+{% block title %}ตั้งค่าระบบ{% endblock %}
+
+{% block head_extra %}
+<style>
+    .technician-management-list .list-group-item {
+        display: flex;
+        align-items: center;
+    }
+    .technician-management-list .technician-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-right: 1rem;
+        background-color: #e9ecef;
+    }
+    .technician-management-list .technician-name {
+        flex-grow: 1;
+        font-weight: 500;
+    }
+    .template-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        border-radius: 0.375rem;
+        background-color: #f8f9fa;
+    }
+    .template-item input {
+        border: none;
+        background-color: transparent;
+    }
+    .template-item input:focus {
+        box-shadow: none;
+        background-color: #fff;
+    }
+    /* ... (โค้ด style เดิม) ... */
+    /* --- START: สไตล์สำหรับ Multi-select --- */
+    #warehouse-tech-name { height: 150px; }
+    /* --- END: สไตล์สำหรับ Multi-select --- */	
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">⚙️ ตั้งค่าระบบ</h1>
+</div>
+
+<div id="flash-messages-area">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message | safe }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0"><i class="fas fa-warehouse me-2"></i>จัดการคลังสินค้า</h5>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">สร้างและจัดการคลังสินค้าของคุณ เช่น คลังหลักที่ร้าน หรือคลังย่อยบนรถของช่างแต่ละคน</p>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ชื่อคลัง</th>
+                        <th>ประเภท</th>
+                        <th>ช่าง (ถ้ามี)</th>
+                        <th class="text-center">จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody id="warehouse-list-body">
+                    {% for wh in warehouses %}
+                    <tr data-id="{{ wh.id }}" data-name="{{ wh.name }}" data-type="{{ wh.type }}" data-tech="{{ wh.technician_name or '' }}">
+                        <td>{{ wh.name }}</td>
+                        <td><span class="badge bg-secondary">{{ 'คลังหลัก' if wh.type == 'main' else 'รถช่าง' }}</span></td>
+                        <td>{{ wh.technician_name or '-' }}</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-primary edit-warehouse-btn"><i class="fas fa-pen"></i></button>
+                            <button class="btn btn-sm btn-outline-danger delete-warehouse-btn"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button class="btn btn-success" id="add-warehouse-btn"><i class="fas fa-plus me-2"></i>เพิ่มคลังใหม่</button>
+    </div>
+</div>
+<div class="modal fade" id="warehouseModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="warehouseModalLabel">ข้อมูลคลังสินค้า</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="warehouse-id">
+                <div class="mb-3">
+                    <label for="warehouse-name" class="form-label">ชื่อคลัง <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="warehouse-name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="warehouse-type" class="form-label">ประเภทคลัง</label>
+                    <select class="form-select" id="warehouse-type">
+                        <option value="main">คลังหลัก</option>
+                        <option value="technician_van">คลังรถช่าง</option>
+                    </select>
+                </div>
+				<div class="mb-3" id="technician-name-group" style="display: none;">
+					<label for="warehouse-tech-name" class="form-label">ผูกกับช่าง (เลือกได้หลายคน)</label>
+					<select class="form-select" id="warehouse-tech-name" multiple>
+						{% for tech in settings.get('technician_list', []) %}
+							<option value="{{ tech.name }}">{{ tech.name }}</option>
+						{% endfor %}
+					</select>
+					<small class="form-text text-muted">กด Ctrl (หรือ Cmd บน Mac) ค้างไว้เพื่อเลือกหลายคน</small>
+				</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-warehouse-btn">บันทึก</button>
+            </div>
+        </div>
+    </div>
+</div>
+<form method="POST" action="{{ url_for('settings_page') }}" id="form_technician_templates">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-comment-dots me-2"></i>จัดการเทมเพลตข้อความด่วน (สำหรับช่าง)</h5>
+        </div>
+        <div class="card-body p-4">
+            <p class="text-muted">จัดการเทมเพลตข้อความที่ช่างสามารถเรียกใช้ด้วยการพิมพ์ `/` ในหน้ารายละเอียดงาน</p>
+
+            <div class="mb-4">
+                <h6 class="mb-2">เทมเพลตสำหรับ "รายละเอียดงาน"</h6>
+                <div id="task-details-templates-container" class="d-grid gap-2">
+                    </div>
+                <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addTemplate('task_details')">
+                    <i class="fas fa-plus me-1"></i> เพิ่มเทมเพลต
+                </button>
+            </div>
+            <hr>
+            <div class="mb-4">
+                <h6 class="mb-2">เทมเพลตสำหรับ "รายงานความคืบหน้า / ปิดงาน"</h6>
+                <div id="progress-reports-templates-container" class="d-grid gap-2">
+                    </div>
+                <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addTemplate('progress_reports')">
+                    <i class="fas fa-plus me-1"></i> เพิ่มเทมเพลต
+                </button>
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <button type="submit" class="btn btn-info">
+                <i class="fas fa-save me-2"></i>บันทึกเทมเพลตสำหรับช่าง
+            </button>
+        </div>
+    </div>
+</form>
+
+<form method="POST" action="{{ url_for('settings_page') }}" id="form_report_settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-bell me-2"></i>การตั้งค่าการแจ้งเตือนและรายงาน</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row mb-3">
+                <label for="appointment_reminder_hour" class="col-md-4 col-form-label">แจ้งเตือนนัดหมาย (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="appointment_reminder_hour" name="report_times[appointment_reminder_hour_thai]"
+                           value="{{ settings.report_times.appointment_reminder_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="outstanding_report_hour" class="col-md-4 col-form-label">รายงานค้างงาน (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="outstanding_report_hour" name="report_times[outstanding_report_hour_thai]"
+                           value="{{ settings.report_times.outstanding_report_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="customer_followup_hour" class="col-md-4 col-form-label">ติดตามลูกค้า (โมงไทย)</label>
+                <div class="col-md-8">
+                    <input type="number" class="form-control" id="customer_followup_hour" name="report_times[customer_followup_hour_thai]"
+                           value="{{ settings.report_times.customer_followup_hour_thai }}" min="0" max="23" required>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าแจ้งเตือน
+            </button>
+        </div>
+    </div>
+</form>
+
+<form method="POST" action="{{ url_for('settings_page') }}" id="form_message_templates">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-comment-alt me-2"></i>จัดการแม่แบบข้อความ (Message Templates)</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="mb-3">
+                <label for="template_welcome_customer" class="form-label">ข้อความต้อนรับลูกค้า (เมื่อเชื่อมต่อ LINE ครั้งแรก):</label>
+                <textarea class="form-control" id="template_welcome_customer" name="message_templates[welcome_customer]" rows="4">{{ settings.message_templates.welcome_customer }}</textarea>
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [customer_name], [shop_phone], [shop_line_id]</small>
+            </div>
+            <hr>
+            <div class="mb-3">
+                <label for="template_problem_report_admin" class="form-label">ข้อความแจ้งเตือนแอดมิน (เมื่อลูกค้าแจ้งปัญหา):</label>
+                <textarea class="form-control" id="template_problem_report_admin" name="message_templates[problem_report_admin]" rows="4">{{ settings.message_templates.problem_report_admin }}</textarea>
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [task_title], [customer_name], [problem_desc], [task_url]</small>
+            </div>
+            <hr>
+            <div class="mb-3">
+                <label for="template_daily_reminder_header" class="form-label">หัวข้อแจ้งเตือนรายวัน (ส่งสรุปงานทุกเช้า):</label>
+                <input type="text" class="form-control" id="template_daily_reminder_header" name="message_templates[daily_reminder_header]" value="{{ settings.message_templates.daily_reminder_header }}">
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [task_count]</small>
+            </div>
+            <div class="mb-3">
+                <label for="template_daily_reminder_task_line" class="form-label">รูปแบบข้อความแจ้งเตือนรายวัน (สำหรับแต่ละงาน):</label>
+                <textarea class="form-control" id="template_daily_reminder_task_line" name="message_templates[daily_reminder_task_line]" rows="5">{{ settings.message_templates.daily_reminder_task_line }}</textarea>
+                <small class="form-text text-muted">ตัวแปรที่ใช้ได้: [task_title], [customer_name], [customer_phone], [due_date], [map_url], [task_url]</small>
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-save me-2"></i>บันทึกแม่แบบข้อความ
+            </button>
+        </div>
+    </div>
+</form>
+
+<form method="POST" action="{{ url_for('settings_page') }}" id="form_liff_notifications">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-dark">
+            <h5 class="mb-0"><i class="fas fa-mobile-alt me-2"></i>การตั้งค่าแจ้งเตือนบนมือถือ (LINE LIFF Popup)</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="mb-3">
+                <label for="liff_popup_base_url" class="form-label">LIFF App Base URL (สำหรับแจ้งเตือนป๊อปอัป):</label>
+                <input type="url" class="form-control" id="liff_popup_base_url" name="popup_notifications[liff_popup_base_url]"
+                       value="{{ settings.popup_notifications.liff_popup_base_url }}" placeholder="เช่น https://liff.line.me/xxxx-yyyy">
+                <div class="form-text">URL ของ LIFF App ที่สร้างใน LINE Developers Console (ต้องตรงกับ Endpoint URL ที่ตั้งค่าไว้)</div>
+            </div>
+            <hr>
+            <h6>ประเภทการแจ้งเตือน (ส่งเป็น LINE Push Message เปิด LIFF)</h6>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enabled_arrival" name="popup_notifications[enabled_arrival]"
+                       {{ 'checked' if settings.popup_notifications.enabled_arrival else '' }}>
+                <label class="form-check-label" for="enabled_arrival">เปิดใช้งาน: แจ้งเตือนช่างกำลังจะถึงลูกค้า</label>
+            </div>
+            <div class="mb-3">
+                <label for="message_arrival_template" class="form-label">ข้อความแม่แบบ (ช่างจะถึงลูกค้า):</label>
+                <textarea class="form-control" id="message_arrival_template" name="popup_notifications[message_arrival_template]">{{ settings.popup_notifications.message_arrival_template }}</textarea>
+                <small class="form-text text-muted">ใช้ [technician_name], [customer_name] เป็นตัวแปร</small>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enabled_completion_customer" name="popup_notifications[enabled_completion_customer]"
+                       {{ 'checked' if settings.popup_notifications.enabled_completion_customer else '' }}>
+                <label class="form-check-label" for="enabled_completion_customer">เปิดใช้งาน: แจ้งเตือนปิดงานถึงลูกค้า</label>
+            </div>
+            <div class="mb-3">
+                <label for="message_completion_customer_template" class="form-label">ข้อความแม่แบบ (ปิดงานลูกค้า):</label>
+                <textarea class="form-control" id="message_completion_customer_template" name="popup_notifications[message_completion_customer_template]">{{ settings.popup_notifications.message_completion_customer_template }}</textarea>
+                <small class="form-text text-muted">ใช้ [task_title], [customer_name] เป็นตัวแปร</small>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enabled_nearby_job" name="popup_notifications[enabled_nearby_job]"
+                       {{ 'checked' if settings.popup_notifications.enabled_nearby_job else '' }}>
+                <label class="form-check-label" for="enabled_nearby_job">เปิดใช้งาน: แจ้งเตือนงานใกล้เคียง (สำหรับช่าง)</label>
+            </div>
+            <div class="mb-3">
+                <label for="nearby_radius_km" class="form-label">รัศมีแจ้งเตือนงานใกล้เคียง (กม.):</label>
+                <input type="number" step="0.1" class="form-control" id="nearby_radius_km" name="popup_notifications[nearby_radius_km]"
+                       value="{{ settings.popup_notifications.nearby_radius_km }}">
+            </div>
+            <div class="mb-3">
+                <label for="message_nearby_template" class="form-label">ข้อความแม่แบบ (งานใกล้เคียง):</label>
+                <textarea class="form-control" id="message_nearby_template" name="popup_notifications[message_nearby_template]">{{ settings.popup_notifications.message_nearby_template }}</textarea>
+                <small class="form-text text-muted">ใช้ [task_title], [distance_km], [customer_name] เป็นตัวแปร</small>
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <button type="submit" class="btn btn-info">
+                <i class="fas fa-save me-2"></i>บันทึกการตั้งค่าแจ้งเตือนบนมือถือ
+            </button>
+        </div>
+    </div>
+</form>
+
+<form method="POST" action="{{ url_for('settings_page') }}" id="form_line_bot_info">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fab fa-line me-2"></i>ข้อมูล LINE Bot</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row mb-3">
+                <label for="admin_group_id" class="col-md-4 col-form-label">LINE Admin Group ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="admin_group_id" name="line_recipients[admin_group_id]"
+                           value="{{ settings.line_recipients.admin_group_id }}">
+                    <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนภายใน</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="technician_group_id" class="col-md-4 col-form-label">LINE Technician Group ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="technician_group_id" name="line_recipients[technician_group_id]"
+                           value="{{ settings.line_recipients.technician_group_id }}">
+                    <div class="form-text">ใช้สำหรับส่งการแจ้งเตือนให้ช่าง (ถ้าแยกจาก Admin)</div>
+                </div>
+            </div>
+             <div class="row mb-3">
+                <label for="manager_user_id" class="col-md-4 col-form-label">LINE Manager User ID</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="manager_user_id" name="line_recipients[manager_user_id]"
+                           value="{{ settings.line_recipients.manager_user_id }}">
+                    <div class="form-text">LINE User ID ของผู้จัดการ (ถ้ามี)</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-8 offset-md-4">
+                    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#testNotificationModal">
+                        <i class="fas fa-paper-plane me-2"></i>ทดสอบส่งข้อความ LINE
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>บันทึกข้อมูล LINE Bot
+            </button>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-info text-dark">
+        <h5 class="mb-0"><i class="fas fa-bug me-2"></i>🔍 LIFF Debug Panel</h5>
+    </div>
+    <div class="card-body p-4">
+        <div class="alert alert-info mb-3">
+            <strong>🎯 ตรวจสอบการตั้งค่า LIFF Apps:</strong> ใช้เครื่องมือเหล่านี้เพื่อแก้ไขปัญหา LIFF initialization failed
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-md-6 mb-2">
+                <button type="button" class="btn btn-info w-100" onclick="checkLiffConfiguration()">
+                    <i class="fas fa-search me-2"></i>ตรวจสอบ LIFF Configuration
+                </button>
+            </div>
+            <div class="col-md-6 mb-2">
+                <button type="button" class="btn btn-warning w-100" onclick="checkEnvironmentVariables()">
+                    <i class="fas fa-cog me-2"></i>ตรวจสอบ Environment Variables
+                </button>
+            </div>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-md-6 mb-2">
+                <button type="button" class="btn btn-secondary w-100" onclick="testLiffUrls()">
+                    <i class="fas fa-link me-2"></i>ทดสอบ LIFF URLs
+                </button>
+            </div>
+            <div class="col-md-6 mb-2">
+                <button type="button" class="btn btn-success w-100" onclick="generateLiffTestUrl()">
+                    <i class="fas fa-external-link-alt me-2"></i>สร้าง Test URL
+                </button>
+            </div>
+        </div>
+        
+        <div class="card bg-light mb-3">
+            <div class="card-body p-3">
+                <h6 class="card-title mb-2">⚡ Quick LIFF ID Setup</h6>
+                <div class="row">
+                    <div class="col-md-6 mb-2">
+                        <label for="quick-liff-form" class="form-label small">LIFF_ID_FORM:</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="quick-liff-form" placeholder="xxxxxxxxxx-xxxxxxxx">
+                            <button class="btn btn-outline-primary" type="button" onclick="updateEnvironmentVariable('LIFF_ID_FORM')">
+                                <i class="fas fa-save"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <label for="quick-liff-tech" class="form-label small">LIFF_ID_TECHNICIAN_LOCATION:</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="quick-liff-tech" placeholder="xxxxxxxxxx-xxxxxxxx">
+                            <button class="btn btn-outline-primary" type="button" onclick="updateEnvironmentVariable('LIFF_ID_TECHNICIAN_LOCATION')">
+                                <i class="fas fa-save"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <small class="text-muted">💡 ป้อน LIFF ID ใหม่และกด Save เพื่ออัปเดต Environment Variables</small>
+            </div>
+        </div>
+        
+        <div id="liffDebugResult" class="mt-3"></div>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('settings_page') }}" id="form_shop_tech_info">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-store me-2"></i>ข้อมูลร้านค้าและช่าง</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row mb-3">
+                <label for="shop_contact_phone" class="col-md-4 col-form-label">เบอร์โทรศัพท์ติดต่อ</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="shop_contact_phone" name="shop_info[contact_phone]"
+                           value="{{ settings.shop_info.contact_phone }}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label for="shop_line_id" class="col-md-4 col-form-label">LINE ID ร้าน</label>
+                <div class="col-md-8">
+                    <input type="text" class="form-control" id="shop_line_id" name="shop_info[line_id]"
+                           value="{{ settings.shop_info.line_id }}">
+                </div>
+            </div>
+            <hr>
+            <h6 class="mt-3">จัดการรายชื่อช่าง</h6>
+            <div id="technician-management-list-container" class="list-group technician-management-list mb-3">
+                </div>
+            <button type="button" class="btn btn-success" onclick="openTechnicianEditModal()">
+                <i class="fas fa-plus me-2"></i>เพิ่มช่างใหม่
+            </button>
+        </div>
+        <div class="card-footer text-end">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>บันทึกข้อมูลร้านค้าและช่าง
+            </button>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fas fa-qrcode me-2"></i>ตั้งค่าการชำระเงิน (QR Code)</h5>
+    </div>
+    <div class="card-body p-4 text-center">
+        <p class="text-muted">อัปโหลดรูปภาพ QR Code สำหรับรับชำระเงิน (เช่น PromptPay) รูปภาพนี้จะแสดงในใบแจ้งหนี้</p>
+        
+        <div class="mb-3">
+            {% set qr_code_id = settings.shop_info.get('payment_qr_code_id') %}
+            <img id="qr-code-preview" 
+                 src="{% if qr_code_id %}https://drive.google.com/thumbnail?id={{ qr_code_id }}&sz=w200{% else %}https://via.placeholder.com/200x200.png?text=Upload+QR+Code{% endif %}" 
+                 class="img-thumbnail" 
+                 alt="QR Code Preview" 
+                 style="max-width: 200px; height: auto;">
+        </div>
+        
+        <div class="mb-3">
+            <input class="form-control" type="file" id="qr-code-upload-input" accept="image/*">
+        </div>
+        
+        <button type="button" class="btn btn-success" id="save-qr-code-btn" disabled>
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
+            <i class="fas fa-save me-2"></i> บันทึก QR Code
+        </button>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0"><i class="fas fa-robot me-2"></i>🤖 สถานะ LINE Bot</h5>
+    </div>
+    <div class="card-body p-4">
+        <div class="alert alert-info">
+            <strong>ตรวจสอบการทำงานของ LINE Bot:</strong> ใช้เครื่องมือเหล่านี้เพื่อตรวจสอบว่า LINE Bot ของคุณตั้งค่าถูกต้องหรือไม่
+        </div>
+        
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="button" class="btn btn-info" onclick="checkLineBotStatus()">
+                <i class="fas fa-search me-2"></i>ตรวจสอบการตั้งค่า LINE Bot
+            </button>
+        </div>
+        
+        <div id="lineBotStatusResult" class="mt-3"></div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เครื่องมือผู้ดูแลระบบ (Admin Tools)</h5>
+    </div>
+    <div class="card-body p-4">
+        <h6 class="mb-3">การสำรองและกู้คืนข้อมูล</h6>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <a href="{{ url_for('backup_data') }}" class="btn btn-primary"><i class="fas fa-download me-2"></i>ดาวน์โหลด Backup ทั้งหมด</a>
+            <form action="{{ url_for('trigger_auto_backup_now') }}" method="POST" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-info" onclick="return confirm('คุณต้องการบังคับให้ระบบสำรองข้อมูลการตั้งค่าทั้งหมดไปที่ Google Drive ทันทีใช่หรือไม่?')"><i class="fab fa-google-drive me-2"></i>บังคับ Backup ไปที่ Drive</button>
+            </form>
+        </div>
+
+        <div class="card mt-3">
+             <div class="card-body bg-light">
+                <h6 class="card-title">กู้คืนข้อมูลสำรอง (Restore)</h6>
+                 <div class="alert alert-danger small p-2">
+                     <strong>คำเตือน:</strong> การกู้คืนข้อมูลจะเขียนทับข้อมูลปัจจุบัน โปรดใช้ด้วยความระมัดระวัง
+                 </div>
+                 <div class="mb-2">
+                     <label for="backup_file_input" class="form-label small">เลือกไฟล์สำรอง (.json):</label>
+                     <input class="form-control form-control-sm" type="file" id="backup_file_input" accept=".json">
+                 </div>
+                 <div class="mb-2">
+                     <label for="backup_type_select" class="form-label small">ประเภทข้อมูล:</label>
+                     <select class="form-select form-select-sm" id="backup_type_select">
+                         <option value="tasks_json">ข้อมูลงาน (Tasks)</option>
+                         <option value="settings_json">ข้อมูลการตั้งค่า (Settings)</option>
+                     </select>
+                 </div>
+                 <button type="button" class="btn btn-sm btn-primary" id="preview_backup_btn"><i class="fas fa-eye me-1"></i>ดูตัวอย่าง</button>
+                 <div id="backup_preview_area" class="mt-3" style="display:none;">
+                     <div id="preview_content" class="p-2 bg-white border rounded small"></div>
+                     <button type="button" class="btn btn-sm btn-danger mt-2" id="import_backup_btn"><i class="fas fa-exclamation-triangle me-1"></i>ยืนยันการกู้คืน</button>
+                 </div>
+                 <div id="import_status" class="mt-2 small"></div>
+             </div>
+        </div>
+        <hr>
+
+		<h6 class="mb-3 mt-4">การจัดการข้อมูล</h6>
+		 <div class="d-flex flex-wrap gap-2">
+			<a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
+			<a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-danger"><i class="fas fa-clone me-2"></i>จัดการอุปกรณ์ที่ซ้ำซ้อน</a>
+			
+			<a href="{{ url_for('organize_files') }}" class="btn btn-outline-info"><i class="fas fa-folder-open me-2"></i>เครื่องมือจัดระเบียบไฟล์</a>
+
+			<form action="{{ url_for('cleanup_drive_folders') }}" method="POST" onsubmit="return confirm('คุณต้องการเริ่มกระบวนการรวมโฟลเดอร์ที่ซ้ำกันใน Google Drive หรือไม่? กระบวนการนี้อาจใช้เวลาสักครู่');">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+				<button type="submit" class="btn btn-outline-warning">
+					<i class="fas fa-broom me-2"></i>ทำความสะอาดโฟลเดอร์ซ้ำ
+				</button>
+			</form>
+		 </div>
+		<hr>
+        
+        <h6 class="mb-3 mt-4">ตรวจสอบและซ่อมแซมข้อมูล (Health Check & Repair)</h6>
+        <div class="card mt-3">
+            <div class="card-body bg-light">
+                <p class="small text-muted">
+                    เครื่องมือนี้จะสแกนหารายการงานที่อาจมีข้อมูลรูปภาพไม่ตรงกัน (มีรูปใน Drive แต่ไม่มีในประวัติ)
+                    และอนุญาตให้คุณซ่อมแซมเพื่อนำรูปภาพกลับมาแสดงผล
+                </p>
+                <button class="btn btn-warning" id="scan-health-btn">
+                    <i class="fas fa-search-plus me-2"></i>ตรวจสอบความสมบูรณ์ของข้อมูล
+                </button>
+                <div id="health-check-results" class="mt-3" style="display:none;">
+                    <p id="scan-summary"></p>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>ชื่องาน / ลูกค้า</th>
+                                    <th class="text-center">รูปที่หาย</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="issues-table-body">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="scan-spinner" class="text-center mt-3" style="display:none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">กำลังสแกนข้อมูล, กรุณารอสักครู่...</p>
+                </div>
+            </div>
+        </div>
+        </div>
+</div>
+			
+<div class="modal fade" id="testNotificationModal" tabindex="-1" aria-labelledby="testNotificationModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="testNotificationModalLabel">ทดสอบส่งข้อความ LINE</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form action="{{ url_for('test_notification') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="modal-body">
+            <div class="mb-3">
+              <label for="test_recipient" class="form-label">ID ผู้รับ (User ID / Group ID):</label>
+              <input type="text" class="form-control" id="test_recipient" name="test_recipient" value="{{ settings.line_recipients.admin_group_id }}" required>
+            </div>
+            <div class="mb-3">
+              <label for="test_type" class="form-label">ประเภทการแจ้งเตือน:</label>
+              <select class="form-select" id="test_type" name="test_type">
+                  <option value="simple_text">ข้อความธรรมดา</option>
+                  <option value="customer_completion">แจ้งปิดงาน (ลูกค้า)</option>
+                  <option value="customer_follow_up">ติดตามผล (ลูกค้า)</option>
+                  <option value="admin_new_task">แจ้งงานใหม่ (แอดมิน)</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="test_message" class="form-label">ข้อความ (สำหรับประเภท 'ข้อความธรรมดา'):</label>
+              <textarea class="form-control" name="test_message" id="test_message" rows="3">[ทดสอบ] นี่คือข้อความทดสอบจากระบบ</textarea>
+            </div>
+            <small class="form-text text-muted">การทดสอบประเภทอื่นที่ไม่ใช่ "ข้อความธรรมดา" จะดึงข้อมูลงานล่าสุดมาใช้เป็นตัวอย่าง</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+          <button type="submit" class="btn btn-primary">ส่งข้อความทดสอบ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="technicianEditModal" tabindex="-1" aria-labelledby="technicianEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="technicianEditModalLabel">เพิ่ม/แก้ไขข้อมูลช่าง</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="technician-name" class="form-label">ชื่อช่าง</label>
+                    <input type="text" class="form-control" id="technician-name" placeholder="เช่น ช่างโต้" required>
+                </div>
+                <div class="mb-3">
+                    <label for="technician-line-id" class="form-label">LINE User ID</label>
+                    <input type="text" class="form-control" id="technician-line-id" placeholder="LINE User ID ของช่าง">
+                    <div class="form-text">ใช้สำหรับส่งแจ้งเตือนส่วนตัว (เช่น งานใกล้เคียง)</div>
+                </div>
+                <div class="mb-3">
+                    <label for="technician-lat" class="form-label">ละติจูด (Latitude)</label>
+                    <input type="number" step="any" class="form-control" id="technician-lat" placeholder="เช่น 13.xxxxxx">
+                    <div class="form-text">ตำแหน่งล่าสุดของช่าง (สำหรับฟีเจอร์งานใกล้เคียง)</div>
+                </div>
+                <div class="mb-3">
+                    <label for="technician-lon" class="form-label">ลองจิจูด (Longitude)</label>
+                    <input type="number" step="any" class="form-control" id="technician-lon" placeholder="เช่น 100.xxxxxx">
+                </div>
+                <div class="mb-3">
+                    <label for="technician-avatar-file" class="form-label">รูปภาพโปรไฟล์ (Avatar)</label>
+                    <input type="file" class="form-control" id="technician-avatar-file" accept="image/*">
+                    <div class="form-text">เลือกไฟล์รูปภาพใหม่เพื่ออัปโหลด (ถ้าไม่เลือกจะใช้รูปเดิม)</div>
+                    <input type="hidden" id="technician-avatar-id">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-technician-btn" onclick="saveTechnician()">บันทึก</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let technicianTemplates = {
+        task_details: {{ settings.technician_templates.task_details | tojson | safe }},
+        progress_reports: {{ settings.technician_templates.progress_reports | tojson | safe }}
+    };
+
+    function renderTemplates(category) {
+        const container = document.getElementById(`${category.replace('_', '-')}-templates-container`);
+        if (!container) return;
+        container.innerHTML = '';
+        technicianTemplates[category].forEach((template, index) => {
+            const templateEl = document.createElement('div');
+            templateEl.className = 'template-item';
+            templateEl.innerHTML = `
+                <input type="text" class="form-control form-control-sm" placeholder="คำย่อ (Key)" value="${template.key}" data-index="${index}" data-category="${category}" onchange="updateTemplate(this)">
+                <input type="text" class="form-control" placeholder="ข้อความเต็ม (Value)" value="${template.value}" data-index="${index}" data-category="${category}" onchange="updateTemplate(this)">
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTemplate('${category}', ${index})"><i class="fas fa-trash"></i></button>
+            `;
+            container.appendChild(templateEl);
+        });
+    }
+
+    window.addTemplate = (category) => {
+        technicianTemplates[category].push({ key: '', value: '' });
+        renderTemplates(category);
+    };
+
+    window.removeTemplate = (category, index) => {
+        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบเทมเพลตนี้?')) {
+            technicianTemplates[category].splice(index, 1);
+            renderTemplates(category);
+        }
+    };
+    
+    window.updateTemplate = (inputElement) => {
+        const category = inputElement.dataset.category;
+        const index = parseInt(inputElement.dataset.index);
+        const property = inputElement.placeholder.includes('Key') ? 'key' : 'value';
+        technicianTemplates[category][index][property] = inputElement.value;
+    };
+
+    let technicians = {{ settings.technician_list | tojson | safe }};
+    let technicianEditModal = new bootstrap.Modal(document.getElementById('technicianEditModal'));
+    let currentIndex = -1;
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+	function renderTechnicianList() {
+        const container = document.getElementById('technician-management-list-container');
+        if (!container) return;
+        container.innerHTML = '';
+        if (technicians.length === 0) {
+            container.innerHTML = '<p class="text-muted">ยังไม่มีรายชื่อช่างในระบบ</p>';
+        } else {
+            technicians.forEach((tech, index) => {
+                // --- START: ✅ โค้ดที่แก้ไข ---
+                // เปลี่ยนจากการใช้ via.placeholder.com มาใช้รูปภาพเริ่มต้นในโปรเจกต์แทน
+                const initial = tech.name && tech.name.trim() !== '' ? tech.name.trim().charAt(0).toUpperCase() : '?';
+                const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `/static/logo.png`;
+                // --- END: ✅ โค้ดที่แก้ไข ---
+
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <img src="${avatarUrl}" class="technician-avatar" alt="${tech.name}">
+                    <span class="technician-name">${tech.name}</span>
+                    <button type="button" class="btn btn-sm btn-outline-primary me-2" onclick="openTechnicianEditModal(${index})"><i class="fas fa-edit"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteTechnician(${index})"><i class="fas fa-trash"></i></button>
+                `;
+                container.appendChild(item);
+            });
+        }
+    }
+
+    window.openTechnicianEditModal = (index = -1) => {
+        currentIndex = index;
+        document.getElementById('technician-avatar-file').value = '';
+        if (index > -1) {
+            const tech = technicians[index];
+            document.getElementById('technician-name').value = tech.name;
+            document.getElementById('technician-avatar-id').value = tech.avatar_id || '';
+            document.getElementById('technician-line-id').value = tech.line_user_id || '';
+            document.getElementById('technician-lat').value = tech.last_known_lat || '';
+            document.getElementById('technician-lon').value = tech.last_known_lon || '';
+            document.getElementById('technicianEditModalLabel').innerText = 'แก้ไขข้อมูลช่าง';
+        } else {
+            document.getElementById('technician-name').value = '';
+            document.getElementById('technician-avatar-id').value = '';
+            document.getElementById('technician-line-id').value = '';
+            document.getElementById('technician-lat').value = '';
+            document.getElementById('technician-lon').value = '';
+            document.getElementById('technicianEditModalLabel').innerText = 'เพิ่มช่างใหม่';
+        }
+        technicianEditModal.show();
+    }
+
+    window.saveTechnician = async () => {
+        const saveBtn = document.getElementById('save-technician-btn');
+        const originalBtnText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...';
+
+        const name = document.getElementById('technician-name').value.trim();
+        const avatarFile = document.getElementById('technician-avatar-file').files[0];
+        let avatarId = document.getElementById('technician-avatar-id').value;
+        const lineUserId = document.getElementById('technician-line-id').value.trim();
+        const lat = document.getElementById('technician-lat').value;
+        const lon = document.getElementById('technician-lon').value;
+
+        if (!name) {
+            alert('กรุณาใส่ชื่อช่าง');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnText;
+            return;
+        }
+
+        if (avatarFile) {
+            const formData = new FormData();
+            formData.append('file', avatarFile);
+            try {
+                const response = await fetch('/api/upload_avatar', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    avatarId = result.file_id;
+                    flashMessage('อัปโหลดรูปภาพโปรไฟล์สำเร็จ!', 'success');
+                } else { throw new Error(result.message); }
+            } catch (error) {
+                alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + error.message);
+                saveBtn.disabled = false; saveBtn.innerHTML = originalBtnText; return;
+            }
+        }
+
+        const newTech = {
+            name: name, avatar_id: avatarId, line_user_id: lineUserId,
+            last_known_lat: lat !== '' ? parseFloat(lat) : null,
+            last_known_lon: lon !== '' ? parseFloat(lon) : null
+        };
+
+        if (currentIndex > -1) technicians[currentIndex] = newTech;
+        else technicians.push(newTech);
+
+        renderTechnicianList();
+        technicianEditModal.hide();
+        saveBtn.disabled = false; saveBtn.innerHTML = originalBtnText;
+    }
+
+    window.deleteTechnician = (index) => {
+        if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบช่าง "${technicians[index].name}"?`)) {
+            technicians.splice(index, 1);
+            renderTechnicianList();
+        }
+    }
+
+    async function handleFormSubmit(event, formId) {
+        event.preventDefault();
+        const form = document.getElementById(formId);
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalBtnText = submitButton.innerHTML;
+
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...';
+
+        let data = {};
+
+        if (formId === 'form_technician_templates') {
+             data = {
+                technician_templates: technicianTemplates,
+                csrf_token: form.querySelector('input[name="csrf_token"]').value
+            };
+        } else {
+            const formData = new FormData(form);
+            form.querySelectorAll('input[type=checkbox]').forEach(checkbox => {
+                const parts = checkbox.name.match(/^(.*)\[(.*)\]$/);
+                if (parts) {
+                    const parent = parts[1];
+                    const child = parts[2];
+                    if (!data[parent]) data[parent] = {};
+                    data[parent][child] = checkbox.checked;
+                }
+            });
+
+            formData.forEach((value, key) => {
+                const parts = key.match(/^(.*)\[(.*)\]$/);
+                if (parts) {
+                    const parent = parts[1];
+                    const child = parts[2];
+                    if (!data[parent]) data[parent] = {};
+                    const inputElement = form.querySelector(`[name="${key}"]`);
+                    if (inputElement && inputElement.type === 'checkbox') {
+                         if (!data[parent].hasOwnProperty(child)) {
+                             data[parent][child] = value;
+                         }
+                    } else {
+                        data[parent][child] = value;
+                    }
+                } else {
+                    data[key] = value;
+                }
+            });
+
+            if (formId === 'form_shop_tech_info') {
+                data['technician_list'] = technicians;
+            }
+        }
+        
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: JSON.stringify(data),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                }
+            });
+
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                flashMessage(result.message, 'success');
+            } else {
+                flashMessage(result.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ', 'danger');
+            }
+        } catch (error) {
+            flashMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + error.message, 'danger');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalBtnText;
+        }
+    }
+
+    document.getElementById('form_technician_templates').addEventListener('submit', (e) => handleFormSubmit(e, 'form_technician_templates'));
+    document.getElementById('form_report_settings').addEventListener('submit', (e) => handleFormSubmit(e, 'form_report_settings'));
+    document.getElementById('form_message_templates').addEventListener('submit', (e) => handleFormSubmit(e, 'form_message_templates'));
+    document.getElementById('form_liff_notifications').addEventListener('submit', (e) => handleFormSubmit(e, 'form_liff_notifications'));
+    document.getElementById('form_line_bot_info').addEventListener('submit', (e) => handleFormSubmit(e, 'form_line_bot_info'));
+    document.getElementById('form_shop_tech_info').addEventListener('submit', (e) => handleFormSubmit(e, 'form_shop_tech_info'));
+
+    renderTechnicianList();
+    renderTemplates('task_details');
+    renderTemplates('progress_reports');
+
+    const backupFileInput = document.getElementById('backup_file_input');
+    const backupTypeSelect = document.getElementById('backup_type_select');
+    const previewBtn = document.getElementById('preview_backup_btn');
+    const importBtn = document.getElementById('import_backup_btn');
+    const previewArea = document.getElementById('backup_preview_area');
+    const previewContent = document.getElementById('preview_content');
+    const importStatus = document.getElementById('import_status');
+
+    if (previewBtn) {
+        previewBtn.addEventListener('click', async () => {
+            const file = backupFileInput.files[0];
+            if (!file) { alert('กรุณาเลือกไฟล์สำรองข้อมูล'); return; }
+            const formData = new FormData();
+            formData.append('backup_file', file);
+            formData.append('file_type', backupTypeSelect.value);
+            formData.append('csrf_token', csrfToken);
+            importStatus.innerHTML = '<span class="text-primary">กำลังตรวจสอบไฟล์...</span>';
+            previewArea.style.display = 'none';
+            try {
+                const response = await fetch("{{ url_for('preview_backup_file') }}", { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                    let previewHtml = '';
+                    if (result.type === 'tasks') {
+                        previewHtml = `<p><strong>ประเภท:</strong> ข้อมูลงาน</p><p><strong>จำนวน:</strong> ${result.task_count} รายการ</p><h6>ตัวอย่าง 5 รายการแรก:</h6><ul>`;
+                        result.example_tasks.forEach(t => { previewHtml += `<li>${t.title} (ลูกค้า: ${t.customer_name})</li>`; });
+                        previewHtml += '</ul>';
+                    } else if (result.type === 'settings') {
+                        previewHtml = `<p><strong>ประเภท:</strong> ข้อมูลการตั้งค่า</p>
+                                        <p><strong>Admin Group ID:</strong> ${result.preview_settings.admin_group_id}</p>
+                                        <p><strong>จำนวนช่าง:</strong> ${result.preview_settings.technician_list_count} คน</p>`;
+                    }
+                    previewContent.innerHTML = previewHtml;
+                    previewArea.style.display = 'block';
+                    importStatus.innerHTML = '';
+                } else { throw new Error(result.message); }
+            } catch (error) { importStatus.innerHTML = `<span class="text-danger">เกิดข้อผิดพลาด: ${error.message}</span>`; }
+        });
+    }
+
+    if (importBtn) {
+        importBtn.addEventListener('click', async () => {
+            if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการกู้คืนข้อมูลนี้? ข้อมูลปัจจุบันจะถูกเขียนทับ!')) { return; }
+            const file = backupFileInput.files[0];
+            if (!file) { alert('กรุณาเลือกไฟล์สำรองข้อมูล'); return; }
+            const formData = new FormData();
+            formData.append('backup_file', file);
+            formData.append('file_type', backupTypeSelect.value);
+            formData.append('csrf_token', csrfToken);
+            importStatus.innerHTML = '<span class="text-primary">กำลังนำเข้าข้อมูล... กรุณารอสักครู่</span>';
+            importBtn.disabled = true;
+            try {
+                const response = await fetch("{{ url_for('api_import_backup_file') }}", { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                    importStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                    alert('กู้คืนข้อมูลสำเร็จ! หน้าเว็บจะรีโหลด');
+                    window.location.reload();
+                } else { throw new Error(result.message); }
+            } catch (error) {
+                importStatus.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาด: ${error.message}</div>`;
+                importBtn.disabled = false;
+            }
+        });
+    }
+
+    const qrCodeInput = document.getElementById('qr-code-upload-input');
+    const qrCodePreview = document.getElementById('qr-code-preview');
+    const saveQrCodeBtn = document.getElementById('save-qr-code-btn');
+    let uploadedFileId = null;
+
+    if(qrCodeInput) {
+        qrCodeInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    qrCodePreview.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+                saveQrCodeBtn.disabled = false;
+            }
+        });
+    }
+
+    if(saveQrCodeBtn) {
+        saveQrCodeBtn.addEventListener('click', async function() {
+            const file = qrCodeInput.files[0];
+            if (!file) {
+                flashMessage('กรุณาเลือกไฟล์รูปภาพ QR Code ก่อน', 'warning');
+                return;
+            }
+
+            const spinner = saveQrCodeBtn.querySelector('.spinner-border');
+            const icon = saveQrCodeBtn.querySelector('.fa-save');
+            spinner.style.display = 'inline-block';
+            icon.style.display = 'none';
+            saveQrCodeBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const uploadResponse = await fetch('/api/upload_payment_qr', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const uploadResult = await uploadResponse.json();
+                if (!uploadResponse.ok) throw new Error(uploadResult.message);
+                
+                uploadedFileId = uploadResult.file_id;
+
+                const settingsResponse = await fetch("{{ url_for('settings_page') }}", {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        shop_info: { payment_qr_code_id: uploadedFileId }
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+                const settingsResult = await settingsResponse.json();
+                if (!settingsResponse.ok) throw new Error(settingsResult.message);
+
+                flashMessage('บันทึก QR Code สำเร็จ!', 'success');
+                qrCodeInput.value = '';
+
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            } finally {
+                spinner.style.display = 'none';
+                icon.style.display = 'inline-block';
+                saveQrCodeBtn.disabled = true;
+            }
+        });
+    }
+	// --- START: แก้ไข JavaScript สำหรับ Warehouse Management ---
+	const warehouseModalEl = document.getElementById('warehouseModal');
+	const warehouseModal = new bootstrap.Modal(warehouseModalEl);
+
+	document.getElementById('warehouse-type').addEventListener('change', function() {
+		const techGroup = document.getElementById('technician-name-group');
+		techGroup.style.display = this.value === 'technician_van' ? 'block' : 'none';
+	});
+
+	document.getElementById('add-warehouse-btn').addEventListener('click', () => {
+		document.getElementById('warehouseModalLabel').textContent = 'เพิ่มคลังสินค้าใหม่';
+		document.getElementById('warehouse-id').value = '';
+		document.getElementById('warehouse-name').value = '';
+		document.getElementById('warehouse-type').value = 'main';
+		// Clear selections in multi-select
+		Array.from(document.getElementById('warehouse-tech-name').options).forEach(opt => opt.selected = false);
+		document.getElementById('technician-name-group').style.display = 'none';
+		warehouseModal.show();
+	});
+
+	document.getElementById('warehouse-list-body').addEventListener('click', (e) => {
+		const editBtn = e.target.closest('.edit-warehouse-btn');
+		if (editBtn) {
+			const row = editBtn.closest('tr');
+			document.getElementById('warehouseModalLabel').textContent = 'แก้ไขข้อมูลคลังสินค้า';
+			document.getElementById('warehouse-id').value = row.dataset.id;
+			document.getElementById('warehouse-name').value = row.dataset.name;
+			document.getElementById('warehouse-type').value = row.dataset.type;
+			
+			// Handle multi-select population
+			const techSelect = document.getElementById('warehouse-tech-name');
+			const associatedTechs = (row.dataset.tech || '').split(',');
+			Array.from(techSelect.options).forEach(option => {
+				option.selected = associatedTechs.includes(option.value);
+			});
+
+			document.getElementById('technician-name-group').style.display = row.dataset.type === 'technician_van' ? 'block' : 'none';
+			warehouseModal.show();
+		}
+		
+		// Delete button logic remains the same
+		const deleteBtn = e.target.closest('.delete-warehouse-btn');
+		if (deleteBtn) {
+			const row = deleteBtn.closest('tr');
+			if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบคลัง "${row.dataset.name}"?`)) {
+				fetch(`/api/warehouses/${row.dataset.id}/delete`, { 
+					method: 'DELETE',
+					headers: { 'X-CSRFToken': "{{ csrf_token() }}" }
+				})
+				.then(res => res.json())
+				.then(data => {
+					if (data.status === 'success') {
+						flashMessage(data.message, 'success');
+						row.remove();
+					} else {
+						throw new Error(data.message);
+					}
+				})
+				.catch(err => flashMessage(`เกิดข้อผิดพลาด: ${err.message}`, 'danger'));
+			}
+		}
+	});
+
+document.getElementById('save-warehouse-btn').addEventListener('click', () => {
+    const id = document.getElementById('warehouse-id').value;
+    const name = document.getElementById('warehouse-name').value;
+    const type = document.getElementById('warehouse-type').value;
+    
+    // Get all selected technicians from multi-select
+    const techSelect = document.getElementById('warehouse-tech-name');
+    const techNames = Array.from(techSelect.selectedOptions).map(opt => opt.value);
+
+    if (!name.trim()) {
+        alert('กรุณากรอกชื่อคลังสินค้า');
+        return;
+    }
+
+    fetch('/api/warehouses/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': "{{ csrf_token() }}" },
+        body: JSON.stringify({ id: id, name: name, type: type, technician_names: techNames }) // Send as 'technician_names'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            flashMessage(data.message, 'success');
+            warehouseModal.hide();
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            throw new Error(data.message);
+        }
+    })
+    .catch(err => flashMessage(`เกิดข้อผิดพลาด: ${err.message}`, 'danger'));
+});
+// --- END: แก้ไข JavaScript ---
+
+    document.getElementById('save-warehouse-btn').addEventListener('click', () => {
+        const id = document.getElementById('warehouse-id').value;
+        const name = document.getElementById('warehouse-name').value;
+        const type = document.getElementById('warehouse-type').value;
+        const techName = type === 'technician_van' ? document.getElementById('warehouse-tech-name').value : '';
+
+        if (!name.trim()) {
+            alert('กรุณากรอกชื่อคลังสินค้า');
+            return;
+        }
+
+        fetch('/api/warehouses/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': "{{ csrf_token() }}" },
+            body: JSON.stringify({ id: id, name: name, type: type, technician_name: techName })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                flashMessage(data.message, 'success');
+                warehouseModal.hide();
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                throw new Error(data.message);
+            }
+        })
+        .catch(err => flashMessage(`เกิดข้อผิดพลาด: ${err.message}`, 'danger'));
+    });
+    // END: Warehouse Management JS
+
+    // --- START: Health Check JS ---
+    const scanBtn = document.getElementById('scan-health-btn');
+    const scanSpinner = document.getElementById('scan-spinner');
+    const resultsContainer = document.getElementById('health-check-results');
+    const scanSummary = document.getElementById('scan-summary');
+    const issuesTableBody = document.getElementById('issues-table-body');
+
+    scanBtn.addEventListener('click', async () => {
+        scanBtn.disabled = true;
+        scanSpinner.style.display = 'block';
+        resultsContainer.style.display = 'none';
+        issuesTableBody.innerHTML = '';
+
+        try {
+            const response = await fetch("{{ url_for('health_check_scan') }}");
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                scanSummary.textContent = `พบ ${data.issues.length} รายการที่มีปัญหา:`;
+                if (data.issues.length === 0) {
+                     scanSummary.innerHTML = '<span class="text-success fw-bold">✅ ไม่พบปัญหาข้อมูลรูปภาพและประวัติงาน</span>';
+                } else {
+                    data.issues.forEach(issue => {
+                        const row = document.createElement('tr');
+                        row.id = `issue-row-${issue.task_id}`;
+                        row.innerHTML = `
+                            <td>
+                                <strong>${issue.task_title}</strong><br>
+                                <small class="text-muted">${issue.customer_name}</small>
+                            </td>
+                            <td class="text-center align-middle"><span class="badge bg-danger">${issue.missing_count}</span></td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-success repair-btn" data-task-id="${issue.task_id}">
+                                    <i class="fas fa-tools me-1"></i> ซ่อมแซม
+                                </button>
+                            </td>
+                        `;
+                        issuesTableBody.appendChild(row);
+                    });
+                }
+                resultsContainer.style.display = 'block';
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error) {
+            flashMessage('เกิดข้อผิดพลาดในการสแกน: ' + error.message, 'danger');
+        } finally {
+            scanBtn.disabled = false;
+            scanSpinner.style.display = 'none';
+        }
+    });
+
+    issuesTableBody.addEventListener('click', async (event) => {
+        const repairButton = event.target.closest('.repair-btn');
+        if (repairButton) {
+            const button = repairButton;
+            const taskId = button.dataset.taskId;
+            
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+            try {
+                const response = await fetch(`/api/health_check/repair/${taskId}`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': "{{ csrf_token() }}" }
+                });
+                const result = await response.json();
+                if (response.ok && result.status === 'success') {
+                     const row = document.getElementById(`issue-row-${taskId}`);
+                     row.innerHTML = `<td colspan="3" class="text-success text-center p-2">${result.message}</td>`;
+                     setTimeout(() => {
+                         row.style.opacity = '0';
+                         row.style.transition = 'opacity 0.5s ease';
+                         setTimeout(() => row.remove(), 500);
+                     }, 2000);
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาดในการซ่อมแซม: ${error.message}`, 'danger');
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-tools me-1"></i> ซ่อมแซม';
+            }
+        }
+    });
+    // --- END: Health Check JS ---
+});
+
+function flashMessage(message, category) {
+    const mainContainer = document.getElementById('flash-messages-area'); // <--- แก้ไขบรรทัดนี้
+    if (!mainContainer) return;
+    const newMessage = document.createElement('div');
+    newMessage.className = `alert alert-${category} alert-dismissible fade show`;
+    newMessage.setAttribute('role', 'alert');
+    newMessage.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
+    mainContainer.prepend(newMessage);
+    setTimeout(() => {
+        const alertInstance = bootstrap.Alert.getInstance(newMessage);
+        if (alertInstance) alertInstance.close();
+        else newMessage.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}

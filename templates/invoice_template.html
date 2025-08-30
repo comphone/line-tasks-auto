@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ใบส่งของ/ใบวางบิล - เลขที่งาน #{{ task.id[-6:].upper() }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Sarabun', sans-serif;
+            background-color: #fff; 
+        }
+        .invoice-container { 
+            max-width: 800px; 
+            margin: 20px auto; 
+            border: 1px solid #dee2e6; 
+            padding: 2.5rem; 
+            font-size: 0.9rem;
+        }
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+        }
+        .company-details {
+            flex: 1;
+        }
+        .company-details img {
+            max-width: 180px;
+            margin-bottom: 0.5rem;
+        }
+        .document-title {
+            flex: 1;
+            text-align: right;
+        }
+        .document-title h2 {
+            margin: 0;
+            font-weight: 700;
+            color: #0d6efd;
+        }
+        .customer-info-box {
+            border: 1px solid #ccc;
+            padding: 1rem;
+            border-radius: .375rem;
+            margin-bottom: 2rem;
+        }
+        .table thead th {
+            background-color: #f8f9fa;
+        }
+        .total-section {
+            margin-top: 1.5rem;
+        }
+        .amount-in-words {
+            background-color: #f8f9fa;
+            border-radius: .375rem;
+            padding: 0.5rem 1rem;
+            text-align: center;
+            font-weight: 500;
+        }
+        .signature-section {
+            margin-top: 4rem;
+            display: flex;
+            justify-content: space-around;
+        }
+        .signature-box {
+            text-align: center;
+            width: 200px;
+            padding-top: 1rem;
+            border-top: 1px solid #000;
+        }
+        .footer-company-info {
+            text-align: center;
+            margin-top: 3rem;
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+
+        @media print {
+            body { -webkit-print-color-adjust: exact; }
+            .no-print { display: none; }
+            .invoice-container { border: none; box-shadow: none; margin: 0; padding: 0; }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+
+<div class="invoice-container">
+    <div class="header-section">
+        <div class="company-details">
+            <img src="file://{{ logo_path }}" alt="Company Logo">
+            <h5 class="fw-bold mb-1">{{ settings.shop_info.get('company_name', 'ห้างหุ้นส่วนจำกัด คอมโฟนแอนด์อิเลคโทรนิคส์') }}</h5>
+            <p class="mb-0">{{ settings.shop_info.get('address', '691 หมู่ 3 ต.แวง อ.โพนทอง จ.ร้อยเอ็ด 45110') }}</p>
+            <p class="mb-0">เลขที่ผู้เสียภาษี: {{ settings.shop_info.get('tax_id', '0-4535-60001-17-6') }} (สำนักงานใหญ่)</p>
+            <p class="mb-0">โทร: {{ settings.shop_info.contact_phone }}</p>
+        </div>
+        <div class="document-title">
+            <h2>ใบส่งของ / ใบวางบิล</h2>
+            <p><strong>ต้นฉบับ / Original</strong></p>
+            <p><strong>เลขที่:</strong> IN-{{ task.id[-6:].upper() }}</p>
+            <p><strong>วันที่:</strong> {{ now.strftime('%d/%m/%Y') }}</p>
+        </div>
+    </div>
+
+    <div class="customer-info-box">
+        <div class="row">
+            <div class="col-md-12">
+                <p class="mb-1"><strong>ลูกค้า:</strong> {{ task.customer.name or '-' }}{% if task.customer.organization %} ({{ task.customer.organization }}){% endif %}</p>
+                <p class="mb-1"><strong>ที่อยู่:</strong> {{ task.customer.address or '-' }}</p>
+                <p class="mb-0"><strong>โทร:</strong> {{ task.customer.phone or '-' }}</p>
+            </div>
+        </div>
+    </div>
+
+    <p><strong>ชื่องาน:</strong> {{ task.title }}</p>
+
+    <table class="table table-bordered align-middle">
+        <thead class="text-center">
+            <tr>
+                <th style="width: 5%;">#</th>
+                <th>รายการ</th>
+                <th style="width: 10%;">จำนวน</th>
+                <th style="width: 15%;">ราคา/หน่วย</th>
+                <th style="width: 15%;">รวมเป็นเงิน</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td class="text-center">{{ loop.index }}</td>
+                <td>{{ item.item_name }}</td>
+                <td class="text-center">{{ item.quantity }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.unit_price) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.quantity * item.unit_price) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center text-muted">-- ไม่มีรายการค่าใช้จ่าย --</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="row total-section">
+        <div class="col-7">
+            {% set qr_code_id = settings.shop_info.get('payment_qr_code_id') %}
+            {% if qr_code_id %}
+            <div class="d-flex align-items-center">
+                <div class="me-3">
+                    <p class="mb-1"><strong>สแกนเพื่อชำระเงิน</strong></p>
+                    <img src="https://drive.google.com/thumbnail?id={{ qr_code_id }}&sz=w150" alt="Payment QR Code" style="max-width: 150px; height: auto;">
+                </div>
+                <div class="amount-in-words flex-grow-1">
+                    ({{ total_cost_in_words }})
+                </div>
+            </div>
+            {% else %}
+            <div class="amount-in-words">
+                ({{ total_cost_in_words }})
+            </div>
+            {% endif %}
+        </div>
+        <div class="col-5">
+            <table class="table table-borderless">
+                <tbody>
+                    <tr>
+                        <td>รวมเป็นเงิน</td>
+                        <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
+                    </tr>
+                    <tr>
+                        <td>ภาษีมูลค่าเพิ่ม 7%</td>
+                        <td class="text-end">{{ "%.2f"|format(vat) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-bold fs-5">ยอดรวมสุทธิ</td>
+                        <td class="text-end fw-bold fs-5">{{ "%.2f"|format(total_cost) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="signature-section">
+        <div class="signature-box">
+            <p>.................................................</p>
+            <p>(ผู้รับบริการ)</p>
+            <p>วันที่: ......./......./.........</p>
+        </div>
+        <div class="signature-box">
+            <p>.................................................</p>
+            <p>(ผู้มีอำนาจลงนาม)</p>
+            <p>วันที่: ......./......./.........</p>
+        </div>
+    </div>
+
+    <div class="footer-company-info">
+        <p>
+            <strong>{{ settings.shop_info.get('company_name', 'ห้างหุ้นส่วนจำกัด คอมโฟนแอนด์อิเลคโทรนิคส์') }}</strong><br>
+            {{ settings.shop_info.get('address', '691 หมู่ 3 ต.แวง อ.โพนทอง จ.ร้อยเอ็ด 45110') }} | เลขที่ผู้เสียภาษี: {{ settings.shop_info.get('tax_id', '0453560001176') }} | โทร: {{ settings.shop_info.contact_phone }}
+        </p>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}แดชบอร์ดการเงิน (Kanban){% endblock %}
+
+{% block head_extra %}
+<style>
+    .kanban-board { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem; }
+    .kanban-column { flex: 1 0 300px; min-width: 300px; background-color: #f4f5f7; border-radius: 0.5rem; }
+    .kanban-column-header { padding: 1rem; font-weight: 600; border-bottom: 3px solid transparent; display: flex; justify-content: space-between; }
+    .kanban-column-header.pending_billing { border-color: #ffc107; }
+    .kanban-column-header.billed { border-color: #0dcaf0; }
+    .kanban-column-header.overdue { border-color: #dc3545; }
+    .kanban-column-header.paid { border-color: #198754; }
+    .kanban-cards { min-height: 400px; padding: 0.5rem; }
+    .kanban-card { background-color: #fff; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 0.75rem; cursor: grab; border-left: 5px solid #6c757d; position: relative; } /* Added position: relative */
+    .kanban-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+    .kanban-card.is-overdue { border-left-color: #dc3545; background-color: #fff5f5; }
+    .kanban-card .card-title { font-size: 1rem; font-weight: 600; }
+    .kanban-card .card-customer { font-size: 0.9rem; color: #6c757d; }
+    .kanban-card .card-amount { font-size: 1.25rem; font-weight: 700; color: #198754; }
+    .kanban-card .card-date { font-size: 0.8rem; color: #adb5bd; }
+    .sortable-ghost { opacity: 0.4; background: #cce5ff; }
+
+    /* --- START: โค้ดสำหรับ Batch Actions --- */
+    .card-checkbox { position: absolute; top: 10px; right: 10px; transform: scale(1.5); }
+    .kanban-card.selected { border-left-color: #0d6efd; background-color: #e7f1ff; }
+    .batch-actions-bar {
+        position: fixed;
+        bottom: -100px; /* Start hidden */
+        left: 50%;
+        transform: translateX(-50%);
+        width: auto;
+        max-width: 90%;
+        background-color: #212529;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.75rem;
+        z-index: 1050;
+        transition: bottom 0.3s ease-in-out;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+    }
+    .batch-actions-bar.active { bottom: 20px; } /* Slide in */
+    /* --- END: โค้ดสำหรับ Batch Actions --- */
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">💰 แดชบอร์ดการเงิน (Kanban)</h1>
+    <div>
+        <span id="total-revenue" class="badge bg-success fs-6 me-2">ยอดชำระแล้ว: 0.00 บาท</span>
+        <span id="total-due" class="badge bg-warning text-dark fs-6">ยอดค้างชำระ: 0.00 บาท</span>
+    </div>
+</div>
+
+<div id="kanban-loading" class="text-center p-5">
+    <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+    <p class="mt-2 text-muted">กำลังโหลดข้อมูลบอร์ด...</p>
+</div>
+
+<div class="kanban-board" id="kanban-board-container" style="display: none;">
+    <div class="kanban-column"><div class="kanban-column-header pending_billing"><span>⏳ รอวางบิล</span><span id="count-pending_billing">0</span></div><div class="kanban-cards" id="cards-pending_billing" data-status="pending_billing"></div></div>
+    <div class="kanban-column"><div class="kanban-column-header billed"><span>📬 วางบิลแล้ว</span><span id="count-billed">0</span></div><div class="kanban-cards" id="cards-billed" data-status="billed"></div></div>
+    <div class="kanban-column"><div class="kanban-column-header overdue"><span>🚨 เกินกำหนด</span><span id="count-overdue">0</span></div><div class="kanban-cards" id="cards-overdue" data-status="overdue"></div></div>
+    <div class="kanban-column"><div class="kanban-column-header paid"><span>✅ ชำระแล้ว</span><span id="count-paid">0</span></div><div class="kanban-cards" id="cards-paid" data-status="paid"></div></div>
+</div>
+
+<div class="batch-actions-bar" id="batch-actions-bar">
+    <span id="selection-counter">เลือก 0 รายการ</span>
+    <button class="btn btn-success btn-sm" id="batch-mark-paid-btn">
+        <i class="fas fa-check-double me-2"></i>ย้ายไป "ชำระแล้ว"
+    </button>
+    <button class="btn btn-light btn-sm" id="batch-cancel-btn">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = '{{ csrf_token() }}';
+    const kanbanContainer = document.getElementById('kanban-board-container');
+    const loadingDiv = document.getElementById('kanban-loading');
+    const batchActionBar = document.getElementById('batch-actions-bar');
+    const selectionCounter = document.getElementById('selection-counter');
+    const batchMarkPaidBtn = document.getElementById('batch-mark-paid-btn');
+    const batchCancelBtn = document.getElementById('batch-cancel-btn');
+    let selectedTaskIds = new Set();
+
+    function createKanbanCard(task) {
+        const card = document.createElement('div');
+        card.className = 'kanban-card';
+        card.dataset.taskId = task.id;
+        if (task.billing_status === 'overdue') card.classList.add('is-overdue');
+
+        const billedDate = task.billing_status_details.billed_date ? new Date(task.billing_status_details.billed_date).toLocaleDateString('th-TH') : '-';
+        const dueDate = task.billing_status_details.payment_due_date ? new Date(task.billing_status_details.payment_due_date).toLocaleDateString('th-TH') : '-';
+        
+        card.innerHTML = `
+            <input type="checkbox" class="form-check-input card-checkbox" data-task-id="${task.id}">
+            <h6 class="card-title">${task.title}</h6>
+            <p class="card-customer">${task.customer.name || '-'}</p>
+            <p class="card-amount">${task.total_cost.toFixed(2)} บาท</p>
+            <div class="d-flex justify-content-between">
+                <small class="card-date">วางบิล: ${billedDate}</small>
+                <small class="card-date text-danger">กำหนดชำระ: ${dueDate}</small>
+            </div>
+            <a href="{{ url_for('liff.customer_profile', customer_task_id='TASK_ID') }}".replace('TASK_ID', task.id) class="btn btn-sm btn-outline-secondary mt-2"><i class="fas fa-eye me-1"></i> ดูรายละเอียด</a>
+        `;
+        return card;
+    }
+
+    async function fetchAndRenderBoard() {
+        // ... (โค้ดส่วนนี้เหมือนเดิม) ...
+    }
+
+    function initializeKanban() {
+        // ... (โค้ดส่วนนี้เหมือนเดิม) ...
+    }
+    
+    // --- START: ฟังก์ชันใหม่สำหรับจัดการ Batch Actions ---
+    function updateBatchActionBar() {
+        if (selectedTaskIds.size > 0) {
+            selectionCounter.textContent = `เลือก ${selectedTaskIds.size} รายการ`;
+            batchActionBar.classList.add('active');
+        } else {
+            batchActionBar.classList.remove('active');
+        }
+    }
+
+    kanbanContainer.addEventListener('change', (event) => {
+        if (event.target.classList.contains('card-checkbox')) {
+            const taskId = event.target.dataset.taskId;
+            const card = event.target.closest('.kanban-card');
+            if (event.target.checked) {
+                selectedTaskIds.add(taskId);
+                card.classList.add('selected');
+            } else {
+                selectedTaskIds.delete(taskId);
+                card.classList.remove('selected');
+            }
+            updateBatchActionBar();
+        }
+    });
+
+    batchCancelBtn.addEventListener('click', () => {
+        document.querySelectorAll('.card-checkbox:checked').forEach(cb => cb.checked = false);
+        document.querySelectorAll('.kanban-card.selected').forEach(card => card.classList.remove('selected'));
+        selectedTaskIds.clear();
+        updateBatchActionBar();
+    });
+
+    batchMarkPaidBtn.addEventListener('click', async () => {
+        if (selectedTaskIds.size === 0) return;
+        
+        const taskIds = Array.from(selectedTaskIds);
+        
+        Swal.fire({
+            title: `ยืนยันการย้าย ${taskIds.length} รายการ`,
+            text: 'คุณต้องการเปลี่ยนสถานะรายการที่เลือกทั้งหมดเป็น "ชำระแล้ว" หรือไม่?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'ยืนยัน',
+            cancelButtonText: 'ยกเลิก'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                Swal.fire({ title: 'กำลังดำเนินการ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+                try {
+                    const response = await fetch("{{ url_for('liff.api_billing_batch_update') }}", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                        body: JSON.stringify({ task_ids: taskIds, status: 'paid' })
+                    });
+                    const resData = await response.json();
+                    if (resData.status !== 'success') throw new Error(resData.message);
+                    
+                    Swal.fire('สำเร็จ!', 'ย้ายรายการทั้งหมดเรียบร้อยแล้ว', 'success');
+                    batchCancelBtn.click(); // Clear selection
+                    await fetchAndRenderBoard(); // Refresh the board
+
+                } catch (error) {
+                    Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
+                }
+            }
+        });
+    });
+    // --- END: ฟังก์ชันใหม่สำหรับจัดการ Batch Actions ---
+
+    fetchAndRenderBoard().then(initializeKanban);
+});
+</script>
+{% endblock %}

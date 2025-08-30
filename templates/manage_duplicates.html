@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการข้อมูลซ้ำ{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0"><i class="fas fa-copy me-2"></i>จัดการข้อมูลงานซ้ำ</h1>
+    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
+</div>
+
+{% if not potential_duplicate_sets %}
+<div class="card shadow-sm">
+    <div class="card-body text-center p-5">
+        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+        <h4>ไม่พบข้อมูลที่อาจซ้ำกันในระบบ</h4>
+        <p class="text-muted mb-0">ระบบไม่พบงานที่มีรายละเอียด (Title) เหมือนกัน</p>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p class="mb-0">
+        พบกลุ่มงาน <strong>{{ potential_duplicate_sets | length }} กลุ่ม</strong> ที่มีรายละเอียด (Title) เหมือนกัน
+        โปรดตรวจสอบและลบรายการที่ไม่ต้องการออก
+    </p>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">กลุ่มงานที่อาจซ้ำซ้อน</h5>
+    </div>
+    <div class="card-body">
+        <div class="accordion" id="duplicatesAccordion">
+            {% for title, tasks in potential_duplicate_sets.items() %}
+            <div class="accordion-item" id="accordion-item-{{ loop.index }}">
+                <h2 class="accordion-header" id="heading-{{ loop.index }}">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#collapse-{{ loop.index }}" aria-expanded="true"
+                        aria-controls="collapse-{{ loop.index }}">
+                        <strong>{{ title }}</strong>&nbsp;<span class="badge bg-danger">{{ tasks | length }} รายการ</span>
+                    </button>
+                </h2>
+                <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse show"
+                    aria-labelledby="heading-{{ loop.index }}" data-bs-parent="#duplicatesAccordion">
+                    <div class="accordion-body">
+                        
+                        <div class="text-end mb-2">
+                            <button class="btn btn-sm btn-danger delete-all-btn"
+                                    data-task-ids="{{ tasks|map(attribute='id')|join(',') }}"
+                                    data-task-count="{{ tasks|length }}"
+                                    data-accordion-target="#accordion-item-{{ loop.index }}">
+                                <i class="fas fa-exclamation-triangle me-1"></i> ลบทั้งหมด {{ tasks|length }} รายการ
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>ลูกค้า</th>
+                                        <th>วันเวลานัดหมาย</th>
+                                        <th>สถานะ</th>
+                                        <th class="text-center">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for task in tasks %}
+                                    <tr id="task-row-{{ task.id }}">
+                                        <td><a href="{{ url_for('task_details', task_id=task.id) }}" target="_blank">{{ task.customer.name or '-' }}</a></td>
+                                        <td>{{ task.due_formatted or '-' }}</td>
+                                        <td>
+                                            {% if task.status == 'completed' %}
+                                                <span class="badge bg-success">เสร็จเรียบร้อย</span>
+                                            {% elif task.is_overdue and task.status != 'completed' %}
+                                                <span class="badge bg-danger">เลยกำหนด</span>
+                                            {% else %}
+                                                <span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-sm btn-outline-danger delete-btn" data-task-id="{{ task.id }}" data-task-title="{{ task.title }}">
+                                                <i class="fas fa-trash-alt"></i> ลบ
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Handler for single delete buttons
+    document.querySelectorAll('.delete-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            const taskId = this.dataset.taskId;
+            const taskTitle = this.dataset.taskTitle;
+
+            if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบงาน:\n"${taskTitle}"\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) {
+                fetch(`/api/delete_task/${taskId}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const row = document.getElementById(`task-row-${taskId}`);
+                        if (row) {
+                            row.style.transition = 'opacity 0.5s ease';
+                            row.style.opacity = '0';
+                            setTimeout(() => { row.remove(); location.reload(); }, 500); // Reload to update counts
+                        }
+                    } else {
+                        alert('เกิดข้อผิดพลาดในการลบงาน: ' + (data.message || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('เกิดข้อผิดพลาดร้ายแรงในการติดต่อเซิร์ฟเวอร์');
+                });
+            }
+        });
+    });
+
+    // Handler for "Delete All" buttons
+    document.querySelectorAll('.delete-all-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const taskIds = this.dataset.taskIds.split(',');
+            const taskCount = this.dataset.taskCount;
+            const accordionTarget = document.querySelector(this.dataset.accordionTarget);
+
+            if (confirm(`คุณแน่ใจหรือไม่ที่จะลบงานที่ซ้ำกันทั้งหมด ${taskCount} รายการ?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้!`)) {
+                fetch('/api/delete_tasks_batch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ task_ids: taskIds })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(`ลบงานสำเร็จ: ${data.deleted_count} รายการ, ล้มเหลว: ${data.failed_count} รายการ`);
+                        if (accordionTarget) {
+                            accordionTarget.style.transition = 'opacity 0.5s ease';
+                            accordionTarget.style.opacity = '0';
+                            setTimeout(() => { accordionTarget.remove(); location.reload(); }, 500); // Reload to update counts
+                        }
+                    } else {
+                         alert('เกิดข้อผิดพลาดในการลบงานเป็นชุด: ' + (data.message || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('เกิดข้อผิดพลาดร้ายแรงในการติดต่อเซิร์ฟเวอร์');
+                })
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

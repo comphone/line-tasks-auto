@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+
+{% block title %}สร้างงานภายนอก / งานเคลม{% endblock %}
+
+{% block head_extra %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        .card-header h5 {
+            font-weight: 600;
+        }
+        .input-group-text {
+            width: 42px; /* Fixed width for icons */
+            justify-content: center;
+        }
+        #search_results .list-group-item { 
+            cursor: pointer; 
+        }
+        #search_results .list-group-item:hover { 
+            background-color: #e9ecef; 
+        }
+        
+        .file-drop-zone {
+            border: 2px dashed #adb5bd;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            color: #6c757d;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .file-drop-zone.drag-over {
+            background-color: #e9ecef;
+            border-color: #0d6efd;
+        }
+        .upload-progress-container {
+            display: none;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10 col-md-12">
+        
+        <div id="js-flash-message-container"></div>
+        <form id="createExternalTaskForm" class="needs-validation" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h2 mb-0">📝 สร้างงานภายนอก / งานเคลม</h1>
+                <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-tag me-2"></i>ข้อมูลลูกค้าและผู้รับผิดชอบ</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row">
+                        <div class="col-md-6 mb-3 position-relative">
+                             <label for="customer_search" class="form-label"><strong>ค้นหา/เพิ่มชื่อผู้ติดต่อ (ลูกค้า)</strong> <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" id="customer_search" class="form-control" name="customer_name" required autofocus autocomplete="off" placeholder="พิมพ์เพื่อค้นหาลูกค้าเดิม..." value="{{ prefill_data.name if prefill_data else '' }}">
+                                <div class="invalid-feedback">กรุณาเลือกหรือกรอกชื่อผู้ติดต่อ</div>
+                            </div>
+                            <input type="hidden" id="customer_id" name="customer_id">
+                            <div id="search_results" class="list-group mt-1 position-absolute w-100" style="z-index: 1000;"></div>
+                            <small class="form-text text-muted">พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหา</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="organization_name" class="form-label">ชื่อหน่วยงาน/บริษัท (ลูกค้า)</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-building"></i></span>
+                                <input type="text" class="form-control" id="organization_name" name="organization_name" autocomplete="off" value="{{ prefill_data.organization if prefill_data else '' }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <input type="tel" class="form-control" id="phone" name="phone" placeholder="เช่น 08x-xxx-xxxx" value="{{ prefill_data.phone if prefill_data else '' }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
+                            <div class="input-group">
+                                 <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
+                                <textarea class="form-control" id="address" name="address" rows="1">{{ prefill_data.address if prefill_data else '' }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="external_partner" class="form-label"><strong>ผู้รับผิดชอบภายนอก / บริษัทผู้จำหน่าย</strong></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-box"></i></span>
+                                <input type="text" class="form-control" id="external_partner" name="external_partner" placeholder="เช่น บริษัท A, ศูนย์บริการ Samsung">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="return_date" class="form-label">วันที่กำหนดส่งกลับ</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                                <input type="text" class="form-control datepicker" id="return_date" name="return_date">
+                            </div>
+                            <small class="form-text text-muted">ไม่บังคับ</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>รายละเอียดงาน</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <label for="task_title" class="form-label"><strong>รายละเอียดงาน / อาการเสีย</strong> <span class="text-danger">*</span></label>
+					<div class="input-group">
+						<span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
+						<textarea class="form-control" id="task_title" name="task_title" rows="4" required></textarea>
+						<button class="btn btn-outline-secondary" type="button" id="start-recognition-task_title" title="บันทึกด้วยเสียง">
+							<i class="fas fa-microphone"></i>
+						</button>
+						<div class="invalid-feedback">กรุณากรอกรายละเอียดงาน</div>
+					</div>
+					<small class="form-text text-muted">
+						กด <i class="fas fa-microphone"></i> เพื่อบันทึกรายละเอียดด้วยเสียง
+					</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">แนบรูปภาพ/ไฟล์ (ที่เกี่ยวข้อง)</label>
+                         <div class="file-drop-zone" id="drop-zone-external">
+                            <i class="fas fa-cloud-upload-alt fs-2 mb-3"></i>
+                            <p class="mb-1">ลากไฟล์มาวางที่นี่ หรือ</p>
+                            <div class="btn-group">
+                                <label for="files_external" class="btn btn-outline-primary"><i class="fas fa-folder-open me-2"></i>เลือกไฟล์</label>
+                                <label for="camera_external" class="btn btn-outline-info"><i class="fas fa-camera me-2"></i>ถ่ายภาพ</label>
+                            </div>
+                            <input class="form-control d-none" type="file" id="files_external" multiple accept="image/*,application/pdf,.kmz,.kml">
+                            <input class="form-control d-none" type="file" id="camera_external" accept="image/*" capture="environment">
+                        </div>
+                        <div id="upload-progress-container-external" class="upload-progress-container mt-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center">
+                <button type="submit" class="btn btn-primary btn-lg flex-grow-1"><i class="fas fa-save me-2"></i>บันทึกงานภายนอก</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+    <script>
+        let filesToUpload = [];
+
+        function flashMessage(message, category = 'info') {
+            const container = document.getElementById('js-flash-message-container');
+            if (!container) return;
+            const alertId = `flash-${Date.now()}`;
+            const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show mt-3" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+            container.insertAdjacentHTML('beforeend', alertHtml);
+            setTimeout(() => {
+                const alertElement = document.getElementById(alertId);
+                if (alertElement) {
+                    const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                    if (alertInstance) alertInstance.close(); else alertElement.remove();
+                }
+            }, 5000);
+        }
+        
+        function setupFileUpload() {
+            const dropZone = document.getElementById('drop-zone-external');
+            const fileInput = document.getElementById('files_external');
+            const cameraInput = document.getElementById('camera_external');
+            const progressContainer = document.getElementById('upload-progress-container-external');
+
+            const handleFiles = (newFiles) => {
+                filesToUpload = filesToUpload.concat(Array.from(newFiles));
+                renderPreviews();
+            };
+
+            const renderPreviews = () => {
+                progressContainer.innerHTML = '';
+                progressContainer.style.display = filesToUpload.length > 0 ? 'block' : 'none';
+                filesToUpload.forEach((file, index) => {
+                    const progressHtml = `
+                        <div class="d-flex align-items-center mb-2">
+                            <div class="flex-grow-1">
+                                <div class="fw-bold small">${file.name}</div>
+                                <div class="progress" style="height: 10px;">
+                                    <div id="progress-bar-external-${index}" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-close ms-2" onclick="removeFile(${index})"></button>
+                        </div>`;
+                    progressContainer.insertAdjacentHTML('beforeend', progressHtml);
+                });
+            };
+            
+            window.removeFile = (index) => {
+                filesToUpload.splice(index, 1);
+                renderPreviews();
+            };
+
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+            fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+            cameraInput.addEventListener('change', () => handleFiles(cameraInput.files));
+        }
+        
+        async function handleFormSubmission(event) {
+            event.preventDefault();
+            const form = event.target;
+            if (!form.checkValidity()) {
+                form.classList.add('was-validated');
+                return;
+            }
+
+            const submitButton = form.querySelector('button[type="submit"]');
+            const originalButtonHtml = submitButton.innerHTML;
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+            let uploadedAttachments = [];
+            if (filesToUpload.length > 0) {
+                for (let i = 0; i < filesToUpload.length; i++) {
+                    const file = filesToUpload[i];
+                    const progressBar = document.getElementById(`progress-bar-external-${i}`);
+                    const fileFormData = new FormData();
+                    fileFormData.append('file', file);
+                    fileFormData.append('task_id', 'new_task_placeholder');
+                    
+                    try {
+                        const response = await uploadFileWithProgress(fileFormData, progressBar);
+                        uploadedAttachments.push(response.file_info);
+                    } catch (error) {
+                        flashMessage(`อัปโหลดไฟล์ "${file.name}" ไม่สำเร็จ: ${error.message}`, 'danger');
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalButtonHtml;
+                        return;
+                    }
+                }
+            }
+            
+            const mainFormData = new FormData(form);
+            mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+
+            try {
+                const response = await fetch("{{ url_for('api_create_external_task') }}", {
+                    method: 'POST',
+                    body: mainFormData,
+                    headers: {'X-CSRFToken': mainFormData.get('csrf_token')}
+                });
+                const result = await response.json();
+                if (response.ok) {
+                   flashMessage('สร้างงานภายนอกเรียบร้อยแล้ว!', 'success');
+                   if(result.redirect_url) {
+                       setTimeout(() => { window.location.href = result.redirect_url; }, 1500);
+                   }
+                } else {
+                   throw new Error(result.message);
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonHtml;
+            }
+        }
+
+        function uploadFileWithProgress(formData, progressBar) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', "{{ url_for('api_upload_attachment') }}", true);
+                xhr.setRequestHeader('X-CSRFToken', formData.get('csrf_token'));
+
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable && progressBar) {
+                        const percentComplete = (event.loaded / event.total) * 100;
+                        progressBar.style.width = percentComplete + '%';
+                    }
+                };
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(JSON.parse(xhr.responseText));
+                    } else {
+                        const errorMsg = JSON.parse(xhr.responseText).message || xhr.statusText;
+                        reject(new Error(errorMsg));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('Network error during upload.'));
+                xhr.send(formData);
+            });
+        }
+        
+		function setupSpeechRecognition(buttonId, textareaId) {
+			const button = document.getElementById(buttonId);
+			const textarea = document.getElementById(textareaId);
+			if (!button || !textarea) return;
+
+			const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+			if (!SpeechRecognition) {
+				button.disabled = true;
+				button.title = "เบราว์เซอร์ไม่รองรับการแปลงเสียงเป็นข้อความ";
+				return;
+			}
+
+			const recognition = new SpeechRecognition();
+			recognition.lang = 'th-TH';
+			recognition.interimResults = false;
+			recognition.continuous = false;
+
+			let isRecognizing = false;
+
+			recognition.onresult = (event) => {
+				const transcript = event.results[0][0].transcript.trim();
+				if (transcript) {
+					const existingText = textarea.value.trim();
+					textarea.value += (existingText ? '\n' : '') + '- ' + transcript;
+				}
+			};
+
+			recognition.onend = () => {
+				isRecognizing = false;
+				button.innerHTML = '<i class="fas fa-microphone"></i>';
+				button.classList.remove('btn-danger');
+				button.classList.add('btn-outline-secondary');
+			};
+			
+			recognition.onerror = (event) => {
+				 console.error("Speech recognition error", event.error);
+				 isRecognizing = false;
+				 button.innerHTML = '<i class="fas fa-microphone"></i>';
+				 button.classList.remove('btn-danger');
+				 button.classList.add('btn-outline-secondary');
+			}
+
+			button.addEventListener('click', () => {
+				if (isRecognizing) {
+					recognition.stop();
+				} else {
+					try {
+						recognition.start();
+						isRecognizing = true;
+						button.innerHTML = '<i class="fas fa-stop-circle"></i>';
+						button.classList.add('btn-danger');
+						button.classList.remove('btn-outline-secondary');
+					} catch(e) {
+						console.error("Could not start recognition", e);
+					}
+				}
+			});
+		}
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('customer_search');
+            const resultsDiv = document.getElementById('search_results');
+            const customerIdInput = document.getElementById('customer_id');
+            const orgInput = document.getElementById('organization_name');
+            const phoneInput = document.getElementById('phone');
+            const addressInput = document.getElementById('address');
+
+            let debounceTimer;
+            searchInput.addEventListener('input', function() {
+                if(this.value === ''){ customerIdInput.value = ''; }
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => { fetchCustomers(this.value); }, 300);
+            });
+
+            async function fetchCustomers(query) {
+                if (query.length < 2) { resultsDiv.innerHTML = ''; return; }
+                try {
+                    const response = await fetch(`{{ url_for('api_search_customers') }}?q=${encodeURIComponent(query)}`);
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const customers = await response.json();
+                    displayResults(customers);
+                } catch (error) {
+                    console.error('Error fetching customer data:', error);
+                    resultsDiv.innerHTML = '<a class="list-group-item text-danger">เกิดข้อผิดพลาดในการค้นหา</a>';
+                }
+            }
+
+            function displayResults(customers) {
+                resultsDiv.innerHTML = '';
+                if (customers.length === 0) {
+                    resultsDiv.innerHTML = '<a class="list-group-item text-muted">ไม่พบข้อมูล (พิมพ์ต่อเพื่อสร้างลูกค้าใหม่)</a>';
+                    return;
+                }
+                customers.forEach(customer => {
+                    const item = document.createElement('a');
+                    item.classList.add('list-group-item', 'list-group-item-action');
+                    let displayText = customer.organization ? 
+                        `<strong>${customer.organization}</strong><br><small class="text-muted">${customer.name}</small>` : 
+                        `<strong>${customer.name}</strong>`;
+                    item.innerHTML = displayText;
+                    item.addEventListener('click', function() {
+                        searchInput.value = customer.name;
+                        customerIdInput.value = customer.id;
+                        orgInput.value = customer.organization || '';
+                        phoneInput.value = customer.phone || '';
+                        addressInput.value = customer.address || '';
+                        resultsDiv.innerHTML = '';
+                    });
+                    resultsDiv.appendChild(item);
+                });
+            }
+            document.addEventListener('click', function(event) {
+                if (!event.target.closest('.position-relative')) {
+                    resultsDiv.innerHTML = '';
+                }
+            });
+            
+            flatpickr(".datepicker", { dateFormat: "Y-m-d", locale: "th" });
+
+            setupFileUpload();
+            document.getElementById('createExternalTaskForm').addEventListener('submit', handleFormSubmission);
+            
+            setupSpeechRecognition('start-recognition-task_title', 'task_title');
+        });
+    </script>
+{% endblock %}
