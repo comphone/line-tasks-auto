@@ -968,6 +968,9 @@
         document.getElementById(currentTechnicianTargetId).value = selectedNames.join(',');
         document.getElementById(`${currentTechnicianTargetId}_display`).value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
         technicianSelectionModal.hide();
+		    if (document.activeElement) {
+        document.activeElement.blur();
+    }
         updateProgressSaveButtonState();
     };
     

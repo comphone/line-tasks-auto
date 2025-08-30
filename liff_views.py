@@ -123,7 +123,13 @@ def customer_profile(customer_task_id):
 
     if len(profile_data.get('jobs', [])) == 1:
         task_details = profile_data
-        task_details['tech_reports_history'], _ = parse_tech_report_from_notes(customer_task.get('notes', ''))
+        
+        # --- START: ✅ โค้ดที่แก้ไข ---
+        # ดึงข้อมูล reports จาก object ของ job ใบเดียวที่อยู่ใน profile_data
+        single_job_data = profile_data.get('jobs', [{}])[0]
+        task_details['tech_reports_history'] = single_job_data.get('reports', [])
+        # --- END: ✅ โค้ดที่แก้ไข ---
+        
         settings = get_app_settings()
         
         return render_template(
