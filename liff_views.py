@@ -965,6 +965,7 @@ def api_update_job_report(customer_task_id, job_id):
         technicians_report = request.form.get('technicians_report', '')
         technicians = [t.strip() for t in technicians_report.split(',') if t.strip()]
 
+        # บล็อก if/elif ทั้งหมดต้องมีการย่อหน้าระดับเดียวกัน
         if action == 'complete_task':
             job_to_update['status'] = 'completed'
             job_to_update['completed_date'] = datetime.datetime.now(pytz.utc).isoformat()
@@ -977,12 +978,10 @@ def api_update_job_report(customer_task_id, job_id):
                 'liff_user_id': liff_user_id
             })
         elif action == 'reschedule_task':
-                    new_due_str = request.form.get('reschedule_due')
-                    new_due_date = None
-                    if new_due_str:
-                        dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
-                        new_due_date = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                        job_to_update['due_date'] = new_due_date
+            new_due_str = request.form.get('reschedule_due')
+            if new_due_str:
+                dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
+                job_to_update['due_date'] = dt_local.astimezone(pytz.utc).isoformat()
             
             flash_message = 'เลื่อนนัดเรียบร้อยแล้ว'
             report_data.update({
@@ -993,8 +992,8 @@ def api_update_job_report(customer_task_id, job_id):
                 'liff_user_id': liff_user_id
             })
         elif action == 'save_report':
-             flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
-             report_data.update({
+            flash_message = 'เพิ่มรายงานความคืบหน้าเรียบร้อยแล้ว!'
+            report_data.update({
                 'type': 'report',
                 'work_summary': str(request.form.get('work_summary', '')).strip(),
                 'technicians': technicians,
@@ -1011,19 +1010,17 @@ def api_update_job_report(customer_task_id, job_id):
         if technicians:
             profile_data['assigned_technician'] = ", ".join(technicians)
         
-        # Truncate notes if they are too long
         final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
-        if len(final_notes.encode('utf-8')) > 8000: # Leave some buffer
-            # Remove the oldest report until the notes are small enough
-            while len(final_notes.encode('utf-8')) > 8000 and job_to_update['reports']:
+        
+        if len(final_notes.encode('utf-8')) > 8000:
+            while len(final_notes.encode('utf-8')) > 8000 and job_to_update.get('reports'):
                 job_to_update['reports'].pop(0)
                 final_notes = json.dumps(profile_data, ensure_ascii=False, indent=2)
-
 
         if update_google_task(customer_task_id, notes=final_notes):
             cache.clear()
             if action == 'complete_task':
-                pass 
+                pass
             
             return jsonify({'status': 'success', 'message': flash_message})
         else:
