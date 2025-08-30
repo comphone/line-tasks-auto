@@ -1,5 +1,3 @@
-# liff_views.py (ฉบับแก้ไขสมบูรณ์)
-
 import os
 import datetime
 import pytz
@@ -365,7 +363,7 @@ def generate_public_report_qr(task_id):
     
     settings = get_app_settings()
     line_oa_id = settings.get('shop_info', {}).get('line_id', '@YOUR_LINE_OA_ID').replace('@','')
-    line_add_friend_url = f"https://line.me/R/ti/p/@{line_oa_id}?referral={task_id}"
+    line_add_friend_url = f"[https://line.me/R/ti/p/](https://line.me/R/ti/p/)@{line_oa_id}?referral={task_id}"
     
     qr_code_b64 = generate_qr_code_base64(line_add_friend_url)
     customer = parse_task_data(task).get('customer', {})
@@ -416,7 +414,7 @@ def generate_customer_onboarding_qr(task_id):
     
     settings = get_app_settings()
     line_oa_id = settings.get('shop_info', {}).get('line_id', '@YOUR_LINE_OA_ID').replace('@','')
-    line_add_friend_url = f"https://line.me/R/ti/p/@{line_oa_id}?referral={task_id}"
+    line_add_friend_url = f"[https://line.me/R/ti/p/](https://line.me/R/ti/p/)@{line_oa_id}?referral={task_id}"
     
     qr_code_b64 = generate_qr_code_base64(line_add_friend_url)
     customer = parse_task_data(task).get('customer', {})
