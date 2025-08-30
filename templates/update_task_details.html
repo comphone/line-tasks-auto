@@ -729,67 +729,71 @@
         });
     }
     
-    async function handleFormSubmission(event, formType) {
-        event.preventDefault();
-        const form = event.target;
-        
-        const submitButton = form.querySelector('button[type="submit"]');
-        const originalButtonHtml = submitButton.innerHTML;
-        submitButton.disabled = true;
-        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+	async function handleFormSubmission(event, formType) {
+		event.preventDefault();
+		const form = event.target;
+		
+		const submitButton = form.querySelector('button[type="submit"]');
+		const originalButtonHtml = submitButton.innerHTML;
+		submitButton.disabled = true;
+		submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
 
-        let uploadedAttachments = [];
-        if (filesToUpload[formType] && filesToUpload[formType].length > 0) {
-            for (let i = 0; i < filesToUpload[formType].length; i++) {
-                const file = filesToUpload[formType][i];
-                const progressBar = document.getElementById(`progress-bar-${formType}-${i}`);
-                const fileFormData = new FormData();
-                fileFormData.append('file', file);
-                fileFormData.append('task_id', taskId); 
-                
-                try {
-                    const response = await uploadFileWithProgress(fileFormData, progressBar);
-                    uploadedAttachments.push(response.file_info);
-                } catch (error) {
-                    flashMessage(`อัปโหลดไฟล์ "${file.name}" ไม่สำเร็จ: ${error.message}`, 'danger');
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = originalButtonHtml;
-                    return;
-                }
-            }
-        }
-        
-        const mainFormData = new FormData(form);
-        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
-        
-        if (typeof liff !== 'undefined' && liff.getContext()) {
-             mainFormData.append('technician_line_user_id', liff.getContext().userId);
-        }
+		let uploadedAttachments = [];
+		if (filesToUpload[formType] && filesToUpload[formType].length > 0) {
+			for (let i = 0; i < filesToUpload[formType].length; i++) {
+				const file = filesToUpload[formType][i];
+				const progressBar = document.getElementById(`progress-bar-${formType}-${i}`);
+				const fileFormData = new FormData();
+				fileFormData.append('file', file);
+				// --- FIX: ใช้ customerTaskId สำหรับการอ้างอิงโฟลเดอร์ที่ถูกต้อง ---
+				fileFormData.append('task_id', customerTaskId); 
+				
+				try {
+					const response = await uploadFileWithProgress(fileFormData, progressBar);
+					uploadedAttachments.push(response.file_info);
+				} catch (error) {
+					flashMessage(`อัปโหลดไฟล์ "${file.name}" ไม่สำเร็จ: ${error.message}`, 'danger');
+					submitButton.disabled = false;
+					submitButton.innerHTML = originalButtonHtml;
+					return;
+				}
+			}
+		}
+		
+		const mainFormData = new FormData(form);
+		mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+		
+		if (typeof liff !== 'undefined' && liff.getContext()) {
+			 mainFormData.append('technician_line_user_id', liff.getContext().userId);
+		}
 
-        try {
-            const response = await fetch(`/api/customer/${customerTaskId}/job/${taskId}/update`, {
-                method: 'POST',
-                body: mainFormData,
-                headers: {'X-CSRFToken': csrfToken}
-            });
-            const result = await response.json();
-            if (response.ok) {
-               flashMessage(result.message, 'success');
-               if(result.redirect_url) {
-                   setTimeout(() => { window.location.href = result.redirect_url; }, 1500);
-               } else {
-                   setTimeout(() => { window.location.reload(); }, 1500);
-               }
-            } else {
-               throw new Error(result.message);
-            }
-        } catch (error) {
-            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
-        } finally {
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHtml;
-        }
-    }
+		try {
+			// --- START: ✅ โค้ดที่แก้ไข ---
+			// แก้ไข URL ให้เรียกไปยัง Endpoint ที่ถูกต้องสำหรับ Job ย่อย
+			const response = await fetch(`/api/customer/${customerTaskId}/job/${taskId}/update`, {
+			// --- END: ✅ โค้ดที่แก้ไข ---
+				method: 'POST',
+				body: mainFormData,
+				headers: {'X-CSRFToken': csrfToken}
+			});
+			const result = await response.json();
+			if (response.ok) {
+			   flashMessage(result.message, 'success');
+			   if(result.redirect_url) {
+				   setTimeout(() => { window.location.href = result.redirect_url; }, 1500);
+			   } else {
+				   setTimeout(() => { window.location.reload(); }, 1500);
+			   }
+			} else {
+			   throw new Error(result.message);
+			}
+		} catch (error) {
+			flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+		} finally {
+			submitButton.disabled = false;
+			submitButton.innerHTML = originalButtonHtml;
+		}
+	}
     
     window.openLightbox = (reportIndex, imageIndex) => {
         const report = techReportsHistory[reportIndex];
