@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}รวมโปรไฟล์ลูกค้าซ้ำซ้อน{% endblock %}
+
+{% block head_extra %}
+<style>
+    .customer-group {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .customer-group-header {
+        background-color: #f8f9fa;
+        padding: 0.75rem 1.25rem;
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+    .profile-item {
+        padding: 1rem 1.25rem;
+        border-top: 1px solid #e9ecef;
+    }
+    .profile-item .form-check-label {
+        width: 100%;
+        cursor: pointer;
+    }
+    .job-list {
+        list-style-type: none;
+        padding-left: 1.5rem;
+        font-size: 0.9rem;
+    }
+    .job-list li::before {
+        content: "\f0f6"; /* FontAwesome document icon */
+        font-family: "Font Awesome 5 Free";
+        font-weight: 900;
+        margin-right: 0.5rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0"><i class="fas fa-users-cog me-2"></i>รวมโปรไฟล์ลูกค้าซ้ำซ้อน</h1>
+    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
+</div>
+
+{% if not duplicate_customers %}
+<div class="card shadow-sm">
+    <div class="card-body text-center p-5">
+        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+        <h4>ไม่พบข้อมูลลูกค้าซ้ำซ้อน</h4>
+        <p class="text-muted mb-0">ระบบไม่พบโปรไฟล์ที่มีชื่อลูกค้าตรงกัน</p>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p class="mb-0">
+        พบกลุ่มลูกค้าที่อาจมีโปรไฟล์ซ้ำซ้อน <strong>{{ duplicate_customers|length }} กลุ่ม</strong>
+        โปรดเลือก "โปรไฟล์หลัก" ที่จะเก็บไว้ในแต่ละกลุ่ม จากนั้นระบบจะย้ายใบงานทั้งหมดมารวมกันและลบโปรไฟล์ที่เหลือทิ้ง
+    </p>
+</div>
+
+{% for name, customers_list in duplicate_customers.items() %}
+<div class="customer-group shadow-sm">
+    <div class="customer-group-header">
+        ลูกค้า: {{ name|title }} ({{ customers_list|length }} โปรไฟล์)
+    </div>
+    <div class="list-group list-group-flush">
+        {% for customer in customers_list %}
+        <div class="profile-item list-group-item">
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="master_{{ name }}" id="master_{{ customer.id }}" value="{{ customer.id }}" {% if loop.first %}checked{% endif %}>
+                <label class="form-check-label" for="master_{{ customer.id }}">
+                    <strong>เลือกเป็นโปรไฟล์หลัก</strong>
+                    <p class="mb-1 text-muted small">ID: {{ customer.id }} | สร้างเมื่อ: {{ customer.created_at.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}</p>
+                    {% if customer.jobs %}
+                    <ul class="job-list mt-2">
+                        {% for job in customer.jobs %}
+                        <li>{{ job.job_title }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="small text-danger"><em>(โปรไฟล์นี้ไม่มีใบงานย่อย)</em></p>
+                    {% endif %}
+                </label>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="card-footer text-end">
+        <button class="btn btn-primary merge-btn" 
+                data-group-name="{{ name }}"
+                data-radio-name="master_{{ name }}"
+                data-customer-ids="{{ customers_list|map(attribute='id')|join(',') }}">
+            <i class="fas fa-compress-arrows-alt me-2"></i>รวมโปรไฟล์ของ {{ name|title }}
+        </button>
+    </div>
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = "{{ csrf_token() }}";
+
+    document.querySelectorAll('.merge-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            const groupName = this.dataset.groupName;
+            const radioName = this.dataset.radioName;
+            const allCustomerIds = this.dataset.customerIds.split(',');
+            
+            const selectedMasterRadio = document.querySelector(`input[name="${radioName}"]:checked`);
+            if (!selectedMasterRadio) {
+                alert('กรุณาเลือกโปรไฟล์หลัก');
+                return;
+            }
+            const masterCustomerId = selectedMasterRadio.value;
+
+            if (!confirm(`คุณแน่ใจหรือไม่ว่าจะรวมโปรไฟล์ทั้งหมดของ "${groupName}"?\n\nข้อมูลใบงานทั้งหมดจะถูกย้ายไปที่โปรไฟล์หลัก และโปรไฟล์ที่เหลือจะถูกลบอย่างถาวร`)) {
+                return;
+            }
+
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังรวม...';
+
+            try {
+                const response = await fetch("{{ url_for('liff.api_merge_customer_profiles') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        master_customer_id: masterCustomerId,
+                        duplicate_customer_ids: allCustomerIds.filter(id => id !== masterCustomerId)
+                    })
+                });
+
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message);
+
+                alert(result.message);
+                this.closest('.customer-group').style.display = 'none';
+
+            } catch (error) {
+                alert(`เกิดข้อผิดพลาด: ${error.message}`);
+                this.disabled = false;
+                this.innerHTML = `<i class="fas fa-compress-arrows-alt me-2"></i>รวมโปรไฟล์ของ ${groupName}`;
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,249 @@
+{% raw %}{% extends "base.html" %}
+
+{% block title %}จัดการข้อมูลลูกค้า{% endblock %}
+
+{% block head_extra %}
+<style>
+    .card-header h5 {
+        font-weight: 600;
+    }
+
+    .input-group-text {
+        width: 42px;
+        justify-content: center;
+        background-color: #f8f9fa;
+    }
+
+    #search_results .list-group-item {
+        cursor: pointer;
+    }
+
+    #search_results .list-group-item:hover {
+        background-color: #e9ecef;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10 col-md-12">
+        <form id="customerForm" class="needs-validation" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" id="customer_id" name="customer_id">
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h2 mb-0"><i class="fas fa-user-plus me-2"></i>สร้าง/ค้นหาลูกค้า</h1>
+                <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-tag me-2"></i>ข้อมูลลูกค้า</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row">
+                        <div class="col-md-6 mb-3 position-relative">
+                            <label for="customer_search" class="form-label"><strong>ค้นหา/เพิ่มชื่อผู้ติดต่อ</strong> <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" id="customer_search" class="form-control" name="customer_name" placeholder="พิมพ์เพื่อค้นหาลูกค้าเดิม..." required autocomplete="off">
+                            </div>
+                            <div id="search_results" class="list-group mt-1 position-absolute w-100" style="z-index: 1000;"></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="organization_name" class="form-label">ชื่อหน่วยงาน/บริษัท</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-building"></i></span>
+                                <input type="text" class="form-control" id="organization_name" name="organization_name">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="phone" class="form-label">เบอร์โทรศัพท์</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <input type="tel" class="form-control" id="phone" name="phone">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="address" class="form-label">ที่อยู่ลูกค้า</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
+                                <textarea class="form-control" id="address" name="address" rows="1"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label">ลิงก์ Google Maps</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-map-pin"></i></span>
+                            <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude">
+                            <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
+                                <i class="fas fa-location-arrow"></i>
+                            </button>
+                        </div>
+                        <small class="form-text text-muted" id="shareLocationStatus"></small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-arrow-right me-2"></i>ต่อไป: เพิ่มรายละเอียดงาน</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Customer Search Logic ---
+        const searchInput = document.getElementById('customer_search');
+        const resultsDiv = document.getElementById('search_results');
+        const customerIdInput = document.getElementById('customer_id');
+        const orgInput = document.getElementById('organization_name');
+        const phoneInput = document.getElementById('phone');
+        const addressInput = document.getElementById('address');
+        const mapUrlInput = document.getElementById('latitude_longitude');
+
+        let debounceTimer;
+        searchInput.addEventListener('input', function() {
+            if (this.value === '') {
+                customerIdInput.value = '';
+            }
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                fetchCustomers(this.value);
+            }, 300);
+        });
+
+        async function fetchCustomers(query) {
+            if (query.length < 2) {
+                resultsDiv.innerHTML = '';
+                return;
+            }
+            try {
+                const response = await fetch(`{{ url_for('api_search_customers') }}?q=${encodeURIComponent(query)}`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const customers = await response.json();
+                displayResults(customers);
+            } catch (error) {
+                console.error('Error fetching customer data:', error);
+                resultsDiv.innerHTML = '<a class="list-group-item text-danger">เกิดข้อผิดพลาดในการค้นหา</a>';
+            }
+        }
+
+        function displayResults(customers) {
+            resultsDiv.innerHTML = '';
+            if (customers.length === 0) {
+                resultsDiv.innerHTML = '<a class="list-group-item text-muted">ไม่พบข้อมูล (พิมพ์ต่อเพื่อสร้างลูกค้าใหม่)</a>';
+                return;
+            }
+            customers.forEach(customer => {
+                const item = document.createElement('a');
+                item.classList.add('list-group-item', 'list-group-item-action');
+                let displayText = customer.organization ? `<strong>${customer.organization}</strong><br><small class="text-muted">${customer.name}</small>` : `<strong>${customer.name}</strong>`;
+                item.innerHTML = displayText;
+                item.addEventListener('click', () => selectCustomer(customer));
+                resultsDiv.appendChild(item);
+            });
+        }
+
+        function selectCustomer(customer) {
+            searchInput.value = customer.name;
+            customerIdInput.value = customer.id;
+            orgInput.value = customer.organization || '';
+            phoneInput.value = customer.phone || '';
+            addressInput.value = customer.address || '';
+            mapUrlInput.value = customer.map_url || '';
+            resultsDiv.innerHTML = '';
+        }
+
+        // --- Geolocation Logic ---
+        const shareBtn = document.getElementById('shareLocationBtn');
+        const locationInput = document.getElementById('latitude_longitude');
+        const statusText = document.getElementById('shareLocationStatus');
+
+        if (shareBtn) {
+            shareBtn.addEventListener('click', function() {
+                statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const lat = position.coords.latitude;
+                            const lon = position.coords.longitude;
+                            locationInput.value = `https://www.google.com/maps?q=${lat},${lon}`;
+                            statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                            statusText.classList.remove('text-danger');
+                            statusText.classList.add('text-success');
+                        },
+                        (error) => {
+                            let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                            switch (error.code) {
+                                case error.PERMISSION_DENIED:
+                                    errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง";
+                                    break;
+                                case error.POSITION_UNAVAILABLE:
+                                    errorMessage = "ไม่สามารถระบุตำแหน่งได้";
+                                    break;
+                                case error.TIMEOUT:
+                                    errorMessage = "ค้นหาตำแหน่งใช้เวลานานเกินไป";
+                                    break;
+                            }
+                            statusText.textContent = errorMessage;
+                            statusText.classList.remove('text-success');
+                            statusText.classList.add('text-danger');
+                        }, {
+                            enableHighAccuracy: true,
+                            timeout: 10000,
+                            maximumAge: 0
+                        }
+                    );
+                } else {
+                    statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                    statusText.classList.remove('text-success');
+                    statusText.classList.add('text-danger');
+                }
+            });
+        }
+
+        // --- Form Submission Logic ---
+        document.getElementById('customerForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const form = event.target;
+            if (!form.checkValidity()) {
+                form.classList.add('was-validated');
+                return;
+            }
+            
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+            const formData = new FormData(form);
+            try {
+                const response = await fetch("{{ url_for('api_save_customer') }}", {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': formData.get('csrf_token')
+                    }
+                });
+                const result = await response.json();
+                if (response.ok && result.redirect_url) {
+                    window.location.href = result.redirect_url;
+                } else {
+                    throw new Error(result.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
+                }
+            } catch (error) {
+                 alert(`เกิดข้อผิดพลาด: ${error.message}`);
+                 submitButton.disabled = false;
+                 submitButton.innerHTML = `<i class="fas fa-arrow-right me-2"></i>ต่อไป: เพิ่มรายละเอียดงาน`;
+            }
+        });
+    });
+</script>
+{% endblock %}
+{% endraw %}

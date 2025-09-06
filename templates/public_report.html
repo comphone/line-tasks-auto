@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}รายงานสรุปงาน: {{ task.title }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 2rem; background-color: #f8f9fa; }
+    .info-card { background-color: #ffffff; border-radius: 0.75rem; padding: 1rem 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e9ecef; margin-bottom: 1rem; }
+    .info-label { font-size: 0.85rem; font-weight: 600; color: #6c757d; margin-bottom: 0.25rem; }
+    .info-value { font-size: 1.1em; font-weight: 500; color: #343a40; }
+    .info-value.customer-name { font-size: 1.3em; font-weight: 700; color: #0d6efd; }
+
+    .history-entry { border: 1px solid #e9ecef; border-left: 5px solid #0d6efd; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; background-color: #fff; }
+    .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .history-title { font-weight: 600; color: #0d6efd; }
+    .history-body p { margin-bottom: 0.5rem; word-break: break-word; }
+
+    .image-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .thumbnail img { width: 100%; height: 100%; object-fit: cover; border-radius: .375rem; cursor: pointer; transition: transform 0.2s; }
+    .thumbnail img:hover { transform: scale(1.05); }
+
+    .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
+    .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; }
+    .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="d-flex flex-column align-items-center text-center mb-4">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-width: 100px; margin-bottom: 1rem;">
+        <h1 class="h2 mb-1">รายงานสรุปการบริการ</h1>
+        <p class="text-muted">ขอขอบคุณที่เลือกใช้บริการของเรา</p>
+    </div>
+
+    <div class="summary-container">
+        <h5 class="mb-3 border-bottom pb-2">ข้อมูลสรุป</h5>
+        <div class="info-card">
+            <div class="info-label">ลูกค้า</div>
+            <div class="info-value customer-name">{{ task.customer.name or '-' }}</div>
+        </div>
+        <div class="info-card">
+            <div class="info-label">รายละเอียดงาน</div>
+            <div class="info-value">{{ task.title | replace('\n', '<br>') | safe }}</div>
+        </div>
+        <div class="info-card">
+            <div class="info-label">วันที่แล้วเสร็จ</div>
+            <div class="info-value">{{ task.completed_formatted or '-' }}</div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <h5 class="mb-3"><i class="fas fa-history me-2"></i>ประวัติการดำเนินงาน</h5>
+        {% if task.tech_reports_history %}
+            {% for report in task.tech_reports_history %}
+                <div class="history-entry">
+                    <div class="history-header">
+                        <span class="history-title">รายงานการปฏิบัติงาน</span>
+                        <small class="text-muted">{{ (report.summary_date | dateutil_parse).astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}</small>
+                    </div>
+                    <hr class="my-2">
+                    <div class="history-body">
+                        <p>{{ report.work_summary | replace('\n', '<br>') | safe if report.work_summary else 'ไม่มีรายละเอียดเพิ่มเติม' }}</p>
+                        {% if report.attachments %}
+                        <div class="image-gallery">
+                            {% for att in report.attachments %}
+                            <div class="thumbnail">
+                                <img src="https://drive.google.com/thumbnail?id={{ att.id }}&sz=w500-h500" alt="{{ att.name }}" onclick="openLightbox('https://drive.google.com/thumbnail?id={{ att.id }}&sz=w1280')">
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted text-center">ไม่พบประวัติการดำเนินงาน</p>
+        {% endif %}
+    </div>
+</div>
+
+<div id="lightboxModal" class="lightbox">
+    <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+    <img class="lightbox-content" id="lightboxImg">
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    function openLightbox(src) {
+        document.getElementById('lightboxImg').src = src;
+        document.getElementById('lightboxModal').style.display = "block";
+    }
+    function closeLightbox() {
+        document.getElementById('lightboxModal').style.display = "none";
+    }
+</script>
+{% endblock %}

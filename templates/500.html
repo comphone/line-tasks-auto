@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}500 - เกิดข้อผิดพลาดในระบบ{% endblock %}
+
+{% block content %}
+<div class="text-center py-5">
+    <h1 class="display-1">500</h1>
+    <h2 class="mb-4">เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์</h2>
+    <p class="lead">ขออภัย ระบบกำลังประสบปัญหาชั่วคราว โปรดลองอีกครั้งในภายหลัง</p>
+    <a href="{{ url_for('liff.summary') }}" class="btn btn-primary mt-3">กลับสู่หน้าหลัก</a>
+</div>
+{% endblock %}

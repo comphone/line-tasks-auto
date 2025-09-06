@@ -1,0 +1,1535 @@
+<link rel="stylesheet" href="https://unpkg.com/tributejs@5.1.3/dist/tribute.css" />
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+<style>
+	/* Styles for the page */
+	#item-search-results .list-group-item { cursor: pointer; }
+	#item-search-results .list-group-item:hover { background-color: #e9ecef; }
+    .summary-container { border: 1px solid #dee2e6; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 2rem; background-color: #f8f9fa; }
+    .info-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+    @media (min-width: 768px) { .info-grid { grid-template-columns: repeat(2, 1fr); } }
+    .info-card { background-color: #ffffff; border-radius: 0.75rem; padding: 0.8rem 1.1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e9ecef; }
+    .full-width-card { grid-column: 1 / -1; }
+    .info-label { display: flex; align-items: center; font-size: 0.8rem; font-weight: 600; color: #6c757d; margin-bottom: 0.35rem; }
+    .info-label i { width: 20px; text-align: center; margin-right: 0.5rem; color: #adb5bd; }
+    .info-value { font-weight: 500; color: #343a40; word-break: break-word; margin-bottom: 0; }
+    .info-value.value-large { font-size: 1.25em; font-weight: 700; }
+    .info-value.value-medium { font-size: 1.2em; font-weight: 600; }
+    .info-value.value-small { font-size: 0.9em; }
+    .history-entry { background-color: #fff; border: 1px solid #e9ecef; border-left-width: 5px; border-radius: .375rem; padding: 1rem; margin-bottom: 1rem; }
+    .history-entry.internal-note { background-color: #f8f9fa; border-left-color: #6c757d; }
+    .history-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .history-entry-subheader { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+    .history-entry-title { font-weight: 600; }
+    .image-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
+    .thumbnail { cursor: pointer; border-radius: .375rem; overflow: hidden; aspect-ratio: 1 / 1; background-color: #e9ecef; position: relative; }
+    .thumbnail img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s ease; }
+    .thumbnail:hover img { transform: scale(1.05); }
+    .lightbox { display: none; position: fixed; z-index: 1070; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
+    .lightbox-content { margin: auto; display: block; max-width: 85%; max-height: 80vh; }
+    .lightbox-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; }
+    .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); cursor: pointer; color: white; font-size: 3rem; background-color: rgba(30, 30, 30, 0.5); border-radius: 50%; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s ease; }
+    .lightbox-nav:hover { background-color: rgba(0,0,0,0.8); }
+    .prev { left: 15px; }
+    .next { right: 15px; }
+    #lightbox-share-btn { position: absolute; top: 20px; left: 20px; z-index: 1071; opacity: 0.8; }
+    .tribute-container ul { list-style: none; margin: 0; padding: 0; }
+    .tribute-container li.highlight { background-color: #0d6efd; color: white; }
+    .action-button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .action-btn { display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; font-size: 1rem; font-weight: 500; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: all 0.2s ease-in-out; text-decoration: none; color: white; }
+    .action-btn:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); color: white; }
+    .action-btn i { margin-right: 0.5rem; }
+    #technician-action-sheet .modal-dialog { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; max-width: 100%; width: 100%; }
+    #technician-action-sheet .modal-content { border-radius: 1rem 1rem 0 0; border: none; }
+    .technician-list-item { display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background-color 0.2s; }
+    .technician-list-item:hover { background-color: #f8f9fa; }
+    .technician-list-item.selected { background-color: #e7f1ff; color: #0d6efd; font-weight: 600; }
+    .technician-list-item img { width: 40px; height: 40px; border-radius: 50%; margin-right: 1rem; }
+    .technician-list-item .check-icon { margin-left: auto; font-size: 1.2rem; color: #0d6efd; }
+    .file-drop-zone { border: 2px dashed #adb5bd; border-radius: 0.5rem; padding: 2rem; text-align: center; color: #6c757d; transition: background-color 0.2s, border-color 0.2s; }
+    .file-drop-zone.drag-over { background-color: #e9ecef; border-color: #0d6efd; }
+    .upload-progress-container { display: none; }
+    #scanner-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 1080; flex-direction: column; }
+    #qr-reader { width: 90%; max-width: 500px; background-color: white; border-radius: 8px; position: relative; }
+    #qr-reader__scan_region::after { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: red; box-shadow: 0 0 5px red; }
+    #close-scanner-btn { margin-top: 1rem; }
+    .thumbnail.selectable { cursor: pointer; }
+    .thumbnail.selected {
+        outline: 3px solid #0d6efd;
+        box-shadow: 0 0 10px rgba(13, 110, 253, 0.5);
+    }
+    .thumbnail .selection-overlay {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 24px;
+        height: 24px;
+        background-color: rgba(255, 255, 255, 0.8);
+        border: 1px solid #ccc;
+        border-radius: 50%;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        transition: background-color 0.2s, color 0.2s;
+    }
+    .thumbnail.selected .selection-overlay {
+        display: flex;
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: white;
+    }
+    .history-entry.selection-mode .thumbnail .selection-overlay {
+        display: flex;
+    }
+    .attachment-edit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 1rem;
+    }
+    .attachment-edit-item {
+        position: relative;
+    }
+    .attachment-edit-item .form-check-input {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 1.5em;
+        height: 1.5em;
+        z-index: 10;
+    }
+    .attachment-edit-item .img-thumbnail {
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+    }
+    .attachment-edit-item .form-check-label {
+        width: 100%;
+        cursor: pointer;
+    }
+
+    /* --- START: โค้ดสำหรับเส้นเล็งบาร์โค้ด --- */
+    #qr-reader {
+        position: relative;
+    }
+    #qr-reader__scan_region::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: red;
+        box-shadow: 0 0 5px red;
+    }
+    /* --- END: โค้ดสำหรับเส้นเล็งบาร์โค้ด --- */
+</style>
+<div class="container mt-4 mb-5" id="main-content">
+    
+    <div id="js-flash-message-container"></div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2 mb-0">📋 จัดการงาน</h1>
+        <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าสรุป</a>
+    </div>
+
+    <div class="summary-container">
+	<div class="d-flex justify-content-between align-items-center mb-3">
+		<h5 class="mb-0">ข้อมูลสรุป</h5>
+		<a href="{{ url_for('liff.edit_task', job_id=task.id) }}" class="btn btn-sm btn-outline-primary" title="แก้ไขข้อมูลหลัก"><i class="fas fa-edit me-1"></i>แก้ไขข้อมูลหลัก</a>
+	</div>
+        <div class="info-grid">
+             <div class="info-card">
+                 <h6 class="info-label"><i class="fas fa-user"></i>ลูกค้า</h6>
+                <p class="info-value value-large text-primary">{{ task.customer.name or '-' }} {% if task.customer.organization %}({{ task.customer.organization }}){% endif %}</p>
+            </div>
+             <div class="info-card">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="info-label"><i class="fas fa-phone"></i>เบอร์โทร</h6>
+                        <p class="info-value value-medium">{{ task.customer.phone or '-' }}</p>
+                    </div>
+                    <div class="text-end">
+                        <h6 class="info-label"><i class="fas fa-calendar-alt"></i>นัดหมาย</h6>
+                        <p class="info-value value-small {% if task.is_today and task.status != 'completed' %}text-primary fw-bold{% elif task.is_overdue and task.status != 'completed' %}text-danger fw-bold{% endif %}">
+                            {% if task.due_date %}{{ task.due_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}{% else %}-{% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="info-card full-width-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="info-label"><i class="fas fa-map-marker-alt"></i>ที่อยู่</h6>
+                        <p class="info-value">{{ task.customer.address or '-' }}</p>
+                    </div>
+                    {% if task.customer.map_url %}
+                        <a href="{{ task.customer.map_url }}" target="_blank" class="btn btn-outline-secondary btn-sm ms-2" style="flex-shrink: 0;" title="เปิดใน Google Maps">
+                            <i class="fas fa-map-marked-alt text-danger"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+<div class="info-card full-width-card">
+                <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
+                <p class="info-value value-large">{{ task.title | replace('\n', '<br>') | safe }}</p>
+            </div>
+
+            <div class="info-card full-width-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="info-label"><i class="fas fa-user-cog"></i>ผู้รับผิดชอบ</h6>
+                        <p class="info-value value-medium" id="assigned-tech-display">
+                            {% if task.assigned_technician %}
+                                {{ task.assigned_technician }}
+                            {% else %}
+                                <span class="text-muted">ยังไม่ได้มอบหมาย</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#assignTechnicianModal">
+                        <i class="fas fa-user-plus me-1"></i> มอบหมาย/เปลี่ยน
+                    </button>
+                </div>
+            </div>
+            </div>
+    </div>
+	<div class="modal fade" id="assignTechnicianModal" tabindex="-1">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">มอบหมายงานให้ช่าง</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+				</div>
+				<div class="modal-body">
+					<p>เลือกช่างที่ต้องการให้รับผิดชอบงานนี้</p>
+					<div class="list-group">
+						{% for tech in technician_list %}
+						<a href="#" class="list-group-item list-group-item-action assign-tech-btn" data-tech-name="{{ tech.name }}">
+							{{ tech.name }}
+						</a>
+						{% endfor %}
+					</div>
+				</div>
+				<div class="modal-footer">
+					 <button type="button" class="btn btn-outline-danger" id="unassign-btn">ยกเลิกการมอบหมาย</button>
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+    <div class="card shadow-sm mb-4">
+		<div class="card-header d-flex justify-content-between align-items-center">
+			<h5 class="mb-0"><i class="fas fa-tools me-2"></i>รายการอุปกรณ์และค่าใช้จ่าย</h5>
+			<strong id="grand-total-display">รวม: 0.00 บาท</strong>
+		</div>
+		<div class="card-body p-2">
+			<div id="item-summary-list">
+				<p class="text-muted text-center p-3">กำลังโหลดรายการ...</p>
+			</div>
+		</div>
+		<div class="card-footer p-2">
+			<button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#addItemModal">
+				<i class="fas fa-plus me-2"></i>เพิ่มรายการอุปกรณ์/ค่าใช้จ่าย
+			</button>
+		</div>
+	</div>
+
+    <div class="card shadow-sm mb-4" id="chooseActionCard">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>ดำเนินการต่อ</h5>
+        </div>
+        <div class="card-body">
+            <div class="action-button-grid">
+                <button type="button" class="btn btn-primary action-btn" data-bs-toggle="collapse" data-bs-target="#progressReportCollapse" aria-expanded="false" aria-controls="progressReportCollapse">
+                    <i class="fas fa-edit"></i> เพิ่มรายงาน
+                </button>
+                <button type="button" class="btn btn-warning action-btn" onclick="window.showActionCard('rescheduleCard')">
+                    <i class="fas fa-calendar-alt"></i> เลื่อนนัด
+                </button>
+                <a href="{{ url_for('liff.generate_customer_onboarding_qr', customer_id=task.customer.id) }}" target="_blank" class="btn btn-info action-btn">
+                    <i class="fas fa-qrcode"></i> QR Code ลูกค้า
+                </a>
+                <button type="button" class="btn btn-success action-btn" onclick="window.showActionCard('finalReportCard')">
+                    <i class="fas fa-check-circle"></i> ปิดงาน
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
+        <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
+        <div class="card-body">
+            <form id="completeTaskForm">
+                <input type="hidden" name="action" value="complete_task">
+                <input type="hidden" id="current_latitude" name="current_latitude">
+                <input type="hidden" id="current_longitude" name="current_longitude">
+				<input type="hidden" name="customer_id" value="{{ task.customer.id }}">
+
+                <div class="mb-3">
+                    <label class="form-label"><strong><i class="fas fa-tools me-1"></i>สรุปอุปกรณ์ที่บันทึกแล้ว</strong></label>
+                    <div id="equipment-summary-final" class="p-3 rounded bg-light">
+                        <p class="text-muted">ไม่มีรายการอุปกรณ์</p>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
+                        <button class="btn btn-outline-secondary" type="button" id="start-recognition-final" title="บันทึกด้วยเสียง">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                    </div>
+                    <small class="form-text text-muted">
+                        พิมพ์ `/` เพื่อใช้ข้อความด่วน | กด <i class="fas fa-microphone"></i> เพื่อบันทึกด้วยเสียง
+                    </small>
+                </div>
+                 <div class="mb-3">
+                    <label for="technicians_final_display" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
+                        <input type="text" id="technicians_final_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_final')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_final')">เลือก</button>
+                    </div>
+                    <input type="hidden" id="technicians_final" name="technicians_report" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label"><strong><i class="fas fa-paperclip me-1"></i>แนบรูปภาพ/ไฟล์อื่นๆ</strong></label>
+                    <div class="file-drop-zone" id="drop-zone-final">
+                        <i class="fas fa-cloud-upload-alt fs-2 mb-3"></i>
+                        <p class="mb-1">ลากไฟล์มาวางที่นี่ หรือ</p>
+                        <div class="btn-group">
+                            <label for="files_final" class="btn btn-outline-primary"><i class="fas fa-folder-open me-2"></i>เลือกไฟล์</label>
+                            <label for="camera_final" class="btn btn-outline-info"><i class="fas fa-camera me-2"></i>ถ่ายภาพ</label>
+                        </div>
+                        <input class="form-control d-none" type="file" id="files_final" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+                        <input class="form-control d-none" type="file" id="camera_final" name="camera_files[]" accept="image/*" capture="environment">
+                    </div>
+                    <div id="upload-progress-container-final" class="upload-progress-container mt-2"></div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label"><strong><i class="fas fa-map-marker-alt me-1"></i>พิกัดปิดงาน</strong></label>
+                    <div id="location-status-container">
+                        <button type="button" class="btn btn-info w-100" id="updateLocationBtn_final">
+                            <i class="fas fa-location-arrow me-2"></i>อัปเดตพิกัดปัจจุบัน
+                        </button>
+                        <div id="location-status-text-final" class="form-text mt-2 text-center"></div>
+                    </div>
+                </div>
+
+                <hr>
+                <div class="d-flex align-items-center">
+                    <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
+                    <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
+        <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
+        <div class="card-body">
+            <form id="rescheduleTaskForm">
+                <input type="hidden" name="action" value="reschedule_task">
+				<input type="hidden" name="customer_id" value="{{ task.customer.id }}">
+                <div class="mb-3">
+                    <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                        <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด / ปัญหาที่พบ</strong></label>
+                    <div class="input-group">
+                        <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่, เข้าพื้นที่ไม่ได้"></textarea>
+                        <button class="btn btn-outline-secondary" type="button" id="start-recognition-reschedule" title="บันทึกด้วยเสียง">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                    </div>
+                    <small class="form-text text-muted">
+                        พิมพ์ `/` เพื่อใช้ข้อความด่วน | กด <i class="fas fa-microphone"></i> เพื่อบันทึกด้วยเสียง
+                    </small>
+                </div>
+                <div class="mb-3">
+                    <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
+                        <input type="text" id="technicians_reschedule_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_reschedule')">
+                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_reschedule')">เลือก</button>
+                    </div>
+                    <input type="hidden" id="technicians_reschedule" name="technicians_report" required>
+                </div>
+                <hr>
+                <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
+                <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="collapse" id="progressReportCollapse">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-tools me-2"></i>เพิ่มประวัติงาน / รายงานความคืบหน้า</h5>
+            </div>
+            <div class="card-body">
+                <form id="progressReportForm">
+                    <input type="hidden" name="action" value="save_report">
+                    <input type="hidden" name="customer_id" value="{{ task.customer.id }}">
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong><i class="fas fa-tools me-1"></i>สรุปอุปกรณ์ที่บันทึกแล้ว</strong></label>
+                        <div id="equipment-summary-progress" class="p-3 rounded bg-light">
+                             <p class="text-muted">ไม่มีรายการอุปกรณ์</p>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="work_summary_progress" class="form-label">สรุปความคืบหน้า</label>
+                        <div class="input-group">
+                            <textarea class="form-control" id="work_summary_progress" name="work_summary" rows="3"></textarea>
+                            <button class="btn btn-outline-secondary" type="button" id="start-recognition-progress" title="บันทึกด้วยเสียง">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                        </div>
+                        <small class="form-text text-muted">
+                            พิมพ์ `/` เพื่อใช้ข้อความด่วน | กด <i class="fas fa-microphone"></i> เพื่อบันทึกด้วยเสียง
+                        </small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
+                            <input type="text" id="technicians_progress_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
+                            <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
+                        </div>
+                        <input type="hidden" id="technicians_progress" name="technicians_report" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
+                        <div class="file-drop-zone" id="drop-zone-progress">
+                            <i class="fas fa-cloud-upload-alt fs-2 mb-3"></i>
+                            <p class="mb-1">ลากไฟล์มาวางที่นี่ หรือ</p>
+                            <div class="btn-group">
+                                <label for="files_progress" class="btn btn-outline-primary"><i class="fas fa-folder-open me-2"></i>เลือกไฟล์</label>
+                                <label for="camera_progress" class="btn btn-outline-info"><i class="fas fa-camera me-2"></i>ถ่ายภาพ</label>
+                            </div>
+                            <input class="form-control d-none" type="file" id="files_progress" name="files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+                            <input class="form-control d-none" type="file" id="camera_progress" name="camera_files[]" accept="image/*" capture="environment">
+                        </div>
+                        <div id="upload-progress-container-progress" class="upload-progress-container mt-2"></div>
+                    </div>
+
+                    <div class="d-flex align-items-center">
+                        <button type="submit" id="saveProgressBtn" class="btn btn-primary"><i class="fas fa-save me-2"></i>บันทึกความคืบหน้า</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติงาน</h5>
+        </div>
+        <div class="card-body" id="history-section-body">
+            <p class="text-muted text-center mt-3">กำลังโหลดประวัติงาน...</p>
+        </div>
+    </div>
+    
+    <hr class="my-5">
+
+    <div class="danger-zone-header" data-bs-toggle="collapse" data-bs-target="#dangerZoneCollapse" aria-expanded="false" aria-controls="dangerZoneCollapse">
+        <h6><i class="fas fa-exclamation-triangle text-warning me-2"></i>การจัดการขั้นสูง</h6>
+        <i class="fas fa-chevron-down icon"></i>
+    </div>
+    <div class="collapse" id="dangerZoneCollapse">
+        <div class="card card-body border-danger mt-2">
+            <p>การลบงานจะเป็นการลบข้อมูลทั้งหมดที่เกี่ยวข้องกับงานนี้อย่างถาวรและไม่สามารถกู้คืนได้ โปรดใช้ความระมัดระวัง</p>
+            <form method="POST" action="{{ url_for('delete_task', job_id=task.id) }}" class="d-inline-block w-100" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้อย่างถาวร?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger w-100">
+                    <i class="fas fa-trash me-2"></i>ยืนยันการลบงานนี้
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="lightboxModal" class="lightbox">
+    <span class="lightbox-close" onclick="window.closeLightbox()">×</span>
+    <button class="btn btn-light" id="lightbox-share-btn" title="แชร์รูปภาพ">
+        <i class="fas fa-share-alt"></i>
+    </button>
+    <img class="lightbox-content" id="lightboxImg">
+    <div id="lightboxCaption" class="lightbox-caption text-white text-center p-3"></div>
+    <a class="lightbox-nav prev" onclick="window.changeSlide(-1)">❮</a>
+    <a class="lightbox-nav next" onclick="window.changeSlide(1)">❯</a>
+</div>
+
+<div class="modal fade" id="technician-action-sheet" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">เลือกช่างผู้รับผิดชอบ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="technician-list-container" style="max-height: 50vh; overflow-y: auto;">
+                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" onclick="window.confirmTechnicianSelection()">ตกลง</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editReportForm" method="POST" action="" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="modal-header">
+          <h5 class="modal-title" id="editReportModalLabel"><i class="fas fa-images me-2"></i>จัดการรูปภาพในรายงาน</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <h6>รูปภาพปัจจุบัน</h6>
+          <p class="text-muted small">เลือกรูปภาพที่ต้องการเก็บไว้ (รูปที่ไม่ถูกเลือกจะถูกลบ)</p>
+          <div id="current-attachments-container" class="attachment-edit-grid mb-3">
+              </div>
+          <hr>
+          <h6><i class="fas fa-plus-circle me-2"></i>เพิ่มรูปภาพ/ไฟล์ใหม่</h6>
+          <input type="file" class="form-control" name="new_files[]" multiple accept="image/*,application/pdf,.kmz,.kml">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="editReportTextModal" tabindex="-1" aria-labelledby="editReportTextModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editReportTextForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editReportTextModalLabel">แก้ไขข้อความสรุป</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <label for="editTextarea" class="form-label">ข้อความสรุป</label>
+            <textarea class="form-control" id="editTextarea" rows="5" required></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="addItemModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addItemModalLabel">เพิ่ม/แก้ไขรายการ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-item-index">
+                <div class="mb-3 position-relative">
+                    <label for="item-name-input" class="form-label">ชื่อรายการ</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-lg" id="item-name-input" placeholder="ค้นหาหรือพิมพ์ชื่อ..." autocomplete="off">
+                        <button class="btn btn-outline-secondary" type="button" id="start-recognition-item-name" title="บันทึกด้วยเสียง">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" type="button" id="scan-item-barcode-btn" title="สแกนบาร์โค้ด">
+                            <i class="fas fa-barcode"></i>
+                        </button>
+                    </div>
+                    <div id="item-search-results" class="list-group mt-1 position-absolute w-100" style="z-index: 1056;"></div>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label for="item-quantity-input" class="form-label">จำนวน</label>
+                        <input type="number" class="form-control form-control-lg" id="item-quantity-input" value="1" step="any">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label for="item-price-input" class="form-label">ราคา/หน่วย</label>
+                        <input type="number" class="form-control form-control-lg" id="item-price-input" placeholder="0.00" step="any">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-item-modal-btn">บันทึกรายการ</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="scanner-container" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1080; flex-direction: column; justify-content: center; align-items: center;">
+    <h5 class="text-white mb-3">กรุณาวางบาร์โค้ดให้อยู่ในกรอบ</h5>
+    <div style="width: 90%; max-width: 500px; background: white; border-radius: 10px; overflow: hidden;"><div id="qr-reader"></div></div>
+    <button id="close-scanner-btn" class="btn btn-danger mt-3">ปิดกล้อง</button>
+</div>
+
+<script src="https://unpkg.com/tributejs@5.1.3/dist/tribute.min.js"></script>
+<script>
+    const technicianList = {{ technician_list | tojson | safe }};
+    const techReportsHistory = {{ task.tech_reports_history | tojson | safe }};
+    const progressReportSnippets = {{ progress_report_snippets | tojson | safe }};
+    const equipmentCatalog = {{ equipment_catalog | tojson | safe }};
+    const taskId = "{{ task.id }}";
+	const customerTaskId = "{{ task.customer.id }}";
+    const csrfToken = '{{ csrf_token() }}';
+    let technicianSelectionModal, itemAddModal, editReportModal, editReportTextModal;
+    let jobItems = [];
+    let currentTechnicianTargetId;
+    let selectedTechnicians = {};
+    let currentLightboxImages = [];
+    let slideIndex = 0;
+    let currentEditingReportId = -1;
+    let filesToUpload = {
+        progress: [],
+        final: [],
+        reschedule: []
+    };
+
+    async function prefillTechnicianInfo() {
+        if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
+            try {
+                const profile = await liff.getProfile();
+                const currentUserName = profile.displayName;
+                const isKnownTechnician = technicianList.some(tech => tech.name === currentUserName);
+
+                if (isKnownTechnician) {
+                    const targets = ['progress', 'final', 'reschedule'];
+                    targets.forEach(targetId => {
+                        const hiddenInput = document.getElementById(`technicians_${targetId}`);
+                        if (hiddenInput) hiddenInput.value = currentUserName;
+                        
+                        const displayInput = document.getElementById(`technicians_${targetId}_display`);
+                        if (displayInput) displayInput.value = currentUserName;
+                        
+                        selectedTechnicians[`technicians_${targetId}`] = [currentUserName];
+                    });
+                     updateProgressSaveButtonState();
+                }
+            } catch (error) {
+                console.error("Could not get LIFF profile to prefill technician:", error);
+            }
+        }
+    }
+
+    function flashMessage(message, category = 'info') {
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+        container.insertAdjacentHTML('beforeend', alertHtml);
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement) {
+                const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                if (alertInstance) alertInstance.close(); else alertElement.remove();
+            }
+        }, 5000);
+    }
+    
+    function setupFileUpload(zoneId, inputId, cameraId, progressContainerId, formType) {
+        const dropZone = document.getElementById(zoneId);
+        const fileInput = document.getElementById(inputId);
+        const cameraInput = document.getElementById(cameraId);
+        const progressContainer = document.getElementById(progressContainerId);
+
+        if (!dropZone) return;
+
+        const handleFiles = (newFiles) => {
+            filesToUpload[formType] = filesToUpload[formType].concat(Array.from(newFiles));
+            renderPreviews(formType, progressContainer);
+            updateProgressSaveButtonState();
+        };
+
+        const renderPreviews = (type, container) => {
+            container.innerHTML = '';
+            container.style.display = filesToUpload[type].length > 0 ? 'block' : 'none';
+            filesToUpload[type].forEach((file, index) => {
+                const progressHtml = `
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold small">${file.name}</div>
+                            <div class="progress" style="height: 1.0em;">
+                                <div id="progress-bar-${type}-${index}" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close ms-2" onclick="window.removeFile('${type}', ${index})"></button>
+                    </div>`;
+                container.insertAdjacentHTML('beforeend', progressHtml);
+            });
+        };
+        
+        window.removeFile = (type, index) => {
+            filesToUpload[type].splice(index, 1);
+            renderPreviews(type, progressContainer);
+            updateProgressSaveButtonState();
+        };
+
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+        cameraInput.addEventListener('change', () => handleFiles(cameraInput.files));
+    }
+    
+    function uploadFileWithProgress(formData, progressBar) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `{{ url_for('api_upload_attachment') }}`, true);
+            xhr.setRequestHeader('X-CSRFToken', csrfToken);
+
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable && progressBar) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                }
+            };
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(JSON.parse(xhr.responseText));
+                } else {
+                    try {
+                        const errorMsg = JSON.parse(xhr.responseText).message || xhr.statusText;
+                        reject(new Error(errorMsg));
+                    } catch(e) {
+                        reject(new Error(xhr.statusText));
+                    }
+                }
+            };
+            xhr.onerror = () => reject(new Error('Network error during upload.'));
+            xhr.send(formData);
+        });
+    }
+    
+    async function handleFormSubmission(event, formType) {
+        event.preventDefault();
+        const form = event.target;
+        
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+        let uploadedAttachments = [];
+        if (filesToUpload[formType] && filesToUpload[formType].length > 0) {
+            for (let i = 0; i < filesToUpload[formType].length; i++) {
+                const file = filesToUpload[formType][i];
+                const progressBar = document.getElementById(`progress-bar-${formType}-${i}`);
+                const fileFormData = new FormData();
+                fileFormData.append('file', file);
+                fileFormData.append('job_id', taskId);
+                fileFormData.append('customer_id', customerTaskId);
+                
+                try {
+                    const response = await uploadFileWithProgress(fileFormData, progressBar);
+                    uploadedAttachments.push(response.file_info);
+                } catch (error) {
+                    flashMessage(`อัปโหลดไฟล์ "${file.name}" ไม่สำเร็จ: ${error.message}`, 'danger');
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalButtonHtml;
+                    return;
+                }
+            }
+        }
+        
+        const mainFormData = new FormData(form);
+        mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+        
+        if (typeof liff !== 'undefined' && liff.getContext()) {
+             mainFormData.append('technician_line_user_id', liff.getContext().userId);
+        }
+
+        try {
+            const response = await fetch(`/api/customer/${customerTaskId}/job/${taskId}/update`, {
+                method: 'POST',
+                body: mainFormData,
+                headers: {'X-CSRFToken': csrfToken}
+            });
+            const result = await response.json();
+            if (response.ok) {
+               flashMessage(result.message, 'success');
+               if(result.redirect_url) {
+                   setTimeout(() => { window.location.href = result.redirect_url; }, 1500);
+               } else {
+                   setTimeout(() => { window.location.reload(); }, 1500);
+               }
+            } else {
+               throw new Error(result.message);
+            }
+        } catch (error) {
+            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    }
+    
+    window.openLightbox = (reportId, imageIndex) => {
+        const report = techReportsHistory.find(r => r.id == reportId);
+        if (!report || !report.attachments) return;
+        currentLightboxImages = report.attachments;
+        slideIndex = imageIndex;
+        document.getElementById('lightboxModal').style.display = 'block';
+        showSlide(slideIndex);
+    };
+
+    window.closeLightbox = () => {
+        document.getElementById('lightboxModal').style.display = 'none';
+    };
+
+    window.changeSlide = (n) => {
+        slideIndex += n;
+        if (slideIndex >= currentLightboxImages.length) { slideIndex = 0; }
+        if (slideIndex < 0) { slideIndex = currentLightboxImages.length - 1; }
+        showSlide(slideIndex);
+    };
+
+    function showSlide(index) {
+        if (!currentLightboxImages || currentLightboxImages.length === 0) return;
+        const imgData = currentLightboxImages[index];
+        const fullUrl = `https://drive.google.com/thumbnail?id=${imgData.id}&sz=w1280`;
+        document.getElementById('lightboxImg').src = fullUrl;
+    }
+
+    window.openEditReportTextModal = (reportId) => {
+        currentEditingReportId = reportId;
+        const report = techReportsHistory.find(r => r.id == reportId);
+        if (report) {
+            document.getElementById('editTextarea').value = report.work_summary || report.reason || '';
+            editReportTextModal.show();
+        }
+    };
+    
+    window.openEditAttachmentsModal = (reportId) => {
+        currentEditingReportId = reportId;
+        const report = techReportsHistory.find(r => r.id == reportId);
+        const container = document.getElementById('current-attachments-container');
+        const form = document.getElementById('editReportForm');
+        
+        form.action = `/api/customer/${customerTaskId}/job/${taskId}/edit_report/${reportId}`;
+
+        container.innerHTML = '';
+        if (report && report.attachments && report.attachments.length > 0) {
+            report.attachments.forEach(att => {
+                const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
+                const itemHtml = `
+                    <div class="attachment-edit-item">
+                        <label class="form-check-label">
+                            <input class="form-check-input" type="checkbox" name="attachments_to_keep" value="${att.id}" checked>
+                            <img src="${thumbnailUrl}" class="img-thumbnail">
+                        </label>
+                    </div>`;
+                container.insertAdjacentHTML('beforeend', itemHtml);
+            });
+        } else {
+            container.innerHTML = '<p class="text-muted">ไม่มีรูปภาพในรายงานนี้</p>';
+        }
+        editReportModal.show();
+    };
+
+    async function deleteReport(reportId) {
+        const report = techReportsHistory.find(r => r.id == reportId);
+        if (!report) return;
+
+        const confirmation = confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบรายงานนี้? การกระทำนี้จะลบรูปภาพที่เกี่ยวข้องอย่างถาวร`);
+        if (!confirmation) return;
+
+        try {
+            const response = await fetch(`/api/customer/${customerTaskId}/job/${taskId}/delete_report/${report.id}`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken }
+            });
+            const result = await response.json();
+            if (response.ok) {
+                flashMessage(result.message, 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+        }
+    }
+    
+    function setupSpeechRecognition(buttonId, textareaId) {
+        const button = document.getElementById(buttonId);
+        const textarea = document.getElementById(textareaId);
+        if (!button || !textarea) return;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) { button.disabled = true; return; }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'th-TH';
+        recognition.interimResults = false;
+        recognition.continuous = false;
+        let isRecognizing = false;
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.trim();
+            if (transcript) textarea.value += (textarea.value.trim() ? '\n' : '') + '- ' + transcript;
+        };
+        recognition.onend = () => {
+            isRecognizing = false;
+            button.innerHTML = '<i class="fas fa-microphone"></i>';
+            button.classList.remove('btn-danger');
+        };
+        recognition.onerror = (event) => {
+             console.error("Speech recognition error", event.error);
+             isRecognizing = false;
+             button.innerHTML = '<i class="fas fa-microphone"></i>';
+             button.classList.remove('btn-danger');
+        }
+        button.addEventListener('click', () => {
+            if (isRecognizing) {
+                recognition.stop();
+            } else {
+                try {
+                    recognition.start();
+                    isRecognizing = true;
+                    button.innerHTML = '<i class="fas fa-stop-circle"></i>';
+                    button.classList.add('btn-danger');
+                } catch(e) { console.error("Could not start recognition", e); }
+            }
+        });
+    }
+
+    window.openTechnicianModal = (targetId) => {
+        currentTechnicianTargetId = targetId;
+        if (!selectedTechnicians[targetId]) selectedTechnicians[targetId] = [];
+        renderTechnicianList();
+        technicianSelectionModal.show();
+    };
+
+	function renderTechnicianList() {
+        const container = document.getElementById('technician-list-container');
+        container.innerHTML = '';
+        technicianList.forEach(tech => {
+            const isSelected = selectedTechnicians[currentTechnicianTargetId].includes(tech.name);
+            const item = document.createElement('div');
+            item.className = `technician-list-item ${isSelected ? 'selected' : ''}`;
+            
+            const initial = tech.name && tech.name.trim() !== '' ? tech.name.trim().charAt(0).toUpperCase() : '?';
+            const avatarUrl = tech.avatar_id ? `https://drive.google.com/thumbnail?id=${tech.avatar_id}&sz=s40-c` : `/static/logo.png`; 
+
+            item.innerHTML = `<img src="${avatarUrl}" alt="${tech.name}"><span>${tech.name}</span>${isSelected ? '<i class="fas fa-check-circle check-icon"></i>' : ''}`;
+            item.onclick = () => toggleTechnicianSelection(tech.name);
+            container.appendChild(item);
+        });
+    }
+
+    function toggleTechnicianSelection(techName) {
+        const selection = selectedTechnicians[currentTechnicianTargetId];
+        const index = selection.indexOf(techName);
+        if (index > -1) selection.splice(index, 1);
+        else selection.push(techName);
+        renderTechnicianList();
+    }
+    
+    function updateProgressSaveButtonState() {
+        const workSummary = document.getElementById('work_summary_progress').value.trim();
+        const technicians = document.getElementById('technicians_progress').value;
+        const hasFiles = filesToUpload['progress'].length > 0;
+        const saveButton = document.getElementById('saveProgressBtn');
+
+        if (technicians && (workSummary || hasFiles)) {
+            saveButton.disabled = false;
+        } else {
+            saveButton.disabled = true;
+        }
+    }
+    
+    window.confirmTechnicianSelection = () => {
+        const selectedNames = selectedTechnicians[currentTechnicianTargetId];
+        document.getElementById(currentTechnicianTargetId).value = selectedNames.join(',');
+        document.getElementById(`${currentTechnicianTargetId}_display`).value = selectedNames.join(', ') || 'กรุณาเลือกช่าง...';
+        technicianSelectionModal.hide();
+		if (document.activeElement) {
+            document.activeElement.blur();
+        }		
+        updateProgressSaveButtonState();
+    };
+    
+    async function loadInitialItems() {
+        try {
+            const response = await fetch(`/api/task/${taskId}/items`);
+            if (!response.ok) throw new Error('Failed to fetch');
+            jobItems = await response.json();
+            renderSummaryList();
+        } catch (error) { 
+            console.error('Failed to load initial items:', error);
+            renderSummaryList();
+        }
+    }
+
+    function renderSummaryList() {
+        const listContainer = document.getElementById('item-summary-list');
+        const grandTotalDisplay = document.getElementById('grand-total-display');
+        const finalEquipmentSummary = document.getElementById('equipment-summary-final');
+        const progressEquipmentSummary = document.getElementById('equipment-summary-progress');
+        let grandTotal = 0;
+        
+        if (jobItems.length === 0) {
+            listContainer.innerHTML = '<p class="text-muted text-center p-3">ยังไม่มีรายการ</p>';
+            grandTotalDisplay.textContent = 'รวม: 0.00 บาท';
+            finalEquipmentSummary.innerHTML = '<p class="text-muted">ไม่มีรายการอุปกรณ์</p>';
+            progressEquipmentSummary.innerHTML = '<p class="text-muted">ไม่มีรายการอุปกรณ์</p>';
+        } else {
+            listContainer.innerHTML = '';
+            let summaryText = '';
+            jobItems.forEach((item, index) => {
+                const itemTotal = (item.quantity || 0) * (item.unit_price || 0);
+                grandTotal += itemTotal;
+                const itemElement = document.createElement('div');
+                itemElement.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
+                itemElement.innerHTML = `
+                    <div>
+                        <strong>${item.item_name}</strong><br>
+                        <small class="text-muted">${item.quantity} x ${item.unit_price.toFixed(2)} บาท</small>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 edit-item-btn" data-index="${index}" data-bs-toggle="modal" data-bs-target="#addItemModal"><i class="fas fa-pen"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="handleDeleteItem(${index})"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                listContainer.appendChild(itemElement);
+                summaryText += `• ${item.item_name} จำนวน ${item.quantity}\n`;
+            });
+            grandTotalDisplay.textContent = `รวม: ${grandTotal.toFixed(2)} บาท`;
+            finalEquipmentSummary.innerText = summaryText.trim();
+            progressEquipmentSummary.innerText = summaryText.trim();
+        }
+    }
+
+    function handleDeleteItem(index) {
+        if (confirm(`คุณต้องการลบรายการ "${jobItems[index].item_name}" ใช่หรือไม่?`)) {
+            jobItems.splice(index, 1);
+            saveAllItemsToDb();
+        }
+    }
+
+    async function saveAllItemsToDb() {
+       try {
+            const response = await fetch(`/api/task/${taskId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ items: jobItems })
+            });
+            if (!response.ok) {
+                 const errorResult = await response.json();
+                 throw new Error(errorResult.message || 'Server responded with an error');
+            }
+            const result = await response.json();
+            window.flashMessage(result.message, 'success');
+            renderSummaryList();
+        } catch (error) {
+            console.error('Failed to save all items:', error);
+            window.flashMessage(`เกิดข้อผิดพลาดในการบันทึกอุปกรณ์: ${error.message}`, 'danger');
+        }
+    }
+    
+    window.showActionCard = (cardIdToShow) => {
+        document.querySelectorAll('.action-card').forEach(card => card.style.display = 'none');
+        document.getElementById('chooseActionCard').style.display = 'none';
+        const cardToShow = document.getElementById(cardIdToShow);
+        if (cardToShow) {
+            cardToShow.style.display = 'block';
+            cardToShow.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            document.getElementById('chooseActionCard').style.display = 'block';
+        }
+    };
+    
+    function renderHistorySection() {
+        const container = document.getElementById('history-section-body');
+        container.innerHTML = '';
+        if (!techReportsHistory || techReportsHistory.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">ยังไม่มีประวัติการทำงาน</p>';
+            return;
+        }
+        techReportsHistory.forEach((report, index) => {
+            const entry = document.createElement('div');
+            const isInternal = report.is_internal === true;
+            entry.className = `history-entry ${isInternal ? 'internal-note' : ''}`;
+            entry.id = `history-entry-${report.id}`;
+
+            let imageGalleryHtml = '';
+            if (report.attachments && report.attachments.length > 0) {
+                imageGalleryHtml += `<div class="image-gallery-grid mt-3" id="gallery-grid-${report.id}">`;
+                report.attachments.forEach((att, imgIndex) => {
+                    if (att.id) {
+                        const thumbnailUrl = `https://drive.google.com/thumbnail?id=${att.id}&sz=w200-h200`;
+                        imageGalleryHtml += `
+                            <div class="thumbnail" data-file-id="${att.id}" data-filename="${att.name || 'รูปภาพ'}">
+                                <img src="${thumbnailUrl}" alt="${att.name || 'รูปภาพ'}"
+                                     onclick="window.handleThumbnailClick(event, '${report.id}', ${imgIndex})">
+                                <div class="selection-overlay"><i class="fas fa-check"></i></div>
+                            </div>`;
+                    }
+                });
+                imageGalleryHtml += '</div>';
+            }
+            
+            let shareButtonHtml = '';
+            if (report.attachments && report.attachments.length > 0) {
+                 shareButtonHtml = `<button class="btn btn-sm btn-outline-info ms-2" id="share-btn-${report.id}" onclick="window.toggleShareMode(event, '${report.id}')">
+                                    <i class="fas fa-share-alt me-1"></i>แชร์รูปภาพ
+                                  </button>`;
+            }
+
+            const dropdownMenu = `
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" onclick="window.openEditReportTextModal('${report.id}')"><i class="fas fa-edit me-2"></i>แก้ไขข้อความ</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="window.openEditAttachmentsModal('${report.id}')"><i class="fas fa-images me-2"></i>แก้ไขรูปภาพ</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="window.deleteReport('${report.id}')"><i class="fas fa-trash-alt me-2"></i>ลบรายงานนี้</a></li>
+                    </ul>
+                </div>`;
+
+            let titleHtml;
+            if (isInternal) {
+                titleHtml = '<i class="fas fa-lock me-2"></i>บันทึกภายใน';
+            } else if (report.type === 'reschedule') {
+                titleHtml = '<i class="fas fa-calendar-alt me-2"></i>เลื่อนนัดหมาย';
+            } else {
+                titleHtml = '<i class="fas fa-wrench me-2"></i>รายงานความคืบหน้า';
+            }
+
+            entry.innerHTML = `
+                <div class="history-entry-header">
+                    <div class="d-flex align-items-center">
+                        <span class="history-entry-title">${titleHtml}</span>
+                        ${shareButtonHtml}
+                    </div>
+                    ${dropdownMenu}
+                </div>
+                <div class="history-entry-subheader text-muted small">
+                    <span>${new Date(report.summary_date).toLocaleString('th-TH')}</span>
+                    <span>โดย: ${report.technicians ? report.technicians.join(', ') : 'N/A'}</span>
+                </div>
+                <hr class="my-2">
+                <div class="history-entry-body">
+                    <p id="report-summary-${report.id}">${report.work_summary || report.reason || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                    ${imageGalleryHtml}
+                </div>`;
+            container.appendChild(entry);
+        });
+    }
+
+    document.getElementById('lightbox-share-btn').addEventListener('click', async () => {
+        if (!currentLightboxImages[slideIndex]) return;
+        
+        const imageInfo = currentLightboxImages[slideIndex];
+        const fileId = imageInfo.id;
+        const imageName = imageInfo.name;
+        
+        try {
+            const response = await fetch(`/api/proxy_drive_image/${fileId}`);
+            if (!response.ok) throw new Error('Proxy fetch failed');
+            
+            const blob = await response.blob();
+            const file = new File([blob], imageName, { type: blob.type });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: 'รูปภาพจากงานซ่อม',
+                    text: `รูปภาพ: ${imageName}`
+                });
+            } else {
+                throw new Error('ไม่สามารถแชร์ไฟล์ได้');
+            }
+        } catch (err) {
+            console.error('เกิดข้อผิดพลาดในการแชร์:', err);
+            flashMessage(`ไม่สามารถแชร์ไฟล์ได้โดยตรง`, 'warning');
+        }
+    });
+
+    async function shareSelectedImages(thumbnails) {
+        flashMessage('กำลังเตรียมรูปภาพสำหรับแชร์...', 'info');
+        const shareText = `รูปภาพจากงาน #${taskId.substring(taskId.length-6)} (${thumbnails.length} รูป)`;
+
+        try {
+            const fetchPromises = Array.from(thumbnails).map(thumb => {
+                const fileId = thumb.dataset.fileId;
+                const imageName = thumb.dataset.filename || `image-${fileId}.jpg`;
+                
+                return fetch(`/api/proxy_drive_image/${fileId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            console.error(`Failed to fetch image via proxy: ${fileId}`);
+                            return null;
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        if (blob) return new File([blob], imageName, { type: blob.type });
+                        return null;
+                    })
+                    .catch(err => {
+                        console.error(`Error in fetch promise for ${fileId}:`, err);
+                        return null;
+                    });
+            });
+
+            const files = await Promise.all(fetchPromises);
+            const validFiles = files.filter(f => f !== null);
+
+            if (validFiles.length === 0) {
+                throw new Error('ไม่สามารถโหลดรูปภาพที่เลือกได้');
+            }
+
+            if (navigator.canShare && navigator.canShare({ files: validFiles })) {
+                await navigator.share({
+                    title: 'รูปภาพจากงานซ่อม',
+                    text: shareText,
+                    files: validFiles
+                });
+            } else {
+                throw new Error('เบราว์เซอร์ไม่รองรับการแชร์หลายไฟล์');
+            }
+
+        } catch (err) {
+            console.error('Error sharing files:', err);
+            flashMessage(err.message || 'เกิดข้อผิดพลาดในการแชร์', 'danger');
+        }
+    }
+
+    window.handleThumbnailClick = function(event, reportId, imageIndex) {
+        const entry = document.getElementById(`history-entry-${reportId}`);
+        const gallery = document.getElementById(`gallery-grid-${reportId}`);
+        const shareButton = document.getElementById(`share-btn-${reportId}`);
+
+        if (entry.classList.contains('selection-mode')) {
+            event.stopPropagation();
+            event.currentTarget.parentElement.classList.toggle('selected');
+            const selectedCount = gallery.querySelectorAll('.thumbnail.selected').length;
+            if (selectedCount > 0) {
+                 shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์ (${selectedCount} รูป)`;
+                 shareButton.classList.remove('btn-outline-info');
+                 shareButton.classList.add('btn-success');
+            } else {
+                 shareButton.innerHTML = `<i class="fas fa-times me-1"></i>ยกเลิกการเลือก`;
+                 shareButton.classList.remove('btn-success');
+                 shareButton.classList.add('btn-outline-info');
+            }
+        } else {
+            window.openLightbox(reportId, imageIndex);
+        }
+    }
+
+    window.toggleShareMode = async function(event, reportId) {
+        event.stopPropagation();
+        const entry = document.getElementById(`history-entry-${reportId}`);
+        const shareButton = document.getElementById(`share-btn-${reportId}`);
+        const isInSelectionMode = entry.classList.contains('selection-mode');
+        const selectedThumbnails = entry.querySelectorAll('.thumbnail.selected');
+
+        if (isInSelectionMode) {
+            if (selectedThumbnails.length > 0) {
+                await shareSelectedImages(selectedThumbnails);
+            }
+            entry.classList.remove('selection-mode');
+            shareButton.innerHTML = `<i class="fas fa-share-alt me-1"></i>แชร์รูปภาพ`;
+            shareButton.classList.remove('btn-success');
+            shareButton.classList.add('btn-outline-info');
+            selectedThumbnails.forEach(t => t.classList.remove('selected'));
+        } else {
+            entry.classList.add('selection-mode');
+            shareButton.innerHTML = `<i class="fas fa-check me-1"></i>ยืนยันการแชร์`;
+            shareButton.classList.remove('btn-outline-info');
+            shareButton.classList.add('btn-success');
+            flashMessage('กดที่รูปภาพที่ต้องการแชร์ แล้วกดปุ่มนี้อีกครั้งเพื่อยืนยัน', 'info');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        technicianSelectionModal = new bootstrap.Modal(document.getElementById('technician-action-sheet'));
+        itemAddModal = new bootstrap.Modal(document.getElementById('addItemModal'));
+        editReportModal = new bootstrap.Modal(document.getElementById('editReportModal'));
+        editReportTextModal = new bootstrap.Modal(document.getElementById('editReportTextModal'));
+        
+        prefillTechnicianInfo();
+
+        var tribute = new Tribute({
+            values: progressReportSnippets,
+            trigger: '/',
+            selectTemplate: function(item) {
+                return item.original.value;
+            },
+            menuItemTemplate: function(item) {
+                return `<strong>${item.original.key}</strong>: <span class="text-muted">${item.original.value}</span>`;
+            },
+            noMatchTemplate: function() {
+                return '<li class="text-muted p-2">ไม่พบข้อความด่วน</li>';
+            }
+        });
+
+        const textareas = document.querySelectorAll('#work_summary_final, #reschedule_reason, #work_summary_progress');
+        textareas.forEach(textarea => {
+            tribute.attach(textarea);
+        });
+        
+        setupSpeechRecognition('start-recognition-final', 'work_summary_final');
+        setupSpeechRecognition('start-recognition-reschedule', 'reschedule_reason');
+        setupSpeechRecognition('start-recognition-progress', 'work_summary_progress');
+        setupSpeechRecognition('start-recognition-item-name', 'item-name-input');
+        
+        loadInitialItems();
+        renderHistorySection();
+        
+        setupFileUpload('drop-zone-progress', 'files_progress', 'camera_progress', 'upload-progress-container-progress', 'progress');
+        setupFileUpload('drop-zone-final', 'files_final', 'camera_final', 'upload-progress-container-final', 'final');
+        
+        document.getElementById('progressReportForm').addEventListener('submit', (e) => handleFormSubmission(e, 'progress'));
+        document.getElementById('completeTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'final'));
+        document.getElementById('rescheduleTaskForm').addEventListener('submit', (e) => handleFormSubmission(e, 'reschedule'));
+        
+        document.getElementById('work_summary_progress').addEventListener('input', updateProgressSaveButtonState);
+        document.getElementById('files_progress').addEventListener('change', updateProgressSaveButtonState);
+        document.getElementById('camera_progress').addEventListener('change', updateProgressSaveButtonState);
+
+        document.getElementById('editReportTextForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const newSummary = document.getElementById('editTextarea').value;
+            const submitButton = this.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+
+            try {
+                const response = await fetch(`/api/task/${taskId}/edit_report_text/${currentEditingReportId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ summary: newSummary })
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    const reportToEdit = techReportsHistory.find(r => r.id == currentEditingReportId);
+                    if(reportToEdit) reportToEdit.work_summary = newSummary;
+                    document.getElementById(`report-summary-${currentEditingReportId}`).textContent = newSummary;
+                    editReportTextModal.hide();
+                    flashMessage(result.message, 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            } finally {
+                submitButton.disabled = false;
+            }
+        });
+        
+        document.getElementById('save-item-modal-btn').addEventListener('click', () => {
+            const itemNameInput = document.getElementById('item-name-input');
+            const itemQuantityInput = document.getElementById('item-quantity-input');
+            const itemPriceInput = document.getElementById('item-price-input');
+            const editIndexInput = document.getElementById('edit-item-index');
+
+            if (!itemNameInput.value.trim() || !itemQuantityInput.value.trim()) {
+                flashMessage('กรุณากรอกชื่อและจำนวนรายการ', 'warning');
+                return;
+            }
+
+            const newItem = {
+                item_name: itemNameInput.value.trim(),
+                quantity: parseFloat(itemQuantityInput.value),
+                unit_price: parseFloat(itemPriceInput.value) || 0
+            };
+
+            const editIndex = editIndexInput.value;
+            if (editIndex !== '') {
+                jobItems[parseInt(editIndex)] = newItem;
+            } else {
+                jobItems.push(newItem);
+            }
+            
+            saveAllItemsToDb();
+            itemAddModal.hide();
+        });
+        
+        document.getElementById('item-summary-list').addEventListener('click', (event) => {
+            const editBtn = event.target.closest('.edit-item-btn');
+            if (editBtn) {
+                const index = parseInt(editBtn.dataset.index);
+                const item = jobItems[index];
+                document.getElementById('edit-item-index').value = index;
+                document.getElementById('item-name-input').value = item.item_name;
+                document.getElementById('item-quantity-input').value = item.quantity;
+                document.getElementById('item-price-input').value = item.unit_price;
+                document.getElementById('addItemModalLabel').textContent = 'แก้ไขรายการ';
+            }
+        });
+        
+        itemAddModal._element.addEventListener('hidden.bs.modal', () => {
+            document.getElementById('edit-item-index').value = '';
+            document.getElementById('item-name-input').value = '';
+            document.getElementById('item-quantity-input').value = '1';
+            document.getElementById('item-price-input').value = '';
+            document.getElementById('addItemModalLabel').textContent = 'เพิ่ม/แก้ไขรายการ';
+        });
+        
+        const itemSearchInput = document.getElementById('item-name-input');
+        const itemSearchResultsContainer = document.getElementById('item-search-results');
+        
+        itemSearchInput.addEventListener('input', () => {
+            const query = itemSearchInput.value.toLowerCase().trim();
+            itemSearchResultsContainer.innerHTML = '';
+            if (query.length < 2) return;
+
+            const results = equipmentCatalog.filter(item => 
+                item.item_name.toLowerCase().includes(query) || 
+                (item.product_code && item.product_code.toLowerCase().includes(query))
+            ).slice(0, 10);
+            
+            if (results.length > 0) {
+                results.forEach(item => {
+                    const resultItem = document.createElement('a');
+                    resultItem.className = 'list-group-item list-group-item-action';
+                    resultItem.innerHTML = `
+                        <strong>${item.item_name}</strong><br>
+                        <small class="text-muted">ราคา: ${item.price.toFixed(2)} บาท, สต็อก: ${item.stock_quantity || 0}</small>
+                    `;
+                    resultItem.onclick = () => {
+                        document.getElementById('item-name-input').value = item.item_name;
+                        document.getElementById('item-price-input').value = item.price;
+                        itemSearchResultsContainer.innerHTML = '';
+                    };
+                    itemSearchResultsContainer.appendChild(resultItem);
+                });
+            } else {
+                 itemSearchResultsContainer.innerHTML = '<a class="list-group-item text-muted">ไม่พบสินค้าที่ค้นหา</a>';
+            }
+        });
+        
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('#addItemModal')) {
+                 itemSearchResultsContainer.innerHTML = '';
+            }
+        });
+
+        // --- START: โค้ดสแกนบาร์โค้ดที่ปรับปรุงแล้ว ---
+        let html5QrCode = null;
+        const scannerContainer = document.getElementById('scanner-container');
+        const itemAddModalEl = document.getElementById('addItemModal');
+        const closeScannerBtn = document.getElementById('close-scanner-btn');
+
+        const stopScanner = () => {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => console.error("Error stopping scanner.", err));
+            }
+            scannerContainer.style.display = 'none';
+        };
+
+        document.getElementById('scan-item-barcode-btn').addEventListener('click', () => {
+            scannerContainer.style.display = 'flex';
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("qr-reader", /* verbose= */ false);
+            }
+            
+            const config = {
+                fps: 15,
+                qrbox: (viewfinderWidth, viewfinderHeight) => {
+                    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                    const qrboxSize = Math.floor(minEdge * 0.7);
+                    return { width: qrboxSize, height: qrboxSize };
+                },
+                rememberLastUsedCamera: true,
+                experimentalFeatures: {
+                    useBarCodeDetectorIfSupported: true,
+                },
+            };
+
+            setTimeout(() => {
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText) => {
+                        const foundItem = equipmentCatalog.find(item => item.product_code === decodedText);
+                        if (foundItem) {
+                            document.getElementById('item-name-input').value = foundItem.item_name;
+                            document.getElementById('item-price-input').value = foundItem.price;
+                            flashMessage(`พบสินค้า: ${foundItem.item_name}`, 'success');
+                        } else {
+                            document.getElementById('item-name-input').value = decodedText;
+                            flashMessage(`ไม่พบรหัส ${decodedText} ในแคตตาล็อก`, 'warning');
+                        }
+                        stopScanner();
+                    },
+                    (errorMessage) => { /* ignore */ }
+                ).catch((err) => {
+                    console.error(`Unable to start scanning, error: ${err}`);
+                    alert("ไม่สามารถเปิดกล้องได้ โปรดตรวจสอบว่าได้ให้สิทธิ์การเข้าถึงกล้องในเบราว์เซอร์แล้ว");
+                    stopScanner();
+                });
+            }, 500);
+        });
+
+        document.getElementById('close-scanner-btn').addEventListener('click', stopScanner);
+        itemAddModalEl.addEventListener('hidden.bs.modal', stopScanner);
+        
+        const assignModal = new bootstrap.Modal(document.getElementById('assignTechnicianModal'));
+
+        document.querySelectorAll('.assign-tech-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const techName = e.currentTarget.dataset.techName;
+                await assignTask(techName);
+            });
+        });
+
+        document.getElementById('unassign-btn').addEventListener('click', async () => {
+            await assignTask('');
+        });
+
+        async function assignTask(techName) {
+            try {
+                const response = await fetch(`/api/task/${taskId}/assign`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ technician_name: techName })
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    flashMessage(result.message, 'success');
+                    const displayEl = document.getElementById('assigned-tech-display');
+                    if (result.technician_name) {
+                        displayEl.innerHTML = result.technician_name;
+                        displayEl.classList.remove('text-muted');
+                    } else {
+                        displayEl.innerHTML = '<span class="text-muted">ยังไม่ได้มอบหมาย</span>';
+                    }
+                    assignModal.hide();
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+            }
+        }
+
+    });
+</script>

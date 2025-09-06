@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}QR Code สำหรับลูกค้าเชื่อมต่อ LINE{% endblock %}
+
+{% block content %}
+<div class="container mt-4 text-center">
+    <h1 class="mb-4">QR Code สำหรับลูกค้าเชื่อมต่อ LINE</h1>
+
+    <div class="card shadow-sm mx-auto" style="max-width: 500px;">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">ลูกค้า: {{ customer_info.name or '-' }}</h5>
+        </div>
+        <div class="card-body">
+            <p>ให้ลูกค้าสแกน QR Code นี้เพื่อรับข้อความต้อนรับและเชื่อมโยงกับโปรไฟล์งานนี้โดยอัตโนมัติ</p>
+            {% if qr_code_base64 %}
+                <img src="{{ qr_code_base64 }}" alt="QR Code for Customer Onboarding" class="img-fluid border border-dark rounded qr-code-img">
+            {% else %}
+                <div class="alert alert-danger">ไม่สามารถสร้าง QR Code ได้</div>
+            {% endif %}
+
+            <div class="mt-4">
+                <h6>ลิงก์สำหรับเพิ่มเพื่อน (ตรงกับใน QR Code):</h6>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control"
+                           value="{{ liff_url }}"
+                           readonly id="liffUrl">
+                    <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard(event)">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <div class="form-text text-muted">เมื่อสแกนหรือกดลิงก์ ลูกค้าจะไปที่หน้าเพิ่มเพื่อน LINE OA พร้อมเชื่อมโยงกับงานนี้โดยอัตโนมัติ</div>
+                
+                </div>
+        </div>
+        <div class="card-footer">
+		<a href="{{ url_for('liff.customer_profile', customer_id=customer_info.id) }}" class="btn btn-secondary">
+			<i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดลูกค้า
+		</a>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyToClipboard(event) {
+    const urlInput = document.getElementById('liffUrl');
+    urlInput.select();
+    urlInput.setSelectionRange(0, 99999); // For mobile devices
+    
+    try {
+        navigator.clipboard.writeText(urlInput.value);
+        
+        // Visual feedback
+        const btn = event.currentTarget;
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> คัดลอกแล้ว';
+        btn.classList.add('btn-success');
+        btn.classList.remove('btn-outline-secondary');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-secondary');
+        }, 2000);
+
+    } catch (err) {
+        console.error('Failed to copy text: ', err);
+        alert('ไม่สามารถคัดลอกได้');
+    }
+}
+</script>
+{% endblock %}

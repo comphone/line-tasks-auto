@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการไฟล์ภาพซ้ำซ้อน{% endblock %}
+
+{% block head_extra %}
+<style>
+    .duplicate-set {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .duplicate-set-header {
+        background-color: #f8f9fa;
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+    }
+    .image-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 1rem;
+        padding: 1rem;
+    }
+    .image-item {
+        position: relative;
+    }
+    .image-item .form-check-input {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 1.5em;
+        height: 1.5em;
+        z-index: 10;
+        background-color: rgba(255,255,255,0.8);
+    }
+    .image-item .img-thumbnail {
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+    }
+    .image-item .form-check-label {
+        width: 100%;
+        cursor: pointer;
+    }
+    .image-item small {
+        font-size: 0.75rem;
+        word-break: break-all;
+    }
+    #scan-status {
+        text-align: center;
+        padding: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0"><i class="fas fa-images me-2"></i>จัดการไฟล์ภาพซ้ำซ้อน</h1>
+    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-5 text-center">
+        <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+        <h3>ฟีเจอร์นี้ไม่รองรับอีกต่อไป</h3>
+        <p class="text-muted">
+            ฟังก์ชันการจัดการไฟล์ภาพซ้ำซ้อนถูกลบออกแล้ว เนื่องจากถูกออกแบบมาสำหรับระบบฐานข้อมูลแบบเก่า
+            การจัดการไฟล์ใน Google Drive จำเป็นต้องใช้การตรวจสอบข้อมูลจากฐานข้อมูลใหม่ซึ่งต้องใช้การออกแบบเพิ่มเติม
+        </p>
+        <a href="{{ url_for('settings_page') }}" class="btn btn-primary mt-3">กลับหน้าตั้งค่า</a>
+    </div>
+</div>
+{% endblock %}

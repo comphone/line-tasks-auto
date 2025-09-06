@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}404 - ไม่พบหน้า{% endblock %}
+
+{% block content %}
+<div class="text-center py-5">
+    <h1 class="display-1">404</h1>
+    <h2 class="mb-4">ไม่พบหน้าที่คุณต้องการ</h2>
+    <p class="lead">ขออภัย แต่หน้าที่คุณกำลังค้นหาไม่มีอยู่ หรืออาจถูกย้ายไปที่อื่น</p>
+    <a href="{{ url_for('liff.summary') }}" class="btn btn-primary mt-3">กลับสู่หน้าหลัก</a>
+</div>
+{% endblock %}

@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการไฟล์ภาพซ้ำซ้อน{% endblock %}
+
+{% block head_extra %}
+<style>
+    .duplicate-set {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .duplicate-set-header {
+        background-color: #f8f9fa;
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+    }
+    .image-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 1rem;
+        padding: 1rem;
+    }
+    .image-item {
+        position: relative;
+    }
+    .image-item .form-check-input {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 1.5em;
+        height: 1.5em;
+        z-index: 10;
+        background-color: rgba(255,255,255,0.8);
+    }
+    .image-item .img-thumbnail {
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+    }
+    .image-item .form-check-label {
+        width: 100%;
+        cursor: pointer;
+    }
+    .image-item small {
+        font-size: 0.75rem;
+        word-break: break-all;
+    }
+    #scan-status {
+        text-align: center;
+        padding: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0"><i class="fas fa-images me-2"></i>จัดการไฟล์ภาพซ้ำซ้อน</h1>
+    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
+</div>
+
+<div id="scan-status" class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div id="spinner" class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p id="status-text" class="mt-2 text-muted">กำลังเริ่มต้น...</p>
+        <div class="progress mt-2" style="display: none;">
+            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+        </div>
+    </div>
+</div>
+
+<div id="results-container" style="display: none;">
+    </div>
+
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const statusText = document.getElementById('status-text');
+    const progressBar = document.getElementById('progress-bar');
+    const progressContainer = document.querySelector('.progress');
+    const spinner = document.getElementById('spinner');
+    const resultsContainer = document.getElementById('results-container');
+    
+    // CSRF Token จะถูกดึงมาจาก Form ที่จะสร้างขึ้นทีหลัง
+    let csrfToken = ''; 
+    
+    let intervalId;
+
+    async function checkStatus() {
+        try {
+            const response = await fetch("{{ url_for('get_duplicate_images_status') }}");
+            const data = await response.json();
+
+            statusText.textContent = `กำลังสแกน... (${data.progress} / ${data.total} ไฟล์)`;
+            
+            if (data.total > 0) {
+                progressContainer.style.display = 'block';
+                const percent = Math.round((data.progress / data.total) * 100);
+                progressBar.style.width = percent + '%';
+                progressBar.textContent = percent + '%';
+                progressBar.setAttribute('aria-valuenow', percent);
+            }
+
+            if (data.status === 'completed') {
+                clearInterval(intervalId);
+                spinner.style.display = 'none';
+                progressContainer.style.display = 'none';
+                statusText.textContent = 'การสแกนเสร็จสิ้น!';
+                renderResults(data.results);
+            } else if (data.status === 'error') {
+                clearInterval(intervalId);
+                spinner.style.display = 'none';
+                statusText.innerHTML = `<span class="text-danger">เกิดข้อผิดพลาด: ${data.message}</span>`;
+            }
+        } catch (error) {
+            clearInterval(intervalId);
+            spinner.style.display = 'none';
+            statusText.innerHTML = `<span class="text-danger">ไม่สามารถเชื่อมต่อกับ Server ได้</span>`;
+            console.error("Error checking status:", error);
+        }
+    }
+
+    function renderResults(duplicateSets) {
+        // ดึง CSRF token จาก template (จำเป็นสำหรับ POST request)
+        csrfToken = "{{ csrf_token() }}";
+        
+        if (Object.keys(duplicateSets).length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="card shadow-sm">
+                    <div class="card-body text-center p-5">
+                        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                        <h4>ไม่พบไฟล์ภาพที่ซ้ำซ้อน</h4>
+                        <p class="text-muted mb-0">ระบบไม่พบไฟล์ภาพที่มีเนื้อหาเหมือนกันใน Google Drive ของคุณ</p>
+                    </div>
+                </div>
+            `;
+        } else {
+            let formHtml = `
+                <div class="alert alert-info">
+                    <p class="mb-0">
+                        พบกลุ่มรูปภาพที่อาจซ้ำกัน <strong>${Object.keys(duplicateSets).length} กลุ่ม</strong>
+                        โปรด **เลือกรายการที่ต้องการลบ** และระบบจะเก็บภาพแรกของแต่ละกลุ่มไว้
+                    </p>
+                </div>
+                <form method="POST" action="{{ url_for('find_duplicate_images') }}" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบไฟล์ที่เลือกทั้งหมดอย่างถาวร?');">
+                    <input type="hidden" name="csrf_token" value="${csrfToken}"/>
+            `;
+
+            let groupIndex = 1;
+            for (const [hash, files] of Object.entries(duplicateSets)) {
+                formHtml += `
+                    <div class="duplicate-set">
+                        <div class="duplicate-set-header">กลุ่มที่ ${groupIndex++} (${files.length} ไฟล์)</div>
+                        <div class="image-grid">
+                `;
+                files.forEach((file, fileIndex) => {
+                    formHtml += `
+                        <div class="image-item">
+                            <label class="form-check-label">
+                                ${fileIndex > 0 
+                                    ? `<input class="form-check-input" type="checkbox" name="delete_ids" value="${file.id}" checked>`
+                                    : `<span class="badge bg-success" style="position: absolute; top: 8px; left: 8px; z-index: 10;">เก็บไว้</span>`
+                                }
+                                <img src="${file.thumbnailLink}" class="img-thumbnail" alt="${file.name}">
+                            </label>
+                            <small class="text-muted d-block mt-1">${file.name}</small>
+                        </div>
+                    `;
+                });
+                formHtml += `</div></div>`;
+            }
+
+            formHtml += `
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-danger btn-lg">
+                            <i class="fas fa-trash-alt me-2"></i>ลบไฟล์ที่เลือกทั้งหมด
+                        </button>
+                    </div>
+                </form>
+            `;
+            resultsContainer.innerHTML = formHtml;
+        }
+        resultsContainer.style.display = 'block';
+    }
+
+    async function startScan() {
+        try {
+            statusText.textContent = 'กำลังส่งคำสั่งให้เริ่มสแกน...';
+            const response = await fetch("{{ url_for('trigger_duplicate_scan') }}", { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': "{{ csrf_token() }}" // ส่ง Token ไปพร้อมกับคำสั่งเริ่มสแกน
+                }
+            });
+            if (!response.ok) throw new Error("Server could not start the job.");
+            
+            intervalId = setInterval(checkStatus, 3000);
+        } catch (error) {
+            spinner.style.display = 'none';
+            statusText.innerHTML = `<span class="text-danger">ไม่สามารถเริ่มการสแกนได้: ${error.message}</span>`;
+            console.error("Error starting scan:", error);
+        }
+    }
+
+    startScan();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}คลังสินค้าของฉัน{% endblock %}
+
+{% block head_extra %}
+<style>
+    .stock-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .stock-item img {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 0.5rem;
+    }
+    .stock-item-info {
+        flex-grow: 1;
+    }
+    .stock-quantity {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    .stock-zero { color: #dc3545; }
+    .stock-low { color: #ffc107; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="loading-state" class="text-center p-5">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2 text-muted">กำลังยืนยันตัวตนและโหลดข้อมูลสต็อก...</p>
+</div>
+
+<div id="main-content" style="display: none;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2 mb-0"><i class="fas fa-truck me-2"></i>คลังสินค้าของฉัน</h1>
+        <div id="warehouse-info"></div>
+    </div>
+    
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <input type="text" id="stock-search-input" class="form-control" placeholder="🔍 ค้นหาสินค้าในรถ...">
+        </div>
+        <div class="list-group list-group-flush" id="stock-list-container">
+            </div>
+    </div>
+</div>
+
+<div id="error-state" class="alert alert-danger text-center" style="display: none;"></div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const loadingDiv = document.getElementById('loading-state');
+    const mainDiv = document.getElementById('main-content');
+    const errorDiv = document.getElementById('error-state');
+    const warehouseInfoDiv = document.getElementById('warehouse-info');
+    const stockListContainer = document.getElementById('stock-list-container');
+    const searchInput = document.getElementById('stock-search-input');
+
+    async function initializeLiffAndLoadStock() {
+        try {
+            const liffId = "{{ LIFF_ID_STOCK_VIEW }}";
+            if (!liffId || liffId === 'None') {
+                throw new Error("LIFF ID for Stock View is not configured. Please check environment variables.");
+            }
+
+            await liff.init({ liffId: liffId });
+            
+            if (!liff.isLoggedIn()) {
+                liff.login({ redirectUri: window.location.href });
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            const userId = profile.userId;
+
+            const response = await fetch(`/api/technician/stock_data?liff_user_id=${userId}`);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
+            }
+
+            const data = await response.json();
+            
+            warehouseInfoDiv.innerHTML = `<span class="badge bg-success fs-6">${data.warehouse_name}</span>`;
+            renderStockList(data.stock_items);
+            
+            loadingDiv.style.display = 'none';
+            mainDiv.style.display = 'block';
+
+        } catch (err) {
+            console.error(err);
+            loadingDiv.style.display = 'none';
+            errorDiv.textContent = `เกิดข้อผิดพลาด: ${err.message}`;
+            errorDiv.style.display = 'block';
+        }
+    }
+
+    function renderStockList(items) {
+        stockListContainer.innerHTML = '';
+        if (items.length === 0) {
+            stockListContainer.innerHTML = '<p class="text-center text-muted p-4">ไม่พบสินค้าในคลังของคุณ</p>';
+            return;
+        }
+
+        items.forEach(item => {
+            const qtyClass = item.quantity <= 0 ? 'stock-zero' : (item.quantity <= 5 ? 'stock-low' : '');
+            const itemHtml = `
+                <div class="list-group-item stock-item" data-search-term="${item.item_name.toLowerCase()}">
+                    <img src="${item.image_url || '/static/logo.png'}" alt="${item.item_name}">
+                    <div class="stock-item-info">
+                        <h6 class="mb-1">${item.item_name}</h6>
+                        <small class="text-muted font-monospace">${item.product_code || ''}</small>
+                    </div>
+                    <div class="stock-quantity ${qtyClass}">
+                        ${Number.isInteger(item.quantity) ? item.quantity : item.quantity.toFixed(2)}
+                    </div>
+                </div>
+            `;
+            stockListContainer.insertAdjacentHTML('beforeend', itemHtml);
+        });
+    }
+
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+        document.querySelectorAll('.stock-item').forEach(item => {
+            item.style.display = item.dataset.searchTerm.includes(query) ? '' : 'none';
+        });
+    });
+
+    initializeLiffAndLoadStock();
+});
+</script>
+{% endblock %}

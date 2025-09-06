@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}ความเคลื่อนไหวล่าสุด{% endblock %}
+
+{% block head_extra %}
+<style>
+    .activity-feed-container {
+        position: relative;
+        padding-left: 50px;
+    }
+    .timeline-line {
+        position: absolute;
+        left: 20px;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: #e9ecef;
+        border-radius: 2px;
+    }
+    .activity-group {
+        margin-bottom: 2rem;
+    }
+    .activity-group-date {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+        position: sticky;
+        top: 70px; /* Adjust based on navbar height */
+        background-color: #f8f9fa;
+        padding: 0.5rem 0;
+        z-index: 10;
+    }
+    .activity-item {
+        position: relative;
+        margin-bottom: 1.5rem;
+    }
+    .activity-icon {
+        position: absolute;
+        left: -48px;
+        top: 0;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        border: 4px solid #f8f9fa;
+    }
+    .type-new_task .activity-icon { background-color: #0d6efd; }
+    .type-report .activity-icon { background-color: #6c757d; }
+    .type-internal_note .activity-icon { background-color: #495057; }
+    .type-reschedule .activity-icon { background-color: #ffc107; }
+    .type-completed .activity-icon { background-color: #198754; }
+
+    .activity-content {
+        background-color: #fff;
+        border-radius: .5rem;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .activity-header {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .activity-header img {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        margin-right: 0.75rem;
+    }
+    .activity-time {
+        font-size: 0.8rem;
+        color: #6c757d;
+        margin-left: auto;
+    }
+    .activity-body {
+        padding: 1rem;
+        font-size: 0.95rem;
+    }
+    .activity-body i {
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">⏱️ ความเคลื่อนไหวล่าสุด</h1>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body row g-3 align-items-center">
+        <div class="col-md-6">
+            <label for="filter-type" class="form-label">กรองตามประเภทกิจกรรม</label>
+            <select id="filter-type" class="form-select">
+                <option value="all">ทั้งหมด</option>
+                <option value="new_task">สร้างงานใหม่</option>
+                <option value="report">เพิ่มรายงาน</option>
+                <option value="internal_note">บันทึกภายใน</option>
+                <option value="reschedule">เลื่อนนัด</option>
+                <option value="completed">ปิดงาน</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label for="filter-technician" class="form-label">กรองตามช่าง</label>
+            <select id="filter-technician" class="form-select">
+                <option value="all">ช่างทุกคน</option>
+                 <option value="System">System</option>
+                {% for tech in technician_list %}
+                    <option value="{{ tech.name }}">{{ tech.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="activity-feed-container">
+    <div class="timeline-line"></div>
+    {% if not grouped_activities %}
+        <div class="text-center p-5">
+            <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+            <h4>ไม่พบกิจกรรมที่ตรงกับตัวกรอง</h4>
+            <p class="text-muted">ลองปรับเปลี่ยนตัวกรองเพื่อค้นหากิจกรรม</p>
+        </div>
+    {% else %}
+        {% set today = now.date() %}
+        {% set yesterday = today - timedelta(days=1) %}
+        {% for date, items in grouped_activities %}
+            <div class="activity-group" data-date="{{ date.isoformat() }}">
+                <h5 class="activity-group-date">
+                    {% if date == today %}วันนี้
+                    {% elif date == yesterday %}เมื่อวานนี้
+                    {% else %}{{ date.strftime('%d %B %Y') }}
+                    {% endif %}
+                </h5>
+                {% for activity in items %}
+                    <div class="activity-item type-{{ activity.type }}" data-type="{{ activity.type }}" data-technician="{{ activity.technician }}">
+                        <div class="activity-icon">
+                            {% if activity.type == 'new_task' %}<i class="fas fa-plus"></i>
+                            {% elif activity.type == 'report' %}<i class="fas fa-edit"></i>
+                            {% elif activity.type == 'internal_note' %}<i class="fas fa-lock"></i>
+                            {% elif activity.type == 'reschedule' %}<i class="fas fa-calendar-alt"></i>
+                            {% elif activity.type == 'completed' %}<i class="fas fa-check"></i>
+                            {% endif %}
+                        </div>
+                        <div class="activity-content">
+                            <div class="activity-header">
+                                {% set tech_info = technician_list | selectattr('name', 'equalto', activity.technician) | first %}
+                                {% if tech_info and tech_info.avatar_id %}
+                                    <img src="https://drive.google.com/thumbnail?id={{ tech_info.avatar_id }}&sz=s40-c" alt="{{ activity.technician }}">
+                                {% elif activity.technician == 'System' %}
+                                    <img src="{{ url_for('static', filename='logo.png') }}" alt="System">
+                                {% else %}
+                                    <img src="https://via.placeholder.com/30/6c757d/ffffff?text={{ activity.technician[0] if activity.technician else '?' }}" alt="{{ activity.technician }}">
+                                {% endif %}
+                                <div>
+                                    <strong>{{ activity.technician }}</strong>
+                                    <span class="text-muted small"> {{ activity.action_text }}</span>
+                                </div>
+                                <div class="activity-time">{{ activity.timestamp.strftime('%H:%M น.') }}</div>
+                            </div>
+                            <div class="activity-body">
+                                <p class="mb-1">
+                                    <i class="fas fa-file-alt fa-fw text-muted"></i>
+                                    <strong>งาน:</strong> <a href="{{ activity.job_url }}">{{ activity.job_title }}</a>
+                                </p>
+                                <p class="mb-0">
+                                    <i class="fas fa-user fa-fw text-muted"></i>
+                                    <strong>ลูกค้า:</strong> {{ activity.customer }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const filterType = document.getElementById('filter-type');
+    const filterTechnician = document.getElementById('filter-technician');
+
+    function applyFilters() {
+        const typeValue = filterType.value;
+        const techValue = filterTechnician.value;
+        let hasVisibleItems = false;
+        
+        document.querySelectorAll('.activity-item').forEach(item => {
+            const typeMatch = (typeValue === 'all' || item.dataset.type === typeValue);
+            const techMatch = (techValue === 'all' || item.dataset.technician === techValue);
+            
+            if (typeMatch && techMatch) {
+                item.style.display = '';
+                hasVisibleItems = true;
+            } else {
+                item.style.display = 'none';
+            }
+        });
+
+        document.querySelectorAll('.activity-group').forEach(group => {
+            const visibleItems = group.querySelectorAll('.activity-item[style*="display: "], .activity-item:not([style])');
+            if (visibleItems.length === 0) {
+                group.style.display = 'none';
+            } else {
+                group.style.display = '';
+            }
+        });
+    }
+
+    filterType.addEventListener('change', applyFilters);
+    filterTechnician.addEventListener('change', applyFilters);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}รายงานสรุปการเงิน{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>รายงานสรุปการเงิน</h1>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-filter me-2"></i>ตัวกรองและช่วงเวลา</span>
+    </div>
+    <div class="card-body">
+        <form id="filterForm">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="startDate" class="form-label">ตั้งแต่วันที่</label>
+                    <input type="date" class="form-control" id="startDate" name="start_date">
+                </div>
+                <div class="col-md-4">
+                    <label for="endDate" class="form-label">ถึงวันที่</label>
+                    <input type="date" class="form-control" id="endDate" name="end_date">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search me-2"></i>แสดงรายงาน</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="report-section" style="display: none;">
+    <div class="card shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">สรุปผล</h5>
+            <div>
+                <button id="exportPdfBtn" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf me-1"></i>PDF</button>
+                <button id="exportExcelBtn" class="btn btn-sm btn-outline-success"><i class="fas fa-file-excel me-1"></i>Excel</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row text-center mb-3">
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded shadow-sm">
+                        <h6 class="text-muted">รายรับรวม</h6>
+                        <h3 class="text-success" id="totalRevenue">0.00 บาท</h3>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded shadow-sm">
+                        <h6 class="text-muted">ค่าใช้จ่ายรวม</h6>
+                        <h3 class="text-danger" id="totalExpenses">0.00 บาท</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="p-3 border rounded">
+                <h6 class="text-muted text-center">กำไร/ขาดทุน</h6>
+                <h3 class="text-center" id="netProfit">0.00 บาท</h3>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">รายการรายรับ</h5>
+                </div>
+                <ul class="list-group list-group-flush" id="revenueList"></ul>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">รายการค่าใช้จ่าย</h5>
+                </div>
+                <ul class="list-group list-group-flush" id="expenseList"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="loadingModal" tabindex="-1" aria-labelledby="loadingModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center py-5">
+        <div class="spinner-border text-primary mb-3" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mb-0">กำลังสร้างรายงาน...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const csrfToken = '{{ csrf_token() }}';
+        const filterForm = document.getElementById('filterForm');
+        const reportSection = document.getElementById('report-section');
+        const totalRevenueEl = document.getElementById('totalRevenue');
+        const totalExpensesEl = document.getElementById('totalExpenses');
+        const netProfitEl = document.getElementById('netProfit');
+        const revenueListEl = document.getElementById('revenueList');
+        const expenseListEl = document.getElementById('expenseList');
+        const exportPdfBtn = document.getElementById('exportPdfBtn');
+        const exportExcelBtn = document.getElementById('exportExcelBtn');
+        const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+
+        filterForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            loadingModal.show();
+            
+            const formData = new FormData(filterForm);
+            const startDate = formData.get('start_date');
+            const endDate = formData.get('end_date');
+
+            if (!startDate || !endDate) {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด', 'error');
+                loadingModal.hide();
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/billing/summary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ start_date: startDate, end_date: endDate })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    updateReport(data.summary, data.jobs);
+                    reportSection.style.display = 'block';
+                } else {
+                    Swal.fire('ข้อผิดพลาด', data.message || 'ไม่สามารถสร้างรายงานได้', 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+            } finally {
+                loadingModal.hide();
+            }
+        });
+
+        function updateReport(summary, jobs) {
+            totalRevenueEl.textContent = `${summary.total_revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`;
+            totalExpensesEl.textContent = `${summary.total_expenses.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`;
+            
+            const netProfit = summary.total_revenue - summary.total_expenses;
+            netProfitEl.textContent = `${netProfit.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`;
+            netProfitEl.className = `text-center text-${netProfit >= 0 ? 'success' : 'danger'}`;
+            
+            revenueListEl.innerHTML = '';
+            expenseListEl.innerHTML = '';
+            
+            // Populate Revenue List
+            if (jobs.length > 0) {
+                jobs.forEach(job => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.innerHTML = `
+                        <div>
+                            <strong>${job.job_title}</strong><br>
+                            <small class="text-muted">ลูกค้า: ${job.customer_name || 'ไม่ระบุ'}</small>
+                        </div>
+                        <span class="badge bg-success">${job.total_price.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท</span>
+                    `;
+                    revenueListEl.appendChild(li);
+                });
+            } else {
+                revenueListEl.innerHTML = '<li class="list-group-item text-center text-muted">ไม่พบรายการรายรับในช่วงเวลานี้</li>';
+            }
+            
+            // Populate Expense List (assuming expenses are part of job data or a separate list)
+            if (summary.expenses.length > 0) {
+                summary.expenses.forEach(expense => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.innerHTML = `
+                        <div>
+                            <strong>${expense.description}</strong><br>
+                            <small class="text-muted">วันที่: ${new Date(expense.date).toLocaleDateString('th-TH')}</small>
+                        </div>
+                        <span class="badge bg-danger">${expense.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท</span>
+                    `;
+                    expenseListEl.appendChild(li);
+                });
+            } else {
+                expenseListEl.innerHTML = '<li class="list-group-item text-center text-muted">ไม่พบรายการค่าใช้จ่ายในช่วงเวลานี้</li>';
+            }
+        }
+
+        exportPdfBtn.addEventListener('click', function() {
+            loadingModal.show();
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const element = document.getElementById('report-section');
+            const dateRange = `ตั้งแต่วันที่ ${document.getElementById('startDate').value} ถึง ${document.getElementById('endDate').value}`;
+
+            html2canvas(element, { scale: 2 }).then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                const imgWidth = 210; 
+                const pageHeight = 295;
+                const imgHeight = canvas.height * imgWidth / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+
+                doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    doc.addPage();
+                    doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+                
+                doc.save(`รายงานสรุปการเงิน_${dateRange}.pdf`);
+                loadingModal.hide();
+            }).catch(err => {
+                console.error('PDF export error:', err);
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถสร้างไฟล์ PDF ได้', 'error');
+                loadingModal.hide();
+            });
+        });
+
+        exportExcelBtn.addEventListener('click', function() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const tableData = [
+                ["รายงานสรุปการเงิน", `ตั้งแต่วันที่ ${startDate} ถึง ${endDate}`],
+                ["", ""],
+                ["สรุปผล", ""],
+                ["รายรับรวม", totalRevenueEl.textContent],
+                ["ค่าใช้จ่ายรวม", totalExpensesEl.textContent],
+                ["กำไร/ขาดทุน", netProfitEl.textContent],
+                ["", ""],
+                ["รายการรายรับ", ""],
+                ["หัวข้อ", "จำนวนเงิน"],
+                ...Array.from(revenueListEl.children).map(li => [li.querySelector('strong').textContent, li.querySelector('.badge').textContent]),
+                ["", ""],
+                ["รายการค่าใช้จ่าย", ""],
+                ["หัวข้อ", "จำนวนเงิน"],
+                ...Array.from(expenseListEl.children).map(li => [li.querySelector('strong').textContent, li.querySelector('.badge').textContent])
+            ];
+
+            const ws = XLSX.utils.aoa_to_sheet(tableData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "รายงานสรุปการเงิน");
+            XLSX.writeFile(wb, `รายงานสรุปการเงิน_${startDate}_${endDate}.xlsx`);
+        });
+
+    });
+</script>
+{% endblock %}

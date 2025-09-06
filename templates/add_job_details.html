@@ -1,0 +1,414 @@
+{% raw %}{% extends "base.html" %}
+
+{% block title %}เพิ่มรายละเอียดงาน{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .card-header h5 {
+        font-weight: 600;
+    }
+
+    .input-group-text {
+        width: 42px;
+        justify-content: center;
+    }
+
+    .job-type-selector .btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100px;
+        font-size: 1.1rem;
+        border-width: 2px;
+    }
+
+    .job-type-selector .btn i {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .job-type-selector .btn.active {
+        background-color: var(--bs-primary);
+        color: white;
+    }
+
+    .form-section {
+        display: none;
+    }
+
+    .file-drop-zone {
+        border: 2px dashed #adb5bd;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        text-align: center;
+        color: #6c757d;
+        transition: background-color 0.2s, border-color 0.2s;
+    }
+
+    .file-drop-zone.drag-over {
+        background-color: #e9ecef;
+        border-color: #0d6efd;
+    }
+
+    .upload-progress-container {
+        display: none;
+    }
+    
+    .snippet-btn {
+        border-radius: 1rem; /* Make buttons more pill-like */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div id="js-flash-message-container" class="col-lg-10 col-md-12"></div>
+    <div class="col-lg-10 col-md-12">
+        <form id="createJobForm" class="needs-validation" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="customer_id" value="{{ customer.id }}">
+            <input type="hidden" id="job_type" name="job_type" value="service">
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h2 mb-0">📝 เพิ่มงานใหม่สำหรับ: {{ customer.name }}</h1>
+                <a href="{{ url_for('liff.customer_profile', customer_id=customer.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับโปรไฟล์</a>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">1. เลือกประเภทงาน</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-3 job-type-selector" style="grid-template-columns: 1fr 1fr;">
+                        <button type="button" class="btn btn-outline-primary" data-job-type="product"><i class="fas fa-tools"></i><span>งานซ่อมสินค้า</span></button>
+                        <button type="button" class="btn btn-outline-primary active" data-job-type="service"><i class="fas fa-concierge-bell"></i><span>งานบริการ</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>2. รายละเอียดงาน</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div id="product-details-section" class="form-section">
+                        <h6 class="mb-3">ข้อมูลสินทรัพย์ของลูกค้า</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label">ประเภทสินค้า</label><input type="text" name="product_type" class="form-control" placeholder="เช่น ทีวี, แอร์"></div>
+                            <div class="col-md-6 mb-3"><label class="form-label">ยี่ห้อ</label><input type="text" name="product_brand" class="form-control" placeholder="เช่น Samsung, LG"></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label">รุ่น</label><input type="text" name="product_model" class="form-control"></div>
+                            <div class="col-md-6 mb-3"><label class="form-label">หมายเลขเครื่อง (S/N)</label><input type="text" name="product_sn" class="form-control"></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">อุปกรณ์ที่มาพร้อมเครื่อง</label><textarea name="product_accessories" class="form-control" rows="2" placeholder="เช่น รีโมท, อะแดปเตอร์"></textarea></div>
+                        <hr>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="task_title" class="form-label"><strong>อาการเสีย / รายละเอียดบริการ</strong> <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <textarea class="form-control" id="task_title" name="task_title" rows="4" required></textarea>
+                            <button class="btn btn-outline-secondary" type="button" id="start-recognition-task_title" title="บันทึกด้วยเสียง">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                        </div>
+                        {% if task_detail_snippets %}
+                        <div class="mt-2">
+                            <small class="text-muted">แทรกข้อความด่วน:</small>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                {% for snippet in task_detail_snippets %}
+                                <button type="button" class="btn btn-sm btn-outline-secondary snippet-btn">{{ snippet }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="appointment" class="form-label">วันเวลานัดหมาย</label>
+                        <input type="text" class="form-control datetimepicker" id="appointment" name="appointment" placeholder="เลือกวันและเวลา...">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">แนบรูปภาพ/ไฟล์อื่นๆ (PDF, KMZ)</label>
+                        <div class="file-drop-zone" id="drop-zone-new">
+                            <i class="fas fa-cloud-upload-alt fs-2 mb-3"></i>
+                            <p class="mb-1">ลากไฟล์มาวางที่นี่ หรือ</p>
+                            <div class="btn-group">
+                                <label for="files_new" class="btn btn-outline-primary"><i class="fas fa-folder-open me-2"></i>เลือกไฟล์</label>
+                                <label for="camera_new" class="btn btn-outline-info"><i class="fas fa-camera me-2"></i>ถ่ายภาพ</label>
+                            </div>
+                            <input class="form-control d-none" type="file" id="files_new" multiple accept="image/*,application/pdf,.kmz,.kml">
+                            <input class="form-control d-none" type="file" id="camera_new" accept="image/*" capture="environment">
+                        </div>
+                        <div id="upload-progress-container-new" class="upload-progress-container mt-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกงานใหม่</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+<script>
+    let filesToUpload = [];
+
+    function flashMessage(message, category = 'info') {
+        const container = document.getElementById('js-flash-message-container');
+        if (!container) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show mt-3" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+        container.insertAdjacentHTML('beforeend', alertHtml);
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement) {
+                const alertInstance = bootstrap.Alert.getInstance(alertElement);
+                if (alertInstance) alertInstance.close();
+                else alertElement.remove();
+            }
+        }, 5000);
+    }
+
+    function setupFileUpload() {
+        const dropZone = document.getElementById('drop-zone-new');
+        const fileInput = document.getElementById('files_new');
+        const cameraInput = document.getElementById('camera_new');
+        const progressContainer = document.getElementById('upload-progress-container-new');
+
+        const handleFiles = (newFiles) => {
+            filesToUpload = filesToUpload.concat(Array.from(newFiles));
+            renderPreviews();
+        };
+
+        const renderPreviews = () => {
+            progressContainer.innerHTML = '';
+            progressContainer.style.display = filesToUpload.length > 0 ? 'block' : 'none';
+            filesToUpload.forEach((file, index) => {
+                const progressHtml = `
+                        <div class="d-flex align-items-center mb-2">
+                            <div class="flex-grow-1">
+                                <div class="fw-bold small">${file.name}</div>
+                                <div class="progress" style="height: 10px;">
+                                    <div id="progress-bar-new-${index}" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-close ms-2" onclick="removeFile(${index})"></button>
+                        </div>`;
+                progressContainer.insertAdjacentHTML('beforeend', progressHtml);
+            });
+        };
+
+        window.removeFile = (index) => {
+            filesToUpload.splice(index, 1);
+            renderPreviews();
+        };
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+        cameraInput.addEventListener('change', () => handleFiles(cameraInput.files));
+    }
+
+    function uploadFileWithProgress(formData, progressBar) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', "{{ url_for('api_upload_attachment') }}", true);
+            xhr.setRequestHeader('X-CSRFToken', document.querySelector('input[name="csrf_token"]').value);
+
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable && progressBar) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                }
+            };
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(JSON.parse(xhr.responseText));
+                } else {
+                    const errorMsg = JSON.parse(xhr.responseText).message || xhr.statusText;
+                    reject(new Error(errorMsg));
+                }
+            };
+            xhr.onerror = () => reject(new Error('Network error during upload.'));
+            xhr.send(formData);
+        });
+    }
+
+    function setupSpeechRecognition(buttonId, textareaId) {
+        const button = document.getElementById(buttonId);
+        const textarea = document.getElementById(textareaId);
+        if (!button || !textarea) return;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            button.disabled = true;
+            button.title = "เบราว์เซอร์ไม่รองรับการแปลงเสียงเป็นข้อความ";
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'th-TH';
+        recognition.interimResults = false;
+        recognition.continuous = false;
+        let isRecognizing = false;
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.trim();
+            if (transcript) {
+                const existingText = textarea.value.trim();
+                textarea.value += (existingText ? '\n' : '') + '- ' + transcript;
+            }
+        };
+
+        recognition.onend = () => {
+            isRecognizing = false;
+            button.innerHTML = '<i class="fas fa-microphone"></i>';
+            button.classList.remove('btn-danger');
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error", event.error);
+            flashMessage(`เกิดข้อผิดพลาดในการรับเสียง: ${event.error}`, 'danger');
+            isRecognizing = false;
+            button.innerHTML = '<i class="fas fa-microphone"></i>';
+            button.classList.remove('btn-danger');
+        }
+
+        button.addEventListener('click', () => {
+            if (isRecognizing) {
+                recognition.stop();
+            } else {
+                try {
+                    recognition.start();
+                    isRecognizing = true;
+                    button.innerHTML = '<i class="fas fa-stop-circle"></i>';
+                    button.classList.add('btn-danger');
+                } catch (e) {
+                    console.error("Could not start recognition", e);
+                    flashMessage('ไม่สามารถเริ่มการรับเสียงได้', 'warning');
+                }
+            }
+        });
+    }
+
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const jobTypeButtons = document.querySelectorAll('.job-type-selector .btn');
+        const jobTypeInput = document.getElementById('job_type');
+        const productSection = document.getElementById('product-details-section');
+
+        function setJobType(type) {
+            jobTypeInput.value = type;
+            jobTypeButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.jobType === type);
+            });
+            productSection.style.display = type === 'product' ? 'block' : 'none';
+        }
+
+        jobTypeButtons.forEach(button => {
+            button.addEventListener('click', () => setJobType(button.dataset.jobType));
+        });
+
+        // Initialize default state
+        setJobType('service');
+
+        flatpickr(".datetimepicker", {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            locale: "th"
+        });
+
+        setupFileUpload();
+        setupSpeechRecognition('start-recognition-task_title', 'task_title');
+
+        // Logic for Snippet Buttons
+        const taskTextarea = document.getElementById('task_title');
+        document.querySelectorAll('.snippet-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const snippet = this.textContent;
+                const currentText = taskTextarea.value.trim();
+                taskTextarea.value = (currentText ? currentText + '\n' : '') + '- ' + snippet;
+                taskTextarea.focus();
+            });
+        });
+
+        // Form Submission Logic
+        document.getElementById('createJobForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const form = event.target;
+            if (!form.checkValidity()) {
+                form.classList.add('was-validated');
+                return;
+            }
+
+            const submitButton = form.querySelector('button[type="submit"]');
+            const originalButtonHtml = submitButton.innerHTML;
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+            const mainFormData = new FormData(form);
+
+            let uploadedAttachments = [];
+            if (filesToUpload.length > 0) {
+                for (let i = 0; i < filesToUpload.length; i++) {
+                    const file = filesToUpload[i];
+                    const progressBar = document.getElementById(`progress-bar-new-${i}`);
+                    const fileFormData = new FormData();
+                    fileFormData.append('file', file);
+                    fileFormData.append('customer_id', mainFormData.get('customer_id'));
+
+                    try {
+                        const response = await uploadFileWithProgress(fileFormData, progressBar);
+                        uploadedAttachments.push(response.file_info);
+                    } catch (error) {
+                        flashMessage(`อัปโหลดไฟล์ "${file.name}" ไม่สำเร็จ: ${error.message}`, 'danger');
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalButtonHtml;
+                        return;
+                    }
+                }
+            }
+            mainFormData.append('uploaded_attachments_json', JSON.stringify(uploadedAttachments));
+
+            try {
+                const response = await fetch("{{ url_for('api_create_task') }}", {
+                    method: 'POST',
+                    body: mainFormData,
+                    headers: {
+                        'X-CSRFToken': mainFormData.get('csrf_token')
+                    }
+                });
+                const result = await response.json();
+                if (response.ok && result.redirect_url) {
+                    window.location.href = result.redirect_url;
+                } else {
+                    throw new Error(result.message || 'Unknown error');
+                }
+            } catch (error) {
+                flashMessage(`เกิดข้อผิดพลาด: ${error.message}`, 'danger');
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonHtml;
+            }
+        });
+    });
+</script>
+{% endblock %}
+{% endraw %}

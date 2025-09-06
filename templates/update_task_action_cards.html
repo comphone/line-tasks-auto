@@ -1,0 +1,59 @@
+<div class="card shadow-sm action-card mt-4" id="finalReportCard" style="display:none;">
+    <div class="card-header"><h5 class="mb-0">บันทึกรายงานสรุปเพื่อปิดงาน</h5></div>
+    <div class="card-body">
+        <form id="completeTaskForm" onsubmit="window.handleFormSubmission(event, this, 'complete-upload-status')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="complete_task">
+            <div class="mb-3">
+                <label for="work_summary_final" class="form-label"><strong>สรุปงานที่ทำ <span class="text-danger">*</span></strong></label>
+                <textarea class="form-control" id="work_summary_final" name="work_summary" rows="3" placeholder="เช่น ติดตั้งเรียบร้อย ทดสอบระบบใช้งานได้ปกติ" required></textarea>
+            </div>
+             <div class="mb-3">
+                <label for="technicians_final_display" class="form-label"><strong>ช่างผู้รับผิดชอบ <span class="text-danger">*</span></strong></label>
+                 <div class="input-group">
+                    <input type="text" id="technicians_final_display" class="form-control" placeholder="เลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_final')">
+                    <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_final')">เลือก</button>
+                </div>
+                <input type="hidden" id="technicians_final" name="technicians_report" required>
+            </div>
+            <div class="mb-3">
+                <label for="files_final" class="form-label"><strong>แนบรูปภาพปิดงาน (ถ้ามี)</strong></label>
+                <input class="form-control" type="file" id="files_final" name="files[]" multiple accept="image/*">
+            </div>
+            <hr>
+            <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>ยืนยันการปิดงาน</button>
+            <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
+            <div id="complete-upload-status" class="ms-3" style="display:none;"></div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm action-card mt-4" id="rescheduleCard" style="display:none;">
+    <div class="card-header"><h5 class="mb-0">เลื่อนนัดหมาย</h5></div>
+    <div class="card-body">
+        <form id="rescheduleTaskForm" onsubmit="window.handleFormSubmission(event, this, 'reschedule-upload-status')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="reschedule_task">
+            <div class="mb-3">
+                <label for="reschedule_due" class="form-label"><strong>กำหนดวันนัดหมายใหม่ <span class="text-danger">*</span></strong></label>
+                <input type="datetime-local" class="form-control" id="reschedule_due" name="reschedule_due" required>
+            </div>
+            <div class="mb-3">
+                <label for="reschedule_reason" class="form-label"><strong>เหตุผลที่เลื่อนนัด</strong></label>
+                <textarea class="form-control" id="reschedule_reason" name="reschedule_reason" rows="3" placeholder="เช่น ลูกค้าขอเลื่อน, รออะไหล่"></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึก <span class="text-danger">*</span></strong></label>
+                 <div class="input-group">
+                    <input type="text" id="technicians_reschedule_display" class="form-control" placeholder="เลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_reschedule')">
+                    <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_reschedule')">เลือก</button>
+                </div>
+                <input type="hidden" id="technicians_reschedule" name="technicians_reschedule" required>
+            </div>
+            <hr>
+            <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
+            <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
+            <div id="reschedule-upload-status" class="ms-3" style="display:none;"></div>
+        </form>
+    </div>
+</div>

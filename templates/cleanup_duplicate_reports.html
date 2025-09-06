@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}ลบประวัติงานซ้ำซ้อน{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0"><i class="fas fa-broom me-2"></i>ลบประวัติงานซ้ำซ้อน</h1>
+    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-5 text-center">
+        <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+        <h3>ฟีเจอร์นี้ไม่รองรับอีกต่อไป</h3>
+        <p class="text-muted">
+            ฟังก์ชันการล้างข้อมูลซ้ำซ้อนถูกลบออกแล้ว เนื่องจากถูกออกแบบมาสำหรับระบบฐานข้อมูลแบบเก่า
+            การจัดการข้อมูลในฐานข้อมูลใหม่ต้องใช้การออกแบบที่แตกต่างกัน
+        </p>
+        <a href="{{ url_for('settings_page') }}" class="btn btn-primary mt-3">กลับหน้าตั้งค่า</a>
+    </div>
+</div>
+{% endblock %}

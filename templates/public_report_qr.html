@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}QR Code สำหรับติดตามงาน #{{ task.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 text-center">
+    <h1 class="mb-4">QR Code สำหรับลูกค้าติดตามงาน</h1>
+
+    <div class="card shadow-sm mx-auto" style="max-width: 500px;">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">งาน: {{ task.title }} (ลูกค้า: {{ customer_info.name or '-' }})</h5>
+        </div>
+        <div class="card-body">
+            <p class="lead">ให้ลูกค้าสแกน QR Code ด้านล่างนี้ เพื่อดูรายงานความคืบหน้าของงาน</p>
+            
+            {% if qr_code_base64_report %}
+                <img src="{{ qr_code_base64_report }}" alt="QR Code for Public Report" class="img-fluid border border-dark rounded mb-3" style="max-width: 300px; height: auto;">
+            {% else %}
+                <div class="alert alert-danger">ไม่สามารถสร้าง QR Code ได้ โปรดตรวจสอบการตั้งค่า.</div>
+            {% endif %}
+
+            <div class="mt-4">
+                <h6>หรือคัดลอกลิงก์สำหรับแชร์:</h6>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" value="{{ public_report_url }}" readonly id="publicReportUrl">
+                    <button class="btn btn-outline-secondary" type="button" id="copyUrlBtn" title="คัดลอกลิงก์">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <div id="copy-success" class="text-success" style="display: none;">คัดลอกลิงก์แล้ว!</div>
+                <div class="form-text text-muted">ลูกค้าสามารถเข้าถึงลิงก์นี้ได้โดยตรงโดยไม่ต้องเข้าสู่ระบบ</div>
+            </div>
+
+            <hr class="my-4">
+            <div class="text-center">
+                <h5 class="text-muted mb-3">สำหรับช่าง</h5>
+                {% if LIFF_ID_TECHNICIAN_LOCATION %}
+                <a href="https://liff.line.me/{{ LIFF_ID_TECHNICIAN_LOCATION }}" target="_blank" class="btn btn-primary">
+                    <i class="fas fa-map-marker-alt me-2"></i> อัปเดตตำแหน่งของฉัน
+                </a>
+                <p class="form-text mt-2">กดเพื่ออัปเดตตำแหน่งล่าสุดของคุณหลังปิดงาน</p>
+                {% else %}
+                <p class="text-danger">LIFF ID สำหรับอัปเดตตำแหน่งช่างยังไม่ได้ตั้งค่า</p>
+                {% endif %}
+            </div>
+            </div>
+        <div class="card-footer">
+            {# --- ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ --- #}
+            <a href="{{ url_for('liff.customer_profile', customer_id=customer_info.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียดงาน</a>
+            {# --- ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ --- #}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const copyUrlBtn = document.getElementById('copyUrlBtn');
+        if (copyUrlBtn) {
+            copyUrlBtn.addEventListener('click', function() {
+                const urlInput = document.getElementById('publicReportUrl');
+                urlInput.select();
+                urlInput.setSelectionRange(0, 99999);
+                document.execCommand('copy');
+
+                const copySuccess = document.getElementById('copy-success');
+                copySuccess.style.display = 'block';
+                setTimeout(() => {
+                    copySuccess.style.display = 'none';
+                }, 2000);
+            });
+        }
+    });
+</script>
+{% endblock %}

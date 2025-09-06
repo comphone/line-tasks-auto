@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+
+{% block title %}แดชบอร์ดสรุปภาพรวม{% endblock %}
+
+{% block head_extra %}
+    <style>
+        .table thead th {
+            position: relative;
+            resize: horizontal;
+            overflow: auto;
+        }
+        .table-bordered th,
+        .table-bordered td {
+            border: 1px solid #999 !important;
+        }
+        .table {
+            table-layout: fixed;
+        }
+        .customer-cell { 
+            font-size: 1rem; 
+            line-height: 1.5; 
+            font-weight: 500;
+            word-wrap: break-word;
+        }
+        .customer-cell small { 
+            font-size: 0.9em; 
+            font-weight: 400;
+        }
+        .task-title-cell { 
+            font-size: 1rem; 
+            line-height: 1.6;
+            vertical-align: middle;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        .status-cell {
+            text-align: center;
+            vertical-align: middle;
+            width: 150px;
+        }
+        .status-cell .due-date-in-status {
+            font-size: 0.85em;
+            color: #6c757d;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+        .table > tbody > tr.row-completed { --bs-table-bg: #d1e7dd; border-left: 5px solid #198754; }
+        .table > tbody > tr.row-overdue { --bs-table-bg: #f8d7da; border-left: 5px solid #dc3545; }
+        .table > tbody > tr.row-today { --bs-table-bg: #cff4fc; border-left: 5px solid #0dcaf0; }
+        .table > tbody > tr.row-needsaction { --bs-table-bg: #fff3cd; border-left: 5px solid #ffc107; }
+        #searchInput.form-control {
+            height: auto;
+            padding: 0.75rem 1.1rem;
+            font-size: 1.1rem;
+        }
+		.search-highlight {
+            background-color: #ffc107;
+            padding: 0.1em;
+            border-radius: 3px;
+        }
+        .summary-card-link { text-decoration: none; }
+        .summary-card {
+            color: white;
+            border-radius: .75rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+        }
+        .summary-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+        }
+        .summary-card .icon { font-size: 1.5rem; }
+        .summary-card .text-content { margin-left: 1rem; }
+        .summary-card .card-title { font-size: 0.9rem; margin-bottom: 0; }
+        .summary-card .card-text { font-size: 1.75rem; font-weight: bold; }
+        .badge { font-size: 0.9em; padding: .5em .75em; }
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table { min-width: 700px; }
+        .nav-tabs .nav-link { color: #495057; }
+        .nav-tabs .nav-link.active { color: #0d6efd; background-color: #fff; border-color: #dee2e6 #dee2e6 #fff; font-weight: 600; }
+        .batch-actions-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #212529;
+            color: white;
+            padding: 1rem;
+            z-index: 1040;
+            transform: translateY(100%);
+            transition: transform 0.3s ease-in-out;
+            border-top: 1px solid #444;
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+        }
+        .batch-actions-bar.active {
+            transform: translateY(0);
+        }
+        .form-check-input.task-checkbox {
+            width: 1.25em;
+            height: 1.25em;
+        }
+        .table th.checkbox-col, .table td.checkbox-col {
+            width: 3%;
+            text-align: center;
+            vertical-align: middle;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">แดชบอร์ด</h1>
+    <a href="{{ url_for('liff.form_page') }}" class="btn btn-success btn-lg">
+        <i class="fas fa-plus-circle me-2"></i>สร้างงานใหม่
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('liff.summary', status_filter='all') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-primary h-100">
+                <div class="icon"><i class="fas fa-globe-asia"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">ทั้งหมด</h5>
+                    <p class="card-text mb-0">{{ summary.total or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('liff.summary', status_filter='needsAction') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-warning h-100">
+                <div class="icon"><i class="fas fa-hourglass-half"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">ยังไม่เสร็จ</h5>
+                    <p class="card-text mb-0">{{ summary.needsAction or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('liff.summary', status_filter='completed') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-success h-100">
+                <div class="icon"><i class="fas fa-check-double"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">เสร็จแล้ว</h5>
+                    <p class="card-text mb-0">{{ summary.completed or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-lg-3 col-6 mb-4">
+        <a href="{{ url_for('liff.summary', status_filter='today') }}#task-list-section" class="summary-card-link">
+            <div class="summary-card bg-info h-100">
+                <div class="icon"><i class="fas fa-calendar-day"></i></div>
+                <div class="text-content">
+                    <h5 class="card-title">งานวันนี้</h5>
+                    <p class="card-text mb-0">{{ summary.today or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm" id="task-list-section">
+    <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" id="dashboardTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="task-list-tab" data-bs-toggle="tab" data-bs-target="#task-list-pane" type="button" role="tab" aria-controls="task-list-pane" aria-selected="true">
+                    <i class="fas fa-list-check me-2"></i>รายการงานทั้งหมด
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart-pane" type="button" role="tab" aria-controls="chart-pane" aria-selected="false">
+                    <i class="fas fa-chart-bar me-2"></i>กราฟสรุปรายเดือน
+                </button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content" id="dashboardTabContent">
+            <div class="tab-pane fade show active" id="task-list-pane" role="tabpanel" aria-labelledby="task-list-tab" tabindex="0">
+                <form class="mb-3" onsubmit="return false;">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="พิมพ์เพื่อค้นหาทันที..." value="{{ search_query or '' }}">
+                        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-secondary" title="จัดการงานซ้ำซ้อน">
+                            <i class="fas fa-ellipsis-h"></i>
+                        </a>
+                        <a href="{{ url_for('summary_print', search_query=search_query, status_filter=status_filter) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-print me-1"></i> พิมพ์</a>
+                    </div>
+                </form>
+
+                <div id="table-loading-spinner" class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">กำลังโหลดข้อมูลงาน...</p>
+                </div>
+
+                <div class="table-responsive" id="task-table-container" style="display:none;">
+					<table class="table table-hover table-bordered align-middle">
+						<thead class="table-light">
+							<tr>
+								<th class="checkbox-col" style="width: 5%;">
+									<input class="form-check-input task-checkbox" type="checkbox" id="select-all-tasks" title="เลือกทั้งหมด">
+								</th>
+								<th style="width: 35%;">หน่วยงาน / ลูกค้า</th>
+								<th style="width: 30%;">รายละเอียดงาน</th>
+								<th style="width: 15%;">สถานะ</th>
+								<th style="width: 15%;">จัดการ</th>
+							</tr>
+						</thead>
+						<tbody>
+							{% for task in tasks %}
+							<tr class="task-row clickable-row 
+								{% if task.status == 'completed' %}row-completed
+								{% elif task.due_date and task.due_date.astimezone(thaizone).date() < now.date() %}row-overdue
+								{% elif task.due_date and task.due_date.astimezone(thaizone).date() == now.date() %}row-today
+								{% else %}row-needsaction
+								{% endif %}"
+								data-href="{% if task.id %}{{ url_for('liff.job_details', customer_id=task.customer.id, job_id=task.id) }}{% else %}#{% endif %}">
+								
+								<td class="checkbox-col">
+									<input class="form-check-input task-checkbox" type="checkbox" data-job-id="{{ task.id }}">
+								</td>
+
+								<td class="customer-cell">
+									<a href="{{ url_for('liff.customer_profile', customer_id=task.customer.id) }}" class="text-decoration-none text-dark">
+										{% if task.customer.organization %}
+											<strong>{{ task.customer.organization }}</strong>
+											<br><small class="text-muted">{{ task.customer.name or '-' }}</small>
+										{% else %}
+											<strong>{{ task.customer.name or '-' }}</strong>
+										{% endif %}
+									</a>
+									{% if task.assigned_technician %}
+										<div class="mt-1">
+											<span class="badge bg-dark fw-normal"><i class="fas fa-user-cog me-1"></i>{{ task.assigned_technician }}</span>
+										</div>
+									{% endif %}
+								</td>
+
+								<td class="task-title-cell" title="{{ task.job_title }}">
+									{{ task.job_title | replace('\n', '<br>') | safe }}
+								</td>
+
+								<td class="status-cell">
+									<span class="due-date-in-status">
+										{% if task.due_date %}
+											{{ task.due_date.astimezone(thaizone).strftime('%d/%m/%y %H:%M') }}
+										{% else %}
+											-
+										{% endif %}
+									</span>
+									<div>
+										{% if task.status == 'completed' %}
+											<span class="badge bg-success">เสร็จเรียบร้อย</span>
+										{% elif task.due_date and task.due_date.astimezone(thaizone).date() == now.date() %}
+											<span class="badge bg-info text-dark">งานวันนี้</span>
+										{% elif task.due_date and task.due_date.astimezone(thaizone).date() < now.date() %}
+											<span class="badge bg-danger">เลยกำหนด</span>
+										{% else %}
+											<span class="badge bg-warning text-dark">ยังไม่เสร็จ</span>
+										{% endif %}
+									</div>
+								</td>
+								<td class="text-center">
+									<a href="{{ url_for('liff.edit_task', job_id=task.id) }}" class="btn btn-sm btn-outline-warning" title="แก้ไขข้อมูลหลัก">
+										<i class="fas fa-edit"></i>
+									</a>
+									<a href="{{ url_for('liff.job_details', customer_id=task.customer.id, job_id=task.id) }}" class="btn btn-sm btn-outline-info" title="ดูรายละเอียด/เพิ่มรายงาน">
+										<i class="fas fa-file-alt"></i>
+									</a>
+								</td>
+							</tr>
+							{% else %}
+							<tr>
+								<td colspan="5" class="text-center p-4">
+									<h4><i class="fas fa-folder-open"></i> ไม่พบข้อมูลงาน</h4>
+									<p>ลอง<a href="{{ url_for('liff.form_page') }}">สร้างงานใหม่</a> หรือเปลี่ยนตัวกรองการค้นหา</p>
+								</td>
+							</tr>
+							{% endfor %}
+						</tbody>
+					</table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="chart-pane" role="tabpanel" aria-labelledby="chart-tab" tabindex="0">
+                <div style="height: 400px;">
+                    <canvas id="monthlyTasksChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="batch-actions-bar" id="batch-actions-bar">
+    <div class="container d-flex justify-content-between align-items-center">
+        <span id="selection-counter">เลือก 0 รายการ</span>
+		<div class="dropdown" id="batch-actions-dropdown">
+			<button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+				จัดการรายการที่เลือก
+			</button>
+			<ul class="dropdown-menu dropdown-menu-end">
+				<li>
+					<button class="dropdown-item text-danger" type="button" id="delete-selected-btn">
+						<i class="fas fa-trash-alt me-2"></i>ลบรายการที่เลือก
+					</button>
+				</li>
+				</ul>
+		</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.clickable-row').forEach(row => {
+            row.addEventListener('click', function(event) {
+                const ignoredElements = 'input, button, a, i';
+                if (event.target.matches(ignoredElements) || event.target.closest(ignoredElements)) {
+                    return;
+                }
+                
+                const href = this.dataset.href;
+                if (href) {
+                    window.location.href = href;
+                }
+            });
+        });
+
+        const style = document.createElement('style');
+        style.innerHTML = `.clickable-row { cursor: pointer; }`;
+        document.head.appendChild(style);
+
+        const monthlyCtx = document.getElementById('monthlyTasksChart');
+        let myChart;
+
+        if (monthlyCtx) {
+            const chartData = {
+                labels: {{ chart_data['labels'] | tojson | safe }},
+                datasets: [{
+                    label: 'จำนวนงานที่เสร็จ',
+                    data: {{ chart_data['values'] | tojson | safe }},
+                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                    borderColor: 'rgba(25, 135, 84, 1)',
+                    borderWidth: 1
+                }]
+            };
+            const chartOptions = {
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } },
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            };
+            myChart = new Chart(monthlyCtx, { type: 'bar', data: chartData, options: chartOptions });
+            
+            document.getElementById('chart-tab')?.addEventListener('shown.bs.tab', () => myChart?.update());
+        }
+
+        document.getElementById('task-table-container').style.display = 'block';
+        document.getElementById('table-loading-spinner').style.display = 'none';
+		
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            function clearHighlights(container) {
+                const highlighted = container.querySelectorAll('.search-highlight');
+                highlighted.forEach(el => {
+                    el.outerHTML = el.innerHTML;
+                });
+            }
+            function applyHighlights(container, filter) {
+                if (!filter) return;
+                const regex = new RegExp(filter.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+                const walker = document.createTreeWalker(container, Node.TEXT_NODE, null, false);
+                let node;
+                const nodesToReplace = [];
+                while (node = walker.nextNode()) {
+                    if (node.textContent.match(regex)) {
+                        nodesToReplace.push(node);
+                    }
+                }
+                nodesToReplace.forEach(node => {
+                    const newNode = document.createElement('span');
+                    newNode.innerHTML = node.textContent.replace(regex, match => `<mark class="search-highlight">${match}</mark>`);
+                    node.parentNode.replaceChild(newNode, node);
+                });
+            }
+			searchInput.addEventListener('keyup', function() {
+				const filter = searchInput.value.toLowerCase();
+				const rows = document.querySelectorAll('.task-row');
+				rows.forEach(row => {
+					const customerCell = row.querySelector('.customer-cell');
+					const text = customerCell ? customerCell.textContent || customerCell.innerText : '';
+
+					// ตรวจสอบข้อความและสั่งแสดงผล/ซ่อนแถว โดยไม่ต้องมีไฮไลท์
+					if (text.toLowerCase().indexOf(filter) > -1) {
+						row.style.display = "";
+					} else {
+						row.style.display = "none";
+					}
+				});
+			});
+        }
+
+        const selectAllCheckbox = document.getElementById('select-all-tasks');
+        const taskCheckboxes = document.querySelectorAll('.task-checkbox:not(#select-all-tasks)');
+        const batchActionBar = document.getElementById('batch-actions-bar');
+        const selectionCounter = document.getElementById('selection-counter');
+        const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+        const csrfToken = document.getElementById('csrf_token').value;
+
+        function updateSelectionState() {
+            const selectedCount = document.querySelectorAll('.task-checkbox:not(#select-all-tasks):checked').length;
+            if (selectedCount > 0) {
+                batchActionBar.classList.add('active');
+                selectionCounter.textContent = `เลือก ${selectedCount} รายการ`;
+            } else {
+                batchActionBar.classList.remove('active');
+            }
+            selectAllCheckbox.checked = selectedCount > 0 && selectedCount === taskCheckboxes.length;
+            selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < taskCheckboxes.length;
+        }
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                taskCheckboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                });
+                updateSelectionState();
+            });
+        }
+
+        taskCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', updateSelectionState);
+        });
+
+        if (deleteSelectedBtn) {
+            deleteSelectedBtn.addEventListener('click', async function() {
+                const selectedCheckboxes = document.querySelectorAll('.task-checkbox:not(#select-all-tasks):checked');
+                const jobIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.jobId);
+                if (jobIds.length === 0) {
+                    alert('กรุณาเลือกงานที่ต้องการลบ');
+                    return;
+                }
+                if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ ${jobIds.length} งานที่เลือกอย่างถาวร?`)) {
+                    try {
+                        const response = await fetch("{{ url_for('api_delete_tasks_batch') }}", {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken
+                            },
+                            body: JSON.stringify({ job_ids: jobIds })
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            alert(result.message);
+                            window.location.reload();
+                        } else {
+                            throw new Error(result.message || 'เกิดข้อผิดพลาดในการลบข้อมูล');
+                        }
+                    } catch (error) {
+                        console.error('Batch delete error:', error);
+                        alert('เกิดข้อผิดพลาด: ' + error.message);
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

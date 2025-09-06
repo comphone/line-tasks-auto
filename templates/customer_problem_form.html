@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}แจ้งปัญหาบริการ{% endblock %}
+
+{% block head_extra %}
+    <style>
+        body {
+            background-color: #f0f2f5;
+        }
+        .card {
+            border: none;
+            border-radius: 1rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .card-header { background-color: #dc3545 !important; color: white; }
+        .btn-primary { background-color: #dc3545 !important; border-color: #dc3545 !important; }
+        .btn-primary:hover { background-color: #c82333 !important; border-color: #c82333 !important; }
+        .btn-primary:disabled { background-color: #dc3545; border-color: #dc3545; }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-exclamation-circle me-2"></i>แจ้งปัญหาเกี่ยวกับงานซ่อม</h4>
+            </div>
+            <div class="card-body p-4">
+                <div id="problemForm">
+                    <input type="hidden" id="job_id" value="{{ task.id }}">
+                    <input type="hidden" id="liffUserId" value="">
+                    
+                    <p class="mb-3"><strong>งาน:</strong> {{ task.job_title }}</p>
+                    <p class="mb-3"><strong>ลูกค้า:</strong> {{ task.customer.name }} (โทร: {{ task.customer.phone or '-' }})</p>
+
+                    <div class="mb-3">
+                        <label for="problem_description" class="form-label"><strong>รายละเอียดปัญหาที่พบ หรือสิ่งที่ต้องการให้แก้ไขเพิ่มเติม</strong> <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="problem_description" name="problem_description" rows="5" required placeholder="กรุณาอธิบายปัญหาที่พบ หรือสิ่งที่ต้องการให้ช่างดำเนินการแก้ไขอย่างละเอียด..."></textarea>
+                    </div>
+                    
+                    <div class="d-grid mt-4">
+                        <button type="button" id="submitBtn" class="btn btn-primary btn-lg"><i class="fas fa-paper-plane me-2"></i>ส่งข้อมูลปัญหา</button>
+                    </div>
+                </div>
+                <div id="statusMessage" class="text-center mt-3" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+    <script src="https://static.line-scdn.net/liff/2.21.0/sdk.js"></script>
+    <script>
+        window.onload = function() {
+            const submitBtn = document.getElementById('submitBtn');
+            const problemFormDiv = document.getElementById('problemForm');
+            const statusMessageDiv = document.getElementById('statusMessage');
+            const liffUserIdInput = document.getElementById('liffUserId');
+
+            liff.init({ liffId: "{{ LIFF_ID_FORM }}" })
+                .then(() => {
+                    if (liff.isLoggedIn()) {
+                        liff.getProfile().then(profile => {
+                            liffUserIdInput.value = profile.userId;
+                        }).catch(err => {
+                            console.error("Error getting LIFF profile:", err);
+                        });
+                    } else {
+                        console.log("LIFF not logged in. Will proceed without user ID.");
+                    }
+                })
+                .catch(err => {
+                    console.error("Error initializing LIFF:", err.code, err.message);
+                    statusMessageDiv.innerHTML = '<h5 class="text-danger"><i class="fas fa-times-circle"></i> LIFF Error</h5><p>ไม่สามารถโหลดหน้าฟอร์มได้ กรุณาลองใหม่ในภายหลัง</p>';
+                    statusMessageDiv.style.display = 'block';
+                    problemFormDiv.style.display = 'none';
+                });
+
+            submitBtn.addEventListener('click', function() {
+                const jobId = document.getElementById('job_id').value;
+                const problemDescription = document.getElementById('problem_description').value;
+                const customerLineUserId = liffUserIdInput.value;
+
+                if (!problemDescription.trim()) {
+                    alert('กรุณากรอกรายละเอียดปัญหา');
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังส่ง...';
+
+                fetch("{{ url_for('liff.submit_customer_problem') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        job_id: jobId,
+                        problem_description: problemDescription,
+                        customer_line_user_id: customerLineUserId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    problemFormDiv.style.display = 'none'; 
+                    if (data.status === 'success') {
+                        statusMessageDiv.innerHTML = '<h5 class="text-success"><i class="fas fa-check-circle"></i> ส่งข้อมูลเรียบร้อยแล้ว</h5><p>ทางเราจะรีบติดต่อกลับเพื่อดูแลท่านโดยเร็วที่สุดครับ/ค่ะ</p>';
+                    } else {
+                        statusMessageDiv.innerHTML = '<h5 class="text-danger"><i class="fas fa-times-circle"></i> เกิดข้อผิดพลาด</h5><p>' + (data.message || 'ไม่สามารถส่งข้อมูลได้') + '</p>';
+                    }
+                    statusMessageDiv.style.display = 'block';
+                    
+                    setTimeout(function() {
+                        if (liff.isInClient()) {
+                            liff.closeWindow();
+                        }
+                    }, 3000);
+                })
+                .catch(err => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>ส่งข้อมูลปัญหา';
+                    console.error("Error submitting problem:", err);
+                    alert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err);
+                });
+            });
+        };
+    </script>
+{% endblock %}

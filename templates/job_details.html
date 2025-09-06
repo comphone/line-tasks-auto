@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}รายละเอียดงาน: {{ job.job_title }}{% endblock %}
+
+{% block content %}
+    {# --- START: โค้ดที่แก้ไข --- #}
+    <div class="mb-4">
+         <a href="{{ url_for('liff.customer_profile', customer_id=customer_info.id) }}" class="btn btn-secondary">
+             <i class="fas fa-arrow-left me-2"></i>กลับไปที่โปรไฟล์ลูกค้า
+         </a>
+    </div>
+
+    {# Include หน้าจัดการงานเต็มรูปแบบ #}
+    {% include 'update_task_details.html' %}
+    {# --- END: โค้ดที่แก้ไข --- #}
+{% endblock %}

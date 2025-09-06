@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}แก้ไขข้อมูลงาน: {{ task.title }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    .card-header h5 {
+        font-weight: 600;
+    }
+    .input-group-text {
+        width: 42px; /* Fixed width for icons */
+        justify-content: center;
+        background-color: #f8f9fa;
+    }
+    #search_results .list-group-item { 
+        cursor: pointer; 
+    }
+    #search_results .list-group-item:hover { 
+        background-color: #e9ecef; 
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">📝 แก้ไขข้อมูลหลักของงาน</h1>
+    <a href="{{ url_for('liff.job_details', customer_id=task.customer.id, job_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้ารายละเอียด</a>
+    </div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-10 col-md-12">
+        <form method="POST" action="{{ url_for('liff.edit_task', job_id=task.id) }}" class="needs-validation" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>ข้อมูลงานและนัดหมาย</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <label for="task_title" class="form-label"><strong>รายละเอียดงาน</strong></label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
+                            <textarea class="form-control" id="task_title" name="task_title" rows="4" required>{{ task.title }}</textarea>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="appointment_due" class="form-label"><strong>วันเวลานัดหมาย</strong></label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                            <input type="datetime-local" class="form-control" id="appointment_due" name="appointment_due" value="{{ task.due_for_input }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-tag me-2"></i>ข้อมูลลูกค้า</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row">
+                        <div class="col-md-6 mb-3 position-relative">
+                             <label for="customer_search" class="form-label"><strong>ชื่อผู้ติดต่อ</strong></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" class="form-control" id="customer_search" name="customer_name" value="{{ task.customer.name }}" autocomplete="off">
+                            </div>
+                            <input type="hidden" id="customer_id" name="customer_id" value="{{ task.customer.id }}">
+                            <div id="search_results" class="list-group mt-1 position-absolute w-100" style="z-index: 1000;"></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="organization_name" class="form-label">ชื่อหน่วยงาน/บริษัท</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-building"></i></span>
+                                <input type="text" class="form-control" id="organization_name" name="organization_name" value="{{ task.customer.organization or '' }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                         <div class="col-md-6 mb-3">
+                            <label for="customer_phone" class="form-label">เบอร์โทรศัพท์</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <input type="tel" class="form-control" id="customer_phone" name="customer_phone" value="{{ task.customer.phone }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="address" class="form-label">ที่อยู่</label>
+                            <div class="input-group">
+                                 <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
+                                <textarea class="form-control" id="address" name="address" rows="1">{{ task.customer.address }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="latitude_longitude" class="form-label">ลิงก์ Google Maps</label>
+                        <div class="input-group">
+                             <span class="input-group-text"><i class="fas fa-map-pin"></i></span>
+                            <input type="text" class="form-control" id="latitude_longitude" name="latitude_longitude" value="{{ task.customer.map_url or '' }}">
+                            <button class="btn btn-outline-info" type="button" id="shareLocationBtn" title="แชร์ตำแหน่งปัจจุบัน">
+                                <i class="fas fa-location-arrow"></i>
+                            </button>
+                        </div>
+                        <small class="form-text text-muted" id="shareLocationStatus"></small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-center mt-4">
+                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>บันทึกการเปลี่ยนแปลง</button>
+                <a href="{{ url_for('liff.job_details', customer_id=task.customer.id, job_id=task.id) }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
+                </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('customer_search');
+        const resultsDiv = document.getElementById('search_results');
+        const customerIdInput = document.getElementById('customer_id');
+        const orgInput = document.getElementById('organization_name');
+        const phoneInput = document.getElementById('customer_phone');
+        const addressInput = document.getElementById('address');
+        const mapUrlInput = document.getElementById('latitude_longitude');
+        
+        let debounceTimer;
+        searchInput.addEventListener('input', function() {
+            if (this.value === '') {
+                customerIdInput.value = '';
+            }
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                fetchCustomers(this.value);
+            }, 300);
+        });
+
+        async function fetchCustomers(query) {
+            if (query.length < 2) {
+                resultsDiv.innerHTML = '';
+                return;
+            }
+            try {
+                const response = await fetch(`{{ url_for('api_search_customers') }}?q=${encodeURIComponent(query)}`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const customers = await response.json();
+                displayResults(customers);
+            } catch (error) {
+                console.error('Error fetching customer data:', error);
+                resultsDiv.innerHTML = '<a class="list-group-item text-danger">เกิดข้อผิดพลาดในการค้นหา</a>';
+            }
+        }
+
+        function displayResults(customers) {
+            resultsDiv.innerHTML = '';
+            if (customers.length === 0) {
+                resultsDiv.innerHTML = '<a class="list-group-item text-muted">ไม่พบข้อมูลลูกค้า</a>';
+                return;
+            }
+            customers.forEach(customer => {
+                const item = document.createElement('a');
+                item.classList.add('list-group-item', 'list-group-item-action');
+                let displayText = customer.organization ? `<strong>${customer.organization}</strong><br><small class="text-muted">${customer.name}</small>` : `<strong>${customer.name}</strong>`;
+                item.innerHTML = displayText;
+                item.addEventListener('click', function() {
+                    searchInput.value = customer.name;
+                    customerIdInput.value = customer.id;
+                    orgInput.value = customer.organization || '';
+                    phoneInput.value = customer.phone || '';
+                    addressInput.value = customer.address || '';
+                    mapUrlInput.value = customer.map_url || '';
+                    resultsDiv.innerHTML = '';
+                });
+                resultsDiv.appendChild(item);
+            });
+        }
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.position-relative')) {
+                resultsDiv.innerHTML = '';
+            }
+        });
+        
+        const shareBtn = document.getElementById('shareLocationBtn');
+        const locationInput = document.getElementById('latitude_longitude');
+        const statusText = document.getElementById('shareLocationStatus');
+
+        if (shareBtn) {
+            shareBtn.addEventListener('click', function() {
+                statusText.textContent = 'กำลังค้นหาตำแหน่ง...';
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const lat = position.coords.latitude;
+                            const lon = position.coords.longitude;
+                            locationInput.value = `http://googleusercontent.com/maps/google.com/0{lat},${lon}`;
+                            statusText.textContent = `ใส่ตำแหน่งปัจจุบันสำเร็จ!`;
+                            statusText.classList.remove('text-danger');
+                            statusText.classList.add('text-success');
+                        },
+                        (error) => {
+                            console.error("Geolocation error:", error);
+                            let errorMessage = 'ไม่สามารถดึงตำแหน่งได้';
+                            switch(error.code) {
+                                case error.PERMISSION_DENIED: errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง."; break;
+                                case error.POSITION_UNAVAILABLE: errorMessage = "ไม่สามารถระบุตำแหน่งได้."; break;
+                                case error.TIMEOUT: errorMessage = "ค้นหาตำแหน่งใช้เวลานานเกินไป."; break;
+                                default: errorMessage = `เกิดข้อผิดพลาด: ${error.message}`; break;
+                            }
+                            statusText.textContent = errorMessage;
+                            statusText.classList.remove('text-success');
+                            statusText.classList.add('text-danger');
+                        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    );
+                } else {
+                    statusText.textContent = 'เบราว์เซอร์ไม่รองรับ Geolocation';
+                    statusText.classList.remove('text-success');
+                    statusText.classList.add('text-danger');
+                }
+            });
+        }
+        
+        flatpickr("#appointment_due", {
+            enableTime: true,
+            dateFormat: "Y-m-dTH:i",
+            locale: "th"
+        });
+        
+    });
+</script>
+{% endblock %}

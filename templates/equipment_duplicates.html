@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}จัดการข้อมูลอุปกรณ์ซ้ำซ้อน{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2">จัดการข้อมูลอุปกรณ์ซ้ำซ้อน</h1>
+    <a href="{{ url_for('settings_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าตั้งค่า</a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-copy me-2"></i>รายการอุปกรณ์ที่อาจซ้ำซ้อน
+    </div>
+    <div class="card-body">
+        {% if duplicates %}
+            <form action="{{ url_for('delete_equipment_duplicates_batch') }}" method="POST" id="deleteEquipmentForm">
+                <p class="text-muted">
+                    ระบบพบกลุ่มข้อมูลอุปกรณ์ที่อาจซ้ำกัน {{ duplicates|length }} กลุ่ม (ตรวจสอบจากชื่ออุปกรณ์ที่ตรงกัน)
+                    โปรด **เลือกรายการที่ต้องการลบ** และรายการที่ **ไม่ถูกเลือก** จะถูกเก็บไว้
+                </p>
+                
+                {% for item_name, items_list in duplicates.items() %}
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-light">
+                        <strong>ชื่ออุปกรณ์:</strong> {{ item_name|title }}
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {% for item_info in items_list %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="form-check">
+                                    {# Checkbox for deletion - default to checked for older items, unchecked for newest #}
+                                    <input class="form-check-input" type="checkbox" name="item_indices" value="{{ item_info.original_index }}" id="item-{{ item_info.original_index }}" {% if loop.index > 1 %}checked{% endif %}>
+                                    <label class="form-check-label" for="item-{{ item_info.original_index }}">
+                                        <strong>ชื่อ:</strong> {{ item_info.data.item_name }} <br>
+                                        <small class="text-muted">
+                                            หน่วย: {{ item_info.data.unit or '-' }} | 
+                                            ราคา: {{ item_info.data.price|int if item_info.data.price is number else (item_info.data.price or '-') }}
+                                        </small>
+                                        {% if loop.index == 1 %}
+                                            <span class="badge bg-info ms-2">รายการแรกที่พบ (แนะนำให้เก็บ)</span>
+                                        {% endif %}
+                                    </label>
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-danger btn-lg w-100"><i class="fas fa-trash-alt me-2"></i>ลบรายการที่เลือก</button>
+            </form>
+        {% else %}
+            <div class="text-center p-5">
+                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                <h4>ไม่พบข้อมูลอุปกรณ์ซ้ำซ้อน</h4>
+                <p class="text-muted">ระบบไม่พบรายการอุปกรณ์ที่มีชื่ออุปกรณ์ตรงกัน</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Add a confirmation before submitting the delete form
+document.getElementById('deleteEquipmentForm').addEventListener('submit', function(e) {
+    // Check if at least one checkbox is checked
+    const checkedCheckboxes = document.querySelectorAll('#deleteEquipmentForm input[name="item_indices"]:checked');
+    if (checkedCheckboxes.length === 0) {
+        alert('กรุณาเลือกอย่างน้อยหนึ่งรายการที่ต้องการลบ');
+        e.preventDefault();
+        return;
+    }
+
+    if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการที่เลือก? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+        e.preventDefault();
+    }
+});
+</script>
+{% endblock %}

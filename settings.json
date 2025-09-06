@@ -1,0 +1,110 @@
+{
+    "report_times": {
+        "appointment_reminder_hour_thai": 7,
+        "outstanding_report_hour_thai": 20,
+        "customer_followup_hour_thai": 9
+    },
+    "line_recipients": {
+        "admin_group_id": "C8ad22a115f38c9ad3cb5ea5c2ff4863b",
+        "technician_group_id": "",
+        "manager_user_id": "U33d684ffb92560e0eafb0ce8fdf6d4b0"
+    },
+    "equipment_catalog": [
+        {
+            "item_name": "เครื่องบันทึก NVR IMOU WIFI 8 ช่อง รุ่น NVR1108HS-W-S2",
+            "category": "กล้องวงจรปิด",
+            "product_code": "",
+            "unit": "เครื่อง",
+            "price": 2900.0,
+            "cost_price": 1400.0,
+            "stock_quantity": 2,
+            "image_url": ""
+        }
+    ],
+    "auto_backup": {
+        "enabled": false,
+        "hour_thai": 2,
+        "minute_thai": 0
+    },
+    "shop_info": {
+        "contact_phone": "โทรศัพท์ 043-571779 มือถือ 098-192-9199",
+        "line_id": "@Comphone"
+    },
+    "technician_list": [
+        {
+            "avatar_id": "125DW7-_vGDOzSUYvP9FGjmvEVoaKftkc",
+            "last_known_lat": null,
+            "last_known_lon": null,
+            "line_user_id": "U5be873352f643e457e17084fa77d9289",
+            "name": "ช่างโต้"
+        },
+        {
+            "avatar_id": "17Kjv_DSk2C90HVz4p1129G--pU9BmDwC",
+            "last_known_lat": null,
+            "last_known_lon": null,
+            "line_user_id": "U1c381b328ae557c75f7db223b1871043",
+            "name": "ช่างเหม่ง"
+        },
+        {
+            "avatar_id": "1USfhxBBnEdxcif7-ocAdbQiRDwRf_58h",
+            "last_known_lat": null,
+            "last_known_lon": null,
+            "line_user_id": "U6b8b6c9ee259901d53e8c7ee242b3402",
+            "name": "ช่างรุ่ง"
+        },
+        {
+            "avatar_id": "1uI6oo20W6sV5DVO0M5VHSeA6vun-ZqJM",
+            "last_known_lat": null,
+            "last_known_lon": null,
+            "line_user_id": "",
+            "name": "ช่างดาม"
+        },
+        {
+            "avatar_id": "1okU-uFqJDm8wxO-YeFim31v9RLItaOzq",
+            "last_known_lat": null,
+            "last_known_lon": null,
+            "line_user_id": "",
+            "name": "ช่างนะ"
+        }
+    ],
+    "popup_notifications": {
+        "enabled_arrival": false,
+        "message_arrival_template": "ช่าง [technician_name] กำลังจะถึงบ้านคุณ [customer_name] แล้วครับ/ค่ะ",
+        "enabled_completion_customer": false,
+        "message_completion_customer_template": "งาน [task_title] ที่บ้านคุณ [customer_name] เสร็จเรียบร้อยแล้วครับ/ค่ะ",
+        "enabled_nearby_job": false,
+        "nearby_radius_km": "10",
+        "message_nearby_template": "มีงาน [task_title] อยู่ใกล้คุณ [distance_km] กม. ที่ [customer_name] สนใจรับงานหรือไม่?",
+        "liff_popup_base_url": "https://liff.line.me/2007889126-PE149M38"
+    },
+    "technician_templates": {
+        "task_details": [
+            {
+                "key": "ติดตั้งเสร็จแล้ว",
+                "value": "ติดตั้งเสร็จแล้ว"
+            }
+        ],
+        "progress_reports": [
+            {
+                "key": "ลูกค้าเลื่อนนัด",
+                "value": "ลูกค้าขอเลื่อนนัดเป็นวันที่ [dd/mm/yyyy] เนื่องจากไม่สะดวก"
+            },
+            {
+                "key": "รออะไหล่",
+                "value": "ตรวจสอบแล้วพบว่าต้องรออะไหล่ [ชื่ออะไหล่] จะแจ้งลูกค้าให้ทราบกำหนดการอีกครั้ง"
+            }
+        ]
+    },
+    "message_templates": {
+        "welcome_customer": "เรียน คุณ[customer_name],\n\nขอบคุณที่เชื่อมต่อกับ Comphone ครับ/ค่ะ!\nเราจะใช้ LINE นี้เพื่อส่งข้อมูลสำคัญเกี่ยวกับบริการครับ\n\nติดต่อ:\nโทร: [shop_phone]\nLINE ID: [shop_line_id]",
+        "problem_report_admin": "🚨 ลูกค้าแจ้งปัญหา!\nงาน: [task_title]\nลูกค้า: [customer_name]\nปัญหา: [problem_desc]\nดูรายละเอียด: [task_url]",
+        "daily_reminder_header": "🔔 งานสำหรับวันนี้ ([task_count] งาน)",
+        "daily_reminder_task_line": "ชื่องาน: [task_title]\n👤 ลูกค้า: [customer_name]\n📞 โทร: [customer_phone]\n🗓️ นัดหมาย: [due_date]\n📍 พิกัด: [map_url]\n🔗 ดูรายละเอียด/แก้ไข:\n[task_url]"
+    },
+    "product_categories": [
+        "กล้องวงจรปิด"
+    ],
+    "common_equipment_items": [
+        "เครื่องบันทึก NVR IMOU WIFI 8 ช่อง รุ่น NVR1108HS-W-S2"
+    ]
+}

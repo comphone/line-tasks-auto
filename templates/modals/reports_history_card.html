@@ -1,0 +1,51 @@
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติการอัปเดตและรายงาน</h6>
+    </div>
+    <div class="card-body p-0">
+        {% if task.tech_reports_history %}
+            <ul class="list-group list-group-flush">
+                {% for report in task.tech_reports_history %}
+                    <li class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">
+                                {% if report.report_type == 'report' %}
+                                    <i class="fas fa-file-alt text-primary"></i> รายงานความคืบหน้า
+                                {% elif report.report_type == 'reschedule' %}
+                                    <i class="fas fa-calendar-alt text-warning"></i> เลื่อนนัดหมาย
+                                {% else %}
+                                    <i class="fas fa-info-circle text-secondary"></i> อื่นๆ
+                                {% endif %}
+                            </h6>
+                            <small class="text-muted">{{ report.summary_date.strftime('%d/%m/%y %H:%M') }}</small>
+                        </div>
+                        {% if report.work_summary %}
+                            <p class="mb-1">{{ report.work_summary | nl2br }}</p>
+                        {% endif %}
+                        <small class="text-muted">โดย: {{ report.technicians or 'ไม่ระบุ' }}</small>
+
+                        {% if report.attachments %}
+                            <div class="mt-2">
+                                <p class="mb-1 fw-bold">รูปภาพแนบ:</p>
+                                <div class="row g-2">
+                                    {% for attachment in report.attachments %}
+                                        <div class="col-4 col-md-3">
+                                            <a href="{{ url_for('proxy_drive_image', file_id=attachment.drive_file_id) }}" data-lightbox="report-{{ report.id }}">
+                                                <img src="{{ url_for('proxy_drive_image', file_id=attachment.drive_file_id) }}" class="img-fluid rounded" alt="Attachment">
+                                            </a>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="text-center p-3 text-muted">
+                <i class="fas fa-folder-open fa-2x mb-2"></i>
+                <p>ยังไม่มีรายงานสำหรับงานนี้</p>
+            </div>
+        {% endif %}
+    </div>
+</div>

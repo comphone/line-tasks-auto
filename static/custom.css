@@ -1,0 +1,85 @@
+/* static/custom.css */
+
+/* Hero Card for Task Info */
+.info-hero-card {
+    background-color: #343a40; /* bg-dark */
+    color: white;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.info-hero-card .info-label {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-hero-card .info-value {
+    font-size: 1.25rem; /* Larger font size for values */
+    font-weight: 500;
+    margin-bottom: 1rem;
+    word-wrap: break-word;
+}
+
+.info-hero-card .info-value a {
+    color: #1e90ff; /* dodgerblue */
+    text-decoration: none;
+}
+.info-hero-card .info-value a:hover {
+    text-decoration: underline;
+}
+
+/* Action Cards */
+.action-card {
+    display: none; /* Hidden by default */
+}
+
+/* --- History Entry Styling --- */
+.history-entry {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-left: 5px solid #dee2e6; /* Default border color */
+    background-color: #f8f9fa;
+    border-radius: 0.25rem;
+}
+
+.history-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.history-entry-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
+.history-entry-body p {
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
+
+/* --- NEW: Secondary Actions Tab Styling --- */
+#secondaryActionsTab .nav-link {
+    font-size: 1.1rem; /* Increase tab button font size */
+    font-weight: 500;
+}
+
+#secondaryActionsTab .tab-pane {
+    padding-top: 1rem;
+}
+
+#secondaryActionsTab .form-label {
+    font-size: 1rem;
+}
+
+#secondaryActionsTab .form-control, #secondaryActionsTab .form-select {
+    font-size: 1rem;
+}
+body {
+    padding-bottom: 80px; /* เพิ่มพื้นที่ด้านล่างเพื่อไม่ให้เมนูซ้อนทับ */
+}
