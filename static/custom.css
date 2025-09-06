@@ -24,6 +24,12 @@
     word-wrap: break-word;
 }
 
+/* --- START: โค้ดที่เพิ่มเข้ามา --- */
+.preserve-whitespace {
+    white-space: pre-wrap;
+}
+/* --- END: โค้ดที่เพิ่มเข้ามา --- */
+
 .info-hero-card .info-value a {
     color: #1e90ff; /* dodgerblue */
     text-decoration: none;

@@ -168,10 +168,10 @@
                     {% endif %}
                 </div>
             </div>
-<div class="info-card full-width-card">
-                <h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
-                <p class="info-value value-large">{{ task.title | replace('\n', '<br>') | safe }}</p>
-            </div>
+			<div class="info-card full-width-card">
+				<h6 class="info-label"><i class="fas fa-clipboard-list"></i>รายละเอียดงาน</h6>
+				<p class="info-value value-large preserve-whitespace">{{ task.title }}</p>
+			</div>
 
             <div class="info-card full-width-card">
                 <div class="d-flex justify-content-between align-items-center">
