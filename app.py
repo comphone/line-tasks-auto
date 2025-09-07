@@ -3872,14 +3872,18 @@ def health_check_repair(job_id):
                 current_app.logger.info(f"Found matching folder '{folder['name']}' (ID: {target_folder_id}) for job {job_id}")
                 break
         if target_folder_id: break
-            
+
     if not target_folder_id:
         return jsonify({'status': 'error', 'message': f'Could not find a corresponding Google Drive folder containing the Job ID: {job_id}'}), 404
 
+    drive_service = get_google_drive_service() # ย้ายมาตรงนี้เพื่อให้แน่ใจว่ามี service ก่อนใช้งาน
+    if not drive_service:
+        return jsonify({'status': 'error', 'message': 'Google Drive service not available.'}), 500
+
     drive_files = _get_drive_files_in_folder(target_folder_id)
-    
+
     attachment_ids_in_reports = {att.drive_file_id for report in job.reports for att in report.attachments}
-    
+
     recovered_attachments_data = []
     for drive_file in drive_files:
         if drive_file['id'] not in attachment_ids_in_reports:
@@ -3890,7 +3894,7 @@ def health_check_repair(job_id):
 
     new_report = Report(
         job=job,
-        summary_date=datetime.datetime.now(THAILAND_TZ),
+        summary_date=datetime.now(THAILAND_TZ),
         report_type='report',
         work_summary="[ข้อมูลกู้คืนอัตโนมัติ] พบไฟล์แนบที่ไม่ได้ถูกบันทึกในประวัติ",
         technicians="System Recovery",
@@ -3900,19 +3904,29 @@ def health_check_repair(job_id):
     db.session.flush()
 
     for drive_file in recovered_attachments_data:
-        new_att = Attachment(
-            report=new_report,
-            drive_file_id=drive_file['id'],
-            file_name=drive_file['name'],
-            file_url=f"https://drive.google.com/file/d/{drive_file['id']}/view?usp=drivesdk"
-        )
-        db.session.add(new_att)
+        try:
+            # *** ส่วนที่เพิ่มเข้ามา: ตั้งค่า Permission ให้ไฟล์ ***
+            drive_service.permissions().create(
+                fileId=drive_file['id'], body={'role': 'reader', 'type': 'anyone'}
+            ).execute()
+            current_app.logger.info(f"Successfully set permission for recovered file: {drive_file['id']}")
+            # *************************************************
+
+            new_att = Attachment(
+                report=new_report,
+                drive_file_id=drive_file['id'],
+                file_name=drive_file['name'],
+                file_url=f"https://drive.google.com/file/d/{drive_file['id']}/view?usp=drivesdk"
+            )
+            db.session.add(new_att)
+        except Exception as e:
+            current_app.logger.error(f"Failed to set permission or save attachment for {drive_file['id']}: {e}")
+
 
     db.session.commit()
     current_app.logger.info(f"Successfully repaired job {job_id}, added {len(recovered_attachments_data)} attachments.")
     return jsonify({'status': 'success', 'message': f'ซ่อมแซมสำเร็จ! เพิ่มรูปภาพที่ขาดหายไป {len(recovered_attachments_data)} รูป'})
 
-# โค้ดท้ายไฟล์ทั้งหมดต้องเหลือแค่นี้
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
