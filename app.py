@@ -1084,10 +1084,19 @@ def environment_check():
         ]
     })
 
-def sanitize_filename(name):
-    if not name:
-        return "Unnamed"
-    return re.sub(r'[\\/*?:"<>|]', "", name).strip()
+def sanitize_filename(name, fallback='Unnamed'):
+    """
+    Sanitizes a string to be used as a filename. If the name is empty,
+    it returns the fallback string.
+    """
+    if not name or not str(name).strip():
+        return fallback
+
+    # ใช้ str(name) เพื่อป้องกัน error หากข้อมูลไม่ใช่ string
+    name_str = str(name).strip()
+
+    # ลบอักขระพิเศษที่ไม่สามารถใช้ในชื่อไฟล์ได้
+    return re.sub(r'[\\/*?:"<>|]', "", name_str)
 
 @cached(cache)
 def find_or_create_drive_folder(name, parent_id):
@@ -2210,7 +2219,7 @@ def api_upload_attachment():
     if not monthly_folder_id:
         return jsonify({'status': 'error', 'message': f'Could not create or find monthly folder: {monthly_folder_name}'}), 500
 
-    sanitized_customer_name = sanitize_filename(customer.name or 'Unknown_Customer')
+    sanitized_customer_name = sanitize_filename(job.customer.name, fallback=f"Customer_{job.customer.id}")
     customer_job_folder_name = f"{sanitized_customer_name} - {job_id}"
     final_upload_folder_id = find_or_create_drive_folder(customer_job_folder_name, monthly_folder_id)
 
@@ -3526,7 +3535,7 @@ def background_organize_files_job():
                 monthly_folder_name = job.created_date.astimezone(THAILAND_TZ).strftime('%Y-%m')
                 monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
 
-                sanitized_customer_name = sanitize_filename(job.customer.name or 'Unknown_Customer')
+                sanitized_customer_name = sanitize_filename(customer.name, fallback=f"Customer_{customer.id}")
                 customer_job_folder_name = f"{sanitized_customer_name} - {job.id}"
                 destination_folder_id = find_or_create_drive_folder(customer_job_folder_name, monthly_folder_id)
 
