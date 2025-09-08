@@ -18,15 +18,12 @@ from num2words import num2words
 from urllib.parse import quote_plus, quote
 from linebot.v3.messaging import FlexMessage
 from urllib.parse import quote_plus
-# ##### START: MODIFIED #####
-# เพิ่ม THAILAND_TZ เข้าไปในรายการ import
 from app import (
     db, Customer, Job, Report, Attachment, JobItem, BillingStatus, User,
     LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION, UserActivity,
     message_queue, cache, Warehouse, StockLevel, get_google_drive_service, _execute_google_api_call_with_retry,
-    find_or_create_drive_folder, upload_data_from_memory_to_drive, THAILAND_TZ
+    find_or_create_drive_folder, upload_data_from_memory_to_drive
 )
-# ##### END: MODIFIED #####
 from utils import (
     parse_db_customer_data, parse_db_job_data, parse_db_report_data,
     get_app_settings, generate_qr_code_base64, get_technician_report_data
@@ -34,7 +31,7 @@ from utils import (
 
 liff_bp = Blueprint('liff', __name__)
 
-# THAILAND_TZ = pytz.timezone('Asia/Bangkok') # ลบบรรทัดนี้ออกเพราะ import มาจาก app.py แล้ว
+THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
 @liff_bp.route('/')
 @liff_bp.route('/summary')
@@ -189,33 +186,34 @@ def job_details(customer_id, job_id):
     progress_report_snippets = settings.get('technician_templates', {}).get('progress_reports', [])
     equipment_catalog = settings.get('equipment_catalog', [])
 
+    # --- START: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
+    # ดึง line_user_id จาก session ที่อาจถูกตั้งค่าไว้ตอนเปิด LIFF
     line_user_id = session.get('line_user_id')
     if line_user_id:
         try:
+            # ค้นหาหรือสร้าง record กิจกรรมของผู้ใช้
             activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
             if not activity:
                 activity = UserActivity(line_user_id=line_user_id)
                 db.session.add(activity)
             
+            # อัปเดตงานล่าสุดที่ดู
             activity.last_viewed_job_id = job_id
             db.session.commit()
         except Exception as e:
-            current_app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
+            app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
             db.session.rollback()
+    # --- END: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
 
-    # ##### START: MODIFIED #####
-    # เปลี่ยน 'job_details.html' เป็น 'update_task_details.html'
-    # และเพิ่มตัวแปร thaizone เข้าไป
     return render_template(
-        'update_task_details.html',
+        'job_details.html',
         task=job,
         job=job,
         customer_info=customer_info,
         technician_list=technician_list,
         progress_report_snippets=progress_report_snippets,
         equipment_catalog=equipment_catalog,
-        liff_id=LIFF_ID_FORM,
-        thaizone=THAILAND_TZ
+        liff_id=LIFF_ID_FORM
     )
 
 @liff_bp.route('/api/customer/<int:customer_id>/job/<int:job_id>/update', methods=['POST'])
@@ -282,8 +280,6 @@ def api_update_job_report(customer_id, job_id):
         db.session.rollback()
         current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
-
-# ... (โค้ดส่วนที่เหลือของ liff_views.py เหมือนเดิมทุกประการ) ...
 
 @liff_bp.route('/summary/print')
 def summary_print():
