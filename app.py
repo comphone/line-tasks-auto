@@ -6,7 +6,7 @@ from googleapiclient.errors import HttpError
 import requests
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from sqlalchemy.orm import relationship, backref, property
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy import text # <--- เพิ่ม text ตรงนี้
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
