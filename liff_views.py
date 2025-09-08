@@ -8,7 +8,7 @@ from itertools import groupby
 from datetime import timedelta, time
 from flask import (
     Blueprint, render_template, request, url_for, abort, jsonify,
-    current_app, redirect, flash, make_response
+    current_app, redirect, flash, make_response, session
 )
 from dateutil.parser import parse as date_parse
 from sqlalchemy import func, or_, and_, desc, case
