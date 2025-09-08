@@ -22,7 +22,7 @@ from app import (
     db, Customer, Job, Report, Attachment, JobItem, BillingStatus, User,
     LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION, UserActivity,
     message_queue, cache, Warehouse, StockLevel, get_google_drive_service, _execute_google_api_call_with_retry,
-    find_or_create_drive_folder, upload_data_from_memory_to_drive, THAILAND_TZ
+    find_or_create_drive_folder, upload_data_from_memory_to_drive
 )
 from utils import (
     parse_db_customer_data, parse_db_job_data, parse_db_report_data,
@@ -31,7 +31,7 @@ from utils import (
 
 liff_bp = Blueprint('liff', __name__)
 
-# THAILAND_TZ is now imported from app.py
+THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
 @liff_bp.route('/')
 @liff_bp.route('/summary')
@@ -42,9 +42,10 @@ def summary():
     query = db.session.query(Job).join(Customer)
 
     today = datetime.datetime.now(THAILAND_TZ).date()
-    today_start_utc = THAILAND_TZ.localize(datetime.datetime.combine(today, time.min)).astimezone(pytz.utc)
-    today_end_utc = THAILAND_TZ.localize(datetime.datetime.combine(today, time.max)).astimezone(pytz.utc)
+    today_start_utc = datetime.datetime.combine(today, time.min).astimezone(pytz.utc)
+    today_end_utc = datetime.datetime.combine(today, time.max).astimezone(pytz.utc)
 
+    # --- START: โค้ดส่วนที่แก้ไขการเรียงลำดับ ---
     sort_order = case(
         (and_(Job.status != 'completed', Job.due_date >= today_start_utc, Job.due_date <= today_end_utc), 1),
         (and_(Job.status != 'completed', Job.due_date < today_start_utc), 2),
@@ -54,6 +55,7 @@ def summary():
     )
 
     query = query.order_by(sort_order, Job.due_date.asc(), Job.completed_date.desc())
+    # --- END: โค้ดส่วนที่แก้ไขการเรียงลำดับ ---
 
     all_jobs = query.all()
 
@@ -64,7 +66,7 @@ def summary():
         'today': sum(1 for j in all_jobs if j.status == 'needsAction' and j.due_date and j.due_date.astimezone(THAILAND_TZ).date() == today)
     }
 
-    now_utc = datetime.datetime.now(pytz.utc)
+    now_utc = datetime.datetime.utcnow()
     thirty_days_ago_utc = now_utc - timedelta(days=30)
 
     completed_jobs_last_30_days = Job.query.filter(
@@ -84,6 +86,7 @@ def summary():
         'values': chart_values
     }
 
+    # Filtering logic for display
     final_jobs = all_jobs
     if status_filter != 'all':
         if status_filter == 'today':
@@ -111,6 +114,7 @@ def summary():
 
 @liff_bp.route('/customer/<int:customer_id>')
 def customer_profile(customer_id):
+    """แสดงหน้าโปรไฟล์และประวัติงานทั้งหมดของลูกค้า (เวอร์ชันแก้ไขล่าสุด)"""
     customer = Customer.query.get(customer_id)
     if not customer:
         abort(404)
@@ -124,11 +128,43 @@ def customer_profile(customer_id):
     
     settings = get_app_settings()
 
-    # This logic now correctly points to the job_details view, which will render the new template
+    if len(jobs) == 1:
+        single_job = jobs[0]
+        reports = Report.query.filter_by(job_id=single_job.id).order_by(Report.summary_date.desc()).all()
+        tech_reports_history = [
+            parse_db_report_data(report) for report in reports if report.report_type in ['report', 'reschedule'] or report.is_internal
+        ]
+
+        task_data = {
+            'id': single_job.id,
+            'title': single_job.job_title,
+            'customer': customer,
+            'assigned_technician': single_job.assigned_technician,
+            'due_date': single_job.due_date,
+            'is_overdue': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() < datetime.date.today(),
+            'is_today': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() == datetime.date.today(),
+            'status': single_job.status,
+            'tech_reports_history': tech_reports_history
+        }
+
+        return render_template(
+            'customer_profile.html',
+            profile=customer,
+            jobs=jobs,
+            task=task_data,
+            customer_id=customer_id,
+            total_jobs=len(jobs),
+            total_spent=total_spent,
+            technician_list=settings.get('technician_list', []),
+            equipment_catalog=settings.get('equipment_catalog', []),
+            progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', [])
+        )
+
     return render_template(
         'customer_profile.html',
         profile=customer,
         jobs=jobs,
+        task=None,
         customer_id=customer_id,
         total_jobs=len(jobs),
         total_spent=total_spent
@@ -150,30 +186,34 @@ def job_details(customer_id, job_id):
     progress_report_snippets = settings.get('technician_templates', {}).get('progress_reports', [])
     equipment_catalog = settings.get('equipment_catalog', [])
 
+    # --- START: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
+    # ดึง line_user_id จาก session ที่อาจถูกตั้งค่าไว้ตอนเปิด LIFF
     line_user_id = session.get('line_user_id')
     if line_user_id:
         try:
+            # ค้นหาหรือสร้าง record กิจกรรมของผู้ใช้
             activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
             if not activity:
                 activity = UserActivity(line_user_id=line_user_id)
                 db.session.add(activity)
             
+            # อัปเดตงานล่าสุดที่ดู
             activity.last_viewed_job_id = job_id
             db.session.commit()
         except Exception as e:
-            current_app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
+            app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
             db.session.rollback()
+    # --- END: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
 
     return render_template(
-        'update_task_details.html',
+        'job_details.html',
         task=job,
         job=job,
         customer_info=customer_info,
         technician_list=technician_list,
         progress_report_snippets=progress_report_snippets,
         equipment_catalog=equipment_catalog,
-        liff_id=LIFF_ID_FORM,
-        thaizone=THAILAND_TZ
+        liff_id=LIFF_ID_FORM
     )
 
 @liff_bp.route('/api/customer/<int:customer_id>/job/<int:job_id>/update', methods=['POST'])
@@ -202,7 +242,7 @@ def api_update_job_report(customer_id, job_id):
         
         if action == 'complete_task':
             job_to_update.status = 'completed'
-            job_to_update.completed_date = datetime.datetime.now(pytz.utc)
+            job_to_update.completed_date = datetime.datetime.utcnow()
             new_report.report_type = 'report'
             new_report.work_summary = request.form.get('work_summary')
             flash_message = 'ปิดงานสำเร็จ!'
@@ -230,7 +270,7 @@ def api_update_job_report(customer_id, job_id):
         new_attachments_json = request.form.get('uploaded_attachments_json')
         new_attachments = json.loads(new_attachments_json) if new_attachments_json else []
         for att_data in new_attachments:
-            new_att = Attachment(report_id=new_report.id, drive_file_id=att_data['id'], file_name=att_data['name'], file_url=att_data['url'])
+            new_att = Attachment(report=new_report, drive_file_id=att_data['id'], file_name=att_data['name'], file_url=att_data['url'])
             db.session.add(new_att)
 
         db.session.commit()
@@ -241,7 +281,6 @@ def api_update_job_report(customer_id, job_id):
         current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
-# Other routes remain unchanged...
 @liff_bp.route('/summary/print')
 def summary_print():
     jobs = Job.query.all()
@@ -568,9 +607,9 @@ def update_billing_status(job_id):
 
     billing_record.status = new_status
     if new_status == 'billed' and not billing_record.billed_date:
-        billing_record.billed_date = datetime.datetime.now(pytz.utc)
+        billing_record.billed_date = datetime.datetime.utcnow()
     elif new_status == 'paid' and not billing_record.paid_date:
-        billing_record.paid_date = datetime.datetime.now(pytz.utc)
+        billing_record.paid_date = datetime.datetime.utcnow()
 
     try:
         db.session.commit()
@@ -596,7 +635,7 @@ def api_billing_batch_update():
         for record in records_to_update:
             record.status = new_status
             if new_status == 'paid' and not record.paid_date:
-                record.paid_date = datetime.datetime.now(pytz.utc)
+                record.paid_date = datetime.datetime.utcnow()
             updated_count += 1
             
         db.session.commit()
@@ -661,13 +700,13 @@ def send_invoice_to_customer(job_id):
     
     invoice_url = drive_file_info['webViewLink']
 
-    # flex_message = create_invoice_flex_message({'title': job.job_title, 'customer': customer}, total_cost, invoice_url)
-    # message_queue.add_message(recipient_id, [flex_message])
+    flex_message = create_invoice_flex_message({'title': job.job_title, 'customer': customer}, total_cost, invoice_url)
+    message_queue.add_message(recipient_id, [flex_message])
     
     billing_record = BillingStatus.query.filter_by(job_id=job_id).first()
     if billing_record and billing_record.status == 'pending_billing':
         billing_record.status = 'billed'
-        billing_record.billed_date = datetime.datetime.now(pytz.utc)
+        billing_record.billed_date = datetime.datetime.utcnow()
         db.session.commit()
             
     return jsonify({'status': 'success', 'message': f'ส่งใบแจ้งหนี้ไปยัง {recipient_id} เรียบร้อยแล้ว'})
@@ -703,7 +742,7 @@ def edit_report_attachments(customer_id, job_id, report_id):
 
         attachments_to_keep_ids = request.form.getlist('attachments_to_keep')
         
-        original_attachments = list(report_to_edit.attachments) # Create a copy
+        original_attachments = report_to_edit.attachments
         
         drive_service = get_google_drive_service()
         if drive_service:
@@ -711,9 +750,14 @@ def edit_report_attachments(customer_id, job_id, report_id):
                 if att.drive_file_id not in attachments_to_keep_ids:
                     try:
                         _execute_google_api_call_with_retry(drive_service.files().delete, fileId=att.drive_file_id)
-                        db.session.delete(att)
                     except Exception as e:
                         current_app.logger.error(f"Failed to delete attachment {att.drive_file_id}: {e}")
+            
+            db.session.commit()
+            
+            for att in original_attachments:
+                if att.drive_file_id not in attachments_to_keep_ids:
+                    db.session.delete(att)
         
         new_files = request.files.getlist('new_files[]')
         for file in new_files:
@@ -722,15 +766,14 @@ def edit_report_attachments(customer_id, job_id, report_id):
                 customer = report_to_edit.job.customer
                 job = report_to_edit.job
                 monthly_folder_name = job.created_date.astimezone(THAILAND_TZ).strftime('%Y-%m')
-                attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", os.environ.get('GOOGLE_DRIVE_FOLDER_ID'))
-                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+                monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, os.environ.get('GOOGLE_DRIVE_FOLDER_ID'))
                 customer_job_folder_name = f"{sanitize_filename(customer.name)} - {job.id}"
                 destination_folder_id = find_or_create_drive_folder(customer_job_folder_name, monthly_folder_id)
 
                 if destination_folder_id:
                     drive_file_info = upload_data_from_memory_to_drive(file_to_upload, filename, mime_type, destination_folder_id)
                     if drive_file_info and drive_file_info.get('id'):
-                        new_att = Attachment(report=report_to_edit, drive_file_id=drive_file_info['id'], file_name=filename, file_url=drive_file_info.get('webViewLink'))
+                        new_att = Attachment(report=report_to_edit, drive_file_id=drive_file_info['id'], file_name=filename, file_url=drive_file_info['webViewLink'])
                         db.session.add(new_att)
 
         db.session.commit()
