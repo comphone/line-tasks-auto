@@ -206,7 +206,7 @@ def job_details(customer_id, job_id):
     # --- END: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
 
     return render_template(
-        'job_details.html',
+        'update_task_details.html',
         task=job,
         job=job,
         customer_info=customer_info,

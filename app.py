@@ -3660,7 +3660,7 @@ def background_organize_files_job():
                 monthly_folder_name = job.created_date.astimezone(THAILAND_TZ).strftime('%Y-%m')
                 monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
 
-                sanitized_customer_name = sanitize_filename(customer.name, fallback=f"Customer_{customer.id}")
+                sanitized_customer_name = sanitize_filename(job.customer.name, fallback=f"Customer_{job.customer.id}")
                 customer_job_folder_name = f"{sanitized_customer_name} - {job.id}"
                 destination_folder_id = find_or_create_drive_folder(customer_job_folder_name, monthly_folder_id)
 
