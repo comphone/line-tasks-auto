@@ -353,15 +353,6 @@
                         พิมพ์ `/` เพื่อใช้ข้อความด่วน | กด <i class="fas fa-microphone"></i> เพื่อบันทึกด้วยเสียง
                     </small>
                 </div>
-                <div class="mb-3">
-                    <label for="technicians_reschedule_display" class="form-label"><strong>ผู้บันทึกการเลื่อนนัด <span class="text-danger">*</span></strong></label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
-                        <input type="text" id="technicians_reschedule_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_reschedule')">
-                        <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_reschedule')">เลือก</button>
-                    </div>
-                    <input type="hidden" id="technicians_reschedule" name="technicians_report" required>
-                </div>
                 <hr>
                 <button type="submit" class="btn btn-warning"><i class="fas fa-calendar-alt me-2"></i>บันทึกการเลื่อนนัด</button>
                 <button type="button" class="btn btn-secondary ms-2" onclick="window.showActionCard('chooseActionCard')">ยกเลิก</button>
@@ -398,16 +389,6 @@
                             พิมพ์ `/` เพื่อใช้ข้อความด่วน | กด <i class="fas fa-microphone"></i> เพื่อบันทึกด้วยเสียง
                         </small>
                     </div>
-                    <div class="mb-3">
-                        <label for="technicians_progress_display" class="form-label">ช่าง <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-user-cog"></i></span>
-                            <input type="text" id="technicians_progress_display" class="form-control" placeholder="กรุณาเลือกช่าง..." readonly onclick="window.openTechnicianModal('technicians_progress')">
-                            <button class="btn btn-outline-secondary" type="button" onclick="window.openTechnicianModal('technicians_progress')">เลือก</button>
-                        </div>
-                        <input type="hidden" id="technicians_progress" name="technicians_report" required>
-                    </div>
-
                     <div class="mb-3">
                         <label class="form-label"><i class="fas fa-paperclip me-1"></i>แนบรูป/ไฟล์อื่นๆ</label>
                         <div class="file-drop-zone" id="drop-zone-progress">
@@ -613,7 +594,11 @@
                 const isKnownTechnician = technicianList.some(tech => tech.name === currentUserName);
 
                 if (isKnownTechnician) {
-                    const targets = ['progress', 'final', 'reschedule'];
+                    // ##### START: MODIFIED #####
+                    // Original: const targets = ['progress', 'final', 'reschedule'];
+                    const targets = ['final']; // Keep only 'final' as others are removed
+                    // ##### END: MODIFIED #####
+
                     targets.forEach(targetId => {
                         const hiddenInput = document.getElementById(`technicians_${targetId}`);
                         if (hiddenInput) hiddenInput.value = currentUserName;
@@ -944,15 +929,17 @@
     
     function updateProgressSaveButtonState() {
         const workSummary = document.getElementById('work_summary_progress').value.trim();
-        const technicians = document.getElementById('technicians_progress').value;
         const hasFiles = filesToUpload['progress'].length > 0;
         const saveButton = document.getElementById('saveProgressBtn');
 
-        if (technicians && (workSummary || hasFiles)) {
+        // ##### START: MODIFIED #####
+        // Original logic checked for technician, which is now removed
+        if (workSummary || hasFiles) {
             saveButton.disabled = false;
         } else {
             saveButton.disabled = true;
         }
+        // ##### END: MODIFIED #####
     }
     
     window.confirmTechnicianSelection = () => {
