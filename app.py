@@ -69,6 +69,9 @@ from linebot.v3.webhooks import (
     ImageMessageContent, FileMessageContent,
     GroupSource, UserSource, FollowEvent
 )
+from io import BytesIO # <--- เพิ่ม BytesIO
+import mimetypes # <--- เพิ่ม mimetypes
+from datetime import timedelta # <--- เพิ่ม timedelta
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 
@@ -279,6 +282,13 @@ class StockMovement(db.Model):
     notes = db.Column(db.Text, nullable=True)
     user = db.Column(db.String(100), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+class UserActivity(db.Model):
+    __tablename__ = 'user_activity'
+    id = db.Column(db.Integer, primary_key=True)
+    line_user_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    last_viewed_job_id = db.Column(db.Integer, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 CORS(app)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_for_development_only')
@@ -3288,6 +3298,89 @@ def handle_text_message(event):
             )
         except Exception as e:
             app.logger.error(f"Error replying to text message: {e}")
+
+@handler.add(MessageEvent, message=ImageMessageContent)
+def handle_image_message(event):
+    line_user_id = event.source.user_id
+    if not line_user_id:
+        return
+
+    # 1. ค้นหางานล่าสุดที่ผู้ใช้นี้เปิดดู
+    activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
+
+    # ตรวจสอบว่ากิจกรรมล่าสุดเกิดขึ้นภายใน 30 นาทีที่ผ่านมาหรือไม่
+    thirty_minutes_ago = datetime.utcnow() - timedelta(minutes=30)
+    if not activity or not activity.last_viewed_job_id or activity.updated_at < thirty_minutes_ago:
+        # ถ้าไม่พบ หรือนานเกินไป ให้ส่งข้อความแจ้งเตือน
+        reply_text = "ไม่สามารถระบุงานที่เกี่ยวข้องได้ โปรดอัปโหลดรูปภาพผ่านหน้ารายละเอียดงานโดยตรงครับ/ค่ะ"
+        message_queue.add_message(line_user_id, TextMessage(text=reply_text))
+        return
+
+    job_id = activity.last_viewed_job_id
+    job = Job.query.get(job_id)
+    if not job:
+        return
+
+    try:
+        # 2. ดาวน์โหลดรูปภาพจาก LINE
+        message_content = line_messaging_api.get_message_content(message_id=event.message.id)
+        image_bytes = BytesIO(message_content)
+
+        # 3. ใช้ Logic การอัปโหลดไฟล์เดิม
+        filename = f"line_upload_{datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.jpg"
+        mime_type = 'image/jpeg'
+
+        attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
+        monthly_folder_name = job.created_date.strftime('%Y-%m')
+        monthly_folder_id = find_or_create_drive_folder(monthly_folder_name, attachments_base_folder_id)
+        sanitized_customer_name = sanitize_filename(job.customer.name, fallback=f"Customer_{job.customer.id}")
+        customer_job_folder_name = f"{sanitized_customer_name} - {job.id}"
+        final_upload_folder_id = find_or_create_drive_folder(customer_job_folder_name, monthly_folder_id)
+
+        if not final_upload_folder_id:
+            raise Exception("Could not create final upload folder.")
+
+        media_body = MediaIoBaseUpload(image_bytes, mimetype=mime_type, resumable=True)
+        drive_file = _perform_drive_upload(media_body, filename, mime_type, final_upload_folder_id)
+
+        if not drive_file or 'id' not in drive_file:
+            raise Exception("Failed to upload to Google Drive.")
+
+        # 4. สร้าง Report และ Attachment ในฐานข้อมูล
+        settings = get_app_settings()
+        technician_name = "ไม่ระบุ"
+        tech_info = next((tech for tech in settings.get('technician_list', []) if tech.get('line_user_id') == line_user_id), None)
+        if tech_info:
+            technician_name = tech_info.get('name', "ไม่ระบุ")
+
+        new_report = Report(
+            job_id=job.id,
+            report_type='report',
+            work_summary=f"[รูปภาพจาก LINE] เพิ่มรูปภาพโดย {technician_name}",
+            technicians=technician_name,
+            is_internal=False 
+        )
+        db.session.add(new_report)
+        db.session.flush()
+
+        new_attachment = Attachment(
+            report_id=new_report.id,
+            drive_file_id=drive_file['id'],
+            file_name=filename,
+            file_url=drive_file.get('webViewLink')
+        )
+        db.session.add(new_attachment)
+        db.session.commit()
+
+        # 5. ส่งข้อความยืนยันกลับไปหาผู้ใช้
+        reply_text = f"✅ รูปภาพถูกเพิ่มไปยังงานของ '{job.customer.name}' เรียบร้อยแล้ว"
+        message_queue.add_message(line_user_id, TextMessage(text=reply_text))
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error handling direct image upload for user {line_user_id}: {e}")
+        reply_text = f"เกิดข้อผิดพลาดในการบันทึกรูปภาพ: {e}"
+        message_queue.add_message(line_user_id, TextMessage(text=reply_text))
 
 @handler.add(PostbackEvent)
 def handle_postback(event):

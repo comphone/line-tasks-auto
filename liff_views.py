@@ -19,8 +19,8 @@ from urllib.parse import quote_plus, quote
 from linebot.v3.messaging import FlexMessage
 from urllib.parse import quote_plus
 from app import (
-    db, Customer, Job, Report, Attachment, JobItem, BillingStatus,
-    LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION,
+    db, Customer, Job, Report, Attachment, JobItem, BillingStatus, User,
+    LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION, UserActivity,
     message_queue, cache, Warehouse, StockLevel, get_google_drive_service, _execute_google_api_call_with_retry,
     find_or_create_drive_folder, upload_data_from_memory_to_drive
 )
@@ -172,38 +172,48 @@ def customer_profile(customer_id):
 
 @liff_bp.route('/customer/<int:customer_id>/job/<int:job_id>')
 def job_details(customer_id, job_id):
-    job = Job.query.filter_by(id=job_id, customer_id=customer_id).first()
-    if not job:
+    job = Job.query.options(
+        db.joinedload(Job.customer),
+        db.joinedload(Job.reports).joinedload(Report.attachments)
+    ).get(job_id)
+
+    if not job or job.customer.id != customer_id:
         abort(404)
 
-    reports = Report.query.filter_by(job_id=job.id).order_by(Report.summary_date.desc()).all()
-    tech_reports_history = [
-        parse_db_report_data(report) for report in reports if report.report_type in ['report', 'reschedule'] or report.is_internal
-    ]
-    
+    customer_info = job.customer
     settings = get_app_settings()
+    technician_list = settings.get('technician_list', [])
+    progress_report_snippets = settings.get('technician_templates', {}).get('progress_reports', [])
+    equipment_catalog = settings.get('equipment_catalog', [])
 
-    task_data = {
-        'id': job.id,
-        'title': job.job_title,
-        'customer': job.customer,
-        'assigned_technician': job.assigned_technician,
-        'due_date': job.due_date,
-        'is_overdue': job.due_date and job.due_date.astimezone(THAILAND_TZ).date() < datetime.date.today(),
-        'is_today': job.due_date and job.due_date.astimezone(THAILAND_TZ).date() == datetime.date.today(),
-        'status': job.status,
-        'tech_reports_history': tech_reports_history
-    }
-    
+    # --- START: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
+    # ดึง line_user_id จาก session ที่อาจถูกตั้งค่าไว้ตอนเปิด LIFF
+    line_user_id = session.get('line_user_id')
+    if line_user_id:
+        try:
+            # ค้นหาหรือสร้าง record กิจกรรมของผู้ใช้
+            activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
+            if not activity:
+                activity = UserActivity(line_user_id=line_user_id)
+                db.session.add(activity)
+            
+            # อัปเดตงานล่าสุดที่ดู
+            activity.last_viewed_job_id = job_id
+            db.session.commit()
+        except Exception as e:
+            app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
+            db.session.rollback()
+    # --- END: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
+
     return render_template(
         'job_details.html',
+        task=job,
         job=job,
-        task=task_data,
-        customer_info=job.customer,
-        customer_id=customer_id,
-        technician_list=settings.get('technician_list', []),
-        equipment_catalog=settings.get('equipment_catalog', []),
-        progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', [])
+        customer_info=customer_info,
+        technician_list=technician_list,
+        progress_report_snippets=progress_report_snippets,
+        equipment_catalog=equipment_catalog,
+        liff_id=LIFF_ID_FORM
     )
 
 @liff_bp.route('/api/customer/<int:customer_id>/job/<int:job_id>/update', methods=['POST'])
