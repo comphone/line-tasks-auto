@@ -186,6 +186,23 @@ class Job(db.Model):
     items = db.relationship('JobItem', backref='job', lazy=True)
 
     @property
+    def is_today(self):
+        if not self.due_date or self.status == 'completed':
+            return False
+        # THAILAND_TZ is defined globally in app.py
+        due_date_local = self.due_date.astimezone(THAILAND_TZ)
+        today_local = datetime.datetime.now(THAILAND_TZ).date()
+        return due_date_local.date() == today_local
+
+    @property
+    def is_overdue(self):
+        if not self.due_date or self.status == 'completed':
+            return False
+        due_date_local = self.due_date.astimezone(THAILAND_TZ)
+        today_local = datetime.datetime.now(THAILAND_TZ).date()
+        return due_date_local.date() < today_local
+
+    @property
     def tech_reports_history(self):
         """
         เตรียมข้อมูลประวัติงาน (reports) ให้อยู่ในรูปแบบ JSON ที่พร้อมใช้งานในหน้าเว็บ
