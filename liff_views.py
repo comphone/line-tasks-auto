@@ -22,7 +22,7 @@ from app import (
     db, Customer, Job, Report, Attachment, JobItem, BillingStatus, User,
     LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION, UserActivity,
     message_queue, cache, Warehouse, StockLevel, get_google_drive_service, _execute_google_api_call_with_retry,
-    find_or_create_drive_folder, upload_data_from_memory_to_drive, THAILAND_TZ
+    find_or_create_drive_folder, upload_data_from_memory_to_drive
 )
 from utils import (
     parse_db_customer_data, parse_db_job_data, parse_db_report_data,
@@ -30,6 +30,8 @@ from utils import (
 )
 
 liff_bp = Blueprint('liff', __name__)
+
+THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
 @liff_bp.route('/')
 @liff_bp.route('/summary')
@@ -40,9 +42,10 @@ def summary():
     query = db.session.query(Job).join(Customer)
 
     today = datetime.datetime.now(THAILAND_TZ).date()
-    today_start_utc = THAILAND_TZ.localize(datetime.datetime.combine(today, time.min)).astimezone(pytz.utc)
-    today_end_utc = THAILAND_TZ.localize(datetime.datetime.combine(today, time.max)).astimezone(pytz.utc)
+    today_start_utc = datetime.datetime.combine(today, time.min).astimezone(pytz.utc)
+    today_end_utc = datetime.datetime.combine(today, time.max).astimezone(pytz.utc)
 
+    # --- START: โค้ดส่วนที่แก้ไขการเรียงลำดับ ---
     sort_order = case(
         (and_(Job.status != 'completed', Job.due_date >= today_start_utc, Job.due_date <= today_end_utc), 1),
         (and_(Job.status != 'completed', Job.due_date < today_start_utc), 2),
@@ -52,6 +55,7 @@ def summary():
     )
 
     query = query.order_by(sort_order, Job.due_date.asc(), Job.completed_date.desc())
+    # --- END: โค้ดส่วนที่แก้ไขการเรียงลำดับ ---
 
     all_jobs = query.all()
 
@@ -62,7 +66,7 @@ def summary():
         'today': sum(1 for j in all_jobs if j.status == 'needsAction' and j.due_date and j.due_date.astimezone(THAILAND_TZ).date() == today)
     }
 
-    now_utc = datetime.datetime.now(pytz.utc)
+    now_utc = datetime.datetime.utcnow()
     thirty_days_ago_utc = now_utc - timedelta(days=30)
 
     completed_jobs_last_30_days = Job.query.filter(
@@ -82,6 +86,7 @@ def summary():
         'values': chart_values
     }
 
+    # Filtering logic for display
     final_jobs = all_jobs
     if status_filter != 'all':
         if status_filter == 'today':
@@ -109,6 +114,7 @@ def summary():
 
 @liff_bp.route('/customer/<int:customer_id>')
 def customer_profile(customer_id):
+    """แสดงหน้าโปรไฟล์และประวัติงานทั้งหมดของลูกค้า (เวอร์ชันแก้ไขล่าสุด)"""
     customer = Customer.query.get(customer_id)
     if not customer:
         abort(404)
@@ -122,10 +128,43 @@ def customer_profile(customer_id):
     
     settings = get_app_settings()
 
+    if len(jobs) == 1:
+        single_job = jobs[0]
+        reports = Report.query.filter_by(job_id=single_job.id).order_by(Report.summary_date.desc()).all()
+        tech_reports_history = [
+            parse_db_report_data(report) for report in reports if report.report_type in ['report', 'reschedule'] or report.is_internal
+        ]
+
+        task_data = {
+            'id': single_job.id,
+            'title': single_job.job_title,
+            'customer': customer,
+            'assigned_technician': single_job.assigned_technician,
+            'due_date': single_job.due_date,
+            'is_overdue': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() < datetime.date.today(),
+            'is_today': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() == datetime.date.today(),
+            'status': single_job.status,
+            'tech_reports_history': tech_reports_history
+        }
+
+        return render_template(
+            'customer_profile.html',
+            profile=customer,
+            jobs=jobs,
+            task=task_data,
+            customer_id=customer_id,
+            total_jobs=len(jobs),
+            total_spent=total_spent,
+            technician_list=settings.get('technician_list', []),
+            equipment_catalog=settings.get('equipment_catalog', []),
+            progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', [])
+        )
+
     return render_template(
         'customer_profile.html',
         profile=customer,
         jobs=jobs,
+        task=None,
         customer_id=customer_id,
         total_jobs=len(jobs),
         total_spent=total_spent
@@ -147,30 +186,34 @@ def job_details(customer_id, job_id):
     progress_report_snippets = settings.get('technician_templates', {}).get('progress_reports', [])
     equipment_catalog = settings.get('equipment_catalog', [])
 
+    # --- START: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
+    # ดึง line_user_id จาก session ที่อาจถูกตั้งค่าไว้ตอนเปิด LIFF
     line_user_id = session.get('line_user_id')
     if line_user_id:
         try:
+            # ค้นหาหรือสร้าง record กิจกรรมของผู้ใช้
             activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
             if not activity:
                 activity = UserActivity(line_user_id=line_user_id)
                 db.session.add(activity)
             
+            # อัปเดตงานล่าสุดที่ดู
             activity.last_viewed_job_id = job_id
             db.session.commit()
         except Exception as e:
-            current_app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
+            app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
             db.session.rollback()
+    # --- END: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
 
     return render_template(
-        'update_task_details.html',
+        'job_details.html',
         task=job,
         job=job,
         customer_info=customer_info,
         technician_list=technician_list,
         progress_report_snippets=progress_report_snippets,
         equipment_catalog=equipment_catalog,
-        liff_id=LIFF_ID_FORM,
-        thaizone=THAILAND_TZ
+        liff_id=LIFF_ID_FORM
     )
 
 @liff_bp.route('/api/customer/<int:customer_id>/job/<int:job_id>/update', methods=['POST'])
