@@ -172,48 +172,49 @@ def customer_profile(customer_id):
 
 @liff_bp.route('/customer/<int:customer_id>/job/<int:job_id>')
 def job_details(customer_id, job_id):
+    # 1. ดึงข้อมูลงาน (Job) และข้อมูลที่เกี่ยวข้อง (Customer, Reports, Attachments) จากฐานข้อมูล
     job = Job.query.options(
         db.joinedload(Job.customer),
         db.joinedload(Job.reports).joinedload(Report.attachments)
     ).get(job_id)
 
+    # 2. ตรวจสอบว่ามีงานจริงหรือไม่ และเป็นของลูกค้าที่ถูกต้องหรือไม่
     if not job or job.customer.id != customer_id:
         abort(404)
 
+    # 3. เตรียมข้อมูลเพิ่มเติมที่ Template ต้องการ
     customer_info = job.customer
     settings = get_app_settings()
     technician_list = settings.get('technician_list', [])
     progress_report_snippets = settings.get('technician_templates', {}).get('progress_reports', [])
     equipment_catalog = settings.get('equipment_catalog', [])
 
-    # --- START: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
-    # ดึง line_user_id จาก session ที่อาจถูกตั้งค่าไว้ตอนเปิด LIFF
+    # 4. (ฟีเจอร์เดิม) บันทึกกิจกรรมล่าสุดของผู้ใช้ที่เข้ามาดูหน้านี้
     line_user_id = session.get('line_user_id')
     if line_user_id:
         try:
-            # ค้นหาหรือสร้าง record กิจกรรมของผู้ใช้
             activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
             if not activity:
                 activity = UserActivity(line_user_id=line_user_id)
                 db.session.add(activity)
             
-            # อัปเดตงานล่าสุดที่ดู
             activity.last_viewed_job_id = job_id
             db.session.commit()
         except Exception as e:
-            app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
+            current_app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
             db.session.rollback()
-    # --- END: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
 
+    # 5. ส่งข้อมูลทั้งหมดไปแสดงผลที่ Template ใหม่ (update_task_details.html)
     return render_template(
-        'job_details.html',
-        task=job,
-        job=job,
-        customer_info=customer_info,
-        technician_list=technician_list,
-        progress_report_snippets=progress_report_snippets,
-        equipment_catalog=equipment_catalog,
-        liff_id=LIFF_ID_FORM
+        'update_task_details.html',          # <<< เรียกใช้ Template ใหม่
+        task=job,                            # <<< ส่งข้อมูลงาน (จำเป็นสำหรับ Template)
+        job=job,                             # <<< ส่งข้อมูลงาน (เผื่อบางส่วนของ Template ยังใช้ชื่อนี้)
+        customer_info=customer_info,         # <<< ส่งข้อมูลลูกค้า
+        technician_list=technician_list,     # <<< ส่งรายชื่อช่าง
+        progress_report_snippets=progress_report_snippets, # <<< ส่งข้อความด่วน
+        equipment_catalog=equipment_catalog, # <<< ส่งแคตตาล็อกอุปกรณ์
+        liff_id=LIFF_ID_FORM,                # <<< ส่ง LIFF ID
+        thaizone=THAILAND_TZ                 # <<< [สำคัญ] ส่ง Timezone ของประเทศไทย
     )
 
 @liff_bp.route('/api/customer/<int:customer_id>/job/<int:job_id>/update', methods=['POST'])

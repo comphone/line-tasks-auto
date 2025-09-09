@@ -185,6 +185,7 @@ class Job(db.Model):
     reports = db.relationship('Report', backref='job', lazy=True)
     items = db.relationship('JobItem', backref='job', lazy=True)
 
+    # ===== START: โค้ดที่เพิ่มเข้ามาใหม่เพื่อแก้ปัญหา =====
     @property
     def is_today(self):
         if not self.due_date or self.status == 'completed':
@@ -201,6 +202,7 @@ class Job(db.Model):
         due_date_local = self.due_date.astimezone(THAILAND_TZ)
         today_local = datetime.datetime.now(THAILAND_TZ).date()
         return due_date_local.date() < today_local
+    # ===== END: สิ้นสุดโค้ดที่เพิ่มเข้ามาใหม่ =====
 
     @property
     def tech_reports_history(self):
