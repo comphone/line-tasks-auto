@@ -185,7 +185,7 @@ class Job(db.Model):
     reports = db.relationship('Report', backref='job', lazy=True)
     items = db.relationship('JobItem', backref='job', lazy=True)
 
-    # ===== START: เพิ่มโค้ดส่วนนี้เข้าไป =====
+    # ===== START: โค้ดที่เพิ่มเข้ามาใหม่เพื่อแก้ปัญหา =====
     @property
     def is_today(self):
         if not self.due_date or self.status == 'completed':
@@ -202,19 +202,35 @@ class Job(db.Model):
         due_date_local = self.due_date.astimezone(THAILAND_TZ)
         today_local = datetime.datetime.now(THAILAND_TZ).date()
         return due_date_local.date() < today_local
-    # ===== END: สิ้นสุดโค้ดที่ต้องเพิ่ม =====
+    # ===== END: สิ้นสุดโค้ดที่เพิ่มเข้ามาใหม่ =====
 
     @property
     def tech_reports_history(self):
+        """
+        เตรียมข้อมูลประวัติงาน (reports) ให้อยู่ในรูปแบบ JSON ที่พร้อมใช้งานในหน้าเว็บ
+        """
         history = []
+        # เรียงลำดับรายงานตามวันที่ล่าสุดไปเก่าสุด
         sorted_reports = sorted(self.reports, key=lambda r: r.summary_date, reverse=True)
+
         for report in sorted_reports:
-            attachments = [{'id': att.drive_file_id, 'name': att.file_name, 'url': att.file_url} for att in report.attachments]
+            attachments = []
+            for att in report.attachments:
+                attachments.append({
+                    'id': att.drive_file_id,
+                    'name': att.file_name,
+                    'url': att.file_url
+                })
+
             history.append({
-                'id': report.id, 'type': report.report_type, 'summary_date': report.summary_date.isoformat(),
-                'work_summary': report.work_summary, 'reason': report.work_summary,
+                'id': report.id,
+                'type': report.report_type,
+                'summary_date': report.summary_date.isoformat(),
+                'work_summary': report.work_summary,
+                'reason': report.work_summary, # ใช้ work_summary แทน reason เพื่อความเข้ากันได้
                 'technicians': report.technicians.split(',') if report.technicians else [],
-                'is_internal': report.is_internal, 'attachments': attachments
+                'is_internal': report.is_internal,
+                'attachments': attachments
             })
         return history
 
