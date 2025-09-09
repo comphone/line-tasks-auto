@@ -7,7 +7,7 @@ import requests
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import text
+from sqlalchemy import text # <--- เพิ่ม text ตรงนี้
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import sys
@@ -31,51 +31,78 @@ from PIL import Image
 from functools import wraps
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+
 from dotenv import load_dotenv
 load_dotenv()
+
 from flask import Flask, request, render_template, redirect, url_for, abort, flash, jsonify, Response, session, make_response, current_app
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 from cachetools import cached, TTLCache
 from geopy.distance import geodesic
 from urllib.parse import urlparse, parse_qs, unquote, quote_plus
+
 from utils import (
     parse_db_customer_data, parse_db_job_data, parse_db_report_data,
     get_app_settings, generate_qr_code_base64,
     find_or_create_drive_folder, upload_data_from_memory_to_drive,
     get_customer_database, get_technician_report_data
 )
+
 import qrcode
 import base64
 from urllib.parse import quote_plus
 from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi, ReplyMessageRequest,
-    PushMessageRequest, TextMessage, FlexMessage, QuickReply, QuickReplyItem
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    ReplyMessageRequest,
+    PushMessageRequest,
+    TextMessage,
+    FlexMessage,
+    QuickReply,
+    QuickReplyItem
 )
-from linebot.v3.messaging.models import URIAction
+from linebot.v3.messaging.models import (
+    URIAction
+)
 from linebot.v3.webhooks import (
-    MessageEvent, TextMessageContent, PostbackEvent, ImageMessageContent,
-    FileMessageContent, GroupSource, UserSource, FollowEvent
+    MessageEvent, TextMessageContent, PostbackEvent,
+    ImageMessageContent, FileMessageContent,
+    GroupSource, UserSource, FollowEvent
 )
-from datetime import timedelta
+from io import BytesIO # <--- เพิ่ม BytesIO
+import mimetypes # <--- เพิ่ม mimetypes
+from datetime import timedelta # <--- เพิ่ม timedelta
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
+
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBaseUpload
 from google.oauth2 import service_account
+
 import pandas as pd
 from dateutil.parser import parse as date_parse
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
+
 from flask_cors import CORS
 
 SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if SENTRY_DSN:
-    sentry_sdk.init(dsn=SENTRY_DSN, integrations=[FlaskIntegration()], traces_sample_rate=1.0, profiles_sample_rate=1.0)
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            FlaskIntegration(),
+        ],
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0
+    )
 
 app = Flask(__name__, static_folder='static')
 
@@ -88,18 +115,28 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True, 'pool_recycle'
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-THAILAND_TZ = pytz.timezone('Asia/Bangkok') # ย้าย THAILAND_TZ มาไว้ที่นี่
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(80), nullable=False, default='user')
+    role = db.Column(db.String(80), nullable=False, default='user') # 'admin', 'user'
     is_active = db.Column(db.Boolean, default=True)
-    def set_password(self, password): self.password_hash = generate_password_hash(password)
-    def check_password(self, password): return check_password_hash(self.password_hash, password)
-    def to_dict(self): return {'id': self.id, 'username': self.username, 'role': self.role, 'is_active': self.is_active}
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'role': self.role,
+            'is_active': self.is_active
+        }
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -108,7 +145,8 @@ login_manager.login_message = "กรุณาเข้าสู่ระบบ�
 login_manager.login_message_category = "info"
 
 @login_manager.user_loader
-def load_user(user_id): return User.query.get(int(user_id))
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 def admin_required(f):
     @wraps(f)
@@ -148,30 +186,32 @@ class Job(db.Model):
     items = db.relationship('JobItem', backref='job', lazy=True)
 
     @property
-    def is_today(self):
-        if not self.due_date or self.status == 'completed': return False
-        due_date_local = self.due_date.astimezone(THAILAND_TZ)
-        today_local = datetime.datetime.now(THAILAND_TZ).date()
-        return due_date_local.date() == today_local
-
-    @property
-    def is_overdue(self):
-        if not self.due_date or self.status == 'completed': return False
-        due_date_local = self.due_date.astimezone(THAILAND_TZ)
-        today_local = datetime.datetime.now(THAILAND_TZ).date()
-        return due_date_local.date() < today_local
-
-    @property
     def tech_reports_history(self):
+        """
+        เตรียมข้อมูลประวัติงาน (reports) ให้อยู่ในรูปแบบ JSON ที่พร้อมใช้งานในหน้าเว็บ
+        """
         history = []
+        # เรียงลำดับรายงานตามวันที่ล่าสุดไปเก่าสุด
         sorted_reports = sorted(self.reports, key=lambda r: r.summary_date, reverse=True)
+
         for report in sorted_reports:
-            attachments = [{'id': att.drive_file_id, 'name': att.file_name, 'url': att.file_url} for att in report.attachments]
+            attachments = []
+            for att in report.attachments:
+                attachments.append({
+                    'id': att.drive_file_id,
+                    'name': att.file_name,
+                    'url': att.file_url
+                })
+
             history.append({
-                'id': report.id, 'type': report.report_type, 'summary_date': report.summary_date.isoformat(),
-                'work_summary': report.work_summary, 'reason': report.work_summary,
+                'id': report.id,
+                'type': report.report_type,
+                'summary_date': report.summary_date.isoformat(),
+                'work_summary': report.work_summary,
+                'reason': report.work_summary, # ใช้ work_summary แทน reason เพื่อความเข้ากันได้
                 'technicians': report.technicians.split(',') if report.technicians else [],
-                'is_internal': report.is_internal, 'attachments': attachments
+                'is_internal': report.is_internal,
+                'attachments': attachments
             })
         return history
 
