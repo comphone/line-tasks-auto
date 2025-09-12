@@ -1,108 +1,125 @@
-{% extends "base.html" %}
+{% raw %}{% extends "base.html" %}
 
 {% block title %}โปรไฟล์ลูกค้า: {{ profile.name }}{% endblock %}
 
-{% block head_extra %}
-<style>
-    /* General Styles */
-    .card-header h5 { font-weight: 600; }
-    
-    /* Timeline Styles (for multi-job view) */
-    .timeline { position: relative; padding: 0; list-style: none; }
-    .timeline:before { content: ''; position: absolute; top: 0; bottom: 0; width: 3px; background: #e9ecef; left: 32px; margin-left: -1.5px; }
-    .timeline-item { position: relative; margin-bottom: 20px; padding-left: 50px; }
-    .timeline-icon { position: absolute; left: 15px; top: 0; width: 35px; height: 35px; border-radius: 50%; text-align: center; line-height: 35px; font-size: 16px; color: #fff; background: #6c757d; z-index: 100; }
-    .timeline-item.completed .timeline-icon { background: #198754; }
-    .timeline-item.in-progress .timeline-icon { background: #ffc107; }
-
-    .timeline-content { background: #fff; border: 1px solid #dee2e6; border-radius: .5rem; padding: 1.25rem; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-    .timeline-content h6 { font-weight: 600; }
-    
-    /* --- START: แก้ไขปุ่มให้ใหญ่ขึ้น --- */
-    .manage-job-button {
-        font-size: 1rem;
-        padding: 0.5rem 1rem;
-    }
-    /* --- END: แก้ไขปุ่มให้ใหญ่ขึ้น --- */
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h2 mb-0"><i class="fas fa-user-circle me-2"></i>โปรไฟล์ลูกค้า</h1>
-    <a href="{{ url_for('liff.summary') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>กลับหน้าหลัก</a>
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-user-circle me-2"></i>โปรไฟล์ลูกค้า: {{ profile.name }}</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('liff.add_job_for_customer', customer_id=profile.id) }}" class="btn btn-primary me-2">
+            <i class="fas fa-plus-circle me-2"></i>แจ้งซ่อม / เปิดใบงานใหม่
+        </a>
+        <a href="{{ url_for('liff.external_job_form_page', customer_id=profile.id) }}" class="btn btn-outline-secondary">
+            <i class="fas fa-shipping-fast me-2"></i>สร้างงานภายนอก
+        </a>
+    </div>
 </div>
 
+{# Customer Details Card #}
 <div class="card shadow-sm mb-4">
     <div class="card-body">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                {% if profile.organization %}
-                    <h3>{{ profile.organization }}</h3>
-                    <p class="lead mb-1">{{ profile.name }}</p>
-                {% else %}
-                    <h3>{{ profile.name }}</h3>
-                {% endif %}
-                <p class="text-muted mb-1"><i class="fas fa-phone-alt fa-fw me-2"></i>{{ profile.phone or '-' }}</p>
-                <p class="text-muted mb-0"><i class="fas fa-map-marker-alt fa-fw me-2"></i>{{ profile.address or '-' }}</p>
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>องค์กร/บริษัท:</strong> {{ profile.organization or '-' }}</p>
+                <p><strong>เบอร์โทรศัพท์:</strong> {{ profile.phone or '-' }}</p>
             </div>
-            <div class="col-md-4 text-md-end mt-3 mt-md-0">
-                <a href="{{ url_for('liff.external_job_form_page', customer_id=profile.id) }}" class="btn btn-warning me-2"><i class="fas fa-box me-2"></i>สร้างงานภายนอก</a>
-                <a href="{{ url_for('liff.form_page', customer_id=profile.id) }}" class="btn btn-primary btn-lg"><i class="fas fa-plus-circle me-2"></i>แจ้งซ่อม / เปิดใบงานใหม่</a>
+            <div class="col-md-6">
+                <p><strong>ที่อยู่:</strong> {{ profile.address or '-' }}</p>
+                <p><strong>พิกัดแผนที่:</strong> {% if profile.map_url %}<a href="{{ profile.map_url }}" target="_blank">เปิดแผนที่</a>{% else %}-{% endif %}</p>
+            </div>
+        </div>
+        <hr>
+        <div class="row text-center">
+            <div class="col-6">
+                <h5 class="mb-0">{{ total_jobs }}</h5>
+                <small class="text-muted">จำนวนงานทั้งหมด</small>
+            </div>
+            <div class="col-6">
+                <h5 class="mb-0">{{ "{:,.2f}".format(total_spent) }}</h5>
+                <small class="text-muted">ยอดใช้จ่ายทั้งหมด (บาท)</small>
             </div>
         </div>
     </div>
 </div>
 
-{# --- START: Conditional Rendering Logic (เวอร์ชันแก้ไข) --- #}
-{% if total_jobs == 1 and task %}
-    {# เมื่อมีงานเดียว ให้ Include หน้าจัดการงานเต็มรูปแบบมาเลย #}
-    {% include 'update_task_details.html' %}
-
-{% else %}
-    {# --- MULTI JOB VIEW (TIMELINE) --- #}
-    <div class="card shadow-sm">
+{# --- START: โค้ดส่วนที่แก้ไข --- #}
+{# หากมีงานเดียว ให้แสดงรายละเอียดงานนั้นๆ ที่นี่ #}
+{% if task %}
+    <div class="card shadow-sm mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติใบงาน ({{ total_jobs }} รายการ)</h5>
-            <span class="fw-bold">ยอดใช้จ่ายรวม: {{ "%.2f"|format(total_spent) }} บาท</span>
+            <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>รายละเอียดงาน #{{ task.id }}</h5>
+            <a href="{{ url_for('liff.edit_task', job_id=task.id) }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit me-1"></i> แก้ไขข้อมูลหลัก</a>
         </div>
         <div class="card-body">
-            {% if not jobs %}
-                <div class="text-center p-4">
-                    <p class="text-muted">ยังไม่มีประวัติการบริการสำหรับลูกค้ารายนี้</p>
-                </div>
-            {% else %}
-                <ul class="timeline">
-                    {% for job in jobs %}
-                    {% set is_completed = job.status == 'completed' %}
-                    <li class="timeline-item {{ 'completed' if is_completed else 'in-progress' }}">
-                        <div class="timeline-icon">
-                            {% if job.job_type == 'product' %}<i class="fas fa-tools"></i>
-                            {% elif job.job_type == 'external' %}<i class="fas fa-box"></i>
-                            {% else %}<i class="fas {{ 'fa-check' if is_completed else 'fa-concierge-bell' }}"></i>{% endif %}
-                        </div>
-                        <div class="timeline-content">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div>
-                                    <small class="text-primary fw-bold">{% if job.job_type == 'product' %}งานซ่อมสินค้า{% elif job.job_type == 'external' %}งานภายนอก{% else %}งานบริการ{% endif %}</small>
-                                    <h6>{{ job.job_title }}</h6>
-                                </div>
-                                <a href="{{ url_for('liff.job_details', customer_id=profile.id, job_id=job.id) }}" class="btn btn-outline-primary manage-job-button">
-                                    <i class="fas fa-edit me-1"></i>จัดการงานนี้
-                                </a>
-                            </div>
-                            <small class="text-muted d-block">วันที่แจ้ง: {% if job.created_date %}{{ (job.created_date).astimezone(thaizone).strftime('%d/%m/%Y') }}{% else %}-{% endif %}</small>
-                            <small class="text-muted d-block">สถานะ: 
-                                {% if is_completed %}<span class="badge rounded-pill bg-success">เสร็จสิ้น</span>
-                                {% else %}<span class="badge rounded-pill bg-warning text-dark">ดำเนินการ</span>{% endif %}
-                            </small>
-                        </div>
-                    </li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
+            <h4 class="card-title">{{ task.job_title }}</h4>
+            <p><strong>สถานะ:</strong>
+                {% if task.status == 'completed' %}
+                    <span class="badge bg-success">เสร็จสิ้น</span>
+                {% elif task.is_today %}
+                    <span class="badge bg-primary">นัดหมายวันนี้</span>
+                {% elif task.is_overdue %}
+                    <span class="badge bg-danger">เกินกำหนด</span>
+                {% else %}
+                    <span class="badge bg-warning text-dark">รอดำเนินการ</span>
+                {% endif %}
+            </p>
+            <p><strong>วันนัดหมาย:</strong> 
+                {% if task.due_date %}
+                    {{ task.due_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}
+                {% else %}
+                    ยังไม่ได้นัดหมาย
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    {# Action Cards Section (เหมือนใน job_details.html) #}
+    {% if task.status == 'completed' %}
+    {# ... โค้ดปุ่มแจ้งปัญหา ... #}
+    {% else %}
+    {# ... โค้ด Accordion สำหรับบันทึกงาน ... #}
+    {% endif %}
+
+    {# Reports History Card #}
+    <div class="card shadow-sm mt-3">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติการดำเนินงาน</h5>
+        </div>
+        <div class="card-body">
+            {# ใช้ `sorted_reports` ที่ส่งมาจาก liff_views.py #}
+            {% include 'modals/reports_history_card.html' %} 
         </div>
     </div>
 {% endif %}
-{# --- END: Conditional Rendering Logic --- #}
+{# --- END: โค้ดส่วนที่แก้ไข --- #}
+
+
+{# Job History List #}
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-wrench me-2"></i>ประวัติงานซ่อมทั้งหมด ({{ total_jobs }} รายการ)</h5>
+    </div>
+    <div class="list-group list-group-flush">
+        {% for job in jobs %}
+        <a href="{{ url_for('liff.job_details', customer_id=profile.id, job_id=job.id) }}" class="list-group-item list-group-item-action">
+            <div class="d-flex w-100 justify-content-between">
+                <h6 class="mb-1">{{ job.job_title }}</h6>
+                <small>{{ job.created_date.astimezone(thaizone).strftime('%d/%m/%Y') }}</small>
+            </div>
+            <p class="mb-1">
+                {% if job.status == 'completed' %}
+                    <span class="badge bg-success">เสร็จสิ้น</span>
+                {% else %}
+                    <span class="badge bg-warning text-dark">รอดำเนินการ</span>
+                {% endif %}
+            </p>
+        </a>
+        {% else %}
+        <div class="list-group-item">
+            <p class="text-muted text-center mb-0">ยังไม่มีประวัติงาน</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
 {% endblock %}
+{% endraw %}

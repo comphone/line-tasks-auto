@@ -127,47 +127,35 @@ def customer_profile(customer_id):
         total_spent += sum(item.quantity * item.unit_price for item in items)
     
     settings = get_app_settings()
+    
+    # --- START: โค้ดส่วนที่แก้ไข ---
+    # เราจะส่งอ็อบเจกต์ Job จริงๆ ไปเสมอ ไม่ว่าจะมี่กี่งานก็ตาม
+    # และจะสร้าง sorted_reports ที่นี่ด้วยเพื่อความสอดคล้องกัน
+    task_to_display = None
+    sorted_reports = []
 
     if len(jobs) == 1:
-        single_job = jobs[0]
-        reports = Report.query.filter_by(job_id=single_job.id).order_by(Report.summary_date.desc()).all()
-        tech_reports_history = [
-            parse_db_report_data(report) for report in reports if report.report_type in ['report', 'reschedule'] or report.is_internal
-        ]
-
-        task_data = {
-            'id': single_job.id,
-            'title': single_job.job_title,
-            'customer': customer,
-            'assigned_technician': single_job.assigned_technician,
-            'due_date': single_job.due_date,
-            'is_overdue': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() < datetime.date.today(),
-            'is_today': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() == datetime.date.today(),
-            'status': single_job.status,
-            'tech_reports_history': tech_reports_history
-        }
-
-        return render_template(
-            'customer_profile.html',
-            profile=customer,
-            jobs=jobs,
-            task=task_data,
-            customer_id=customer_id,
-            total_jobs=len(jobs),
-            total_spent=total_spent,
-            technician_list=settings.get('technician_list', []),
-            equipment_catalog=settings.get('equipment_catalog', []),
-            progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', [])
+        task_to_display = jobs[0]
+        # ทำการเรียงลำดับ reports ในฝั่ง Backend อย่างปลอดภัย
+        sorted_reports = sorted(
+            task_to_display.reports,
+            key=lambda r: r.summary_date if r.summary_date else datetime.datetime.min.replace(tzinfo=pytz.utc),
+            reverse=True
         )
+    # --- END: โค้ดส่วนที่แก้ไข ---
 
     return render_template(
         'customer_profile.html',
         profile=customer,
         jobs=jobs,
-        task=None,
+        task=task_to_display,  # <--- ส่งอ็อบเจกต์ Job หรือ None
         customer_id=customer_id,
         total_jobs=len(jobs),
-        total_spent=total_spent
+        total_spent=total_spent,
+        technician_list=settings.get('technician_list', []),
+        equipment_catalog=settings.get('equipment_catalog', []),
+        progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', []),
+        sorted_reports=sorted_reports # <--- ส่ง sorted_reports ไปด้วย
     )
 
 @liff_bp.route('/customer/<int:customer_id>/job/<int:job_id>')
