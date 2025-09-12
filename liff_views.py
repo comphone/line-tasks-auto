@@ -8,7 +8,7 @@ from itertools import groupby
 from datetime import timedelta, time
 from flask import (
     Blueprint, render_template, request, url_for, abort, jsonify,
-    current_app, redirect, flash, make_response
+    current_app, redirect, flash, make_response, session
 )
 from dateutil.parser import parse as date_parse
 from sqlalchemy import func, or_, and_, desc, case
@@ -19,8 +19,8 @@ from urllib.parse import quote_plus, quote
 from linebot.v3.messaging import FlexMessage
 from urllib.parse import quote_plus
 from app import (
-    db, Customer, Job, Report, Attachment, JobItem, BillingStatus,
-    LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION,
+    db, Customer, Job, Report, Attachment, JobItem, BillingStatus, User,
+    LIFF_ID_FORM, LIFF_ID_TECHNICIAN_LOCATION, UserActivity,
     message_queue, cache, Warehouse, StockLevel, get_google_drive_service, _execute_google_api_call_with_retry,
     find_or_create_drive_folder, upload_data_from_memory_to_drive
 )
@@ -127,83 +127,87 @@ def customer_profile(customer_id):
         total_spent += sum(item.quantity * item.unit_price for item in items)
     
     settings = get_app_settings()
+    
+    task_to_display = None
+    sorted_reports = []
 
     if len(jobs) == 1:
-        single_job = jobs[0]
-        reports = Report.query.filter_by(job_id=single_job.id).order_by(Report.summary_date.desc()).all()
-        tech_reports_history = [
-            parse_db_report_data(report) for report in reports if report.report_type in ['report', 'reschedule'] or report.is_internal
-        ]
-
-        task_data = {
-            'id': single_job.id,
-            'title': single_job.job_title,
-            'customer': customer,
-            'assigned_technician': single_job.assigned_technician,
-            'due_date': single_job.due_date,
-            'is_overdue': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() < datetime.date.today(),
-            'is_today': single_job.due_date and single_job.due_date.astimezone(THAILAND_TZ).date() == datetime.date.today(),
-            'status': single_job.status,
-            'tech_reports_history': tech_reports_history
-        }
-
-        return render_template(
-            'customer_profile.html',
-            profile=customer,
-            jobs=jobs,
-            task=task_data,
-            customer_id=customer_id,
-            total_jobs=len(jobs),
-            total_spent=total_spent,
-            technician_list=settings.get('technician_list', []),
-            equipment_catalog=settings.get('equipment_catalog', []),
-            progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', [])
-        )
+        task_to_display = jobs[0]
+        # --- START: โค้ดส่วนที่แก้ไข ---
+        # ทำการเรียงลำดับ reports ในฝั่ง Backend อย่างปลอดภัย
+        # โดยกำหนดให้ report ที่ไม่มีวันที่ (None) ถูกจัดว่าเป็นวันที่เก่าที่สุด
+        if task_to_display.reports:
+            sorted_reports = sorted(
+                task_to_display.reports,
+                key=lambda r: r.summary_date if r.summary_date else datetime.datetime.min.replace(tzinfo=pytz.utc),
+                reverse=True
+            )
+        # --- END: โค้ดส่วนที่แก้ไข ---
 
     return render_template(
         'customer_profile.html',
         profile=customer,
         jobs=jobs,
-        task=None,
+        task=task_to_display,
         customer_id=customer_id,
         total_jobs=len(jobs),
-        total_spent=total_spent
+        total_spent=total_spent,
+        technician_list=settings.get('technician_list', []),
+        equipment_catalog=settings.get('equipment_catalog', []),
+        progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', []),
+        sorted_reports=sorted_reports
     )
 
 @liff_bp.route('/customer/<int:customer_id>/job/<int:job_id>')
 def job_details(customer_id, job_id):
-    job = Job.query.filter_by(id=job_id, customer_id=customer_id).first()
-    if not job:
+    job = Job.query.options(
+        db.joinedload(Job.customer),
+        db.joinedload(Job.reports).joinedload(Report.attachments)
+    ).get(job_id)
+
+    if not job or job.customer.id != customer_id:
         abort(404)
 
-    reports = Report.query.filter_by(job_id=job.id).order_by(Report.summary_date.desc()).all()
-    tech_reports_history = [
-        parse_db_report_data(report) for report in reports if report.report_type in ['report', 'reschedule'] or report.is_internal
-    ]
-    
+    customer_info = job.customer
     settings = get_app_settings()
+    technician_list = settings.get('technician_list', [])
+    progress_report_snippets = settings.get('technician_templates', {}).get('progress_reports', [])
+    equipment_catalog = settings.get('equipment_catalog', [])
 
-    task_data = {
-        'id': job.id,
-        'title': job.job_title,
-        'customer': job.customer,
-        'assigned_technician': job.assigned_technician,
-        'due_date': job.due_date,
-        'is_overdue': job.due_date and job.due_date.astimezone(THAILAND_TZ).date() < datetime.date.today(),
-        'is_today': job.due_date and job.due_date.astimezone(THAILAND_TZ).date() == datetime.date.today(),
-        'status': job.status,
-        'tech_reports_history': tech_reports_history
-    }
-    
+    # --- START: โค้ดส่วนที่เพิ่มเข้ามาเพื่อแก้ไขปัญหา ---
+    # ทำการเรียงลำดับ reports ในฝั่ง Backend อย่างปลอดภัย
+    # โดยกำหนดให้ report ที่ไม่มีวันที่ (None) ถูกจัดว่าเป็นวันที่เก่าที่สุด
+    sorted_reports = sorted(
+        job.reports,
+        key=lambda r: r.summary_date if r.summary_date else datetime.datetime.min.replace(tzinfo=pytz.utc),
+        reverse=True
+    )
+    # --- END: โค้dส่วนที่เพิ่มเข้ามาเพื่อแก้ไขปัญหา ---
+
+    line_user_id = session.get('line_user_id')
+    if line_user_id:
+        try:
+            activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
+            if not activity:
+                activity = UserActivity(line_user_id=line_user_id)
+                db.session.add(activity)
+            
+            activity.last_viewed_job_id = job_id
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
+            db.session.rollback()
+
     return render_template(
         'job_details.html',
+        task=job,
         job=job,
-        task=task_data,
-        customer_info=job.customer,
-        customer_id=customer_id,
-        technician_list=settings.get('technician_list', []),
-        equipment_catalog=settings.get('equipment_catalog', []),
-        progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', [])
+        customer_info=customer_info,
+        technician_list=technician_list,
+        progress_report_snippets=progress_report_snippets,
+        equipment_catalog=equipment_catalog,
+        liff_id=LIFF_ID_FORM,
+        sorted_reports=sorted_reports  # <--- ส่งตัวแปรที่เรียงแล้วไปให้ Template
     )
 
 @liff_bp.route('/api/customer/<int:customer_id>/job/<int:job_id>/update', methods=['POST'])
@@ -270,6 +274,54 @@ def api_update_job_report(customer_id, job_id):
         db.session.rollback()
         current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
+
+@liff_bp.route('/api/job/<int:job_id>/reopen', methods=['POST'])
+def api_reopen_job(job_id):
+    job = Job.query.get(job_id)
+    if not job or job.status != 'completed':
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่เสร็จสิ้นแล้ว'}), 404
+
+    try:
+        problem_description = request.form.get('problem_description')
+        if not problem_description:
+            return jsonify({'status': 'error', 'message': 'กรุณาระบุรายละเอียดปัญหา'}), 400
+
+        liff_user_id = request.form.get('technician_line_user_id')
+        technician_name = "ไม่ระบุ"
+        if liff_user_id:
+            settings = get_app_settings()
+            tech_info = next((tech for tech in settings.get('technician_list', []) if tech.get('line_user_id') == liff_user_id), None)
+            if tech_info:
+                technician_name = tech_info.get('name', "ไม่ระบุ")
+        
+        # 1. เปลี่ยนสถานะและล้างวันที่เสร็จ
+        job.status = 'needsAction'
+        job.completed_date = None
+        
+        # 2. ตั้งวันนัดหมายใหม่ (ถ้ามี)
+        new_due_str = request.form.get('new_due_date')
+        if new_due_str:
+            dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
+            job.due_date = dt_local.astimezone(pytz.utc)
+
+        # 3. สร้าง Report เพื่อเป็นหลักฐานการเปิดงานซ้ำ
+        reopen_report = Report(
+            job=job,
+            report_type='reopened',
+            work_summary=f"เปิดงานอีกครั้งเนื่องจาก: {problem_description}",
+            technicians=technician_name,
+            is_internal=False
+        )
+        db.session.add(reopen_report)
+        db.session.commit()
+
+        flash('เปิดงานอีกครั้งเนื่องจากมีปัญหาเรียบร้อยแล้ว!', 'success')
+        return jsonify({'status': 'success', 'message': 'เปิดงานอีกครั้งเรียบร้อยแล้ว'})
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error reopening job {job_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
 
 @liff_bp.route('/summary/print')
 def summary_print():
