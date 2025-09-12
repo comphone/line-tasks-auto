@@ -2014,13 +2014,11 @@ def add_task_items(job_id):
 
         warehouse_id_to_use = warehouse_to_use.id
 
-        JobItem.query.filter_by(job_id=job_id).delete()
-        old_movements = StockMovement.query.filter_by(job_item_id=None).all() # This is simplified and might need a more robust way to find movements to revert
-        for movement in old_movements:
-            stock_level = StockLevel.query.filter_by(product_code=movement.product_code, warehouse_id=movement.from_warehouse_id).first()
-            if stock_level:
-                stock_level.quantity += movement.quantity_change
-            db.session.delete(movement)
+        # --- จุดที่แก้ไข ---
+        # ได้นำบรรทัด JobItem.query.filter_by(job_id=job_id).delete() ออกจากจุดนี้
+        # เพื่อให้ฟังก์ชันทำการ "เพิ่ม" ข้อมูลใหม่เข้าไปเสมอ แทนการ "เขียนทับ"
+        # และได้นำโค้ดคืนสต็อกที่เกี่ยวข้องออกไปด้วย
+        # ------------------
 
         if items_data:
             settings = get_app_settings()
@@ -2028,9 +2026,11 @@ def add_task_items(job_id):
             catalog_dict_by_name = {item['item_name'].lower(): item for item in catalog}
             catalog_changed = False
 
+            # วนลูปเพื่อเพิ่มรายการใหม่ที่ส่งเข้ามา
             for item_data in items_data:
                 item_name_lower = item_data['item_name'].lower()
                 if item_name_lower not in catalog_dict_by_name:
+                    # หากเป็นสินค้าใหม่ที่ไม่มีในระบบ ให้เพิ่มเข้าไปใน catalog
                     new_product = {
                         'item_name': item_data['item_name'],
                         'category': 'ไม่มีหมวดหมู่',
@@ -2045,6 +2045,7 @@ def add_task_items(job_id):
                     catalog_dict_by_name[item_name_lower] = new_product
                     catalog_changed = True
 
+                # สร้างรายการ JobItem ใหม่
                 new_job_item = JobItem(
                     job_id=job_id, item_name=item_data['item_name'],
                     quantity=float(item_data['quantity']), unit_price=float(item_data.get('unit_price', 0)),
@@ -2053,6 +2054,7 @@ def add_task_items(job_id):
                 db.session.add(new_job_item)
                 db.session.flush()
 
+                # ทำการตัดสต็อก
                 product_code = catalog_dict_by_name.get(item_name_lower, {}).get('product_code', item_data['item_name'])
                 quantity_used = float(item_data['quantity'])
 
@@ -2063,6 +2065,7 @@ def add_task_items(job_id):
                 
                 stock_level.quantity -= quantity_used
 
+                # บันทึกการเคลื่อนไหวของสต็อก
                 movement = StockMovement(
                     product_code=product_code, quantity_change=quantity_used,
                     from_warehouse_id=warehouse_id_to_use, to_warehouse_id=None,
@@ -2076,7 +2079,13 @@ def add_task_items(job_id):
                 backup_settings_to_drive()
         
         db.session.commit()
-        return jsonify({'status': 'success', 'message': f'บันทึกรายการและตัดสตอกจากคลัง "{warehouse_to_use.name}" เรียบร้อยแล้ว'}), 200
+        # เปลี่ยนข้อความตอบกลับให้ชัดเจนขึ้น
+        return jsonify({'status': 'success', 'message': f'เพิ่มรายการและตัดสตอกจากคลัง "{warehouse_to_use.name}" เรียบร้อยแล้ว'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error saving job items for job {job_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกรายการ'}), 500
 
     except Exception as e:
         db.session.rollback()
