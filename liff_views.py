@@ -186,24 +186,29 @@ def job_details(customer_id, job_id):
     progress_report_snippets = settings.get('technician_templates', {}).get('progress_reports', [])
     equipment_catalog = settings.get('equipment_catalog', [])
 
-    # --- START: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
-    # ดึง line_user_id จาก session ที่อาจถูกตั้งค่าไว้ตอนเปิด LIFF
+    # --- START: โค้ดส่วนที่เพิ่มเข้ามาเพื่อแก้ไขปัญหา ---
+    # ทำการเรียงลำดับ reports ในฝั่ง Backend อย่างปลอดภัย
+    # โดยกำหนดให้ report ที่ไม่มีวันที่ (None) ถูกจัดว่าเป็นวันที่เก่าที่สุด
+    sorted_reports = sorted(
+        job.reports,
+        key=lambda r: r.summary_date if r.summary_date else datetime.datetime.min.replace(tzinfo=pytz.utc),
+        reverse=True
+    )
+    # --- END: โค้dส่วนที่เพิ่มเข้ามาเพื่อแก้ไขปัญหา ---
+
     line_user_id = session.get('line_user_id')
     if line_user_id:
         try:
-            # ค้นหาหรือสร้าง record กิจกรรมของผู้ใช้
             activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
             if not activity:
                 activity = UserActivity(line_user_id=line_user_id)
                 db.session.add(activity)
             
-            # อัปเดตงานล่าสุดที่ดู
             activity.last_viewed_job_id = job_id
             db.session.commit()
         except Exception as e:
-            app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
+            current_app.logger.error(f"Could not update user activity for {line_user_id}: {e}")
             db.session.rollback()
-    # --- END: เพิ่มโค้ดบันทึกกิจกรรมผู้ใช้ ---
 
     return render_template(
         'job_details.html',
@@ -213,7 +218,8 @@ def job_details(customer_id, job_id):
         technician_list=technician_list,
         progress_report_snippets=progress_report_snippets,
         equipment_catalog=equipment_catalog,
-        liff_id=LIFF_ID_FORM
+        liff_id=LIFF_ID_FORM,
+        sorted_reports=sorted_reports  # <--- ส่งตัวแปรที่เรียงแล้วไปให้ Template
     )
 
 @liff_bp.route('/api/customer/<int:customer_id>/job/<int:job_id>/update', methods=['POST'])

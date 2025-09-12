@@ -1,6 +1,7 @@
-{% raw %}{% if task.reports %}
+{% raw %}{% if sorted_reports %}
 <div class="list-group list-group-flush">
-    {% for report in task.reports|sort(attribute='summary_date', reverse=True) %}
+    {# --- จุดที่แก้ไข: เปลี่ยน task.reports|sort... เป็น sorted_reports --- #}
+    {% for report in sorted_reports %}
     <div class="list-group-item">
         <div class="d-flex w-100 justify-content-between">
             <h6 class="mb-1">
@@ -13,7 +14,6 @@
                 {% endif %}
             </h6>
             <small class="text-muted">
-                {# --- จุดที่แก้ไข --- #}
                 {% if report.summary_date %}
                     {{ report.summary_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}
                 {% else %}
