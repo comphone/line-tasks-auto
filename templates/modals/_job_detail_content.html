@@ -1,0 +1,49 @@
+{% raw %}<div class="row justify-content-center">
+    <div id="flash-message-container-{{ task.id }}" class="col-lg-10 col-md-12"></div>
+    <div class="col-lg-10 col-md-12">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>รายละเอียดงาน #{{ task.id }}</h5>
+                <a href="{{ url_for('liff.edit_task', job_id=task.id) }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit me-1"></i> แก้ไขข้อมูลหลัก</a>
+            </div>
+            <div class="card-body">
+                <h4 class="card-title">{{ task.job_title }}</h4>
+                <p><strong>ลูกค้า:</strong> <a href="{{ url_for('liff.customer_profile', customer_id=customer_info.id) }}">{{ customer_info.name }}</a> ({{ customer_info.organization or '-' }})</p>
+                <p><strong>สถานะ:</strong>
+                    {% if task.status == 'completed' %}
+                        <span class="badge bg-success">เสร็จสิ้น</span>
+                    {% elif task.is_today %}
+                         <span class="badge bg-primary">นัดหมายวันนี้</span>
+                    {% elif task.is_overdue %}
+                        <span class="badge bg-danger">เกินกำหนด</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">รอดำเนินการ</span>
+                    {% endif %}
+                </p>
+                <p><strong>วันนัดหมาย:</strong> {{ task.due_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') if task.due_date else 'ยังไม่ได้นัดหมาย' }}</p>
+                <p><strong>ช่างที่รับผิดชอบ:</strong>
+                    <span id="assigned-technician-text-{{ task.id }}">{{ task.assigned_technician or 'ยังไม่ได้มอบหมาย' }}</span>
+                    <a href="#" class="ms-2" data-bs-toggle="modal" data-bs-target="#assignTechnicianModal-{{ task.id }}"><i class="fas fa-edit"></i></a>
+                </p>
+            </div>
+        </div>
+
+        {% if task.status == 'completed' %}
+            {% include 'modals/_reopen_job_card.html' %}
+        {% else %}
+            {% include 'modals/_action_cards_accordion.html' %}
+        {% endif %}
+
+        <div class="card shadow-sm mt-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-history me-2"></i>ประวัติการดำเนินงาน</h5>
+            </div>
+            <div class="card-body">
+                {% include 'modals/reports_history_card.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include 'modals/_assign_technician_modal.html' %}
+{% include 'modals/_reopen_job_modal.html' %}{% endraw %}
