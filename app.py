@@ -185,6 +185,7 @@ class Job(db.Model):
             return due_date_local.date() < today_local
         except Exception:
             return False
+        # --- END: โค้ดส่วนที่แก้ไข ---
 
     @property
     def tech_reports_history(self):

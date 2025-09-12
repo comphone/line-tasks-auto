@@ -64,7 +64,17 @@
                         <span class="badge bg-warning text-dark">รอดำเนินการ</span>
                     {% endif %}
                 </p>
-                <p><strong>วันนัดหมาย:</strong> {{ task.due_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') if task.due_date else 'ยังไม่ได้นัดหมาย' }}</p>
+                <p><strong>วันนัดหมาย:</strong> 
+				{% if task.due_date %}
+					{% if task.due_date.tzinfo %}
+						{{ task.due_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}
+					{% else %}
+						{{ task.due_date.strftime('%d/%m/%Y %H:%M') }} (No TZ)
+					{% endif %}
+				{% else %}
+					ยังไม่ได้นัดหมาย
+				{% endif %}
+				</p>
                 <p><strong>ช่างที่รับผิดชอบ:</strong>
                     <span id="assigned-technician-text">{{ task.assigned_technician or 'ยังไม่ได้มอบหมาย' }}</span>
                     <a href="#" class="ms-2" data-bs-toggle="modal" data-bs-target="#assignTechnicianModal"><i class="fas fa-edit"></i></a>
