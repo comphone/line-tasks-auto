@@ -281,6 +281,54 @@ def api_update_job_report(customer_id, job_id):
         current_app.logger.error(f"Error in api_update_job_report: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์'}), 500
 
+@liff_bp.route('/api/job/<int:job_id>/reopen', methods=['POST'])
+def api_reopen_job(job_id):
+    job = Job.query.get(job_id)
+    if not job or job.status != 'completed':
+        return jsonify({'status': 'error', 'message': 'ไม่พบงานที่เสร็จสิ้นแล้ว'}), 404
+
+    try:
+        problem_description = request.form.get('problem_description')
+        if not problem_description:
+            return jsonify({'status': 'error', 'message': 'กรุณาระบุรายละเอียดปัญหา'}), 400
+
+        liff_user_id = request.form.get('technician_line_user_id')
+        technician_name = "ไม่ระบุ"
+        if liff_user_id:
+            settings = get_app_settings()
+            tech_info = next((tech for tech in settings.get('technician_list', []) if tech.get('line_user_id') == liff_user_id), None)
+            if tech_info:
+                technician_name = tech_info.get('name', "ไม่ระบุ")
+        
+        # 1. เปลี่ยนสถานะและล้างวันที่เสร็จ
+        job.status = 'needsAction'
+        job.completed_date = None
+        
+        # 2. ตั้งวันนัดหมายใหม่ (ถ้ามี)
+        new_due_str = request.form.get('new_due_date')
+        if new_due_str:
+            dt_local = THAILAND_TZ.localize(date_parse(new_due_str))
+            job.due_date = dt_local.astimezone(pytz.utc)
+
+        # 3. สร้าง Report เพื่อเป็นหลักฐานการเปิดงานซ้ำ
+        reopen_report = Report(
+            job=job,
+            report_type='reopened',
+            work_summary=f"เปิดงานอีกครั้งเนื่องจาก: {problem_description}",
+            technicians=technician_name,
+            is_internal=False
+        )
+        db.session.add(reopen_report)
+        db.session.commit()
+
+        flash('เปิดงานอีกครั้งเนื่องจากมีปัญหาเรียบร้อยแล้ว!', 'success')
+        return jsonify({'status': 'success', 'message': 'เปิดงานอีกครั้งเรียบร้อยแล้ว'})
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error reopening job {job_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดฝั่งเซิร์ฟเวอร์'}), 500
+
 @liff_bp.route('/summary/print')
 def summary_print():
     jobs = Job.query.all()
