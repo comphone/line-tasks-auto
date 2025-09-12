@@ -3357,10 +3357,8 @@ def handle_image_message(event):
     # 1. ค้นหางานล่าสุดที่ผู้ใช้นี้เปิดดู
     activity = UserActivity.query.filter_by(line_user_id=line_user_id).first()
 
-    # --- จุดที่แก้ไข ---
     # ตรวจสอบว่ากิจกรรมล่าสุดเกิดขึ้นภายใน 30 นาทีที่ผ่านมาหรือไม่
     thirty_minutes_ago = datetime.datetime.utcnow() - timedelta(minutes=30)
-    # ------------------
 
     if not activity or not activity.last_viewed_job_id or activity.updated_at < thirty_minutes_ago:
         # ถ้าไม่พบ หรือนานเกินไป ให้ส่งข้อความแจ้งเตือน
@@ -3379,7 +3377,9 @@ def handle_image_message(event):
         image_bytes = BytesIO(message_content)
 
         # 3. ใช้ Logic การอัปโหลดไฟล์เดิม
-        filename = f"line_upload_{datetime.datetime.now(THAILand_TZ).strftime('%Y%m%d_%H%M%S')}.jpg"
+        # --- จุดที่แก้ไข ---
+        filename = f"line_upload_{datetime.datetime.now(THAILAND_TZ).strftime('%Y%m%d_%H%M%S')}.jpg"
+        # ------------------
         mime_type = 'image/jpeg'
 
         attachments_base_folder_id = find_or_create_drive_folder("Task_Attachments", GOOGLE_DRIVE_FOLDER_ID)
