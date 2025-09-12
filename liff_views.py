@@ -128,34 +128,34 @@ def customer_profile(customer_id):
     
     settings = get_app_settings()
     
-    # --- START: โค้ดส่วนที่แก้ไข ---
-    # เราจะส่งอ็อบเจกต์ Job จริงๆ ไปเสมอ ไม่ว่าจะมี่กี่งานก็ตาม
-    # และจะสร้าง sorted_reports ที่นี่ด้วยเพื่อความสอดคล้องกัน
     task_to_display = None
     sorted_reports = []
 
     if len(jobs) == 1:
         task_to_display = jobs[0]
+        # --- START: โค้ดส่วนที่แก้ไข ---
         # ทำการเรียงลำดับ reports ในฝั่ง Backend อย่างปลอดภัย
-        sorted_reports = sorted(
-            task_to_display.reports,
-            key=lambda r: r.summary_date if r.summary_date else datetime.datetime.min.replace(tzinfo=pytz.utc),
-            reverse=True
-        )
-    # --- END: โค้ดส่วนที่แก้ไข ---
+        # โดยกำหนดให้ report ที่ไม่มีวันที่ (None) ถูกจัดว่าเป็นวันที่เก่าที่สุด
+        if task_to_display.reports:
+            sorted_reports = sorted(
+                task_to_display.reports,
+                key=lambda r: r.summary_date if r.summary_date else datetime.datetime.min.replace(tzinfo=pytz.utc),
+                reverse=True
+            )
+        # --- END: โค้ดส่วนที่แก้ไข ---
 
     return render_template(
         'customer_profile.html',
         profile=customer,
         jobs=jobs,
-        task=task_to_display,  # <--- ส่งอ็อบเจกต์ Job หรือ None
+        task=task_to_display,
         customer_id=customer_id,
         total_jobs=len(jobs),
         total_spent=total_spent,
         technician_list=settings.get('technician_list', []),
         equipment_catalog=settings.get('equipment_catalog', []),
         progress_report_snippets=settings.get('technician_templates', {}).get('progress_reports', []),
-        sorted_reports=sorted_reports # <--- ส่ง sorted_reports ไปด้วย
+        sorted_reports=sorted_reports
     )
 
 @liff_bp.route('/customer/<int:customer_id>/job/<int:job_id>')
