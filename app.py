@@ -149,17 +149,42 @@ class Job(db.Model):
 
     @property
     def is_today(self):
-        if not self.due_date or self.status == 'completed': return False
-        due_date_local = self.due_date.astimezone(THAILAND_TZ)
-        today_local = datetime.datetime.now(THAILAND_TZ).date()
-        return due_date_local.date() == today_local
+        if not self.due_date or self.status == 'completed': 
+            return False
+        
+        # --- START: โค้ดส่วนที่แก้ไข ---
+        try:
+            # ทำให้ 'aware' ก่อนแปลง ถ้าหากมันเป็น 'naive'
+            if self.due_date.tzinfo is None:
+                due_date_utc = pytz.utc.localize(self.due_date)
+            else:
+                due_date_utc = self.due_date
+            
+            due_date_local = due_date_utc.astimezone(THAILAND_TZ)
+            today_local = datetime.datetime.now(THAILAND_TZ).date()
+            return due_date_local.date() == today_local
+        except Exception:
+            return False
+        # --- END: โค้ดส่วนที่แก้ไข ---
 
     @property
     def is_overdue(self):
-        if not self.due_date or self.status == 'completed': return False
-        due_date_local = self.due_date.astimezone(THAILAND_TZ)
-        today_local = datetime.datetime.now(THAILAND_TZ).date()
-        return due_date_local.date() < today_local
+        if not self.due_date or self.status == 'completed': 
+            return False
+            
+        # --- START: โค้ดส่วนที่แก้ไข ---
+        try:
+            # ทำให้ 'aware' ก่อนแปลง ถ้าหากมันเป็น 'naive'
+            if self.due_date.tzinfo is None:
+                due_date_utc = pytz.utc.localize(self.due_date)
+            else:
+                due_date_utc = self.due_date
+
+            due_date_local = due_date_utc.astimezone(THAILAND_TZ)
+            today_local = datetime.datetime.now(THAILAND_TZ).date()
+            return due_date_local.date() < today_local
+        except Exception:
+            return False
 
     @property
     def tech_reports_history(self):
