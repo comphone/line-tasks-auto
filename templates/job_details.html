@@ -76,7 +76,14 @@
         <div class="card shadow-sm mt-3">
             <div class="card-body text-center">
                 <h5 class="card-title text-success"><i class="fas fa-check-circle"></i> งานนี้เสร็จสิ้นแล้ว</h5>
-                <p class="card-text">งานนี้ได้ปิดไปเมื่อวันที่ {{ task.completed_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}</p>
+                <p class="card-text">
+                    งานนี้ได้ปิดไปเมื่อวันที่ 
+                    {% if task.completed_date %}
+                        {{ task.completed_date.astimezone(thaizone).strftime('%d/%m/%Y %H:%M') }}
+                    {% else %}
+                        (ไม่ได้บันทึกวันที่)
+                    {% endif %}
+                </p>
                 <button type="button" class="btn btn-warning btn-lg" data-bs-toggle="modal" data-bs-target="#reopenJobModal">
                     <i class="fas fa-exclamation-triangle"></i> แจ้งปัญหางาน / เปิดงานอีกครั้ง
                 </button>
