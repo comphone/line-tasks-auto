@@ -1,51 +1,100 @@
-{% raw %}{% extends "base.html" %}
+{% extends "base.html" %}
 
-{% block title %}ปฏิทินนัดหมาย{% endblock %}
+{% block title %}ปฏิทินงาน{% endblock %}
 
 {% block head_extra %}
+<link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/main.min.css' rel='stylesheet' />
 <style>
-    /* สไตล์เพิ่มเติมเพื่อให้ปฏิทินแสดงผลได้ดีขึ้นบนมือถือ */
-    .fc-header-toolbar {
-        flex-wrap: wrap;
-        font-size: 0.8rem;
+    /* CSS styles remain the same */
+    #external-events-container {
+        height: 80vh;
+        display: flex;
+        flex-direction: column;
+    }
+    #external-events {
+        flex-grow: 1;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        background: #f8f9fa;
+        padding: 10px;
+    }
+    .fc-event.fc-event-dragging {
+        z-index: 9999;
+    }
+    .external-event {
+        padding: 0.75em;
+        margin: 0.5em 0;
+        background: #e9ecef;
+        border-radius: .375rem;
+        cursor: grab;
+        border-left: 5px solid #6c757d;
+    }
+    .fc-event {
+        cursor: pointer;
     }
     .fc-event-main {
-        cursor: pointer;
+        padding: 5px 8px !important;
+    }
+    .fc-event-title {
+        white-space: normal !important;
+        overflow: visible !important;
+    }
+    .fc-daygrid-event {
+        border-radius: 4px;
+        border: none;
+        color: #fff !important;
+    }
+    .event-status-icon {
+        margin-right: 6px;
+    }
+    .event-completed {
+        background-color: #198754 !important;
+        border-color: #198754 !important;
+        opacity: 0.7;
+        text-decoration: line-through;
+    }
+    .event-overdue {
+        background-color: #dc3545 !important;
+        border-color: #dc3545 !important;
+    }
+    .event-today {
+        background-color: #0dcaf0 !important;
+        border-color: #0dcaf0 !important;
+    }
+    .event-upcoming {
+        background-color: #ffc107 !important;
+        border-color: #ffc107 !important;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-        <h1 class="h2 mb-0">🗓️ ปฏิทินนัดหมาย</h1>
-        <div class="form-check form-switch my-2">
-            <input class="form-check-input" type="checkbox" role="switch" id="showCompletedToggle">
-            <label class="form-check-label" for="showCompletedToggle">ซ่อนงานที่เสร็จแล้ว</label>
-        </div>
-    </div>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2">🗓️ ปฏิทินงาน</h1>
+</div>
 
-    <div class="row">
-        <div class="col-lg-9">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <div id="calendar" style="min-height: 600px;"></div>
+<div class="row">
+    <div class="col-lg-3">
+        <div id="external-events-container" class="card shadow-sm mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-list-ul me-2"></i>รอจัดตาราง</h5>
+            </div>
+            <div id='external-events'>
+                {% for task in unscheduled_tasks %}
+                <div class='external-event' data-task-id='{{ task.id }}'>
+                    <strong>{{ task.customer.name or 'N/A' }}</strong><br>
+                    <small>{{ task.job_title }}</small>
                 </div>
+                {% else %}
+                <p class="text-muted text-center p-3">ไม่มีงานที่รอจัดตาราง</p>
+                {% endfor %}
             </div>
         </div>
-        <div class="col-lg-3 mt-3 mt-lg-0">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <h5 class="mb-0">งานที่ยังไม่ระบุนัดหมาย</h5>
-                </div>
-                <div id="unscheduled-tasks" class="list-group list-group-flush" style="max-height: 600px; overflow-y: auto;">
-                    {% for task in unscheduled_tasks %}
-                    <a href="{{ url_for('liff.job_details', customer_id=task.customer.id, job_id=task.id) }}" class="fc-event list-group-item list-group-item-action" data-event-id="{{ task.id }}">
-                        <strong>#{{ task.id }} {{ task.customer.name }}</strong>
-                        <div class="small text-muted">{{ task.job_title }}</div>
-                    </a>
-                    {% endfor %}
-                </div>
+    </div>
+    <div class="col-lg-9">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div id='calendar'></div>
             </div>
         </div>
     </div>
@@ -53,127 +102,162 @@
 {% endblock %}
 
 {% block body_extra %}
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/index.global.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.14/index.global.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar/locales/th.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.14/index.global.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.14/index.global.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/@fullcalendar/list@6.1.14/index.global.min.js'></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const calendarEl = document.getElementById('calendar');
-    const showCompletedToggle = document.getElementById('showCompletedToggle');
-    let allApiEvents = []; // Cache for all events from the API
-
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,listWeek'
-        },
-        initialView: 'dayGridMonth',
-        locale: 'th',
-        events: function(fetchInfo, successCallback, failureCallback) {
-            fetch('{{ url_for("api_calendar_tasks") }}')
-                .then(response => response.json())
-                .then(data => {
-                    allApiEvents = data;
-                    let filteredEvents = showCompletedToggle.checked
-                        ? allApiEvents.filter(event => !event.extendedProps.is_completed)
-                        : allApiEvents;
-                    successCallback(filteredEvents);
-                })
-                .catch(error => {
-                    console.error("Error fetching calendar events:", error);
-                    failureCallback(error);
-                });
-        },
-        editable: true,
-        droppable: true,
-
-        // Function to style completed events
-        eventDidMount: function(info) {
-            if (info.event.extendedProps.is_completed) {
-                info.el.style.backgroundColor = '#e9ecef';
-                info.el.style.borderColor = '#ced4da';
-                const titleEl = info.el.querySelector('.fc-event-title');
-                if (titleEl) {
-                    titleEl.style.color = '#6c757d';
-                    titleEl.style.textDecoration = 'line-through';
-                }
-            }
-        },
-
-        // Handler for clicking an event
-        eventClick: function(info) {
-            info.jsEvent.preventDefault(); // don't let the browser navigate
-            if (info.event.url) {
-                window.open(info.event.url, "_self");
-            }
-        },
-
-        // Handler for dragging and dropping an event
-        eventDrop: function(info) {
-            const eventData = {
-                job_id: info.event.id,
-                new_due_date: info.event.start.toISOString()
-            };
-            fetch('/api/task/schedule_from_calendar', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify(eventData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status !== 'success') {
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
-                    info.revert();
-                }
-            }).catch(() => {
-                alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
-                info.revert();
-            });
-        },
-        
-        // Handler for dropping an external event from the list
-        drop: function(info) {
-             const eventId = info.draggedEl.dataset.eventId;
-             if (!eventId) return;
-
-             const eventData = {
-                job_id: eventId,
-                new_due_date: info.date.toISOString()
-             };
-             fetch('/api/task/schedule_from_calendar', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify(eventData)
-             })
-             .then(res => res.json())
-             .then(data => {
-                 if (data.status === 'success') {
-                     info.draggedEl.remove(); // Remove from the list
-                     calendar.refetchEvents(); // Refresh calendar to show the new event
-                 } else {
-                     alert('เกิดข้อผิดพลาด: ' + data.message);
-                 }
-             }).catch(() => alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้'));
-        }
+  document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = '{{ csrf_token() }}';
+    let containerEl = document.getElementById('external-events');
+    new FullCalendar.Draggable(containerEl, {
+      itemSelector: '.external-event',
+      eventData: function(eventEl) {
+        return {
+          title: eventEl.innerText.trim(),
+          id: eventEl.getAttribute('data-task-id'),
+          extendedProps: {
+              is_completed: false,
+              is_overdue: false,
+              is_today: false
+          }
+        };
+      }
     });
+
+    let calendarEl = document.getElementById('calendar');
+    let calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'th',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,listWeek'
+      },
+      events: {
+          url: '{{ url_for("api_calendar_tasks") }}',
+          failure: function(error) {
+              Swal.fire({
+                  icon: 'error',
+                  title: 'เกิดข้อผิดพลาด',
+                  text: `ไม่สามารถโหลดข้อมูลปฏิทินได้: ${error.message}`,
+              });
+          }
+      },
+      loading: function(isLoading) {
+          if (isLoading) {
+              Swal.fire({
+                  title: 'กำลังโหลดข้อมูลปฏิทิน...',
+                  allowOutsideClick: false,
+                  didOpen: () => {
+                      Swal.showLoading();
+                  }
+              });
+          } else {
+              Swal.close();
+          }
+      },
+      editable: true,
+      droppable: true,
+      eventAllow: function(dropInfo, draggedEvent) {
+        // Prevent moving completed tasks
+        return !draggedEvent.extendedProps.is_completed;
+      },
+      eventContent: function(arg) {
+        let iconHtml = '';
+        if (arg.event.extendedProps.is_completed) {
+            iconHtml = '<i class="fas fa-check-circle event-status-icon"></i>';
+        } else if (arg.event.extendedProps.is_overdue) {
+            iconHtml = '<i class="fas fa-fire event-status-icon"></i>';
+        } else if (arg.event.extendedProps.is_today) {
+            iconHtml = '<i class="fas fa-star event-status-icon"></i>';
+        }
+        return { html: `<div class="d-flex align-items-center">${iconHtml}<b>${arg.event.title}</b></div><small>${arg.timeText}</small>` };
+      },
+      eventClassNames: function(arg) {
+        if (arg.event.extendedProps.is_completed) {
+            return ['event-completed'];
+        }
+        if (arg.event.extendedProps.is_overdue) {
+            return ['event-overdue'];
+        }
+        if (arg.event.extendedProps.is_today) {
+            return ['event-today'];
+        }
+        return ['event-upcoming'];
+      },
+      eventDrop: async function(info) {
+        await handleEventUpdate(info.event, info.revert);
+      },
+      eventReceive: async function(info) {
+        const originalDiv = document.querySelector(`.external-event[data-task-id="${info.event.id}"]`);
+        if (originalDiv) originalDiv.style.display = 'none';
+        await handleEventUpdate(info.event, () => {
+            info.revert();
+            if (originalDiv) originalDiv.style.display = 'block';
+        }, originalDiv);
+      }
+    });
+
+    async function handleEventUpdate(event, revertFunc, originalDivElement = null) {
+        const jobId = event.id;
+        const newDueDate = event.start.toISOString();
+
+        Swal.fire({
+            title: 'กำลังอัปเดตวันนัดหมาย...',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        try {
+            const response = await fetch('{{ url_for("schedule_task_from_calendar") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    job_id: jobId,
+                    new_due_date: newDueDate
+                })
+            });
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                Swal.fire({
+                    toast: true,
+                    icon: 'success',
+                    title: 'อัปเดตวันนัดหมายสำเร็จ',
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3000,
+                    timerProgressBar: true
+                });
+                if (originalDivElement) {
+                    originalDivElement.remove();
+                }
+                calendar.refetchEvents();
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'เกิดข้อผิดพลาด',
+                    text: result.message || 'อัปเดตไม่สำเร็จ'
+                });
+                if (revertFunc) revertFunc();
+            }
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'การเชื่อมต่อล้มเหลว',
+                text: 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้'
+            });
+            if (revertFunc) revertFunc();
+        }
+    }
 
     calendar.render();
-
-    // Event listener for the toggle switch
-    showCompletedToggle.addEventListener('change', function() {
-        calendar.refetchEvents(); // This will re-run the `events` function which applies the filter
-    });
-
-    // Make unscheduled tasks draggable
-    new FullCalendar.Draggable(document.getElementById('unscheduled-tasks'), {
-        itemSelector: '.fc-event'
-    });
-});
+  });
 </script>
 {% endblock %}
-{% endraw %}
