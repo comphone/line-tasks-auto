@@ -1,21 +1,154 @@
-<div class="modal fade" id="equipmentCatalogModal" tabindex="-1" aria-labelledby="equipmentCatalogModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="equipmentCatalogModalLabel"><i class="fas fa-toolbox me-2"></i>เลือกอุปกรณ์ที่ใช้</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-            <input type="text" id="equipment-search-input" class="form-control" placeholder="🔍 ค้นหาชื่ออุปกรณ์...">
-        </div>
-        <div id="equipment-catalog-list" style="max-height: 60vh; overflow-y: auto;">
-            </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-        <button type="button" class="btn btn-primary" onclick="window.confirmEquipmentSelection()">บันทึกรายการ</button>
-      </div>
-    </div>
-  </div>
+{% raw %}<form id="equipmentForm">
+<div class="table-responsive">
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th style="width: 40%;">รายการ</th>
+                <th style="width: 15%;">จำนวน</th>
+                <th style="width: 20%;">ราคา/หน่วย</th>
+                <th style="width: 20%;">รวม</th>
+                <th style="width: 5%;"></th>
+            </tr>
+        </thead>
+        <tbody id="equipmentTableBody">
+            </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3" class="text-end"><strong>ยอดรวม</strong></td>
+                <td id="totalCost" class="fw-bold">0.00</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
 </div>
+
+<div class="d-flex justify-content-between mt-3">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="addItemBtn"><i class="fas fa-plus me-1"></i>เพิ่มรายการ</button>
+    <button type="submit" class="btn btn-primary">บันทึกรายการ</button>
+</div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('equipmentForm');
+    const tableBody = document.getElementById('equipmentTableBody');
+    const addItemBtn = document.getElementById('addItemBtn');
+    let jobItems = [];
+
+    async function loadJobItems() {
+        try {
+            const response = await fetch(`/api/task/{{ task.id }}/items`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            jobItems = await response.json();
+            renderTable();
+        } catch (error) {
+            console.error('Error loading job items:', error);
+            showFlashMessage('ไม่สามารถโหลดรายการอุปกรณ์ได้', 'danger');
+        }
+    }
+
+    function renderTable() {
+        tableBody.innerHTML = '';
+        if (jobItems.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">ยังไม่มีรายการ</td></tr>';
+        } else {
+            jobItems.forEach((item, index) => {
+                const row = `
+                    <tr>
+                        <td><input type="text" class="form-control form-control-sm item-name" value="${item.item_name || ''}" required></td>
+                        <td><input type="number" class="form-control form-control-sm item-quantity" value="${item.quantity || 1}" min="0.1" step="any" required></td>
+                        <td><input type="number" class="form-control form-control-sm item-price" value="${item.unit_price || 0}" min="0" step="any"></td>
+                        <td>${(item.quantity * item.unit_price).toFixed(2)}</td>
+                        <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItem(${index})"><i class="fas fa-trash"></i></button></td>
+                    </tr>`;
+                tableBody.insertAdjacentHTML('beforeend', row);
+            });
+        }
+        updateTotal();
+    }
+
+    function updateTotal() {
+        const total = jobItems.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unit_price || 0)), 0);
+        document.getElementById('totalCost').textContent = total.toFixed(2);
+    }
+
+    window.removeItem = (index) => {
+        jobItems.splice(index, 1);
+        renderTable();
+    };
+
+    addItemBtn.addEventListener('click', () => {
+        jobItems.push({ item_name: '', quantity: 1, unit_price: 0 });
+        renderTable();
+    });
+
+    tableBody.addEventListener('input', (event) => {
+        const target = event.target;
+        const row = target.closest('tr');
+        if (!row) return;
+        const index = Array.from(tableBody.children).indexOf(row);
+        
+        if (target.classList.contains('item-name')) jobItems[index].item_name = target.value;
+        if (target.classList.contains('item-quantity')) jobItems[index].quantity = parseFloat(target.value) || 0;
+        if (target.classList.contains('item-price')) jobItems[index].unit_price = parseFloat(target.value) || 0;
+        
+        // Re-render is a simple way to update totals, but direct update is more efficient
+        const quantity = jobItems[index].quantity;
+        const price = jobItems[index].unit_price;
+        row.children[3].textContent = (quantity * price).toFixed(2);
+        updateTotal();
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> กำลังบันทึก...`;
+
+        try {
+            // Update local array with latest values from inputs before submitting
+            const rows = tableBody.querySelectorAll('tr');
+            jobItems = [];
+            rows.forEach(row => {
+                const nameInput = row.querySelector('.item-name');
+                if (nameInput) { // Check if it's a data row
+                    jobItems.push({
+                        item_name: nameInput.value,
+                        quantity: parseFloat(row.querySelector('.item-quantity').value) || 0,
+                        unit_price: parseFloat(row.querySelector('.item-price').value) || 0
+                    });
+                }
+            });
+
+            const response = await fetch(`/api/task/{{ task.id }}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+                body: JSON.stringify({ items: jobItems })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // --- นี่คือส่วนที่แก้ไข ---
+                // บังคับให้หน้าเว็บโหลดใหม่ทั้งหมดหลังจากบันทึกสำเร็จ
+                // เพื่อป้องกันการส่งฟอร์มซ้ำเมื่อกด F5
+                showFlashMessage(result.message, 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+                
+            } else {
+                throw new Error(result.message || 'เกิดข้อผิดพลาดในการบันทึก');
+            }
+        } catch (error) {
+            console.error('Error submitting items:', error);
+            showFlashMessage(error.message, 'danger');
+            submitButton.disabled = false;
+            submitButton.innerHTML = 'บันทึกรายการ';
+        }
+    });
+
+    // Initial load
+    loadJobItems();
+});
+</script>{% endraw %}
