@@ -110,19 +110,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const keepOneBtn = document.getElementById('keep-one-item-btn');
     if(keepOneBtn){
         keepOneBtn.addEventListener('click', function() {
-            // Find all groups of duplicate items
             const duplicateItemSets = document.querySelectorAll('.duplicate-item-set');
             duplicateItemSets.forEach(set => {
-                // Find all checkboxes within this group
                 const checkboxes = set.querySelectorAll('input[name="item_ids"]');
-                
-                // Uncheck all checkboxes in the group first
-                checkboxes.forEach(cb => cb.checked = false);
-
-                // Check all checkboxes except the first one (the one to keep)
-                for(let i = 1; i < checkboxes.length; i++){
-                    checkboxes[i].checked = true;
-                }
+                checkboxes.forEach((cb, index) => {
+                    // Check the checkbox if it's not the first one
+                    cb.checked = (index !== 0);
+                });
             });
         });
     }
