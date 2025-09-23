@@ -3290,6 +3290,67 @@ def cleanup_job_item_duplicates_auto():
 
     return redirect(url_for('settings_page'))
 
+@app.route('/admin/cleanup_job_item_duplicates_in_batches', methods=['POST'])
+@login_required
+@admin_required
+def cleanup_job_item_duplicates_in_batches():
+    """
+    Server-side cleanup of duplicate JobItems in smaller batches to avoid timeouts
+    on very large datasets.
+    """
+    try:
+        total_deleted_count = 0
+        batch_size = 5000  # Process 5000 duplicates at a time
+
+        while True:
+            subquery = db.session.query(
+                JobItem.job_id,
+                JobItem.item_name,
+                func.min(JobItem.id).label('id_to_keep')
+            ).group_by(
+                JobItem.job_id,
+                JobItem.item_name
+            ).having(
+                func.count(JobItem.id) > 1
+            ).subquery()
+
+            items_to_delete_query = db.session.query(JobItem.id).join(
+                subquery,
+                db.and_(
+                    JobItem.job_id == subquery.c.job_id,
+                    JobItem.item_name == subquery.c.item_name,
+                    JobItem.id > subquery.c.id_to_keep
+                )
+            )
+
+            # Fetch a batch of IDs to delete
+            item_ids_to_delete = [item[0] for item in items_to_delete_query.limit(batch_size).all()]
+
+            if not item_ids_to_delete:
+                # No more duplicates found, break the loop
+                break
+
+            # Delete associated movements and then the items for the current batch
+            StockMovement.query.filter(StockMovement.job_item_id.in_(item_ids_to_delete)).delete(synchronize_session=False)
+            deleted_in_batch = JobItem.query.filter(JobItem.id.in_(item_ids_to_delete)).delete(synchronize_session=False)
+
+            db.session.commit()
+
+            total_deleted_count += deleted_in_batch
+            current_app.logger.info(f"Deleted a batch of {deleted_in_batch} duplicate job items.")
+
+        if total_deleted_count > 0:
+            flash(f'ล้างข้อมูลค่าใช้จ่ายที่ซ้ำซ้อนสำเร็จ! ลบไปทั้งหมด {total_deleted_count} รายการ', 'success')
+        else:
+            flash('ไม่พบรายการค่าใช้จ่ายที่ซ้ำซ้อนให้ลบ (อาจจะถูกลบไปแล้ว)', 'info')
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during batched job item cleanup: {e}", exc_info=True)
+        flash(f'เกิดข้อผิดพลาดระหว่างการล้างข้อมูล: {e}', 'danger')
+
+    return redirect(url_for('settings_page'))
+
 @app.route('/delete_equipment_duplicates_batch', methods=['POST'])
 def delete_equipment_duplicates_batch():
     indices = sorted([int(idx) for idx in request.form.getlist('item_indices')], reverse=True)

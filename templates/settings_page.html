@@ -180,19 +180,19 @@
         <div class="tab-pane fade" id="data-management" role="tabpanel" aria-labelledby="data-management-tab">
             
             <div class="card mt-3">
-                <div class="card-header bg-primary text-white">
-                    <h4><i class="fas fa-magic me-2"></i> เครื่องมือแก้ไขอัตโนมัติ (แนะนำ)</h4>
+                <div class="card-header bg-danger text-white">
+                    <h4><i class="fas fa-biohazard me-2"></i> เครื่องมือแก้ไขข้อมูลขนาดใหญ่ (สำหรับแก้ปัญหา 502 Bad Gateway)</h4>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">หากปุ่ม "เลือกเก็บไว้ 1 รายการ" ในหน้าจัดการข้อมูลซ้ำด้านล่างไม่ทำงาน ให้ใช้เครื่องมืออัตโนมัตินี้แทน</p>
-                    <div class="alert alert-info">
-                        <h5 class="alert-heading"><i class="fas fa-broom me-2"></i> ล้างข้อมูลค่าใช้จ่ายซ้ำอัตโนมัติ</h5>
-                        <p>เครื่องมือนี้จะทำการค้นหาค่าใช้จ่ายที่ซ้ำกันในทุกใบงาน จากนั้นจะ **เก็บรายการที่เก่าที่สุดไว้ 1 รายการ** และลบรายการที่ซ้ำกันที่เหลือทั้งหมดออกไปจากระบบให้โดยอัตโนมัติ</p>
+                    <div class="alert alert-danger">
+                        <h5 class="alert-heading"><i class="fas fa-broom me-2"></i> ล้างข้อมูลค่าใช้จ่ายซ้ำ (สำหรับข้อมูลขนาดใหญ่)</h5>
+                        <p>หากระบบของคุณช้าหรือเกิดข้อผิดพลาด 502 Bad Gateway บ่อยครั้ง ให้ใช้เครื่องมือนี้ **เพียงครั้งเดียว** เพื่อล้างข้อมูลค่าใช้จ่ายที่ซ้ำซ้อนทั้งหมด</p>
+                        <p>ระบบจะทำงานเบื้องหลังโดยจะ **เก็บรายการที่เก่าที่สุดไว้ 1 รายการ** และลบส่วนที่ซ้ำกันทั้งหมดออกไป กระบวนการนี้อาจใช้เวลาหลายนาที</p>
                         <hr>
-                        <form action="{{ url_for('cleanup_job_item_duplicates_auto') }}" method="post" onsubmit="return confirm('คุณแน่ใจหรือไม่? ระบบจะลบรายการค่าใช้จ่ายที่ซ้ำซ้อนทั้งหมด (ยกเว้นรายการแรก) ออกอย่างถาวร');" class="d-inline">
+                        <form action="{{ url_for('cleanup_job_item_duplicates_in_batches') }}" method="post" onsubmit="return confirm('คำเตือน: นี่เป็นเครื่องมือสำหรับแก้ไขปัญหาข้อมูลขนาดใหญ่เท่านั้น! คุณแน่ใจหรือไม่ว่าต้องการเริ่มกระบวนการล้างข้อมูล?');" class="d-inline">
                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                             <button type="submit" class="btn btn-primary fw-bold">
-                                 <i class="fas fa-play-circle me-2"></i> เริ่มการล้างข้อมูลอัตโนมัติ
+                             <button type="submit" class="btn btn-danger fw-bold">
+                                 <i class="fas fa-play-circle me-2"></i> เริ่มการล้างข้อมูลสำหรับข้อมูลขนาดใหญ่
                              </button>
                         </form>
                     </div>
@@ -204,48 +204,13 @@
                     <h4><i class="fas fa-database me-2"></i> จัดการข้อมูลด้วยตนเอง</h4>
                 </div>
                 <div class="card-body">
-                    <p>เครื่องมือสำหรับจัดการข้อมูลจำนวนมากด้วยตนเอง</p>
+                    <p>เครื่องมือสำหรับจัดการข้อมูลจำนวนมากด้วยตนเอง (หากระบบทำงานปกติ ให้ใช้ส่วนนี้)</p>
                     <div class="d-flex flex-wrap gap-2">
                         <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
                         <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-boxes me-2"></i>จัดการอุปกรณ์ที่ซ้ำกัน</a>
                         <a href="{{ url_for('manage_job_item_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-receipt me-2"></i>จัดการค่าใช้จ่ายที่ซ้ำในใบงาน</a>
                         <a href="{{ url_for('liff.manage_customer_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-users me-2"></i>จัดการลูกค้าที่ซ้ำกัน</a>
                         <a href="{{ url_for('organize_files') }}" class="btn btn-outline-info"><i class="fas fa-folder-open me-2"></i>เครื่องมือจัดระเบียบไฟล์</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card mt-4">
-                <div class="card-header">
-                     <h4><i class="fas fa-heartbeat me-2"></i> ตรวจสอบและซ่อมแซมข้อมูล</h4>
-                </div>
-                <div class="card-body">
-                    <p class="small text-muted">
-                        เครื่องมือนี้จะสแกนหารายการงานที่อาจมีข้อมูลรูปภาพไม่ตรงกัน (มีรูปใน Drive แต่ไม่มีในประวัติ)
-                    </p>
-                    <button class="btn btn-primary" id="scan-health-btn">
-                        <i class="fas fa-search-plus me-2"></i>ตรวจสอบความสมบูรณ์ของข้อมูล
-                    </button>
-                    <div id="health-check-results" class="mt-3" style="display:none;">
-                        <p id="scan-summary"></p>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>ชื่องาน / ลูกค้า</th>
-                                        <th class="text-center">รูปที่หาย</th>
-                                        <th class="text-center">จัดการ</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="issues-table-body"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div id="scan-spinner" class="text-center mt-3" style="display:none;">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">กำลังสแกนข้อมูล, กรุณารอสักครู่...</p>
                     </div>
                 </div>
             </div>
@@ -491,86 +456,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     });
                 }
-            }
-        });
-    }
-
-
-    // Health Check & Repair
-    const scanBtn = document.getElementById('scan-health-btn');
-    const resultsDiv = document.getElementById('health-check-results');
-    const spinner = document.getElementById('scan-spinner');
-    const summaryP = document.getElementById('scan-summary');
-    const issuesTbody = document.getElementById('issues-table-body');
-    
-    if (scanBtn) {
-        scanBtn.addEventListener('click', () => {
-            spinner.style.display = 'block';
-            resultsDiv.style.display = 'none';
-            scanBtn.disabled = true;
-
-            fetch('/api/health_check/scan')
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    summaryP.textContent = `พบ ${data.issues.length} งานที่มีปัญหา`;
-                    issuesTbody.innerHTML = '';
-                    if (data.issues.length > 0) {
-                        data.issues.forEach(issue => {
-                            const row = `
-                                <tr>
-                                    <td>
-                                        <strong>${issue.job_title}</strong><br>
-                                        <small class="text-muted">${issue.customer_name}</small>
-                                    </td>
-                                    <td class="text-center">${issue.missing_count}</td>
-                                    <td class="text-center">
-                                        <button class="btn btn-sm btn-success repair-btn" data-job-id="${issue.job_id}">ซ่อมแซม</button>
-                                    </td>
-                                </tr>`;
-                            issuesTbody.insertAdjacentHTML('beforeend', row);
-                        });
-                    } else {
-                         issuesTbody.innerHTML = '<tr><td colspan="3" class="text-center text-success">ไม่พบข้อมูลที่มีปัญหา</td></tr>';
-                    }
-                    resultsDiv.style.display = 'block';
-                } else {
-                    summaryP.textContent = `เกิดข้อผิดพลาด: ${data.message}`;
-                    resultsDiv.style.display = 'block';
-                }
-            })
-            .catch(err => {
-                summaryP.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์';
-                resultsDiv.style.display = 'block';
-            })
-            .finally(() => {
-                spinner.style.display = 'none';
-                scanBtn.disabled = false;
-            });
-        });
-
-        issuesTbody.addEventListener('click', (e) => {
-            if (e.target.classList.contains('repair-btn')) {
-                const btn = e.target;
-                const jobId = btn.dataset.jobId;
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
-
-                fetch(`/api/health_check/repair/${jobId}`, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': csrfToken }
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        showToast(data.message);
-                        btn.closest('tr').remove();
-                    } else {
-                        showToast(data.message, 'danger');
-                        btn.disabled = false;
-                        btn.textContent = 'ซ่อมแซม';
-                    }
-                });
             }
         });
     }
