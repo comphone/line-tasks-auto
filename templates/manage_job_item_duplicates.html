@@ -47,7 +47,9 @@
             <div class="card mb-3 job-set">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">
-                        <a href="{{ url_for('liff.job_details', job_id=job_key[0], customer_id=items_by_name.values()|first|first.job.customer_id) }}" target="_blank" class="text-white">
+                        {# --- START: โค้ดส่วนที่แก้ไข --- #}
+                        <a href="{{ url_for('liff.job_details', job_id=job_key[0], customer_id=((items_by_name.values()|first)|first).job.customer_id) }}" target="_blank" class="text-white">
+                        {# --- END: โค้ดส่วนที่แก้ไข --- #}
                             ใบงาน: {{ job_key[1] }} <i class="fas fa-external-link-alt fa-xs"></i>
                         </a>
                     </h5>
