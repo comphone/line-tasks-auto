@@ -7,7 +7,7 @@ import requests
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import text
+from sqlalchemy import text, func 
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import sys
@@ -3160,6 +3160,82 @@ def manage_equipment_duplicates():
     sets = {k: sorted(v, key=lambda x: x['original_index']) for k, v in duplicates.items() if len(v) > 1}
     return render_template('equipment_duplicates.html', duplicates=sets)
 
+@app.route('/manage_job_item_duplicates')
+@login_required
+@admin_required
+def manage_job_item_duplicates():
+    """
+    Finds and displays duplicate JobItem entries for cleanup.
+    A duplicate is defined as having the same job_id and item_name.
+    """
+    # Subquery to find combinations of job_id and item_name that are duplicated
+    duplicate_query = db.session.query(
+        JobItem.job_id,
+        JobItem.item_name
+    ).group_by(
+        JobItem.job_id,
+        JobItem.item_name
+    ).having(
+        func.count(JobItem.id) > 1
+    ).subquery()
+
+    # Query to get the actual duplicate JobItem objects
+    items_to_review = db.session.query(JobItem).join(
+        duplicate_query,
+        db.and_(
+            JobItem.job_id == duplicate_query.c.job_id,
+            JobItem.item_name == duplicate_query.c.item_name
+        )
+    ).options(
+        db.joinedload(JobItem.job).joinedload(Job.customer)
+    ).order_by(
+        JobItem.job_id, JobItem.item_name, JobItem.id
+    ).all()
+
+    # Group the items by job and then by item name for display
+    duplicates_by_job = defaultdict(lambda: defaultdict(list))
+    for item in items_to_review:
+        job = item.job
+        customer_name = job.customer.name if job.customer else 'N/A'
+        job_key = (job.id, f"#{job.id} - {job.job_title} ({customer_name})")
+        duplicates_by_job[job_key][item.item_name].append(item)
+
+    return render_template('manage_job_item_duplicates.html', duplicates_by_job=duplicates_by_job)
+
+
+@app.route('/delete_job_item_duplicates_batch', methods=['POST'])
+@login_required
+@admin_required
+def delete_job_item_duplicates_batch():
+    item_ids_to_delete = request.form.getlist('item_ids')
+    if not item_ids_to_delete:
+        flash('กรุณาเลือกรายการที่ต้องการลบ', 'warning')
+        return redirect(url_for('manage_job_item_duplicates'))
+
+    try:
+        item_ids_to_delete = [int(id_str) for id_str in item_ids_to_delete]
+    except ValueError:
+        flash('มีข้อผิดพลาด: ID รายการไม่ถูกต้อง', 'danger')
+        return redirect(url_for('manage_job_item_duplicates'))
+
+    deleted_count = 0
+    try:
+        # We must delete the movements first to avoid foreign key constraints
+        movements_to_delete = StockMovement.query.filter(StockMovement.job_item_id.in_(item_ids_to_delete))
+        movements_to_delete.delete(synchronize_session=False)
+
+        # Now delete the items themselves
+        items_to_delete = JobItem.query.filter(JobItem.id.in_(item_ids_to_delete))
+        deleted_count = items_to_delete.delete(synchronize_session=False)
+
+        db.session.commit()
+        flash(f'ลบรายการค่าใช้จ่ายที่ซ้ำซ้อนสำเร็จ: {deleted_count} รายการ.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'เกิดข้อผิดพลาดระหว่างการลบ: {e}', 'danger')
+
+    return redirect(url_for('manage_job_item_duplicates'))
+
 @app.route('/delete_equipment_duplicates_batch', methods=['POST'])
 def delete_equipment_duplicates_batch():
     indices = sorted([int(idx) for idx in request.form.getlist('item_indices')], reverse=True)
@@ -3897,6 +3973,63 @@ def api_stock_transfer():
         db.session.rollback()
         current_app.logger.error(f"Error in stock transfer: {e}")
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาด: {str(e)}'}), 500
+
+@app.route('/admin/recalculate_stock', methods=['POST'])
+@login_required
+@admin_required
+def recalculate_all_stock():
+    """
+    Recalculates all stock levels from scratch based on the StockMovement history.
+    This is a powerful tool to correct any drift or errors in stock quantities.
+    """
+    try:
+        # Step 1: Delete all current stock levels to start fresh.
+        num_deleted = StockLevel.query.delete()
+        current_app.logger.info(f"Deleted {num_deleted} existing StockLevel records.")
+
+        # Step 2: Get all movements in chronological order.
+        all_movements = StockMovement.query.order_by(StockMovement.created_at).all()
+
+        # Step 3: Process movements in memory to calculate final stock levels.
+        # The key is a tuple (product_code, warehouse_id)
+        calculated_levels = defaultdict(float)
+
+        for movement in all_movements:
+            # Deduct from 'from' warehouse
+            if movement.from_warehouse_id:
+                key_from = (movement.product_code, movement.from_warehouse_id)
+                calculated_levels[key_from] -= abs(movement.quantity_change)
+
+            # Add to 'to' warehouse
+            if movement.to_warehouse_id:
+                key_to = (movement.product_code, movement.to_warehouse_id)
+                calculated_levels[key_to] += abs(movement.quantity_change)
+
+        # Step 4: Create new StockLevel records from the calculated data.
+        new_stock_levels = []
+        for (product_code, warehouse_id), quantity in calculated_levels.items():
+            if quantity != 0: # Only create records for non-zero stock
+                new_stock_levels.append(
+                    StockLevel(
+                        product_code=product_code,
+                        warehouse_id=warehouse_id,
+                        quantity=quantity
+                    )
+                )
+
+        if new_stock_levels:
+            db.session.bulk_save_objects(new_stock_levels)
+
+        db.session.commit()
+        flash(f'คำนวณสต็อกใหม่ทั้งหมดสำเร็จ! สร้าง/อัปเดตข้อมูลสต็อก {len(new_stock_levels)} รายการ', 'success')
+        current_app.logger.info(f"Successfully recalculated all stock levels. Processed {len(all_movements)} movements.")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างการคำนวณสต็อก: {e}', 'danger')
+        current_app.logger.error(f"Error during stock recalculation: {e}", exc_info=True)
+
+    return redirect(url_for('settings_page'))
 
 @app.route('/api/technician/stock_data')
 def get_technician_stock_data():
