@@ -33,10 +33,14 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="d-flex justify-content-between align-items-center mb-3 p-2 sticky-top bg-light border rounded">
                 <div>
-                    <button type="button" class="btn btn-outline-info btn-sm" id="keep-one-item-btn">
-                        <i class="fas fa-save me-2"></i>เลือกเก็บไว้ 1 รายการ (ลบที่เหลือ)
+                    <button type="button" class="btn btn-outline-info btn-sm me-2" id="keep-one-item-btn">
+                        <i class="fas fa-save me-2"></i>เลือกเก็บไว้ 1 รายการ
                     </button>
-                </div>
+                    
+                    <button type="button" class="btn btn-outline-danger btn-sm" id="select-all-btn">
+                        <i class="fas fa-check-double me-2"></i>เลือกทั้งหมดเพื่อลบ
+                    </button>
+                    </div>
                 <button type="submit" class="btn btn-danger">
                     <i class="fas fa-trash-alt me-2"></i>ลบรายการที่เลือก
                 </button>
@@ -114,14 +118,27 @@ document.addEventListener('DOMContentLoaded', function () {
             duplicateItemSets.forEach(set => {
                 const checkboxes = set.querySelectorAll('input[name="item_ids"]');
                 if (checkboxes.length > 1) {
-                    checkboxes[0].checked = false; // Ensure the first is unchecked
+                    checkboxes[0].checked = false;
                     for(let i = 1; i < checkboxes.length; i++){
-                        checkboxes[i].checked = true; // Check all others
+                        checkboxes[i].checked = true;
                     }
                 }
             });
         });
     }
+
+    // VVVV START: โค้ดส่วนที่เพิ่มเข้ามา VVVV
+    const selectAllBtn = document.getElementById('select-all-btn');
+    if(selectAllBtn){
+        selectAllBtn.addEventListener('click', function() {
+            const allCheckboxes = document.querySelectorAll('input[name="item_ids"]');
+            allCheckboxes.forEach(cb => {
+                cb.checked = true;
+            });
+        });
+    }
+    // ^^^^ END: โค้ดส่วนที่เพิ่มเข้ามา ^^^^
+
 });
 </script>
 {% endblock %}
