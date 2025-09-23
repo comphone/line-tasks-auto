@@ -3323,11 +3323,14 @@ def cleanup_job_item_duplicates_in_batches():
                 )
             )
             
+            # Fetch a batch of IDs to delete
             item_ids_to_delete = [item[0] for item in items_to_delete_query.limit(batch_size).all()]
 
             if not item_ids_to_delete:
+                # No more duplicates found, break the loop
                 break
 
+            # Delete associated movements and then the items for the current batch
             StockMovement.query.filter(StockMovement.job_item_id.in_(item_ids_to_delete)).delete(synchronize_session=False)
             deleted_in_batch = JobItem.query.filter(JobItem.id.in_(item_ids_to_delete)).delete(synchronize_session=False)
             
