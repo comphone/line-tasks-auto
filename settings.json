@@ -19,6 +19,276 @@
             "cost_price": 1400.0,
             "stock_quantity": 2,
             "image_url": ""
+        },
+        {
+            "item_name": "HDMI TO LAN+USB รองรับ 120เมตร",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "HDMI TO LAN+USB รองรับ 120เมตร",
+            "unit": "ชิ้น",
+            "price": 5500.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "กล้อง Dahua POC 2MP",
+            "category": "",
+            "product_code": "ซ่อมกล่อง POC",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "powersupply4ch",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "powersupply4ch",
+            "unit": "ชิ้น",
+            "price": 790.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "เปลี่ยน power supply",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "เปลี่ยน power supply",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "เปลี่ยน adapter 1 ตัว",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "เปลี่ยน adapter 1 ตัว",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "ถ่าน bios",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "ถ่าน bios",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "แอดกล้องเข้ามือถือเครื่องใหม่",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "แอดกล้องเข้ามือถือเครื่องใหม่",
+            "unit": "ชิ้น",
+            "price": 300.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "Balun hikvision",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "Balun hikvision",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "ค่าบริการเซ็ตระบบ",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "ค่าบริการเซ็ตระบบ",
+            "unit": "ชิ้น",
+            "price": 500.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "1.กล้อง ip 10 ตัว 2.media converter 2 คู่ 3.สายแลน link สลิง 1 ม้วน 4.สายไฟเบอร์ออฟติก 250เมตร 5.สวิตช์ poe 6 port 2  ตัว 6.สวิทช์ GB 8 port 2 ตัว 7.ตู้เก็บอุปกรณ์ 2 ตู้  เบอร์1 (ภายนอก)  8.Extension POE 2ตัว",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "1.กล้อง ip 10 ตัว 2.media converter 2 คู่ 3.สายแลน link สลิง 1 ม้วน 4.สายไฟเบอร์ออฟติก 250เมตร 5.สวิตช์ poe 6 port 2  ตัว 6.สวิทช์ GB 8 port 2 ตัว 7.ตู้เก็บอุปกรณ์ 2 ตู้  เบอร์1 (ภายนอก)  8.Extension POE 2ตัว",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "LAN 30 M",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "LAN 30 M",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "็HDD 2TB",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "็HDD 2TB",
+            "unit": "ชิ้น",
+            "price": 2900.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "ค่าบริการเซ็ทระบบใหม่",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "ค่าบริการเซ็ทระบบใหม่",
+            "unit": "ชิ้น",
+            "price": 500.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "adapter poe 48 โวลท์",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "adapter poe 48 โวลท์",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "เครื่องบันทึก NVR  36Ch hikvision",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "เครื่องบันทึก NVR  36Ch hikvision",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "สาย RG6",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "สาย RG6",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "ค่าเเรง",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "ค่าเเรง",
+            "unit": "ชิ้น",
+            "price": 2000.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "switch POE 10 port รุ่น dahua",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "switch POE 10 port รุ่น dahua",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "switch POE 4+2 port รุ่น dahua",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "switch POE 4+2 port รุ่น dahua",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "สวิทช์ธรรมดา 8 Port dahua",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "สวิทช์ธรรมดา 8 Port dahua",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "สวิทช์ธรรมดา TP link 8port",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "สวิทช์ธรรมดา TP link 8port",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "สายเพาเวอร์ไลน์",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "สายเพาเวอร์ไลน์",
+            "unit": "ชิ้น",
+            "price": 25.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "อุปกรณ์ยึดสาย ค่าแรง",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "อุปกรณ์ยึดสาย ค่าแรง",
+            "unit": "ชิ้น",
+            "price": 2000.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "LAN cat5e 15 m.",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "LAN cat5e 15 m.",
+            "unit": "ชิ้น",
+            "price": 0.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "เครื่องสำรองไฟ 850va",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "เครื่องสำรองไฟ 850va",
+            "unit": "ชิ้น",
+            "price": 2200.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "ซิม AIS เน็ตรายปี",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "ซิม AIS เน็ตรายปี",
+            "unit": "ชิ้น",
+            "price": 2200.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
+        },
+        {
+            "item_name": "Sim ais",
+            "category": "ไม่มีหมวดหมู่",
+            "product_code": "Sim ais",
+            "unit": "ชิ้น",
+            "price": 2200.0,
+            "cost_price": 0.0,
+            "stock_quantity": 0,
+            "image_url": ""
         }
     ],
     "auto_backup": {
@@ -105,6 +375,33 @@
         "กล้องวงจรปิด"
     ],
     "common_equipment_items": [
-        "เครื่องบันทึก NVR IMOU WIFI 8 ช่อง รุ่น NVR1108HS-W-S2"
+        "1.กล้อง ip 10 ตัว 2.media converter 2 คู่ 3.สายแลน link สลิง 1 ม้วน 4.สายไฟเบอร์ออฟติก 250เมตร 5.สวิตช์ poe 6 port 2  ตัว 6.สวิทช์ GB 8 port 2 ตัว 7.ตู้เก็บอุปกรณ์ 2 ตู้  เบอร์1 (ภายนอก)  8.Extension POE 2ตัว",
+        "Balun hikvision",
+        "HDMI TO LAN+USB รองรับ 120เมตร",
+        "LAN 30 M",
+        "LAN cat5e 15 m.",
+        "Sim ais",
+        "adapter poe 48 โวลท์",
+        "powersupply4ch",
+        "switch POE 10 port รุ่น dahua",
+        "switch POE 4+2 port รุ่น dahua",
+        "กล้อง Dahua POC 2MP",
+        "ค่าบริการเซ็ตระบบ",
+        "ค่าบริการเซ็ทระบบใหม่",
+        "ค่าเเรง",
+        "ซิม AIS เน็ตรายปี",
+        "ถ่าน bios",
+        "สวิทช์ธรรมดา 8 Port dahua",
+        "สวิทช์ธรรมดา TP link 8port",
+        "สาย RG6",
+        "สายเพาเวอร์ไลน์",
+        "อุปกรณ์ยึดสาย ค่าแรง",
+        "เครื่องบันทึก NVR  36Ch hikvision",
+        "เครื่องบันทึก NVR IMOU WIFI 8 ช่อง รุ่น NVR1108HS-W-S2",
+        "เครื่องสำรองไฟ 850va",
+        "เปลี่ยน adapter 1 ตัว",
+        "เปลี่ยน power supply",
+        "แอดกล้องเข้ามือถือเครื่องใหม่",
+        "็HDD 2TB"
     ]
 }
