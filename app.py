@@ -3235,7 +3235,7 @@ def delete_job_item_duplicates_batch():
 
     return redirect(url_for('manage_job_item_duplicates'))
 
-@liff_bp.route('/admin/cleanup_job_item_duplicates_auto', methods=['POST'])
+@app.route('/admin/cleanup_job_item_duplicates_auto', methods=['POST'])
 @login_required
 @admin_required
 def cleanup_job_item_duplicates_auto():
