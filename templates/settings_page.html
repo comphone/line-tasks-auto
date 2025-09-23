@@ -609,8 +609,8 @@
             <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
             <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-boxes me-2"></i>จัดการอุปกรณ์ที่ซ้ำกัน</a>
             <a href="{{ url_for('manage_job_item_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-receipt me-2"></i>จัดการค่าใช้จ่ายที่ซ้ำในใบงาน</a>
+            <a href="{{ url_for('manage_customer_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-users me-2"></i>จัดการลูกค้าที่ซ้ำกัน</a>
             
-            <a href="{{ url_for('liff.manage_customer_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-users me-2"></i>จัดการลูกค้าที่ซ้ำกัน</a>
             <a href="{{ url_for('organize_files') }}" class="btn btn-outline-info"><i class="fas fa-folder-open me-2"></i>เครื่องมือจัดระเบียบไฟล์</a>
             <form action="{{ url_for('cleanup_drive_folders') }}" method="POST" onsubmit="return confirm('คุณต้องการเริ่มกระบวนการรวมโฟลเดอร์ที่ซ้ำกันใน Google Drive หรือไม่?');" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
