@@ -101,7 +101,7 @@
                                             <td style="width: 120px;">{{ task.completed_formatted }}</td>
                                             <td>{{ task.customer_name }}</td>
                                             <td>
-                                                <a href="{{ url_for('liff.job_details', customer_id=task.customer_id, job_id=task.id) }}" title="{{ task.title }}">{{ task.title }}</a>
+                                                <a href="{{ url_for('liff.job_details', customer_id=task['customer_id'], job_id=task['id']) }}" title="{{ task['title'] }}">{{ task['title'] }}</a>
                                             </td>
                                         </tr>
                                         {% endfor %}

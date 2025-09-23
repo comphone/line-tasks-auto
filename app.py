@@ -3235,6 +3235,61 @@ def delete_job_item_duplicates_batch():
 
     return redirect(url_for('manage_job_item_duplicates'))
 
+@liff_bp.route('/admin/cleanup_job_item_duplicates_auto', methods=['POST'])
+@login_required
+@admin_required
+def cleanup_job_item_duplicates_auto():
+    """
+    Finds all duplicate JobItems (same job_id and item_name),
+    keeps the one with the lowest ID in each group, and deletes the rest.
+    This is a server-side, one-click cleanup operation.
+    """
+    try:
+        # Subquery to find groups of duplicates and the ID of the item to keep (the minimum ID)
+        subquery = db.session.query(
+            JobItem.job_id,
+            JobItem.item_name,
+            func.min(JobItem.id).label('id_to_keep')
+        ).group_by(
+            JobItem.job_id,
+            JobItem.item_name
+        ).having(
+            func.count(JobItem.id) > 1
+        ).subquery()
+
+        # Query to get the IDs of all items that are part of a duplicate group
+        # but are NOT the item that should be kept.
+        items_to_delete_query = db.session.query(JobItem.id).join(
+            subquery,
+            db.and_(
+                JobItem.job_id == subquery.c.job_id,
+                JobItem.item_name == subquery.c.item_name,
+                JobItem.id > subquery.c.id_to_keep
+            )
+        )
+        
+        item_ids_to_delete = [item[0] for item in items_to_delete_query.all()]
+
+        if not item_ids_to_delete:
+            flash('ไม่พบรายการค่าใช้จ่ายที่ซ้ำซ้อนให้ลบ (อาจจะถูกลบไปแล้ว)', 'info')
+            return redirect(url_for('settings_page'))
+
+        # We must delete the movements first to avoid foreign key constraints
+        StockMovement.query.filter(StockMovement.job_item_id.in_(item_ids_to_delete)).delete(synchronize_session=False)
+        
+        # Now delete the items themselves
+        deleted_count = JobItem.query.filter(JobItem.id.in_(item_ids_to_delete)).delete(synchronize_session=False)
+
+        db.session.commit()
+        flash(f'ล้างข้อมูลค่าใช้จ่ายที่ซ้ำซ้อนอัตโนมัติสำเร็จ! ลบไปทั้งหมด {deleted_count} รายการ', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during automatic job item cleanup: {e}", exc_info=True)
+        flash(f'เกิดข้อผิดพลาดระหว่างการล้างข้อมูลอัตโนมัติ: {e}', 'danger')
+
+    return redirect(url_for('settings_page'))
+
 @app.route('/delete_equipment_duplicates_batch', methods=['POST'])
 def delete_equipment_duplicates_batch():
     indices = sorted([int(idx) for idx in request.form.getlist('item_indices')], reverse=True)
