@@ -2040,11 +2040,38 @@ def add_task_items(job_id):
 
         warehouse_id_to_use = warehouse_to_use.id
 
-        # --- จุดที่แก้ไข ---
-        # ได้นำบรรทัด JobItem.query.filter_by(job_id=job_id).delete() ออกจากจุดนี้
-        # เพื่อให้ฟังก์ชันทำการ "เพิ่ม" ข้อมูลใหม่เข้าไปเสมอ แทนการ "เขียนทับ"
-        # และได้นำโค้ดคืนสต็อกที่เกี่ยวข้องออกไปด้วย
-        # ------------------
+        # --- START: โค้ดส่วนที่แก้ไข ---
+        # ค้นหารายการเดิมเพื่อทำการลบและคืนสต็อก
+        existing_items_to_delete = JobItem.query.filter_by(job_id=job_id).all()
+        if existing_items_to_delete:
+            for item in existing_items_to_delete:
+                # คืนสต็อกโดยหาจาก StockMovement ที่เกี่ยวข้อง
+                movements_to_reverse = StockMovement.query.filter_by(job_item_id=item.id, movement_type='sale_consumption').all()
+                for movement in movements_to_reverse:
+                    if movement.from_warehouse_id:
+                        stock_level = StockLevel.query.filter_by(
+                            product_code=movement.product_code,
+                            warehouse_id=movement.from_warehouse_id
+                        ).first()
+                        if stock_level:
+                            stock_level.quantity += movement.quantity_change # คืนจำนวนกลับเข้าสต็อก
+
+                            # บันทึกประวัติการคืน
+                            return_movement = StockMovement(
+                                product_code=movement.product_code,
+                                quantity_change=-movement.quantity_change,
+                                to_warehouse_id=movement.from_warehouse_id,
+                                movement_type='sale_return',
+                                notes=f"Auto-return on overwrite for Job:{job_id}",
+                                user=added_by_user
+                            )
+                            db.session.add(return_movement)
+            
+            # ลบรายการ JobItem เก่าทั้งหมดของงานนี้
+            JobItem.query.filter_by(job_id=job_id).delete()
+            db.session.flush() # ยืนยันการลบก่อนเพิ่มข้อมูลใหม่
+        # --- END: โค้ดส่วนที่แก้ไข ---
+
 
         if items_data:
             settings = get_app_settings()
@@ -2106,12 +2133,7 @@ def add_task_items(job_id):
         
         db.session.commit()
         # เปลี่ยนข้อความตอบกลับให้ชัดเจนขึ้น
-        return jsonify({'status': 'success', 'message': f'เพิ่มรายการและตัดสตอกจากคลัง "{warehouse_to_use.name}" เรียบร้อยแล้ว'}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error saving job items for job {job_id}: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': 'เกิดข้อผิดพลาดในการบันทึกรายการ'}), 500
+        return jsonify({'status': 'success', 'message': f'บันทึกรายการและตัดสตอกจากคลัง "{warehouse_to_use.name}" เรียบร้อยแล้ว'}), 200
 
     except Exception as e:
         db.session.rollback()
