@@ -3322,23 +3322,20 @@ def cleanup_job_item_duplicates_in_batches():
                     JobItem.id > subquery.c.id_to_keep
                 )
             )
-
-            # Fetch a batch of IDs to delete
+            
             item_ids_to_delete = [item[0] for item in items_to_delete_query.limit(batch_size).all()]
 
             if not item_ids_to_delete:
-                # No more duplicates found, break the loop
                 break
 
-            # Delete associated movements and then the items for the current batch
             StockMovement.query.filter(StockMovement.job_item_id.in_(item_ids_to_delete)).delete(synchronize_session=False)
             deleted_in_batch = JobItem.query.filter(JobItem.id.in_(item_ids_to_delete)).delete(synchronize_session=False)
-
+            
             db.session.commit()
-
+            
             total_deleted_count += deleted_in_batch
             current_app.logger.info(f"Deleted a batch of {deleted_in_batch} duplicate job items.")
-
+        
         if total_deleted_count > 0:
             flash(f'ล้างข้อมูลค่าใช้จ่ายที่ซ้ำซ้อนสำเร็จ! ลบไปทั้งหมด {total_deleted_count} รายการ', 'success')
         else:
