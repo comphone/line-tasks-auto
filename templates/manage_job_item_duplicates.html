@@ -1,17 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}จัดการค่าใช้จ่ายที่ซ้ำซ้อนในใบงาน{% endblock %}
+{% block title %}จัดการอุปกรณ์ที่ซ้ำซ้อน{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <h2 class="mb-4">จัดการค่าใช้จ่ายที่ซ้ำซ้อนในใบงาน</h2>
-
-     <div class="alert alert-warning">
-        <h4><i class="fas fa-exclamation-triangle me-2"></i> คำเตือน</h4>
-        <p>หน้านี้ใช้สำหรับล้างข้อมูลค่าใช้จ่ายที่ถูกบันทึกซ้ำซ้อนจากข้อผิดพลาดของระบบในอดีต</p>
-        <p>การลบข้อมูลนี้<strong>จะไม่คืนสต็อกสินค้า</strong>โดยอัตโนมัติ เนื่องจากเป็นไปได้ว่าสต็อกอาจถูกตัดไปแล้ว กรุณาตรวจสอบและปรับสต็อกด้วยตนเองหลังจากลบข้อมูลซ้ำซ้อนที่นี่</p>
-    </div>
-
+    <h2 class="mb-4">จัดการอุปกรณ์ที่ซ้ำซ้อน</h2>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -21,19 +14,19 @@
         {% endif %}
     {% endwith %}
 
-    {% if not duplicates_by_job %}
+    {% if not duplicates %}
         <div class="alert alert-success">
-            <i class="fas fa-check-circle me-2"></i> ไม่พบรายการค่าใช้จ่ายที่ซ้ำซ้อนในใบงานใดๆ
+            <i class="fas fa-check-circle me-2"></i> ไม่พบรายการอุปกรณ์ที่ซ้ำซ้อน
         </div>
     {% else %}
-        <p>ระบบพบรายการค่าใช้จ่ายที่มีชื่อซ้ำกันภายในใบงานเดียวกัน กรุณาตรวจสอบและเลือกลบรายการที่ไม่ต้องการออก</p>
-        <p class="text-muted small">คำแนะนำ: สำหรับแต่ละกลุ่มรายการที่มีชื่อเดียวกัน ให้เก็บไว้เพียง 1 รายการ (โดยทั่วไปคือรายการแรกสุด) และเลือกลบรายการที่เหลือ</p>
+        <p>ระบบพบรายการอุปกรณ์ที่มีชื่อซ้ำกัน กรุณาตรวจสอบและเลือกลบรายการที่ไม่ต้องการออก</p>
+        <p class="text-muted small">คำแนะนำ: สำหรับแต่ละกลุ่ม ให้เก็บไว้เพียง 1 รายการ (โดยทั่วไปคือรายการแรกสุด) และเลือกลบรายการที่เหลือ</p>
 
-        <form action="{{ url_for('delete_job_item_duplicates_batch') }}" method="post" id="delete-items-form">
+        <form action="{{ url_for('delete_equipment_duplicates_batch') }}" method="post" id="delete-equipment-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3 p-2 sticky-top bg-light border rounded">
                 <div>
-                    <button type="button" class="btn btn-outline-info btn-sm" id="keep-one-btn">
+                    <button type="button" class="btn btn-outline-info btn-sm" id="keep-one-equipment-btn">
                         <i class="fas fa-save me-2"></i>เลือกเก็บไว้ 1 รายการ (ลบที่เหลือ)
                     </button>
                 </div>
@@ -43,41 +36,28 @@
             </div>
 
 
-            {% for job_key, items_by_name in duplicates_by_job.items() %}
-            <div class="card mb-3 job-set">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        {# --- START: โค้ดส่วนที่แก้ไข --- #}
-                        <a href="{{ url_for('liff.job_details', job_id=job_key[0], customer_id=((items_by_name.values()|first)|first).job.customer_id) }}" target="_blank" class="text-white">
-                        {# --- END: โค้ดส่วนที่แก้ไข --- #}
-                            ใบงาน: {{ job_key[1] }} <i class="fas fa-external-link-alt fa-xs"></i>
-                        </a>
-                    </h5>
+            {% for name, items in duplicates.items() %}
+            <div class="card mb-3 equipment-set">
+                <div class="card-header">
+                    <h5 class="mb-0"><strong>{{ name }}</strong> (พบ {{ items|length }} รายการ)</h5>
                 </div>
-                <div class="card-body">
-                    {% for item_name, items in items_by_name.items() %}
-                    <div class="mb-3 p-2 border rounded duplicate-set">
-                        <h6><strong>{{ item_name }}</strong> (พบ {{ items|length }} รายการ)</h6>
-                        <ul class="list-group list-group-flush">
-                            {% for item in items %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                    <span class="badge bg-secondary me-2">ID: {{ item.id }}</span>
-                                    จำนวน: {{ item.quantity }}, ราคา: {{ "%.2f"|format(item.unit_price|float) }}
-                                    <small class="text-muted ms-2">(เพิ่มเมื่อ: {{ item.added_at.astimezone(thaizone).strftime('%Y-%m-%d %H:%M') }})</small>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="item_ids" value="{{ item.id }}" id="item-{{ item.id }}">
-                                    <label class="form-check-label" for="item-{{ item.id }}">
-                                        เลือกลบ
-                                    </label>
-                                </div>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
+                <ul class="list-group list-group-flush">
+                    {% for item_info in items %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                           <span class="badge bg-secondary me-2">Index: {{ item_info.original_index }}</span>
+                           ราคา: {{ "%.2f"|format(item_info.data.price|float) }},
+                           หมวดหมู่: {{ item_info.data.category or 'N/A' }}
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="item_indices" value="{{ item_info.original_index }}" id="item-{{ item_info.original_index }}">
+                            <label class="form-check-label" for="item-{{ item_info.original_index }}">
+                                เลือกลบ
+                            </label>
+                        </div>
+                    </li>
                     {% endfor %}
-                </div>
+                </ul>
             </div>
             {% endfor %}
 
@@ -94,10 +74,10 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const deleteForm = document.getElementById('delete-items-form');
+    const deleteForm = document.getElementById('delete-equipment-form');
     if (deleteForm) {
         deleteForm.addEventListener('submit', function (e) {
-            const checkedBoxes = deleteForm.querySelectorAll('input[name="item_ids"]:checked');
+            const checkedBoxes = deleteForm.querySelectorAll('input[name="item_indices"]:checked');
             if (checkedBoxes.length === 0) {
                 e.preventDefault();
                 alert('กรุณาเลือกอย่างน้อยหนึ่งรายการเพื่อลบ');
@@ -109,15 +89,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    const keepOneBtn = document.getElementById('keep-one-btn');
+    const keepOneBtn = document.getElementById('keep-one-equipment-btn');
     if(keepOneBtn){
         keepOneBtn.addEventListener('click', function() {
-            const duplicateSets = document.querySelectorAll('.duplicate-set');
-            duplicateSets.forEach(set => {
-                const checkboxes = set.querySelectorAll('input[name="item_ids"]');
-                // Uncheck all first
+            // Find all groups of duplicate equipment
+            const equipmentSets = document.querySelectorAll('.equipment-set');
+            equipmentSets.forEach(set => {
+                // Find all checkboxes within this group
+                const checkboxes = set.querySelectorAll('input[name="item_indices"]');
+                
+                // Uncheck all checkboxes in the group first
                 checkboxes.forEach(cb => cb.checked = false);
-                // Check all except the first one (the one to keep)
+
+                // Check all checkboxes except the first one (the one to keep)
                 for(let i = 1; i < checkboxes.length; i++){
                     checkboxes[i].checked = true;
                 }
