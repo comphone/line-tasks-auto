@@ -178,30 +178,21 @@
         </div>
 
         <div class="tab-pane fade" id="data-management" role="tabpanel" aria-labelledby="data-management-tab">
+            
             <div class="card mt-3">
-                 <div class="card-header">
-                    <h4><i class="fas fa-database me-2"></i> จัดการข้อมูล (Data Management)</h4>
+                <div class="card-header bg-primary text-white">
+                    <h4><i class="fas fa-magic me-2"></i> เครื่องมือแก้ไขอัตโนมัติ (แนะนำ)</h4>
                 </div>
                 <div class="card-body">
-                    <p>เครื่องมือสำหรับจัดการข้อมูลจำนวนมาก การกระทำในส่วนนี้อาจไม่สามารถย้อนกลับได้</p>
-                    <div class="d-flex flex-wrap gap-2">
-                        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
-                        <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-boxes me-2"></i>จัดการอุปกรณ์ที่ซ้ำกัน</a>
-                        <a href="{{ url_for('manage_job_item_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-receipt me-2"></i>จัดการค่าใช้จ่ายที่ซ้ำในใบงาน</a>
-                        <a href="{{ url_for('liff.manage_customer_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-users me-2"></i>จัดการลูกค้าที่ซ้ำกัน</a>
-                        
-                        <a href="{{ url_for('organize_files') }}" class="btn btn-outline-info"><i class="fas fa-folder-open me-2"></i>เครื่องมือจัดระเบียบไฟล์</a>
-                        <form action="{{ url_for('cleanup_drive_folders') }}" method="POST" onsubmit="return confirm('คุณต้องการเริ่มกระบวนการรวมโฟลเดอร์ที่ซ้ำกันใน Google Drive หรือไม่?');" class="d-inline">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                            <button type="submit" class="btn btn-outline-info">
-                                <i class="fas fa-broom me-2"></i>ทำความสะอาดโฟลเดอร์ซ้ำ
-                            </button>
-                        </form>
-
-                        <form action="{{ url_for('recalculate_all_stock') }}" method="post" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการคำนวณสต็อกใหม่ทั้งหมด? การกระทำนี้จะลบข้อมูลสต็อกปัจจุบันและสร้างขึ้นใหม่จากประวัติทั้งหมด');" class="d-inline">
+                    <p class="text-muted">หากปุ่ม "เลือกเก็บไว้ 1 รายการ" ในหน้าจัดการข้อมูลซ้ำด้านล่างไม่ทำงาน ให้ใช้เครื่องมืออัตโนมัตินี้แทน</p>
+                    <div class="alert alert-info">
+                        <h5 class="alert-heading"><i class="fas fa-broom me-2"></i> ล้างข้อมูลค่าใช้จ่ายซ้ำอัตโนมัติ</h5>
+                        <p>เครื่องมือนี้จะทำการค้นหาค่าใช้จ่ายที่ซ้ำกันในทุกใบงาน จากนั้นจะ **เก็บรายการที่เก่าที่สุดไว้ 1 รายการ** และลบรายการที่ซ้ำกันที่เหลือทั้งหมดออกไปจากระบบให้โดยอัตโนมัติ</p>
+                        <hr>
+                        <form action="{{ url_for('cleanup_job_item_duplicates_auto') }}" method="post" onsubmit="return confirm('คุณแน่ใจหรือไม่? ระบบจะลบรายการค่าใช้จ่ายที่ซ้ำซ้อนทั้งหมด (ยกเว้นรายการแรก) ออกอย่างถาวร');" class="d-inline">
                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                             <button type="submit" class="btn btn-danger">
-                                 <i class="fas fa-calculator me-2"></i> คำนวณสต็อกใหม่ทั้งหมด
+                             <button type="submit" class="btn btn-primary fw-bold">
+                                 <i class="fas fa-play-circle me-2"></i> เริ่มการล้างข้อมูลอัตโนมัติ
                              </button>
                         </form>
                     </div>
@@ -209,12 +200,28 @@
             </div>
 
             <div class="card mt-4">
+                 <div class="card-header">
+                    <h4><i class="fas fa-database me-2"></i> จัดการข้อมูลด้วยตนเอง</h4>
+                </div>
+                <div class="card-body">
+                    <p>เครื่องมือสำหรับจัดการข้อมูลจำนวนมากด้วยตนเอง</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{{ url_for('manage_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-copy me-2"></i>จัดการงานที่ซ้ำซ้อน</a>
+                        <a href="{{ url_for('manage_equipment_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-boxes me-2"></i>จัดการอุปกรณ์ที่ซ้ำกัน</a>
+                        <a href="{{ url_for('manage_job_item_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-receipt me-2"></i>จัดการค่าใช้จ่ายที่ซ้ำในใบงาน</a>
+                        <a href="{{ url_for('liff.manage_customer_duplicates') }}" class="btn btn-outline-warning"><i class="fas fa-users me-2"></i>จัดการลูกค้าที่ซ้ำกัน</a>
+                        <a href="{{ url_for('organize_files') }}" class="btn btn-outline-info"><i class="fas fa-folder-open me-2"></i>เครื่องมือจัดระเบียบไฟล์</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
                 <div class="card-header">
-                     <h4><i class="fas fa-heartbeat me-2"></i> ตรวจสอบและซ่อมแซมข้อมูล (Health Check & Repair)</h4>
+                     <h4><i class="fas fa-heartbeat me-2"></i> ตรวจสอบและซ่อมแซมข้อมูล</h4>
                 </div>
                 <div class="card-body">
                     <p class="small text-muted">
-                        เครื่องมือนี้จะสแกนหารายการงานที่อาจมีข้อมูลรูปภาพไม่ตรงกัน (มีรูปใน Drive แต่ไม่มีในประวัติ) และอนุญาตให้คุณซ่อมแซมเพื่อนำรูปภาพกลับมาแสดงผล
+                        เครื่องมือนี้จะสแกนหารายการงานที่อาจมีข้อมูลรูปภาพไม่ตรงกัน (มีรูปใน Drive แต่ไม่มีในประวัติ)
                     </p>
                     <button class="btn btn-primary" id="scan-health-btn">
                         <i class="fas fa-search-plus me-2"></i>ตรวจสอบความสมบูรณ์ของข้อมูล
@@ -230,8 +237,7 @@
                                         <th class="text-center">จัดการ</th>
                                     </tr>
                                 </thead>
-                                <tbody id="issues-table-body">
-                                    </tbody>
+                                <tbody id="issues-table-body"></tbody>
                             </table>
                         </div>
                     </div>
