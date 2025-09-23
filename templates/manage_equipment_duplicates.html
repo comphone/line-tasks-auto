@@ -95,10 +95,12 @@ document.addEventListener('DOMContentLoaded', function () {
             const equipmentSets = document.querySelectorAll('.equipment-set');
             equipmentSets.forEach(set => {
                 const checkboxes = set.querySelectorAll('input[name="item_indices"]');
-                checkboxes.forEach((cb, index) => {
-                    // Check the checkbox if it's not the first one
-                    cb.checked = (index !== 0);
-                });
+                if (checkboxes.length > 1) {
+                    checkboxes[0].checked = false; // Ensure the first is unchecked
+                    for(let i = 1; i < checkboxes.length; i++){
+                        checkboxes[i].checked = true; // Check all others
+                    }
+                }
             });
         });
     }
