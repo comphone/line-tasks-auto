@@ -7,7 +7,7 @@ import requests
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import text, func 
+from sqlalchemy import text, func
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import sys
@@ -79,6 +79,17 @@ if SENTRY_DSN:
 
 app = Flask(__name__, static_folder='static')
 
+# --- START: เพิ่มโค้ดส่วน Health Check สำหรับ Render ---
+@app.route('/health')
+def health_check():
+    # Render จะเรียก path นี้เพื่อตรวจสอบว่าแอปยังทำงานอยู่
+    # การตอบกลับด้วย status 200 OK จะทำให้ Render รู้ว่าบริการยังไม่ล่ม
+    # และจะช่วยป้องกันการถูกปิด (spin down) โดยไม่จำเป็น หากเราต้องการให้มันทำงานตลอดเวลา
+    # แต่ถ้าเราต้องการให้มันหลับเพื่อประหยัดค่าใช้จ่าย ก็ไม่ต้องทำอะไรพิเศษ
+    return "OK", 200
+# --- END: เพิ่มโค้ดส่วน Health Check ---
+
+
 if os.environ.get('RENDER') == 'true' and not os.environ.get('DATABASE_URL'):
     raise RuntimeError("FATAL: DATABASE_URL environment variable is not set on Render. Please create a PostgreSQL database and link it to this service.")
 
@@ -88,7 +99,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True, 'pool_recycle'
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-THAILAND_TZ = pytz.timezone('Asia/Bangkok') # ย้าย THAILAND_TZ มาไว้ที่นี่
+THAILAND_TZ = pytz.timezone('Asia/Bangkok')
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -149,43 +160,27 @@ class Job(db.Model):
 
     @property
     def is_today(self):
-        if not self.due_date or self.status == 'completed': 
+        if not self.due_date or self.status == 'completed':
             return False
-        
-        # --- START: โค้ดส่วนที่แก้ไข ---
         try:
-            # ทำให้ 'aware' ก่อนแปลง ถ้าหากมันเป็น 'naive'
-            if self.due_date.tzinfo is None:
-                due_date_utc = pytz.utc.localize(self.due_date)
-            else:
-                due_date_utc = self.due_date
-            
+            due_date_utc = self.due_date.astimezone(pytz.utc) if self.due_date.tzinfo else pytz.utc.localize(self.due_date)
             due_date_local = due_date_utc.astimezone(THAILAND_TZ)
             today_local = datetime.datetime.now(THAILAND_TZ).date()
             return due_date_local.date() == today_local
         except Exception:
             return False
-        # --- END: โค้ดส่วนที่แก้ไข ---
 
     @property
     def is_overdue(self):
-        if not self.due_date or self.status == 'completed': 
+        if not self.due_date or self.status == 'completed':
             return False
-            
-        # --- START: โค้ดส่วนที่แก้ไข ---
         try:
-            # ทำให้ 'aware' ก่อนแปลง ถ้าหากมันเป็น 'naive'
-            if self.due_date.tzinfo is None:
-                due_date_utc = pytz.utc.localize(self.due_date)
-            else:
-                due_date_utc = self.due_date
-
+            due_date_utc = self.due_date.astimezone(pytz.utc) if self.due_date.tzinfo else pytz.utc.localize(self.due_date)
             due_date_local = due_date_utc.astimezone(THAILAND_TZ)
             today_local = datetime.datetime.now(THAILAND_TZ).date()
             return due_date_local.date() < today_local
         except Exception:
             return False
-        # --- END: โค้ดส่วนที่แก้ไข ---
 
     @property
     def tech_reports_history(self):
@@ -252,9 +247,7 @@ class BillingStatus(db.Model):
     paid_date = db.Column(db.DateTime)
     payment_due_date = db.Column(db.DateTime, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-
     job = db.relationship('Job', backref=db.backref('billing_status', uselist=False))
-
     def to_dict(self):
         return {
             'job_id': self.job_id,
@@ -270,22 +263,14 @@ class Warehouse(db.Model):
     type = db.Column(db.String(50), nullable=False, default='main')
     technician_name = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    
     def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'type': self.type,
-            'technician_name': self.technician_name,
-            'is_active': self.is_active
-        }
+        return {'id': self.id, 'name': self.name, 'type': self.type, 'technician_name': self.technician_name, 'is_active': self.is_active}
 
 class StockLevel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     product_code = db.Column(db.String(100), nullable=False, index=True)
     warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouse.id'), nullable=False)
     quantity = db.Column(db.Float, nullable=False, default=0)
-    
     warehouse = db.relationship('Warehouse', backref=db.backref('stock_levels', lazy=True))
     __table_args__ = (db.UniqueConstraint('product_code', 'warehouse_id', name='_product_warehouse_uc'),)
 
@@ -325,84 +310,27 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '').strip()
-if LINE_CHANNEL_ACCESS_TOKEN.startswith('"') and LINE_CHANNEL_ACCESS_TOKEN.endswith('"'):
-    LINE_CHANNEL_ACCESS_TOKEN = LINE_CHANNEL_ACCESS_TOKEN[1:-1].strip()
-
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET', '').strip()
-if LINE_CHANNEL_SECRET.startswith('"') and LINE_CHANNEL_SECRET.endswith('"'):
-    LINE_CHANNEL_SECRET = LINE_CHANNEL_SECRET[1:-1].strip()
 
 if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET]):
     sys.exit("LINE Bot credentials are not set in environment variables.")
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
-api_client = ApiClient(configuration)
-line_messaging_api = MessagingApi(api_client)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-app.logger.info(f"======== DEBUG LINE CREDENTIALS ========")
-app.logger.info(f"Channel Secret configured: {bool(LINE_CHANNEL_SECRET)}")
-app.logger.info(f"Secret Length: {len(LINE_CHANNEL_SECRET)}")
-app.logger.info(f"Secret (masked): {'*' * (len(LINE_CHANNEL_SECRET) - 4) + LINE_CHANNEL_SECRET[-4:] if len(LINE_CHANNEL_SECRET) > 4 else '****'}")
-app.logger.info(f"Access Token configured: {bool(LINE_CHANNEL_ACCESS_TOKEN)}")
-app.logger.info(f"Access Token (masked): {'*' * (len(LINE_CHANNEL_ACCESS_TOKEN) - 6) + LINE_CHANNEL_ACCESS_TOKEN[-6:] if len(LINE_CHANNEL_ACCESS_TOKEN) > 6 else '****'}")
-
-def check_line_bot_configuration():
-    issues = []
-    
-    if not LINE_CHANNEL_ACCESS_TOKEN:
-        issues.append("LINE_CHANNEL_ACCESS_TOKEN ไม่ได้ตั้งค่า")
-    elif len(LINE_CHANNEL_ACCESS_TOKEN) < 50:
-        issues.append("LINE_CHANNEL_ACCESS_TOKEN อาจไม่ถูกต้อง (สั้นเกินไป)")
-        
-    if not LINE_CHANNEL_SECRET:
-        issues.append("LINE_CHANNEL_SECRET ไม่ได้ตั้งค่า")
-    elif len(LINE_CHANNEL_SECRET) != 32:
-        issues.append(f"LINE_CHANNEL_SECRET ไม่ถูกต้อง (ความยาว: {len(LINE_CHANNEL_SECRET)}, ควรเป็น 32)")
-        
-    return issues     
-
-line_issues = check_line_bot_configuration()
-if line_issues:
-    app.logger.error("LINE Bot Configuration Issues:")
-    for issue in line_issues:
-        app.logger.error(f"  - {issue}")
-else:
-    app.logger.info("LINE Bot configuration looks good!")
-    
 LIFF_ID_FORM = os.environ.get('LIFF_ID_FORM')
 LIFF_ID_TECHNICIAN_LOCATION = os.environ.get('LIFF_ID_TECHNICIAN_LOCATION')
 LIFF_ID_STOCK_VIEW = os.environ.get('LIFF_ID_STOCK_VIEW')
 LINE_LOGIN_CHANNEL_ID = os.environ.get('LINE_LOGIN_CHANNEL_ID')
-GOOGLE_TASKS_LIST_ID = os.environ.get('GOOGLE_TASKS_LIST_ID', '@default')
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')
 
 LINE_RATE_LIMIT_PER_MINUTE = int(os.environ.get('LINE_RATE_LIMIT_PER_MINUTE', 100))
 
 if not GOOGLE_DRIVE_FOLDER_ID:
     app.logger.warning("GOOGLE_DRIVE_FOLDER_ID environment variable is not set. Drive upload will not work.")
-if not LIFF_ID_FORM:
-    app.logger.warning("LIFF_ID_FORM environment variable is not set. LIFF features will not work.")
-if not LINE_LOGIN_CHANNEL_ID:
-    app.logger.warning("LINE_LOGIN_CHANNEL_ID environment variable is not set. LIFF initialization might fail.")
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
-THAILAND_TZ = pytz.timezone('Asia/Bangkok')
-cache = TTLCache(maxsize=100, ttl=60)
-
-scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
-
-def save_settings_to_file(settings_data):
-    try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(settings_data, f, ensure_ascii=False, indent=4)
-        return True
-    except Exception as e:
-        current_app.logger.error(f"Failed to save settings to {SETTINGS_FILE}: {e}")
-        return False
-
-#<editor-fold desc="Helper and Utility Functions">
-
+# ... (ส่วนที่เหลือของไฟล์ app.py เหมือนเดิมทั้งหมด) ...
+# (คัดลอกส่วนที่เหลือตั้งแต่บรรทัด class LineMessageQueue: เป็นต้นไปมาวางที่นี่ได้เลย)
 class LineMessageQueue:
     def __init__(self, max_per_minute=100):
         self.queue = Queue()
@@ -418,44 +346,40 @@ class LineMessageQueue:
         app.logger.info(f"Message added to queue for {user_id}. Queue size: {self.queue.qsize()}")
 
     def process_queue(self):
-        while True:
-            with self.processing_lock:
-                if time.time() - self.last_reset >= 60:
-                    self.sent_count = 0
-                    self.last_reset = time.time()
+        with ApiClient(configuration) as api_client:
+            line_messaging_api = MessagingApi(api_client)
+            while True:
+                with self.processing_lock:
+                    if time.time() - self.last_reset >= 60:
+                        self.sent_count = 0
+                        self.last_reset = time.time()
 
-                if self.sent_count >= self.max_per_minute:
-                    sleep_time = 60 - (time.time() - self.last_reset)
-                    app.logger.info(f"LINE Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
-                    time.sleep(sleep_time)
-                    continue
-
-                if not self.queue.empty():
-                    user_id, messages, timestamp = self.queue.get()
-
-                    if time.time() - timestamp > 300:
-                        app.logger.warning(f"Discarding old message for {user_id} (queued {time.time() - timestamp:.2f}s ago).")
+                    if self.sent_count >= self.max_per_minute:
+                        sleep_time = 60 - (time.time() - self.last_reset)
+                        app.logger.info(f"LINE Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
+                        time.sleep(sleep_time)
                         continue
 
-                    try:
-                        push_message_request = PushMessageRequest(
-                            to=user_id,
-                            messages=messages
-                        )
-                        
-                        line_messaging_api.push_message(push_message_request)
-                                                    
-                        self.sent_count += 1
-                        app.logger.info(f"Message sent to {user_id}. Sent count: {self.sent_count}/{self.max_per_minute}")
-                    except Exception as e:
-                        if hasattr(e, 'status') and e.status == 429:
-                            app.logger.warning(f"LINE API Rate limit (429) hit while sending to {user_id}. Re-queuing message.")
-                            self.queue.put((user_id, messages, timestamp))
-                            time.sleep(5)
-                        else:
-                            app.logger.error(f"LINE API Error sending message to {user_id}: {e}")
+                    if not self.queue.empty():
+                        user_id, messages, timestamp = self.queue.get()
 
-            time.sleep(1)
+                        if time.time() - timestamp > 300:
+                            app.logger.warning(f"Discarding old message for {user_id} (queued {time.time() - timestamp:.2f}s ago).")
+                            continue
+
+                        try:
+                            push_message_request = PushMessageRequest(to=user_id, messages=messages)
+                            line_messaging_api.push_message(push_message_request)
+                            self.sent_count += 1
+                            app.logger.info(f"Message sent to {user_id}. Sent count: {self.sent_count}/{self.max_per_minute}")
+                        except Exception as e:
+                            if hasattr(e, 'status') and e.status == 429:
+                                app.logger.warning(f"LINE API Rate limit (429) hit while sending to {user_id}. Re-queuing message.")
+                                self.queue.put((user_id, messages, timestamp))
+                                time.sleep(5)
+                            else:
+                                app.logger.error(f"LINE API Error sending message to {user_id}: {e}")
+                time.sleep(1)
 
 message_queue = LineMessageQueue(max_per_minute=LINE_RATE_LIMIT_PER_MINUTE)
 threading.Thread(target=message_queue.process_queue, daemon=True).start()
