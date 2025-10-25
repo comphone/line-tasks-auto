@@ -74,8 +74,10 @@ import atexit
 from flask_cors import CORS
 
 SENTRY_DSN = os.environ.get('SENTRY_DSN')
-if SENTRY_DSN:
-    sentry_sdk.init(dsn=SENTRY_DSN, integrations=[FlaskIntegration()], traces_sample_rate=1.0, profiles_sample_rate=1.0)
+# --- START: EDIT THIS BLOCK ---
+# if SENTRY_DSN:
+#     sentry_sdk.init(dsn=SENTRY_DSN, integrations=[FlaskIntegration()], traces_sample_rate=1.0, profiles_sample_rate=1.0)
+# --- END: EDIT THIS BLOCK ---
 
 app = Flask(__name__, static_folder='static')
 
