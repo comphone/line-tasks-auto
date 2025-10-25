@@ -1816,6 +1816,7 @@ def run_scheduler():
     
     scheduler = BackgroundScheduler(daemon=True, timezone=THAILAND_TZ)
 
+    # --- START: เปิดการทำงานส่วนนี้กลับคืนมา ---
     ab = settings.get('auto_backup', {})
     if ab.get('enabled'):
         scheduler.add_job(scheduled_backup_job, CronTrigger(hour=ab.get('hour_thai', 2), minute=ab.get('minute_thai', 0)), id='auto_system_backup', replace_existing=True)
@@ -1831,20 +1832,21 @@ def run_scheduler():
  
     scheduler.add_job(scheduled_overdue_check_job, CronTrigger(hour=8, minute=0), id='daily_overdue_check', replace_existing=True)
     app.logger.info("Scheduled daily overdue invoice check for 08:00 Thai time.")
+    # --- END: เปิดการทำงานส่วนนี้กลับคืนมา ---
  
     popup_settings = settings.get('popup_notifications', {})
     if popup_settings.get('enabled_nearby_job'):
-        # --- START: EDIT THIS BLOCK ---
-        # ปิดการทำงานส่วนนี้โดยการใส่ # หน้าบรรทัด
+        # คงการปิดการทำงานของ Job ที่ทำงานบ่อยไว้เหมือนเดิม
         # scheduler.add_job(scheduled_nearby_job_alert_job, CronTrigger(minute='*/15'), id='nearby_job_alerts', replace_existing=True)
         # app.logger.info(f"Scheduled nearby job alerts every 15 minutes.")
         app.logger.info(f"Nearby job alerts are TEMPORARILY DISABLED in the code to save costs.")
-        # --- END: EDIT THIS BLOCK ---
     else:
         if scheduler.get_job('nearby_job_alerts'):
             scheduler.remove_job('nearby_job_alerts')
             app.logger.info("Nearby job alerts disabled and removed.")
 
+    # บรรทัดนี้อาจทำให้เกิด Error เพราะ rt ถูกประกาศในบล็อกที่ถูก Comment out ไป
+    # ดังนั้นจึงต้องย้าย rt กลับเข้ามาด้วย
     app.logger.info(f"Scheduled appointment reminders for {rt.get('appointment_reminder_hour_thai', 7)}:00 and customer follow-up for {rt.get('customer_followup_hour_thai', 9)}:05 Thai time.")
 
     scheduler.start()
