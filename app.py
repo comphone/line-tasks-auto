@@ -1832,8 +1832,12 @@ def run_scheduler():
  
     popup_settings = settings.get('popup_notifications', {})
     if popup_settings.get('enabled_nearby_job'):
-        scheduler.add_job(scheduled_nearby_job_alert_job, CronTrigger(minute='*/15'), id='nearby_job_alerts', replace_existing=True)
-        app.logger.info(f"Scheduled nearby job alerts every 15 minutes.")
+        # --- START: EDIT THIS BLOCK ---
+        # ปิดการทำงานส่วนนี้โดยการใส่ # หน้าบรรทัด
+        # scheduler.add_job(scheduled_nearby_job_alert_job, CronTrigger(minute='*/15'), id='nearby_job_alerts', replace_existing=True)
+        # app.logger.info(f"Scheduled nearby job alerts every 15 minutes.")
+        app.logger.info(f"Nearby job alerts are TEMPORARILY DISABLED in the code to save costs.")
+        # --- END: EDIT THIS BLOCK ---
     else:
         if scheduler.get_job('nearby_job_alerts'):
             scheduler.remove_job('nearby_job_alerts')
